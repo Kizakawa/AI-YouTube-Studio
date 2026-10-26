@@ -1416,6 +1416,32 @@ Return ONLY valid JSON:
     )
     if passing_candidates:
         best_candidate = passing_candidates[0]
+    elif scored_candidates:
+        viable_scored = [
+            c for c in scored_candidates
+            if c.get("video_path")
+            and Path(c["video_path"]).exists()
+            and float(c.get("clean_frame_score", 0.0)) >= 5.5
+            and float(c.get("entity_match_score", 0.0)) >= 5.0
+            and float(c.get("motion_action_score", 0.0)) >= 5.5
+            and float(c.get("overall_score", 0.0)) >= 5.5
+        ]
+        if viable_scored:
+            viable_scored.sort(
+                key=lambda x: (
+                    float(x.get("overall_score", 0.0)),
+                    float(x.get("scroll_stop_score", 0.0)),
+                    float(x.get("motion_action_score", 0.0)),
+                ),
+                reverse=True,
+            )
+            best_candidate = viable_scored[0]
+            passing_candidates = list(viable_scored)
+            logger.info(
+                f"⚡ [HookVideoNode Soft-Pass Recovery] Phục hồi ứng viên Video chuyển động thật tốt nhất "
+                f"'{Path(best_candidate['video_path']).name}' (overall={best_candidate.get('overall_score')}/10, "
+                f"entity={best_candidate.get('entity_match_score')}/10, clean={best_candidate.get('clean_frame_score')}/10)"
+            )
 
     # ──────────────────────────────────────────────────────────────────────────
     # BƯỚC 4: CẮT ĐOẠN PEAK GHÉP VÀO ĐẦU VIDEO (ƯU TIÊN DUAL-BEAT FAST-CUT TRONG CẢNH 1 + MỞ RỘNG CẢNH 2 LIỀN MẠCH)
@@ -1710,6 +1736,84 @@ Return ONLY valid JSON:
                 except Exception as e_s2:
                     logger.debug(f"[HookVideoNode] Scene 2 viral candidate slice skip: {e_s2}")
 
+            if 2 not in pre_resolved_hook_media:
+                try:
+                    from app.agents.media_agent import MediaAgent
+                    s2_q_cands = [
+                        q for q in dict.fromkeys([
+                            beat_2_query,
+                            queries[1] if len(queries) > 1 else "",
+                            stock_broll_queries[0] if stock_broll_queries else "",
+                            canonical_subject or primary_entity or topic,
+                        ]) if q
+                    ]
+                    ma_s2 = MediaAgent()
+                    used_s2_urls = {best_v_path, *used_second_paths}
+                    for s2_q in s2_q_cands[:3]:
+                        best_s2_vid = ma_s2.search_best_video_clip(
+                            s2_q,
+                            used_s2_urls,
+                            None,
+                            hook_narration_s2 or hook_narration,
+                            topic,
+                        )
+                        if best_s2_vid and best_s2_vid.get("url") and str(best_s2_vid["url"]) not in used_s2_urls:
+                            s2_raw_url = str(best_s2_vid["url"])
+                            s2_raw_title = str(best_s2_vid.get("title") or s2_q)
+                            if not rag.try_claim_in_job_video(
+                                job_id=job_id, vid_id=s2_raw_url, url=s2_raw_url, title=s2_raw_title, scene_id=2
+                            ):
+                                continue
+                            s2_dl_raw = str(hook_cand_dir / "s2_stock_rescue_raw.mp4")
+                            ma_s2.download_file(s2_raw_url, s2_dl_raw)
+                            if Path(s2_dl_raw).exists() and Path(s2_dl_raw).stat().st_size > 15_000:
+                                trim_video(
+                                    input_path=s2_dl_raw,
+                                    duration_seconds=dur_s2_clip,
+                                    output_path=hook_output_clip_s2,
+                                    width=1080,
+                                    height=1920,
+                                    fps=30,
+                                    is_scifi=is_scifi,
+                                    niche=atmosphere_fx,
+                                    apply_grading=True,
+                                    is_hook_scene=True,
+                                    fair_use_transform=True,
+                                    start_offset_sec=0.0,
+                                    preserve_continuous_flow=True,
+                                )
+                                if Path(hook_output_clip_s2).exists() and Path(hook_output_clip_s2).stat().st_size > 10_000:
+                                    _ensure_hook_clip_sharpness_and_luma(hook_output_clip_s2, min_sharpness=10.5)
+                                    ok_s2_st, _ = rag.verify_and_commit_in_job_clip(
+                                        job_id=job_id,
+                                        scene_id=2,
+                                        media_path=hook_output_clip_s2,
+                                        vid_id=s2_raw_url,
+                                        url=s2_raw_url,
+                                        title=s2_raw_title,
+                                        is_continuation_slice=False,
+                                    )
+                                    if ok_s2_st:
+                                        pre_resolved_hook_media[2] = {
+                                            "media_path": hook_output_clip_s2,
+                                            "media_type": "hook_ready_video",
+                                            "production_method": "HOOK_EXTENDED_2ND_STOCK_VIDEO",
+                                            "visual_strategy": "STOCK_VIDEO",
+                                            "strategy_rationale": f"Extended 3-7s Hook Stock Video ({s2_raw_title[:45]})",
+                                        }
+                                        if len(scenes_media) >= 2 and isinstance(scenes_media[1], dict):
+                                            scenes_media[1]["media_path"] = hook_output_clip_s2
+                                            scenes_media[1]["media_type"] = "hook_ready_video"
+                                            scenes_media[1]["production_method"] = "HOOK_EXTENDED_2ND_STOCK_VIDEO"
+                                        logger.info(
+                                            f"🎬 [HookVideoNode 3-7s Stock Rescue] Đã nạp Video chuyển động thật #2 cho Cảnh 2 ({dur_s2:.2f}s): '{s2_q}'"
+                                        )
+                                        break
+                                    else:
+                                        Path(hook_output_clip_s2).unlink(missing_ok=True)
+                except Exception as e_s2_st:
+                    logger.debug(f"[HookVideoNode] Scene 2 stock video rescue skip: {e_s2_st}")
+
         # Ghép toàn bộ các ứng viên Video Peak độc lập còn dư vào TRONG THÂN VIDEO (Cảnh Cao Trào `climax_scene_id` + các cảnh thân kế tiếp)
         # để tối đa hóa tỷ lệ Video thật đa góc máy và giảm thiểu phải sinh ảnh AI tĩnh!
         eff_climax_id = climax_scene_id if climax_scene_id not in pre_resolved_hook_media else (3 if len(base_scenes) >= 3 else 0)
@@ -1853,10 +1957,88 @@ Return ONLY valid JSON:
             logger.debug(f"[HookVideoNode] Stock video hook rescue skip: {e_st_hk}")
 
         if not stock_hook_ok:
-            # CHẾ ĐỘ HOOK ĐA ẢNH PEAK LIÊN TỤC (4-5 ẢNH THẬT SỐNG ĐỘNG ĐỔI HÌNH MỖI ~0.85S + LIVE FX)
+            try:
+                from app.agents.media_agent import MediaAgent
+                ma_s1 = MediaAgent()
+                s1_q_cands = [
+                    q for q in dict.fromkeys([
+                        *(queries or []),
+                        *(stock_broll_queries or []),
+                        canonical_subject or primary_entity or visual_keyword or topic,
+                    ]) if q
+                ]
+                for s1_q in s1_q_cands[:4]:
+                    best_s1_vid = ma_s1.search_best_video_clip(
+                        s1_q,
+                        set(),
+                        None,
+                        hook_narration,
+                        topic,
+                    )
+                    if best_s1_vid and best_s1_vid.get("url"):
+                        s1_raw_url = str(best_s1_vid["url"])
+                        s1_raw_title = str(best_s1_vid.get("title") or s1_q)
+                        if not rag.try_claim_in_job_video(
+                            job_id=job_id, vid_id=s1_raw_url, url=s1_raw_url, title=s1_raw_title, scene_id=1
+                        ):
+                            continue
+                        s1_dl_raw = str(hook_cand_dir / "s1_stock_rescue_raw.mp4")
+                        ma_s1.download_file(s1_raw_url, s1_dl_raw)
+                        if Path(s1_dl_raw).exists() and Path(s1_dl_raw).stat().st_size > 15_000:
+                            trim_video(
+                                input_path=s1_dl_raw,
+                                duration_seconds=target_hook_duration_sec,
+                                output_path=hook_output_clip,
+                                width=1080,
+                                height=1920,
+                                fps=30,
+                                is_scifi=is_scifi,
+                                niche=atmosphere_fx,
+                                apply_grading=True,
+                                is_hook_scene=True,
+                                fair_use_transform=True,
+                                start_offset_sec=0.0,
+                                preserve_continuous_flow=True,
+                            )
+                            if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
+                                ok_s1_broll, _ = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=11.0)
+                                ok_s1_commit, _ = rag.verify_and_commit_in_job_clip(
+                                    job_id=job_id,
+                                    scene_id=1,
+                                    media_path=hook_output_clip,
+                                    vid_id=s1_raw_url,
+                                    url=s1_raw_url,
+                                    title=s1_raw_title,
+                                    is_continuation_slice=False,
+                                )
+                                if ok_s1_broll and ok_s1_commit:
+                                    stock_hook_ok = True
+                                    final_hook_visual_mode = "video"
+                                    hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                                    pre_resolved_hook_media[1] = {
+                                        "media_path": hook_output_clip,
+                                        "media_type": "hook_ready_video",
+                                        "production_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
+                                        "visual_strategy": "STOCK_VIDEO",
+                                        "strategy_rationale": f"Real motion Stock B-Roll Hook ({s1_raw_title[:45]})",
+                                    }
+                                    scene_1["media_path"] = hook_output_clip
+                                    scene_1["media_type"] = "hook_ready_video"
+                                    scene_1["production_method"] = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                                    if scenes_media:
+                                        scenes_media[0] = scene_1
+                                    logger.info(f"🎬 [HookVideoNode B-Roll Rescue] Đã nạp Video chuyển động thật cho Cảnh 1: '{s1_q}'")
+                                    break
+                                else:
+                                    Path(hook_output_clip).unlink(missing_ok=True)
+            except Exception as e_s1_broll:
+                logger.debug(f"[HookVideoNode] Direct stock video rescue skip: {e_s1_broll}")
+
+        if not stock_hook_ok:
+            # CHẾ ĐỘ HOOK ĐA ẢNH DỰ PHÒNG CUỐI CÙNG (TỐI ĐA 2 CẢNH CẮT ĐỂ TRÁNH NHẤP NHÁY STROBE)
             final_hook_visual_mode = "scene"
             pose_list = list(scene_1.get("pose_images") or ([existing_path] if existing_path and Path(existing_path).exists() else []))
-            if len(pose_list) < 4:
+            if len(pose_list) < 2:
                 try:
                     from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                     img_hook_q = queries[0] if queries else (canonical_subject or visual_keyword or topic)
@@ -1872,15 +2054,16 @@ Return ONLY valid JSON:
                         overall_script_query=img_hook_q,
                         job_id=job_id,
                         scene_id=1,
-                        target_image_count=5,
+                        target_image_count=2,
                     )
                     if img_hook_res and img_hook_res.get("pose_images"):
-                        pose_list = list(img_hook_res["pose_images"])
+                        pose_list = list(img_hook_res["pose_images"])[:2]
                 except Exception as e_img_hk:
                     logger.debug(f"[HookVideoNode] Multi-image peak hook fetch skip: {e_img_hk}")
 
             if pose_list:
-                num_cuts = max(3, len(pose_list) - 1)
+                pose_list = pose_list[:2]
+                num_cuts = min(2, max(1, len(pose_list) - 1))
                 logger.info(
                     f"⚡ [HookVideoNode] Dựng Hook Đa Ảnh Peak Sống Động ({len(pose_list)} ảnh thật thay đổi liên tục mỗi "
                     f"{target_hook_duration_sec / max(len(pose_list), 1):.2f}s + 3D Motion & Live FX) -> {hook_output_clip}"

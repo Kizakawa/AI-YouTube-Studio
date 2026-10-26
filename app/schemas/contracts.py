@@ -71,7 +71,7 @@ class SceneContract(BaseModel):
 
     # --- Populated bởi MediaAgent/ImageAgent (Step C) ---
     media_path: Optional[str] = Field(default=None, description="Đường dẫn file ảnh/video nền cho scene")
-    media_type: Optional[str] = Field(default=None, pattern=r"^(image|video|ai_image|ai_video|i2v|t2v|photo|documentary|auto)$")
+    media_type: Optional[str] = Field(default=None, pattern=r"^(image|video|hook_ready_video|ai_image|ai_video|i2v|t2v|photo|documentary|auto)$")
     pose_images: Optional[List[str]] = Field(
         default=None,
         description="Danh sách đường dẫn các ảnh chuyển cảnh nhanh cho Cảnh 1 (Opening Multi-Cut Hook >= 3 cuts) hoặc hoạt họa multi-pose",
@@ -202,7 +202,7 @@ class SceneContract(BaseModel):
         v_clean = v.strip().lower()
         if not v_clean or v_clean in ("none", "null"):
             return None
-        allowed = {"image", "video", "ai_image", "ai_video", "i2v", "t2v", "photo", "documentary", "auto"}
+        allowed = {"image", "video", "hook_ready_video", "ai_image", "ai_video", "i2v", "t2v", "photo", "documentary", "auto"}
         if v_clean in allowed:
             return v_clean
         if "ai_video" in v_clean or "t2v" in v_clean or "i2v" in v_clean:

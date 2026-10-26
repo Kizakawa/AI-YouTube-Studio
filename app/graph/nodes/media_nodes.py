@@ -560,6 +560,36 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             source_url_used = str(yt_broad_res.get("source_url") or "")
                             prod_method = "CLIMAX_PEAK_SHORT_SPLICE"
                             rationale = f"YouTube Shorts Broad Peak ({broad_video_q}): {yt_broad_res.get('title', '')[:45]}"
+                if not media_path and scene.scene_id in (1, 2):
+                    try:
+                        pre_used_hk = set(used_pool_urls)
+                        best_hk_vid = await asyncio.to_thread(
+                            media_agent.search_best_video_clip,
+                            yt_q,
+                            used_pool_urls,
+                            v_analysis,
+                            scene.narration,
+                            state.get("topic", ""),
+                        )
+                        if best_hk_vid and best_hk_vid.get("url") and best_hk_vid["url"] not in pre_used_hk:
+                            cand_hk_url = str(best_hk_vid["url"])
+                            vid_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst.mp4")
+                            await asyncio.to_thread(media_agent.download_file, cand_hk_url, vid_hk_out)
+                            if Path(vid_hk_out).exists() and Path(vid_hk_out).stat().st_size > 15_000:
+                                media_path = vid_hk_out
+                                media_type = "hook_ready_video" if scene.scene_id == 1 else "video"
+                                vision_curated = True
+                                prod_method = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                                chosen_strategy = "STOCK_VIDEO"
+                                source_url_used = cand_hk_url
+                                used_pool_urls.add(cand_hk_url)
+                                rationale = f"Opening Hook Stock Video ({best_hk_vid.get('title', yt_q)[:45]})"
+                                logger.info(
+                                    f"Scene {scene.scene_id}: 🎬 [Opening Real-Motion Video] "
+                                    f"Đã nạp Video B-Roll chuyển động thật cho '{yt_q}'"
+                                )
+                    except Exception as hk_vf_err:
+                        logger.debug(f"Scene {scene.scene_id}: Opening video-first lookup fallback: {hk_vf_err}")
                 if not media_path:
                     # Lưu ý: execute_youtube_short_peak_clone_sync đã bao gồm cả Tầng 1 (YouTube Peak) và Tầng 2 (Pexels/Pixabay có kiểm duyệt Gemini Vision).
                     # Tuyệt đối không tải lại Stock Video mù (không qua Gemini Vision) để tránh lọt clip mèo nhà / thú trong sở thú!
@@ -635,6 +665,36 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     except Exception as vf_err:
                         logger.debug(f"Scene {scene.scene_id}: Video-First body stock lookup fallback: {vf_err}")
 
+                if not media_path and scene.scene_id in (1, 2):
+                    try:
+                        pre_used_hk = set(used_pool_urls)
+                        best_hk_vid = await asyncio.to_thread(
+                            media_agent.search_best_video_clip,
+                            img_q,
+                            used_pool_urls,
+                            v_analysis,
+                            scene.narration,
+                            state.get("topic", ""),
+                        )
+                        if best_hk_vid and best_hk_vid.get("url") and best_hk_vid["url"] not in pre_used_hk:
+                            cand_hk_url = str(best_hk_vid["url"])
+                            vid_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst.mp4")
+                            await asyncio.to_thread(media_agent.download_file, cand_hk_url, vid_hk_out)
+                            if Path(vid_hk_out).exists() and Path(vid_hk_out).stat().st_size > 15_000:
+                                media_path = vid_hk_out
+                                media_type = "hook_ready_video" if scene.scene_id == 1 else "video"
+                                vision_curated = True
+                                prod_method = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                                chosen_strategy = "STOCK_VIDEO"
+                                source_url_used = cand_hk_url
+                                used_pool_urls.add(cand_hk_url)
+                                rationale = f"Opening Hook Stock Video ({best_hk_vid.get('title', img_q)[:45]})"
+                                logger.info(
+                                    f"Scene {scene.scene_id}: 🎬 [Opening Real-Motion Video] "
+                                    f"Đã nạp Video B-Roll chuyển động thật cho '{img_q}'"
+                                )
+                    except Exception as hk_vf_err:
+                        logger.debug(f"Scene {scene.scene_id}: Opening video-first lookup fallback: {hk_vf_err}")
                 if not media_path:
                     out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
                     img_res = await asyncio.to_thread(
@@ -692,6 +752,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         if (
             not media_path
             and not tier0_searched
+            and scene.scene_id not in (1, 2)
             and (search_first or (creature_first and v_analysis.get("creature_mode")))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
         ):
@@ -1355,8 +1416,26 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 return False
             mt = str(sc_dict.get("media_type") or "image").lower()
             mp = str(sc_dict.get("media_path") or "").lower()
-            # Không coi các file ảnh tĩnh zoompan (_i2v, _fb_motion, _anim, _motion3d) là video chuyển động thật
+            pm = str(sc_dict.get("production_method") or "").upper()
+            vs = str(sc_dict.get("visual_strategy") or "").upper()
+            # Không coi các file ảnh tĩnh zoompan (_i2v, _fb_motion, _anim, _motion3d) hoặc multi-cut ảnh tĩnh là video chuyển động thật
             if any(tag in mp for tag in ("_i2v", "_fb_motion", "_anim", "_motion3d", "_gsearch_3d", "_creature_3d")):
+                return False
+            if any(
+                tag in pm
+                for tag in (
+                    "CLIMAX_IMAGES_LIVE_FX",
+                    "IMAGE_TO_VIDEO",
+                    "STOCK_PHOTO_I2V",
+                    "GOOGLE_TOP_IMAGE",
+                    "GEMINI_SEARCH_3D",
+                    "CREATURE_ART",
+                    "REFINED_IMAGE_TO_VIDEO",
+                    "REFINED_CLEAN_MULTI_IMAGE",
+                )
+            ):
+                return False
+            if vs in ("HOOK_MULTI_IMAGE_RAPID_PEAK", "GEMINI_SEARCH_3D", "CREATURE_ART", "AI_IMAGE"):
                 return False
             return mt in ("video", "hook_ready_video") and mp.endswith((".mp4", ".mov", ".webm"))
 
@@ -1919,12 +1998,75 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     critic = VisualCritic()
     eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
 
+    # Cổng chặn cuối cùng trước khi vào render_video: Nếu đã hết lượt retry refine_media mà vẫn còn cảnh lỗi
+    # (ví dụ: lệch loài/chủ thể do ContactSheet Vision phát hiện ở lần refine cuối), tự động thay thế ngay
+    # bằng clip chuyển động sạch đạt chuẩn trong cùng Job để tuyệt đối không lọt cảnh lỗi sang render_video!
+    if not eval_report.passed and eval_report.failed_scene_ids and int(state.get("media_retry_count", 0)) >= 2:
+        try:
+            from app.utils.ffmpeg_helper import get_duration_ms, trim_video
+            work_dir = Path(state.get("work_dir", "storage/cache"))
+            media_dir = work_dir / "media"
+            failed_set = set(eval_report.failed_scene_ids)
+            clean_donors = [
+                str(m.get("media_path"))
+                for m in scenes_media
+                if int(m.get("scene_id") or 0) not in failed_set
+                and str(m.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm"))
+                and "_i2v" not in str(m.get("media_path") or "").lower()
+                and Path(str(m.get("media_path"))).exists()
+            ]
+            for cand_hp in sorted((work_dir / "hook_candidates").glob("*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
+                if cand_hp.exists() and cand_hp.stat().st_size > 25_000:
+                    clean_donors.append(str(cand_hp))
+            if clean_donors:
+                current_niche = state.get("niche") or state.get("channel_style") or state.get("channel_niche") or "general"
+                is_scifi_val = (current_niche == "scifi")
+                rescued_any = False
+                for m in scenes_media:
+                    sid = int(m.get("scene_id") or 0)
+                    if sid not in failed_set:
+                        continue
+                    sc_dur = _scene_audio_duration(work_dir, sid)
+                    donor_v = clean_donors[(sid - 1) % len(clean_donors)]
+                    d_dur_s = get_duration_ms(donor_v) / 1000.0
+                    d_off_s = max(0.4, min(max(0.0, d_dur_s - sc_dur - 0.2), d_dur_s * 0.45)) if d_dur_s > sc_dur + 0.8 else 0.0
+                    out_final_rescue = str(media_dir / f"scene_{sid:03d}_final_clean_rescue.mp4")
+                    trim_video(
+                        input_path=donor_v,
+                        duration_seconds=sc_dur,
+                        output_path=out_final_rescue,
+                        width=1080,
+                        height=1920,
+                        fps=30,
+                        is_scifi=is_scifi_val,
+                        niche=current_niche,
+                        apply_grading=True,
+                        is_hook_scene=(sid == 1),
+                        fair_use_transform=True,
+                        start_offset_sec=d_off_s,
+                        preserve_continuous_flow=True,
+                    )
+                    if Path(out_final_rescue).exists() and Path(out_final_rescue).stat().st_size > 12_000:
+                        m["media_path"] = out_final_rescue
+                        m["media_type"] = "hook_ready_video" if sid == 1 else "video"
+                        m["pose_images"] = []
+                        m["production_method"] = "FINAL_GATE_CLEAN_VIDEO_RESCUE"
+                        rescued_any = True
+                        logger.info(
+                            f"🛡️ [FinalVisualGate] Đã thay thế khẩn cấp Cảnh #{sid} bị lỗi trước khi Render bằng video sạch '{Path(donor_v).name}'"
+                        )
+                if rescued_any:
+                    eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
+        except Exception as e_fg:
+            logger.debug(f"[FinalVisualGate] Rescue skip: {e_fg}")
+
     logger.info(
         f"🖼️ [VisualCritic] Điểm kỹ thuật media: {eval_report.overall_score}/10 | "
         f"Passed: {eval_report.passed} | Lỗi: {len(eval_report.failed_scene_ids)} cảnh"
     )
 
     return {
+        "scenes_media": scenes_media,
         "media_eval": eval_report.model_dump(),
         "current_step": "MEDIA_EVALUATED",
         "progress_percent": 70,
@@ -2048,10 +2190,34 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         clean_kw_q = clean_search_query_from_prompt(kw or vp or "", narration=narr, topic=state.get("topic", ""), max_words=6) or kw
         overall_refine_q = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4) or clean_kw_q
         subj_refine = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2) or overall_refine_q
+        if subj_refine and subj_refine.lower().split()[0] not in (clean_kw_q or "").lower():
+            clean_kw_q = f"{subj_refine} {clean_kw_q}".strip()
         is_mandatory_vid = scene_id in mandatory_video_refine_sids
         is_video = True
         replaced = False
         sc_dur_sec = _scene_audio_duration(work_dir, scene_id)
+
+        # 0. Bảo vệ Video Hook thật ở Cảnh 1 & Cảnh 2: thử nâng nét/làm sạch tại chỗ trước khi tải lại
+        existing_mp = str(item.get("media_path") or "")
+        existing_pm = str(item.get("production_method") or "").upper()
+        if (
+            scene_id in (1, 2)
+            and existing_mp
+            and Path(existing_mp).exists()
+            and existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
+            and "_i2v" not in existing_mp.lower()
+            and "CLIMAX_IMAGES_LIVE_FX" not in existing_pm
+        ):
+            try:
+                ok_inp_clean, _ = await asyncio.to_thread(
+                    _verify_and_sanitize_refined_media, existing_mp, True, scene_id
+                )
+                if ok_inp_clean:
+                    item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
+                    replaced = True
+                    logger.info(f"Scene {scene_id}: 🛡️ Đã làm sạch/nâng nét tại chỗ Video chuyển động thật '{Path(existing_mp).name}' (giữ nguyên Hook Video thật)")
+            except Exception as _e_inp:
+                logger.debug(f"Scene {scene_id}: In-place hook video sanitize skip: {_e_inp}")
 
         if is_video:
             # 1. Ưu tiên săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync)
@@ -2213,7 +2379,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex_sl:
                     logger.debug(f"Scene {scene_id}: Peak slice refine error: {ex_sl}")
 
-            if not replaced:
+            if not replaced and not is_mandatory_vid:
                 try:
                     ai_v_path = str(media_dir / f"scene_{scene_id:03d}_refined_i2v.mp4")
                     res_vid = await ai_video_agent.generate_image_to_video(
@@ -2243,7 +2409,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex_ai_v:
                     logger.debug(f"Scene {scene_id}: AI video refine error: {ex_ai_v}")
 
-        if not replaced:
+        if not replaced and not is_mandatory_vid:
             ai_img_path = str(media_dir / f"scene_{scene_id:03d}_refined.jpg")
             fallback_kw = f"Dramatic cinematic photorealistic shot of {primary_entity or clean_kw_q}, {clean_kw_q}, 8k sharp focus"
             res_img = await asyncio.to_thread(
@@ -2278,7 +2444,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.warning(f"Scene {scene_id}: ⚠️ Ảnh thay thế bị loại tại cổng kiểm định ({img_reason}) -> Tìm tiếp nguồn dự phòng sạch")
                     Path(res_img).unlink(missing_ok=True)
 
-        if not replaced:
+        if not replaced and not is_mandatory_vid:
             try:
                 for ph_attempt in range(3):
                     q_ph = clean_kw_q if ph_attempt == 0 else (overall_refine_q if ph_attempt == 1 else f"{subj_refine} cinematic")
@@ -2369,7 +2535,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         logger.info(f"Scene {scene_id}: 🛡️ [Zero-Failed-Scene Guarantee] Đã thay thế cảnh lỗi bằng clip chuyển động sạch '{Path(donor_v).name}'")
                         break
 
-                if not replaced and clean_image_donors:
+                if not replaced and not is_mandatory_vid and clean_image_donors:
                     render_opening_hook_multi_cut(
                         image_paths=clean_image_donors[:4],
                         duration_seconds=sc_dur_sec,

@@ -188,6 +188,10 @@ class VideoPipeline:
                             sfx_cue=s.get("sfx_cue") or a_info.get("sfx_cue"),
                             highlight_words=s.get("highlight_words") or a_info.get("highlight_words"),
                             overlay_badge=s.get("overlay_badge") or a_info.get("overlay_badge"),
+                            visual_strategy=s.get("visual_strategy"),
+                            production_method=s.get("production_method"),
+                            tool=s.get("tool"),
+                            strategy_rationale=s.get("strategy_rationale"),
                         ))
 
                     # Đảm bảo video được lưu trữ vĩnh viễn trong storage/outputs/video_{self.job_id}.mp4
@@ -1132,8 +1136,61 @@ class VideoPipeline:
                 logger.debug(f"Scene 1 WOW audit skipped: {_e_aud}")
                 return True
 
+        if scene.scene_id in (1, 2) and not is_creature and channel_visual_mode not in ("imagen_ai", "ai_image"):
+            try:
+                from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                hook_v_out = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_hook_video.mp4")
+                hk_q = getattr(scene, "stock_query", None) or scene.visual_keyword or topic
+                hk_res = await asyncio.to_thread(
+                    execute_youtube_short_peak_clone_sync,
+                    search_query=hk_q,
+                    output_path=hook_v_out,
+                    target_duration_sec=max(float(scene.actual_duration_seconds or 3.2), 2.0),
+                    clip_role="HOOK" if scene.scene_id == 1 else "PEAK",
+                    used_urls=used_pool_urls,
+                    fallback_query=topic or hk_q,
+                    subject_entity=primary_entity or topic,
+                    narration=scene.narration,
+                    topic=topic,
+                    search_scope="SCRIPT_OVERALL",
+                    overall_script_query=primary_entity or topic or hk_q,
+                    job_id=self.job_id,
+                    scene_id=scene.scene_id,
+                )
+                if hk_res and hk_res.get("media_path") and Path(hk_res["media_path"]).exists():
+                    v_p = str(hk_res["media_path"])
+                    if used_asset_paths is not None:
+                        used_asset_paths.add(v_p)
+                    scene.media_type = "hook_ready_video" if scene.scene_id == 1 else "video"
+                    scene.visual_strategy = "HOOK_PEAK_SHORT_VIDEO"
+                    scene.production_method = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"
+                    logger.info(f"Scene {scene.scene_id}: 🎬 [Mandatory Opening Video] Đã nạp Video chuyển động thật: {Path(v_p).name}")
+                    return v_p
+                best_hk_v = await asyncio.to_thread(
+                    self._media_agent.search_best_video_clip,
+                    hk_q,
+                    used_pool_urls or used_asset_paths or set(),
+                    v_analysis,
+                    scene.narration,
+                    topic,
+                )
+                if best_hk_v and best_hk_v.get("url"):
+                    await asyncio.to_thread(self._media_agent.download_file, str(best_hk_v["url"]), hook_v_out)
+                    if Path(hook_v_out).exists() and Path(hook_v_out).stat().st_size > 15_000:
+                        if used_pool_urls is not None:
+                            used_pool_urls.add(str(best_hk_v["url"]))
+                        if used_asset_paths is not None:
+                            used_asset_paths.add(hook_v_out)
+                        scene.media_type = "video"
+                        scene.visual_strategy = "STOCK_VIDEO"
+                        scene.production_method = "STOCK_FOOTAGE"
+                        logger.info(f"Scene {scene.scene_id}: 🎬 [Mandatory Opening Stock Video] Đã nạp Video B-Roll thật: {Path(hook_v_out).name}")
+                        return hook_v_out
+            except Exception as _e_hk_lin:
+                logger.debug(f"Scene {scene.scene_id}: Mandatory opening video fetch fallback: {_e_hk_lin}")
+
         if (
-            (search_first or (creature_first and is_creature) or scene.scene_id == 1)
+            ((search_first or (creature_first and is_creature)) and scene.scene_id not in (1, 2))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
         ):
             try:

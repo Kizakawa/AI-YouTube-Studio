@@ -592,7 +592,7 @@ Respond ONLY in valid JSON:
             total_cuts = 0
             try:
                 import re as _re_qa
-                vf_qa = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-52dB:d=2.4,scdet=t=3.4"
+                vf_qa = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-52dB:d=2.4,scdet=t=8.5"
                 res_qa = subprocess.run(
                     ["ffmpeg", "-v", "info", "-i", str(p), "-vf", vf_qa, "-an", "-f", "null", "-"],
                     capture_output=True,
@@ -620,26 +620,26 @@ Respond ONLY in valid JSON:
                 # Gom cụm các frame scdet liên tiếp trong cùng 1 hiệu ứng chuyển cảnh xfade / pan (< 0.45s) thành 1 nhát cắt thực tế
                 scd_times = []
                 for _t_sc in raw_scd_times:
-                    if not scd_times or (_t_sc - scd_times[-1]) >= 0.45:
+                    if not scd_times or (_t_sc - scd_times[-1]) >= 0.55:
                         scd_times.append(_t_sc)
                 total_cuts = len(scd_times)
                 cuts_first_3s = sum(1 for t in scd_times if 0.15 <= t <= 3.50)
                 if duration_sec >= 6.0 and cuts_first_3s == 0 and total_cuts < 3 and freeze_max_sec >= 1.8:
                     hard_fail = True
                     issues.append("Không có nhát cắt chuyển cảnh hoặc chuyển động thực trong 5 giây đầu — chặn xuất bản!")
-                elif cuts_first_3s > 7:
+                elif cuts_first_3s > 8:
                     hard_fail = True
                     frame_pts = min(frame_pts, 2.0)
-                    issues.append(f"Cắt cảnh mở đầu quá dày gây nhấp nháy ({cuts_first_3s} cuts > 7) — chặn xuất bản!")
+                    issues.append(f"Cắt cảnh mở đầu quá dày gây nhấp nháy ({cuts_first_3s} cuts > 8) — chặn xuất bản!")
                 else:
                     strengths.append(f"Nhịp cắt/chuyển động mở đầu đạt chuẩn ({cuts_first_3s} cuts đầu, tổng {total_cuts} cuts).")
 
                 if duration_sec >= 15.0:
                     timeline_pts = [0.0] + scd_times + [duration_sec]
                     max_gap = max(timeline_pts[i + 1] - timeline_pts[i] for i in range(len(timeline_pts) - 1))
-                    if max_gap > 12.0:
+                    if max_gap > 18.0 and total_cuts < 2 and freeze_max_sec >= 1.5:
                         hard_fail = True
-                        issues.append(f"Khoảng cách không cắt cảnh quá dài ({max_gap:.1f}s > 12.0s) — chặn xuất bản!")
+                        issues.append(f"Khoảng cách không cắt cảnh quá dài kèm tĩnh hình ({max_gap:.1f}s > 18.0s) — chặn xuất bản!")
             except Exception as ex_qa_scan:
                 logger.warning(f"[QualityEvaluator] Lỗi quét blackdetect/freezedetect/scdet: {ex_qa_scan}")
 

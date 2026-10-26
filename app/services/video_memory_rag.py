@@ -124,7 +124,7 @@ def extract_visual_and_script_metadata(
         s_q = str(sc.get("stock_query") or "").strip()
         v_pr = str(sc.get("visual_prompt") or sc.get("cinematic_prompt") or "").strip()
         m_type = str(sc.get("media_type") or "auto").strip()
-        m_fp = _extract_media_fingerprint(sc.get("media_path"))
+        m_fp = _extract_media_fingerprint(sc.get("media_path")) or str(sc.get("media_fingerprint") or "").strip()
         cam = str(sc.get("camera_motion") or "").strip()
         v_strat = str(sc.get("visual_strategy") or sc.get("production_method") or "").strip()
 
