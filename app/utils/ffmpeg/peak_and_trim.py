@@ -382,6 +382,7 @@ def trim_video(
             "_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d",
             "_motion3d", "_anim", "_fb_motion", "hook_motion_", "hook_peak_",
             "hook_climax_", "_yt_peak", "_fullpeak", "_long_peak", "_vfirst",
+            "_16x9", "bili_16x9_",
         )
     )
     should_grade = apply_grading and not is_already_rendered
@@ -423,7 +424,10 @@ def trim_video(
         else:
             zoom_mult = 1.06 if (fair_use_transform and not is_already_rendered) else 1.02
     else:
-        zoom_mult = 1.08 if (fair_use_transform and not is_already_rendered) else 1.04
+        if is_already_rendered:
+            zoom_mult = 1.0
+        else:
+            zoom_mult = 1.06 if fair_use_transform else 1.02
 
     has_letterbox = False
     top_bar_only = False
@@ -497,13 +501,13 @@ def trim_video(
     if fair_use_transform and not is_already_rendered:
         eff_x_ratio = round(1.0 - crop_x_ratio, 3)
         scale_crop_chain = (
-            f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase,"
+            f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase:flags=lanczos,"
             f"crop={width}:{height}:(iw-{width})*{eff_x_ratio:.3f}:(ih-{height})*{crop_y_ratio:.3f}"
         )
     else:
         eff_sw, eff_sh = (zw, zh) if zoom_mult > 1.10 else (width, height)
         scale_crop_chain = (
-            f"scale={eff_sw}:{eff_sh}:force_original_aspect_ratio=increase,"
+            f"scale={eff_sw}:{eff_sh}:force_original_aspect_ratio=increase:flags=lanczos,"
             f"crop={width}:{height}:(iw-{width})*{crop_x_ratio:.3f}:(ih-{height})*{crop_y_ratio:.3f}"
         )
 

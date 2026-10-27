@@ -329,11 +329,17 @@ def search_bilibili_videos(
     return results[:max_results]
 
 
-def get_bilibili_video_info_and_streams(url_or_id: str) -> Optional[Dict[str, Any]]:
+def get_bilibili_video_info_and_streams(
+    url_or_id: str,
+    min_height: int = 0,
+    require_landscape: bool = False,
+) -> Optional[Dict[str, Any]]:
     """
     Trích xuất toàn bộ metadata và URL luồng H.264 1080p/720p trực tiếp của Bilibili
     bằng chữ ký WBI (`wbi/view/detail` + `_download_playinfo(try_look=1)`).
     Hoạt động ổn định 100% kể cả khi Bilibili ẩn `window.__INITIAL_STATE__` khỏi HTML.
+    - Khi `require_landscape=True` (cho Video Dài 16:9): Chặn cứng mọi video dọc 9:16 hoặc vuông (`width <= height`)
+      và ép chọn luồng HD/Full HD (`height >= min_height`) để hình ảnh 1080p sắc nét tuyệt đối.
     """
     parsed = extract_bilibili_id(url_or_id)
     if not parsed:
@@ -367,6 +373,13 @@ def get_bilibili_video_info_and_streams(url_or_id: str) -> Optional[Dict[str, An
         if not view:
             return None
 
+        dim = view.get("dimension") or {}
+        dim_w = int(dim.get("width") or 0)
+        dim_h = int(dim.get("height") or 0)
+        if require_landscape and dim_w > 0 and dim_h > 0 and dim_w <= dim_h:
+            logger.debug(f"[BilibiliFetcher] Bỏ qua video dọc/vuông {dim_w}x{dim_h} khi yêu cầu 16:9 ({vid_key})")
+            return None
+
         bvid = str(view.get("bvid") or parsed.get("bvid") or "")
         aid = str(view.get("aid") or parsed.get("aid") or "")
         cid = view.get("cid")
@@ -394,6 +407,21 @@ def get_bilibili_video_info_and_streams(url_or_id: str) -> Optional[Dict[str, An
                 f for f in all_formats
                 if f.get("vcodec") != "none" and f.get("url")
             ]
+
+        if require_landscape:
+            landscape_hd = [
+                f for f in video_formats
+                if int(f.get("width") or dim_w or 0) > int(f.get("height") or dim_h or 0)
+                and int(f.get("height") or dim_h or 0) >= max(720, int(min_height or 0))
+            ]
+            if not landscape_hd:
+                return None
+            video_formats = landscape_hd
+        elif min_height > 0:
+            hd_only = [f for f in video_formats if int(f.get("height") or 0) >= int(min_height)]
+            if hd_only:
+                video_formats = hd_only
+
         audio_formats = [
             f for f in all_formats
             if f.get("acodec") != "none" and f.get("vcodec") == "none" and f.get("url")
@@ -413,7 +441,6 @@ def get_bilibili_video_info_and_streams(url_or_id: str) -> Optional[Dict[str, An
 
         owner = view.get("owner") or {}
         stat = view.get("stat") or {}
-        dim = view.get("dimension") or {}
         pic = str(view.get("pic") or "")
         if pic.startswith("//"):
             pic = "https:" + pic
@@ -429,8 +456,9 @@ def get_bilibili_video_info_and_streams(url_or_id: str) -> Optional[Dict[str, An
             "uploader": str(owner.get("name") or "Bilibili Creator"),
             "duration": float(view.get("duration") or 0.0),
             "view_count": int(stat.get("view") or 0),
-            "width": int(dim.get("width") or best_video.get("width") or 1920),
-            "height": int(dim.get("height") or best_video.get("height") or 1080),
+            "width": int(best_video.get("width") or dim_w or 1920),
+            "height": int(best_video.get("height") or dim_h or 1080),
+            "tbr": float(best_video.get("tbr") or 0.0),
             "thumbnail": pic,
             "webpage_url": f"https://www.bilibili.com/video/{bvid}",
             "video_stream_url": best_video["url"],
@@ -450,24 +478,31 @@ def download_and_crop_bilibili_broll_clip(
     aspect_ratio: str = "9:16",
 ) -> Optional[Dict[str, Any]]:
     """
-    Tải nhanh phân đoạn đầu/cao trào (6-7MB qua HTTP Range ~1.5s) từ luồng H.264 1080p/720p của Bilibili,
-    sau đó áp dụng **Bilibili Safe-Crop (`crop=iw:ih*0.78:0:ih*0.08`)** cắt bỏ hoàn toàn:
-      - 8% mép trên (logo Bilibili & tên kênh góc trên)
-      - 14% mép dưới (phụ đề tiếng Trung in cứng ở đáy màn hình)
-    rồi chuyển về chuẩn dọc 9:16 (`1080x1920`) hoặc ngang 16:9 (`1920x1080`), tắt tiếng gốc (`-an`) và khóa màu `BT.709`.
+    Tải nhanh phân đoạn đầu/cao trào từ luồng H.264 1080p/720p của Bilibili,
+    sau đó áp dụng **Bilibili Safe-Crop + Lanczos Optical Sharpening**:
+      - Với 16:9 Long-Form: Bắt buộc nguồn ngang (`width > height`, `>= 720p/1080p`),
+        tải chunk 15MB để lấy đủ độ dài 12-18s thực tế (không kéo giãn slow-mo),
+        cắt tinh gọn `crop=iw*0.92:ih*0.84:iw*0.04:ih*0.04` + `scale=1920:1080:flags=lanczos` + `unsharp=5:5:0.85:5:5:0.0`.
+      - Với 9:16 Shorts: Cắt chuẩn `1080x1920`, tắt tiếng gốc (`-an`) và khóa màu `BT.709`.
     """
-    info = get_bilibili_video_info_and_streams(url_or_id)
+    is_16x9 = str(aspect_ratio or "9:16").strip() in ("16:9", "long", "landscape", "horizontal")
+    info = get_bilibili_video_info_and_streams(
+        url_or_id,
+        min_height=720 if is_16x9 else 0,
+        require_landscape=is_16x9,
+    )
     if not info or not info.get("video_stream_url"):
         return None
 
     stream_url = info["video_stream_url"]
     dl_headers = dict(info.get("http_headers") or _BILI_HEADERS)
-    dl_headers["Range"] = f"bytes=0-{int(max_range_bytes) - 1}"
+    eff_range_bytes = max(int(max_range_bytes), 15 * 1024 * 1024) if is_16x9 else int(max_range_bytes)
+    dl_headers["Range"] = f"bytes=0-{eff_range_bytes - 1}"
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         raw_m4s = Path(tmp_dir) / f"bili_raw_{info['bvid']}.m4s"
         try:
-            r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(4.0, 9.0))
+            r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(4.0, 12.0))
             if r.status_code not in (200, 206):
                 return None
             with open(raw_m4s, "wb") as f:
@@ -491,49 +526,86 @@ def download_and_crop_bilibili_broll_clip(
         if avail_dur_s < 3.2:
             return None
 
-        req_dur = min(max(3.2, float(target_duration_sec)), max(3.2, avail_dur_s - 0.5))
+        max_allowed_dur = 18.0 if is_16x9 else 8.0
+        req_dur = min(max(3.2, float(target_duration_sec)), max_allowed_dur, max(3.2, avail_dur_s - 0.5))
         try:
             peak_start, peak_len = find_hook_peak_window(
                 str(raw_m4s),
                 min_duration=req_dur,
-                max_duration=min(8.5, avail_dur_s),
+                max_duration=min(max_allowed_dur, avail_dur_s),
             )
         except Exception:
             peak_start = min(2.0, max(0.0, avail_dur_s - req_dur))
             peak_len = req_dur
 
-        clip_dur = min(max(req_dur, peak_len), 10.5 if aspect_ratio == "16:9" else 8.0, max(3.2, avail_dur_s - peak_start))
+        clip_dur = min(max(req_dur, peak_len), max_allowed_dur, max(3.2, avail_dur_s - peak_start))
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-        # Bilibili Safe-Crop:
-        # Cắt bỏ 8% đỉnh (logo Bilibili) + 14% đáy (phụ đề cứng tiếng Trung), giữ 78% vùng trung tâm sạch
-        if str(aspect_ratio or "9:16").strip() in ("16:9", "long", "landscape", "horizontal"):
-            vf_chain = (
-                "crop=iw*0.86:ih*0.78:iw*0.07:ih*0.08,"
-                "scale=1920:1080:force_original_aspect_ratio=increase,"
+        # Bilibili Safe-Crop + Crisp Lanczos + Optical Unsharp Mask:
+        if is_16x9:
+            base_16x9_vf = (
+                "crop=iw*0.92:ih*0.84:iw*0.04:ih*0.04,"
+                "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
                 "crop=1920:1080,"
-                "setsar=1,fps=30"
+                "unsharp=5:5:0.85:5:5:0.0,"
+                "eq=contrast=1.04:saturation=1.05,"
+                "setsar=1,fps=30,format=yuv420p"
             )
+            # Khi cảnh dài >= 9.0s và video nguồn đủ dài: Tự động tách thành 2 nhịp cắt (< 7s/nhịp)
+            # để vừa chống Content ID 100% vừa tăng nhịp điệu điện ảnh mà không bao giờ bị kéo giãn slow-mo
+            half_d = round(clip_dur * 0.5, 2)
+            rem_d = round(clip_dur - half_d, 2)
+            second_start = round(peak_start + half_d + 3.5, 2)
+            if clip_dur >= 9.0 and avail_dur_s >= (second_start + rem_d + 0.4):
+                fc = (
+                    f"[0:v]trim={peak_start:.2f}:{peak_start + half_d:.2f},setpts=PTS-STARTPTS,{base_16x9_vf}[v1];"
+                    f"[0:v]trim={second_start:.2f}:{second_start + rem_d:.2f},setpts=PTS-STARTPTS,hflip,{base_16x9_vf}[v2];"
+                    f"[v1][v2]concat=n=2:v=1:a=0[vout]"
+                )
+                cmd = [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-i", str(raw_m4s),
+                    "-filter_complex", fc,
+                    "-map", "[vout]",
+                    "-t", f"{clip_dur:.2f}",
+                    "-an",
+                    *get_video_encoder_args(quality="high"),
+                    *BT709_COLOR_ARGS,
+                    str(output_path),
+                ]
+            else:
+                cmd = [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-ss", f"{max(0.0, peak_start):.2f}",
+                    "-t", f"{clip_dur:.2f}",
+                    "-i", str(raw_m4s),
+                    "-vf", base_16x9_vf,
+                    "-an",
+                    *get_video_encoder_args(quality="high"),
+                    *BT709_COLOR_ARGS,
+                    str(output_path),
+                ]
         else:
             vf_chain = (
                 "crop=iw:ih*0.74:0:ih*0.12,"
-                "scale=1080:1920:force_original_aspect_ratio=increase,"
+                "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
                 "crop=1080:1920,"
+                "unsharp=5:5:0.75:5:5:0.0,"
                 "setsar=1,fps=30"
             )
-        cmd = [
-            "ffmpeg", "-y", "-v", "error",
-            "-ss", f"{max(0.0, peak_start):.2f}",
-            "-t", f"{clip_dur:.2f}",
-            "-i", str(raw_m4s),
-            "-vf", vf_chain,
-            "-an",
-            *get_video_encoder_args(quality="intermediate"),
-            *BT709_COLOR_ARGS,
-            str(output_path),
-        ]
+            cmd = [
+                "ffmpeg", "-y", "-v", "error",
+                "-ss", f"{max(0.0, peak_start):.2f}",
+                "-t", f"{clip_dur:.2f}",
+                "-i", str(raw_m4s),
+                "-vf", vf_chain,
+                "-an",
+                *get_video_encoder_args(quality="intermediate"),
+                *BT709_COLOR_ARGS,
+                str(output_path),
+            ]
         try:
-            subprocess.run(cmd, check=True, capture_output=True, timeout=25)
+            subprocess.run(cmd, check=True, capture_output=True, timeout=35)
             out_p = Path(output_path)
             if out_p.exists() and out_p.stat().st_size > 40_000:
                 return info
