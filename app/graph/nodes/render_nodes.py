@@ -52,12 +52,38 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         cam_motion = m.get("camera_motion") or ("hyper_zoom" if sc_id == 1 else _motion_cycle[idx_m % len(_motion_cycle)])
         cur_media_path = str(m.get("media_path") or "")
         cur_media_type = str(m.get("media_type") or "image")
-        if sc_id == 1 and cur_media_path and Path(cur_media_path).exists() and cur_media_path.lower().endswith((".mp4", ".mov", ".webm")):
-            try:
-                from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-                _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=12.0)
-            except Exception as e_s1_pre:
-                logger.debug(f"[RenderNode] Pre-render hook sharpness check skip: {e_s1_pre}")
+        if sc_id == 1 and cur_media_path and Path(cur_media_path).exists():
+            if not cur_media_path.lower().endswith((".mp4", ".mov", ".webm")):
+                try:
+                    from app.utils.ffmpeg_helper import render_opening_hook_multi_cut
+                    pose_imgs = [p for p in (m.get("pose_images") or [cur_media_path]) if p and Path(str(p)).exists()]
+                    if pose_imgs:
+                        pre_hook_mp4 = str(work_dir / "hook_motion_001.mp4")
+                        render_opening_hook_multi_cut(
+                            image_paths=pose_imgs,
+                            duration_seconds=max(dur_ms / 1000.0, 2.2) + 0.18,
+                            output_path=pre_hook_mp4,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            min_cuts=3,
+                            is_scifi=bool(state.get("is_scifi")),
+                            niche=str(state.get("channel_style") or state.get("niche") or "general"),
+                            is_hook_scene=True,
+                        )
+                        if Path(pre_hook_mp4).exists() and Path(pre_hook_mp4).stat().st_size > 12_000:
+                            cur_media_path = pre_hook_mp4
+                            cur_media_type = "hook_ready_video"
+                            m["media_path"] = pre_hook_mp4
+                            m["media_type"] = "hook_ready_video"
+                except Exception as e_s1_conv:
+                    logger.debug(f"[RenderNode] Pre-render hook image-to-multicut skip: {e_s1_conv}")
+            if cur_media_path.lower().endswith((".mp4", ".mov", ".webm")):
+                try:
+                    from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                    _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=12.5)
+                except Exception as e_s1_pre:
+                    logger.debug(f"[RenderNode] Pre-render hook sharpness check skip: {e_s1_pre}")
 
         sc_dict = {
             "scene_id": sc_id,

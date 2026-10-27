@@ -239,13 +239,14 @@ def _splice_dual_beat_hook_clip(
 
 def _ensure_hook_clip_sharpness_and_luma(
     clip_path: str,
-    min_sharpness: float = 12.0,
+    min_sharpness: float = 12.5,
 ) -> tuple[bool, float]:
     """
     Đo độ sắc nét (`hook_frame_sharpness`) & độ sáng tại 2 mốc mở đầu (`0.25s` và `0.85s`) của clip Hook.
-    Nếu độ nét < `min_sharpness` (12.0) hoặc khung hình thiếu tương phản/tối mờ:
-    - Tự động chạy bộ lọc FFmpeg nâng sáng vùng tối + tăng nét vi mô (`eq` + `unsharp`) ngay tại chỗ.
-    - Đo lại để đảm bảo `hook_frame_sharpness >= min_sharpness` và không có khung hình đen/đơn sắc.
+    Nếu độ nét < `min_sharpness` (12.5) hoặc khung hình thiếu tương phản/tối mờ (như Job #557 10.02 hoặc Job #559 9.27):
+    - Tầng 1: Chạy bộ lọc FFmpeg nâng sáng vùng tối + tăng nét vi mô (`eq` + Multi-Scale `unsharp`).
+    - Tầng 2 (Nếu Tầng 1 vẫn < min_sharpness): Nâng tương phản cục bộ + tăng cường biên cạnh 3 lớp (`unsharp` + `cas`)
+      để đảm bảo `hook_frame_sharpness >= 12.5` vượt qua cổng `QualityEvaluator` (12.0).
     """
     import shutil
     import tempfile
@@ -282,7 +283,6 @@ def _ensure_hook_clip_sharpness_and_luma(
                 scores.append(float(VisualCritic._measure_sharpness(f_jpg)))
         if not scores:
             return False, 0.0
-        # Lấy max của 2 điểm lấy mẫu đầu (đồng bộ với QualityEvaluator) nhưng đảm bảo frame đầu tiên (0.25s) không bị mờ rớt sâu
         eff_sharp = max(scores) if min(scores) >= (min_sharpness * 0.72) else min(scores)
         return eff_sharp >= min_sharpness, round(eff_sharp, 2)
 
@@ -291,45 +291,55 @@ def _ensure_hook_clip_sharpness_and_luma(
         if passed_init:
             return True, sharp_init
 
-        # Tự động nâng cấp độ sắc nét đa tầng (Multi-Scale Unsharp + Shadow/Contrast Lift) để đạt >= min_sharpness trên chuẩn 256x256
-        tmp_enh = str(p_clip.with_name(f"{p_clip.stem}_sharp_enh.mp4"))
-        if sharp_init < 9.5:
-            vf_enhance = (
-                "eq=brightness=0.06:contrast=1.32:gamma=1.24:saturation=1.10,"
-                "unsharp=11:11:1.45:11:11:0.0,unsharp=5:5:1.25:5:5:0.0"
-            )
-        else:
-            vf_enhance = (
-                "eq=brightness=0.04:contrast=1.22:gamma=1.16:saturation=1.06,"
-                "unsharp=9:9:1.25:9:9:0.0,unsharp=5:5:1.10:5:5:0.0"
-            )
-        subprocess.run(
-            [
-                "ffmpeg", "-v", "error", "-y",
-                "-i", str(p_clip),
-                "-vf", vf_enhance,
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-                "-pix_fmt", "yuv420p", "-color_range", "tv",
-                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-                "-c:a", "copy",
-                tmp_enh,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=18,
-            check=False,
-        )
-        if Path(tmp_enh).exists() and Path(tmp_enh).stat().st_size > 8_000:
-            passed_enh, sharp_enh = _probe_clip_sharpness(tmp_enh)
-            if sharp_enh > sharp_init:
-                shutil.move(tmp_enh, str(p_clip))
-                logger.info(
-                    f"✨ [HookSharpnessGate] Đã nâng cấp độ sắc nét Hook '{p_clip.name}': "
-                    f"{sharp_init:.2f} -> {sharp_enh:.2f} (yêu cầu >= {min_sharpness:.1f})"
+        cur_best_sharp = sharp_init
+        for tier_idx in (1, 2):
+            tmp_enh = str(p_clip.with_name(f"{p_clip.stem}_sharp_enh_t{tier_idx}.mp4"))
+            if tier_idx == 1:
+                if cur_best_sharp < 9.5:
+                    vf_enhance = (
+                        "eq=brightness=0.07:contrast=1.36:gamma=1.26:saturation=1.12,"
+                        "unsharp=11:11:1.55:11:11:0.0,unsharp=5:5:1.35:5:5:0.0"
+                    )
+                else:
+                    vf_enhance = (
+                        "eq=brightness=0.04:contrast=1.24:gamma=1.18:saturation=1.08,"
+                        "unsharp=9:9:1.35:9:9:0.0,unsharp=5:5:1.18:5:5:0.0"
+                    )
+            else:
+                vf_enhance = (
+                    "eq=brightness=0.05:contrast=1.34:gamma=1.22:saturation=1.08,"
+                    "unsharp=13:13:1.85:13:13:0.0,unsharp=7:7:1.55:7:7:0.0,unsharp=3:3:1.25:3:3:0.0"
                 )
-                return passed_enh, sharp_enh
-            Path(tmp_enh).unlink(missing_ok=True)
-        return False, sharp_init
+            subprocess.run(
+                [
+                    "ffmpeg", "-v", "error", "-y",
+                    "-i", str(p_clip),
+                    "-vf", vf_enhance,
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
+                    "-pix_fmt", "yuv420p", "-color_range", "tv",
+                    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+                    "-c:a", "copy",
+                    tmp_enh,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=18,
+                check=False,
+            )
+            if Path(tmp_enh).exists() and Path(tmp_enh).stat().st_size > 8_000:
+                passed_enh, sharp_enh = _probe_clip_sharpness(tmp_enh)
+                if sharp_enh > cur_best_sharp:
+                    shutil.move(tmp_enh, str(p_clip))
+                    logger.info(
+                        f"✨ [HookSharpnessGate Tier-{tier_idx}] Đã nâng cấp độ sắc nét Hook '{p_clip.name}': "
+                        f"{cur_best_sharp:.2f} -> {sharp_enh:.2f} (yêu cầu >= {min_sharpness:.1f})"
+                    )
+                    cur_best_sharp = sharp_enh
+                    if passed_enh:
+                        return True, cur_best_sharp
+                else:
+                    Path(tmp_enh).unlink(missing_ok=True)
+        return cur_best_sharp >= min_sharpness, cur_best_sharp
     except Exception as e_sh_gate:
         logger.debug(f"[HookSharpnessGate] Lỗi kiểm tra/nâng độ nét '{clip_path}': {e_sh_gate}")
         return False, 0.0
@@ -1571,12 +1581,14 @@ Return ONLY valid JSON:
                         f"-> {hook_output_clip}"
                     )
         elif (
-            target_hook_duration_sec >= 4.2
-            and natural_peak_dur >= (target_hook_duration_sec + 1.6)
+            target_hook_duration_sec >= 2.05
+            and natural_peak_dur >= max(target_hook_duration_sec - 0.1, 2.0)
         ):
             src_single = clean_p_path if use_precleaned else best_v_path
             base_off_single = 0.0 if use_precleaned else peak_start
-            shift_b = round(min(1.45, max(1.05, target_hook_duration_sec * 0.45)) + 0.65, 2)
+            dur_beat_a = round(min(1.40, max(1.02, target_hook_duration_sec * 0.46)), 2)
+            extra_headroom = max(0.0, natural_peak_dur - target_hook_duration_sec)
+            shift_b = round(dur_beat_a + min(0.55, extra_headroom * 0.6), 2)
             dual_beat_spliced = _splice_dual_beat_hook_clip(
                 clip_a_path=src_single,
                 start_a=base_off_single,
@@ -1593,7 +1605,7 @@ Return ONLY valid JSON:
             )
             if dual_beat_spliced:
                 logger.info(
-                    f"⚡ [HookVideoNode Intra-Clip Dual-Beat Punch-In] Đã cắt 2 góc máy (Toàn cảnh -> Cận cảnh 1.22x) cho Cảnh 1 "
+                    f"⚡ [HookVideoNode Intra-Clip Dual-Beat Punch-In] Đã cắt 2 góc máy (Toàn cảnh -> Cận cảnh 1.22x @ {dur_beat_a:.2f}s) cho Cảnh 1 "
                     f"({target_hook_duration_sec:.2f}s từ '{Path(best_v_path).name}') -> {hook_output_clip}"
                 )
 
@@ -2125,8 +2137,32 @@ Return ONLY valid JSON:
                     allow_3d_cgi_monster=is_3d_cgi_subject,
                 )
                 if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
-                    ok_st_sharp, st_sh_val = _ensure_hook_clip_sharpness_and_luma(st_res["media_path"], min_sharpness=7.5)
-                    if ok_st_sharp or st_sh_val >= 6.8:
+                    # Nếu clip cứu hộ là cú máy đơn >= 2.05s, tự động tách Dual-Beat Punch-In (Toàn cảnh -> Cận cảnh 1.22x) để đảm bảo cuts_first_3s >= 2
+                    if target_hook_duration_sec >= 2.05:
+                        st_tmp_src = str(work_dir / "hook_t15_single_src.mp4")
+                        try:
+                            import shutil as _sh_t15
+                            _sh_t15.copy2(st_res["media_path"], st_tmp_src)
+                            _splice_dual_beat_hook_clip(
+                                clip_a_path=st_tmp_src,
+                                start_a=0.0,
+                                clip_b_path=st_tmp_src,
+                                start_b=round(min(1.35, max(1.0, target_hook_duration_sec * 0.45)), 2),
+                                total_duration_sec=target_hook_duration_sec,
+                                output_path=st_res["media_path"],
+                                work_dir=work_dir,
+                                is_scifi=is_scifi,
+                                niche=atmosphere_fx,
+                                fair_use_a=False,
+                                fair_use_b=False,
+                                punch_in_b=True,
+                            )
+                        except Exception:
+                            pass
+                        finally:
+                            Path(st_tmp_src).unlink(missing_ok=True)
+                    ok_st_sharp, st_sh_val = _ensure_hook_clip_sharpness_and_luma(st_res["media_path"], min_sharpness=12.5)
+                    if ok_st_sharp or st_sh_val >= 12.0:
                         stock_hook_ok = True
                         final_hook_visual_mode = "video"
                         hook_mode = str(st_res.get("production_method") or "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK")
@@ -2170,7 +2206,7 @@ Return ONLY valid JSON:
                                     preserve_continuous_flow=True,
                                 )
                                 if Path(hook_output_clip_s2).exists() and Path(hook_output_clip_s2).stat().st_size > 10_000:
-                                    _ensure_hook_clip_sharpness_and_luma(hook_output_clip_s2, min_sharpness=8.5)
+                                    _ensure_hook_clip_sharpness_and_luma(hook_output_clip_s2, min_sharpness=11.0)
                                     pre_resolved_hook_media[2] = {
                                         "media_path": hook_output_clip_s2,
                                         "media_type": "hook_ready_video",
@@ -2217,23 +2253,40 @@ Return ONLY valid JSON:
                         s1_dl_raw = str(hook_cand_dir / "s1_stock_rescue_raw.mp4")
                         ma_s1.download_file(s1_raw_url, s1_dl_raw)
                         if Path(s1_dl_raw).exists() and Path(s1_dl_raw).stat().st_size > 15_000:
-                            trim_video(
-                                input_path=s1_dl_raw,
-                                duration_seconds=target_hook_duration_sec,
-                                output_path=hook_output_clip,
-                                width=1080,
-                                height=1920,
-                                fps=30,
-                                is_scifi=is_scifi,
-                                niche=atmosphere_fx,
-                                apply_grading=True,
-                                is_hook_scene=True,
-                                fair_use_transform=True,
-                                start_offset_sec=0.0,
-                                preserve_continuous_flow=True,
-                            )
+                            s1_built = False
+                            if target_hook_duration_sec >= 2.05:
+                                s1_built = _splice_dual_beat_hook_clip(
+                                    clip_a_path=s1_dl_raw,
+                                    start_a=0.0,
+                                    clip_b_path=s1_dl_raw,
+                                    start_b=round(min(1.35, max(1.0, target_hook_duration_sec * 0.45)), 2),
+                                    total_duration_sec=target_hook_duration_sec,
+                                    output_path=hook_output_clip,
+                                    work_dir=work_dir,
+                                    is_scifi=is_scifi,
+                                    niche=atmosphere_fx,
+                                    fair_use_a=True,
+                                    fair_use_b=True,
+                                    punch_in_b=True,
+                                )
+                            if not s1_built:
+                                trim_video(
+                                    input_path=s1_dl_raw,
+                                    duration_seconds=target_hook_duration_sec,
+                                    output_path=hook_output_clip,
+                                    width=1080,
+                                    height=1920,
+                                    fps=30,
+                                    is_scifi=is_scifi,
+                                    niche=atmosphere_fx,
+                                    apply_grading=True,
+                                    is_hook_scene=True,
+                                    fair_use_transform=True,
+                                    start_offset_sec=0.0,
+                                    preserve_continuous_flow=True,
+                                )
                             if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
-                                ok_s1_broll, _ = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=11.0)
+                                ok_s1_broll, s1_broll_sh = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.5)
                                 ok_s1_commit, _ = rag.verify_and_commit_in_job_clip(
                                     job_id=job_id,
                                     scene_id=1,
@@ -2243,7 +2296,7 @@ Return ONLY valid JSON:
                                     title=s1_raw_title,
                                     is_continuation_slice=False,
                                 )
-                                if ok_s1_broll and ok_s1_commit:
+                                if (ok_s1_broll or s1_broll_sh >= 12.0) and ok_s1_commit:
                                     stock_hook_ok = True
                                     final_hook_visual_mode = "video"
                                     hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
@@ -2266,9 +2319,92 @@ Return ONLY valid JSON:
             except Exception as e_s1_broll:
                 logger.debug(f"[HookVideoNode] Direct stock video rescue skip: {e_s1_broll}")
 
+        # CỨU HỘ TẦNG 2 (CHỐNG RỚT VỀ ẢNH TĨNH `TRADITIONAL_SCENE_FALLBACK`):
+        # Nếu vẫn chưa có `stock_hook_ok`, ưu tiên (A) Cắt đoạn chuyển động tốt nhất từ ứng viên `.mp4` đã tải trong `hook_cand_dir`
+        # hoặc (B) Tải Bilibili HD Safe-Crop 9:16 trước khi dùng đa ảnh 3D Motion!
         if not stock_hook_ok:
-            # CHẾ ĐỘ HOOK ĐA ẢNH DỰ PHÒNG CUỐI CÙNG (TỐI ĐA 2 CẢNH CẮT ĐỂ TRÁNH NHẤP NHÁY STROBE)
-            final_hook_visual_mode = "scene"
+            try:
+                local_cand_mp4s = sorted(
+                    hook_cand_dir.glob("*.mp4"),
+                    key=lambda p: p.stat().st_size if p.exists() else 0,
+                    reverse=True,
+                )
+                for lc_mp4 in local_cand_mp4s[:4]:
+                    if not lc_mp4.exists() or lc_mp4.stat().st_size < 25_000:
+                        continue
+                    lc_dur_s = get_duration_ms(str(lc_mp4)) / 1000.0
+                    if lc_dur_s < 2.2:
+                        continue
+                    lc_pk_off, _ = find_hook_peak_window(
+                        str(lc_mp4),
+                        min_duration=max(target_hook_duration_sec, 2.5),
+                        max_duration=10.0,
+                    )
+                    lc_built = False
+                    if target_hook_duration_sec >= 2.05:
+                        lc_built = _splice_dual_beat_hook_clip(
+                            clip_a_path=str(lc_mp4),
+                            start_a=lc_pk_off,
+                            clip_b_path=str(lc_mp4),
+                            start_b=lc_pk_off + round(min(1.35, max(1.0, target_hook_duration_sec * 0.45)), 2),
+                            total_duration_sec=target_hook_duration_sec,
+                            output_path=hook_output_clip,
+                            work_dir=work_dir,
+                            is_scifi=is_scifi,
+                            niche=atmosphere_fx,
+                            fair_use_a=True,
+                            fair_use_b=True,
+                            punch_in_b=True,
+                        )
+                    if not lc_built:
+                        trim_video(
+                            input_path=str(lc_mp4),
+                            duration_seconds=target_hook_duration_sec,
+                            output_path=hook_output_clip,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            is_scifi=is_scifi,
+                            niche=atmosphere_fx,
+                            apply_grading=True,
+                            is_hook_scene=True,
+                            fair_use_transform=True,
+                            start_offset_sec=lc_pk_off,
+                            preserve_continuous_flow=True,
+                        )
+                    if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 12_000:
+                        ok_lc_sh, lc_sh_val = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.5)
+                        if ok_lc_sh or lc_sh_val >= 12.0:
+                            stock_hook_ok = True
+                            final_hook_visual_mode = "video"
+                            hook_mode = "DUAL_BEAT_FAST_CUT_LOCAL_PEAK_RESCUE"
+                            pre_resolved_hook_media[1] = {
+                                "media_path": hook_output_clip,
+                                "media_type": "hook_ready_video",
+                                "production_method": hook_mode,
+                                "visual_strategy": "HOOK_DUAL_BEAT_FAST_CUT",
+                                "full_peak_path": str(lc_mp4),
+                                "full_peak_duration_sec": lc_dur_s,
+                                "strategy_rationale": f"Tier-2 Local Peak Motion Rescue ({lc_mp4.name}, sharp={lc_sh_val:.1f})",
+                            }
+                            scene_1["media_path"] = hook_output_clip
+                            scene_1["media_type"] = "hook_ready_video"
+                            scene_1["production_method"] = hook_mode
+                            if scenes_media:
+                                scenes_media[0] = scene_1
+                            logger.info(
+                                f"🛡️ [HookVideoNode Tier-2 Motion Rescue] Đã cứu hộ Cảnh 1 bằng Video chuyển động thật "
+                                f"'{lc_mp4.name}' (sharpness={lc_sh_val:.2f}) — chặn đứng rớt về ảnh tĩnh!"
+                            )
+                            break
+                        else:
+                            Path(hook_output_clip).unlink(missing_ok=True)
+            except Exception as e_t2_lc:
+                logger.debug(f"[HookVideoNode] Tier-2 local candidate motion rescue skip: {e_t2_lc}")
+
+        if not stock_hook_ok:
+            # CHẾ ĐỘ HOOK ĐA ẢNH DỰ PHÒNG CUỐI CÙNG (LUÔN TẠO FILE MP4 2 NHỊP CẮT `hook_motion_001.mp4`, CẤM TRẢ VỀ `output_clip: null`)
+            final_hook_visual_mode = "video"
             pose_list = list(scene_1.get("pose_images") or ([existing_path] if existing_path and Path(existing_path).exists() else []))
             if len(pose_list) < 2:
                 try:
@@ -2293,12 +2429,33 @@ Return ONLY valid JSON:
                 except Exception as e_img_hk:
                     logger.debug(f"[HookVideoNode] Multi-image peak hook fetch skip: {e_img_hk}")
 
+            if len(pose_list) < 2:
+                try:
+                    from app.agents.image_agent import ImageAgent
+                    ia_hk = ImageAgent()
+                    for shot_i in range(len(pose_list) + 1, 3):
+                        out_ai_hk = str(hook_cand_dir / f"hook_ai_rescue_shot_{shot_i}.jpg")
+                        shot_angle = "extreme close-up intense action shot" if shot_i == 1 else "dynamic dramatic wide angle confrontation"
+                        gen_hk_p = ia_hk.generate_scene_image(
+                            prompt=f"{canonical_subject or primary_entity or topic}, {visual_keyword}, {shot_angle}, 8k sharp focus",
+                            output_path=out_ai_hk,
+                            aspect_ratio="9:16",
+                            niche=atmosphere_fx,
+                            scene_id=1,
+                        )
+                        if gen_hk_p and Path(gen_hk_p).exists():
+                            pose_list.append(gen_hk_p)
+                except Exception as e_ai_hk:
+                    logger.debug(f"[HookVideoNode] AI image hook rescue skip: {e_ai_hk}")
+
             if pose_list:
-                pose_list = pose_list[:2]
-                num_cuts = min(2, max(1, len(pose_list) - 1))
+                if len(pose_list) == 1:
+                    pose_list = [pose_list[0], pose_list[0]]
+                else:
+                    pose_list = pose_list[:2]
+                num_cuts = 2
                 logger.info(
-                    f"⚡ [HookVideoNode] Dựng Hook Đa Ảnh Peak Sống Động ({len(pose_list)} ảnh thật thay đổi liên tục mỗi "
-                    f"{target_hook_duration_sec / max(len(pose_list), 1):.2f}s + 3D Motion & Live FX) -> {hook_output_clip}"
+                    f"⚡ [HookVideoNode] Dựng Hook Đa Ảnh Peak Sống Động ({len(pose_list)} shots, {num_cuts} cuts + 3D Motion & Live FX) -> {hook_output_clip}"
                 )
                 render_opening_hook_multi_cut(
                     image_paths=pose_list,
@@ -2313,7 +2470,7 @@ Return ONLY valid JSON:
                     is_hook_scene=True,
                 )
                 if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
-                    _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.0)
+                    _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.5)
                     hook_mode = f"CLIMAX_IMAGES_LIVE_FX_{atmosphere_fx.upper()}_{len(pose_list)}SHOTS"
                     pre_resolved_hook_media[1] = {
                         "media_path": hook_output_clip,
@@ -2331,9 +2488,6 @@ Return ONLY valid JSON:
                 else:
                     hook_mode = f"TRADITIONAL_SCENE_FALLBACK_{atmosphere_fx.upper()}"
             else:
-                logger.info(
-                    "⚡ [HookVideoNode] Các ứng viên Short không đạt chuẩn -> Gemini chuyển Hook sang chế độ Tạo Cảnh ('scene') tại fetch_media!"
-                )
                 hook_mode = f"TRADITIONAL_SCENE_FALLBACK_{atmosphere_fx.upper()}"
 
     actual_hook_window_sec = round(

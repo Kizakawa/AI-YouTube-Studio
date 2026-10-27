@@ -398,10 +398,20 @@ class ScriptJsonParserMixin:
                     re.IGNORECASE
                 )
                 cleaned_h1 = _dead_hook_prefix.sub('', raw_h1).strip()
+                # Nếu LLM vô tình lặp lại tiêu đề dạng "Thực thể A vs Thực thể B: [Nội dung câu Hook]" ở đầu Cảnh 1,
+                # tự động gọt bỏ phần nhãn tiêu đề trước dấu hai chấm nếu vế sau đủ >= 5 từ hoàn chỉnh:
+                m_title_echo_colon = re.match(
+                    r'^[^.!?]{2,42}\b(?:vs\.?|versus|contra)\b[^.!?]{2,42}:\s*(.+)$',
+                    cleaned_h1,
+                    flags=re.IGNORECASE | re.UNICODE,
+                )
+                if m_title_echo_colon and len(m_title_echo_colon.group(1).strip().split()) >= 5:
+                    cleaned_h1 = m_title_echo_colon.group(1).strip()
                 if cleaned_h1 and len(cleaned_h1.split()) >= 3:
                     if cleaned_h1[0].islower():
                         cleaned_h1 = cleaned_h1[0].upper() + cleaned_h1[1:]
                     scenes[0]["narration"] = cleaned_h1
+                    raw_data["hook"] = cleaned_h1
 
         # ── 2.5. TỰ ĐỘNG CHIA NHỊP CẮT CẢNH SIÊU TỐC (ULTRA-FAST SCENE PACING SPLITTER: 1.8s - 2.5s/CẢNH) ──
         # Đảm bảo Cảnh 1 Hook <= 7 từ (~1.5s - 2.0s) và các cảnh thân <= 10 từ (~1.8s - 2.5s), triệt tiêu cảm giác dài lê thê

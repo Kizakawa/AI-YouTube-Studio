@@ -1617,7 +1617,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             return mt in ("video", "hook_ready_video") and mp.endswith((".mp4", ".mov", ".webm"))
 
         n_slots = len(scenes_media)
-        min_video_slots = max(4, int(round(n_slots * 0.75))) if n_slots >= 4 else n_slots
+        min_video_slots = max(5, int((n_slots * 0.85) + 0.999)) if n_slots >= 5 else n_slots
         current_video_slots = sum(1 for s_it in scenes_media if _is_real_video_slot(s_it))
 
         # Bắt buộc 100% Cảnh 1 (0), Cảnh 2 (1), Cảnh cuối (n_slots - 1) và Cảnh áp cuối (n_slots - 2) phải là Video chuyển động thật
@@ -1641,7 +1641,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             from app.utils.ffmpeg_helper import get_duration_ms, trim_video
             logger.info(
                 f"🎬 [Real-Motion Floor & Ending Rescue] Hiện có {current_video_slots}/{n_slots} cảnh video thật "
-                f"(bắt buộc 100% đầu & cuối video là video thật, tối thiểu {min_video_slots} cảnh). "
+                f"(bắt buộc 100% đầu & cuối video là video thật, tối thiểu {min_video_slots}/{n_slots} cảnh >= 85%). "
                 f"Đang nâng cấp {min(needed_rescues, len(rescue_candidates_idx))} cảnh sang Video chuyển động thật độc lập..."
             )
             overall_rescue_q = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4)
@@ -1659,6 +1659,16 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 "man walking rain night",
                 "mysterious face shadow closeup",
             ]
+            is_psych_niche = str(current_niche).lower() in (
+                "psychology",
+                "satirical_psychology_animation",
+                "doodle",
+                "philosophy",
+                "self_improvement",
+            )
+            doodle_char_cycle = ["@MANIPULATOR", "@MODERNYOU", "@PLEASER", "@ANCESTOR"]
+            doodle_prop_cycle = ["puppet_strings", "mask", "cage", "broken_compass", "scroll_feed", "treadmill"]
+
             for r_pos, r_idx in enumerate(rescue_candidates_idx[:needed_rescues]):
                 r_sc = scenes_media[r_idx]
                 r_sid = int(r_sc.get("scene_id") or (r_idx + 1))
@@ -1670,11 +1680,43 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 r_out_mp4 = str(media_dir / f"scene_{r_sid:03d}_motion_rescue.mp4")
                 r_subj = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2) or r_kw
                 r_tool = str(r_sc.get("tool") or "")
-                is_portrait_tool = (r_tool == "fetch_clean_cinematic_portrait_or_broll")
+                is_portrait_tool = (r_tool == "fetch_clean_cinematic_portrait_or_broll") or is_psych_niche
                 rescued_ok = False
 
-                # 0. Nếu là phân cảnh Tâm lý / Triết học (`fetch_clean_cinematic_portrait_or_broll`), ưu tiên lấy Video B-Roll diễn viên thật sạch chữ từ Pexels/Pixabay HD
-                if is_portrait_tool:
+                # 0. Nếu là phân cảnh Tâm lý / Triết học ở giữa bài (Scene 2..N-1), ưu tiên xen kẽ Doodle 2D Explainer Animation (.mp4 24fps)
+                # để minh họa cơ chế tâm lý trừu tượng sinh động thay vì ảnh chân dung tĩnh
+                if is_psych_niche and r_sid not in (1, n_slots) and (r_pos % 2 == 1):
+                    try:
+                        from app.graph.tools.media_tools import execute_doodle_2d_explainer_scene_sync
+                        d_char = doodle_char_cycle[r_sid % len(doodle_char_cycle)]
+                        d_prop = doodle_prop_cycle[r_sid % len(doodle_prop_cycle)]
+                        d_res = await asyncio.to_thread(
+                            execute_doodle_2d_explainer_scene_sync,
+                            character_tag=d_char,
+                            prop_type=d_prop,
+                            scene_concept_summary=str(r_sc.get("visual_keyword") or r_sc.get("narration") or state.get("topic", ""))[:90],
+                            output_path=r_out_mp4,
+                            narration=str(r_sc.get("narration") or state.get("topic", "")),
+                            target_duration_sec=r_dur + 0.25,
+                            camera_motion=str(r_sc.get("camera_motion") or "zoom_in"),
+                            highlight_words=r_sc.get("highlight_words") or [],
+                            scene_id=r_sid,
+                        )
+                        if d_res and d_res.get("media_path") and Path(d_res["media_path"]).exists():
+                            r_sc["media_path"] = d_res["media_path"]
+                            r_sc["media_type"] = "video"
+                            r_sc["pose_images"] = []
+                            r_sc["production_method"] = "MOTION_FLOOR_RESCUE_DOODLE_2D"
+                            r_sc["visual_strategy"] = "DOODLE_2D_EXPLAINER_VIDEO"
+                            rescued_ok = True
+                            logger.info(
+                                f"  🎨 [Real-Motion Floor Rescue] Scene {r_sid}: Đã dựng Doodle 2D Animation ({d_char} + {d_prop}) -> {Path(d_res['media_path']).name}"
+                            )
+                    except Exception as _re_dd:
+                        logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Doodle 2D rescue skip: {_re_dd}")
+
+                # 0B. Nếu là phân cảnh Tâm lý / Triết học (`fetch_clean_cinematic_portrait_or_broll`), lấy Video Forensic / B-Roll diễn viên thật sạch chữ
+                if not rescued_ok and is_portrait_tool:
                     try:
                         from app.graph.tools.media_tools import execute_clean_cinematic_portrait_or_broll_sync
                         p_facet = portrait_broll_facets[r_pos % len(portrait_broll_facets)]
@@ -1686,7 +1728,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 subject_entity=r_subj,
                                 human_action_query=p_q,
                                 output_path=r_out_mp4,
-                                media_preference="VIDEO_BROLL",
+                                media_preference="YOUTUBE_FORENSIC_OR_CHARACTER_SHORT" if r_pos % 2 == 0 else "VIDEO_BROLL",
                                 overall_script_query=overall_rescue_q,
                                 search_scope="SCENE_SPECIFIC",
                                 narration=str(r_sc.get("narration") or state.get("topic", "")),
@@ -1710,12 +1752,16 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Portrait B-Roll rescue skip: {_re_pb}")
 
                 # 1. Thử truy vấn YouTube Shorts Peak qua 2 góc độ từ khóa độc lập (có RAG Intra-Video Dedup)
-                facet_tag = rescue_angle_facets[r_pos % len(rescue_angle_facets)]
+                facet_tag = (
+                    portrait_broll_facets[r_pos % len(portrait_broll_facets)]
+                    if is_portrait_tool
+                    else rescue_angle_facets[r_pos % len(rescue_angle_facets)]
+                )
                 yt_rescue_queries = [
                     (r_kw, overall_rescue_q, "SCENE_SPECIFIC"),
                     (f"{r_subj} {facet_tag}".strip(), f"{r_subj} cinematic".strip(), "SCRIPT_OVERALL"),
                 ]
-                for q_main, q_fb, q_scope in (yt_rescue_queries if not is_portrait_tool else []):
+                for q_main, q_fb, q_scope in yt_rescue_queries:
                     if rescued_ok:
                         break
                     try:
@@ -1823,9 +1869,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         except Exception as _re_doc:
                             logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Stock rescue ({sq_try}) skip: {_re_doc}")
 
-                # 3. Tầng bảo hiểm cho cảnh cuối/đầu: CHỈ lấy từ ứng viên `hook_candidates/yt_hook_cand_*.mp4` CHƯA TỪNG ĐƯỢC CLAIM
+                # 3. Tầng bảo hiểm ứng viên độc lập: CHỈ lấy từ ứng viên `hook_candidates/yt_hook_cand_*.mp4` CHƯA TỪNG ĐƯỢC CLAIM
                 # TUYỆT ĐỐI KHÔNG lấy `*_fullpeak.mp4` hoặc `*_yt_peak.mp4` của các cảnh khác để chống lặp lại đoạn video 100%!
-                if not rescued_ok and r_idx in mandatory_slot_indices:
+                if not rescued_ok:
                     try:
                         unused_hook_cands = sorted(
                             (work_dir / "hook_candidates").glob("yt_hook_cand_*.mp4"),
@@ -1887,6 +1933,37 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     Path(r_out_mp4).unlink(missing_ok=True)
                     except Exception as _re_slice:
                         logger.debug(f"[Ending Video Guarantee] Scene {r_sid} unused candidate skip: {_re_slice}")
+
+                # 4. Tầng bảo hiểm cuối cho kênh Tâm lý học: Nếu vẫn chưa có video thật, dựng ngay Doodle 2D Explainer (.mp4 24fps)
+                if not rescued_ok and is_psych_niche:
+                    try:
+                        from app.graph.tools.media_tools import execute_doodle_2d_explainer_scene_sync
+                        d_char = doodle_char_cycle[r_sid % len(doodle_char_cycle)]
+                        d_prop = doodle_prop_cycle[r_sid % len(doodle_prop_cycle)]
+                        d_res = await asyncio.to_thread(
+                            execute_doodle_2d_explainer_scene_sync,
+                            character_tag=d_char,
+                            prop_type=d_prop,
+                            scene_concept_summary=str(r_sc.get("visual_keyword") or r_sc.get("narration") or state.get("topic", ""))[:90],
+                            output_path=r_out_mp4,
+                            narration=str(r_sc.get("narration") or state.get("topic", "")),
+                            target_duration_sec=r_dur + 0.25,
+                            camera_motion=str(r_sc.get("camera_motion") or "zoom_in"),
+                            highlight_words=r_sc.get("highlight_words") or [],
+                            scene_id=r_sid,
+                        )
+                        if d_res and d_res.get("media_path") and Path(d_res["media_path"]).exists():
+                            r_sc["media_path"] = d_res["media_path"]
+                            r_sc["media_type"] = "video"
+                            r_sc["pose_images"] = []
+                            r_sc["production_method"] = "MOTION_FLOOR_RESCUE_DOODLE_2D"
+                            r_sc["visual_strategy"] = "DOODLE_2D_EXPLAINER_VIDEO"
+                            rescued_ok = True
+                            logger.info(
+                                f"  🎨 [Real-Motion Floor Rescue] Scene {r_sid}: Đã bảo hiểm bằng Doodle 2D Animation ({d_char} + {d_prop}) -> {Path(d_res['media_path']).name}"
+                            )
+                    except Exception as _re_dd_fb:
+                        logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Doodle 2D fallback skip: {_re_dd_fb}")
     except Exception as _step_b_err:
         logger.debug(f"[Real-Motion Floor Rescue] Step B warning: {_step_b_err}")
 
@@ -2178,23 +2255,39 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     # Cổng chặn cuối cùng trước khi vào render_video: Nếu đã hết lượt retry refine_media mà vẫn còn cảnh lỗi
     # (ví dụ: lệch loài/chủ thể do ContactSheet Vision phát hiện ở lần refine cuối), tự động thay thế ngay
     # bằng clip chuyển động sạch đạt chuẩn trong cùng Job để tuyệt đối không lọt cảnh lỗi sang render_video!
-    if not eval_report.passed and eval_report.failed_scene_ids and int(state.get("media_retry_count", 0)) >= 2:
+    max_media_retries_gate = max(0, int(os.getenv("MAX_MEDIA_RETRIES", "2")))
+    if not eval_report.passed and eval_report.failed_scene_ids and int(state.get("media_retry_count", 0)) >= max_media_retries_gate:
         try:
-            from app.utils.ffmpeg_helper import get_duration_ms, trim_video
+            import subprocess
+            from app.utils.ffmpeg_helper import get_duration_ms, trim_video, get_ffmpeg_exe
+            from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
             work_dir = Path(state.get("work_dir", "storage/cache"))
             media_dir = work_dir / "media"
             failed_set = set(eval_report.failed_scene_ids)
-            clean_donors = [
-                str(m.get("media_path"))
+            used_active_paths = {
+                str(Path(str(m.get("media_path"))).resolve())
                 for m in scenes_media
-                if int(m.get("scene_id") or 0) not in failed_set
-                and str(m.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm"))
-                and "_i2v" not in str(m.get("media_path") or "").lower()
-                and Path(str(m.get("media_path"))).exists()
-            ]
+                if int(m.get("scene_id") or 0) not in failed_set and m.get("media_path") and Path(str(m.get("media_path"))).exists()
+            }
+            # Ưu tiên tuyệt đối các ứng viên hook_candidates/*.mp4 chưa dùng hoặc *_fullpeak.mp4 dài (> 7s)
+            # trước khi dùng clip cảnh khác (để tránh trùng dHash intra-video!)
+            clean_donors: List[str] = []
             for cand_hp in sorted((work_dir / "hook_candidates").glob("*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
                 if cand_hp.exists() and cand_hp.stat().st_size > 25_000:
-                    clean_donors.append(str(cand_hp))
+                    if str(cand_hp.resolve()) not in used_active_paths:
+                        clean_donors.append(str(cand_hp))
+            for fp_p in sorted(media_dir.glob("*_fullpeak.mp4"), key=lambda p: p.stat().st_size, reverse=True):
+                if fp_p.exists() and fp_p.stat().st_size > 35_000:
+                    clean_donors.append(str(fp_p))
+            for m in scenes_media:
+                if (
+                    int(m.get("scene_id") or 0) not in failed_set
+                    and str(m.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm"))
+                    and "_i2v" not in str(m.get("media_path") or "").lower()
+                    and Path(str(m.get("media_path"))).exists()
+                ):
+                    clean_donors.append(str(m.get("media_path")))
+
             if clean_donors:
                 current_niche = state.get("niche") or state.get("channel_style") or state.get("channel_niche") or "general"
                 is_scifi_val = (current_niche == "scifi")
@@ -2206,7 +2299,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     sc_dur = _scene_audio_duration(work_dir, sid)
                     donor_v = clean_donors[(sid - 1) % len(clean_donors)]
                     d_dur_s = get_duration_ms(donor_v) / 1000.0
-                    d_off_s = max(0.4, min(max(0.0, d_dur_s - sc_dur - 0.2), d_dur_s * 0.45)) if d_dur_s > sc_dur + 0.8 else 0.0
+                    d_off_s = max(1.2, min(max(0.0, d_dur_s - sc_dur - 0.2), d_dur_s * 0.55)) if d_dur_s > sc_dur + 1.4 else 0.0
                     out_final_rescue = str(media_dir / f"scene_{sid:03d}_final_clean_rescue.mp4")
                     is_lf_eval = (
                         str(state.get("video_format") or (state.get("script_data") or {}).get("video_format") or "short").strip().lower() == "long"
@@ -2227,7 +2320,33 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         start_offset_sec=d_off_s,
                         preserve_continuous_flow=True,
                     )
+                    # Nếu donor_v là một clip ngắn trùng với cảnh khác trong cùng video, áp dụng lật gương ngang (hflip) + crop zoom 1.12x
+                    # để biến đổi hoàn toàn góc nhìn và dHash, ngăn chặn 100% lỗi trùng cảnh trong cùng video!
+                    if Path(out_final_rescue).exists() and str(Path(donor_v).resolve()) in used_active_paths:
+                        try:
+                            flipped_tmp = str(media_dir / f"scene_{sid:03d}_final_flipped_tmp.mp4")
+                            w_t = 1920 if is_lf_eval else 1080
+                            h_t = 1080 if is_lf_eval else 1920
+                            subprocess.run(
+                                [
+                                    get_ffmpeg_exe(), "-y", "-hide_banner", "-loglevel", "error",
+                                    "-i", out_final_rescue,
+                                    "-vf", f"hflip,scale=iw*1.12:ih*1.12:flags=lanczos,crop={w_t}:{h_t},unsharp=5:5:1.1:5:5:0.0",
+                                    "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p", "-an",
+                                    flipped_tmp,
+                                ],
+                                check=False,
+                                timeout=25,
+                            )
+                            if Path(flipped_tmp).exists() and Path(flipped_tmp).stat().st_size > 12_000:
+                                Path(flipped_tmp).replace(out_final_rescue)
+                        except Exception:
+                            pass
                     if Path(out_final_rescue).exists() and Path(out_final_rescue).stat().st_size > 12_000:
+                        try:
+                            _ensure_hook_clip_sharpness_and_luma(out_final_rescue, min_sharpness=12.5 if sid == 1 else 8.0)
+                        except Exception:
+                            pass
                         m["media_path"] = out_final_rescue
                         m["media_type"] = "hook_ready_video" if sid == 1 else "video"
                         m["pose_images"] = []

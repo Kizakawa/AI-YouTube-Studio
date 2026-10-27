@@ -160,6 +160,57 @@ class ScriptCritic:
                 f"Replace with a direct visual pointer ('Look at...', 'Olhe bem para...') + concrete physical metric or 'A vs B' clash in 6-9 words!"
             )
 
+        # 1B. Chặn Hội Chứng "Đọc Nhại Tiêu Đề & Lộ Kết Quả Ở Giây 0.0s" (Title Echo & Early Outcome Spoiler Syndrome)
+        # Bằng chứng thực nghiệm (Job #574 WydijnmcX1k 38 views, Job #556/#558 0-4 views):
+        # Khi Cảnh 1 đọc lặp lại nguyên xi cấu trúc Tiêu đề ("A vs B: 320 km/h vencem...") hoặc tiết lộ luôn kết quả ở giây 1.0s,
+        # người xem mất hoàn toàn khoảng trống tò mò (Curiosity Gap) và vuốt bỏ ngay lập tức.
+        _stop_echo = {
+            "the", "and", "for", "with", "from", "into", "this", "that", "how", "why", "what", "when", "who",
+            "uma", "uns", "umas", "dos", "das", "nos", "nas", "por", "para", "com", "sem", "sob", "sobre",
+            "que", "como", "mais", "muito", "este", "esta", "esse", "essa", "isso", "pelo", "pela",
+            "shorts", "short", "video",
+        }
+        title_clean_no_tag = re.sub(r"#\w+", " ", eff_title).strip()
+        title_tokens = {
+            w.lower()
+            for w in re.findall(r"\b[a-zA-ZÀ-ỹ0-9]{3,}\b", title_clean_no_tag, flags=re.UNICODE)
+            if w.lower() not in _stop_echo
+        }
+        s1_first_clause = re.split(r"[.!?]", s1_narr)[0].strip() if s1_narr else ""
+        s1_clause_tokens = {
+            w.lower()
+            for w in re.findall(r"\b[a-zA-ZÀ-ỹ0-9]{3,}\b", s1_first_clause, flags=re.UNICODE)
+            if w.lower() not in _stop_echo
+        }
+        title_hook_overlap = (
+            len(title_tokens & s1_clause_tokens) / max(1, min(len(title_tokens), len(s1_clause_tokens)))
+            if (title_tokens and s1_clause_tokens)
+            else 0.0
+        )
+        is_colon_header_echo = bool(
+            re.match(
+                r"^[^.!?]{2,40}\b(?:vs\.?|versus|contra)\b[^.!?]{2,40}:",
+                s1_narr,
+                re.IGNORECASE | re.UNICODE,
+            )
+        )
+        is_early_outcome_spoiler = bool(
+            re.search(
+                r"\b(?:vencem|vence|venceu|derrotam|derrota|ganha|wins|won|defeats|defeated|beats|transformed\s+into)\b",
+                s1_first_clause,
+                re.IGNORECASE | re.UNICODE,
+            )
+            and (is_colon_header_echo or title_hook_overlap >= 0.45)
+        )
+        if is_colon_header_echo or is_early_outcome_spoiler or (title_hook_overlap >= 0.62 and len(title_tokens & s1_clause_tokens) >= 3):
+            score = min(score, 5.8)
+            extra_critiques.append(
+                f"TITLE ECHO / EARLY SPOILER BLOCKED: Scene 1 ('{s1_first_clause[:65]}') repeats the Title phrasing "
+                f"(overlap={title_hook_overlap:.0%}) or spoils the final outcome at 0.0s! "
+                f"NEVER read the title aloud or reveal who wins in Scene 1. Rewrite Scene 1 using a Psychological-Visual Hook "
+                f"(Visual Micro-Observation 'Look closely at...', Fatal Mistake 'O último erro...', or Survival Paradox)!"
+            )
+
         # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-11 từ để đọc trọn trong 1.6-2.4s đầu)
         if w_cnt > 14 or w_cnt < 3:
             score = max(1.0, score - 1.2)
@@ -195,15 +246,19 @@ class ScriptCritic:
             )
             and not re.search(r"\d", eff_title)
         )
+        # Đánh giá độc lập sức căng của riêng `s1_narr` (không để `eff_title` kéo điểm ảo khi `s1_narr` nhạt hoặc nhại tiêu đề)
+        s1_has_number = bool(re.search(r"\d", s1_narr))
         has_number = bool(re.search(r"\d", combined))
-        # Chỉ tính là xung đột/cú sốc thật sự khi có từ khóa đối đầu ("vs", "contra"), động từ sát thương vật lý,
-        # hoặc đơn vị đo lường cực đoan (KHÔNG tính các danh từ chung của ngách như psychology/mind/ocean/history/secret/truth)
-        has_confrontation_or_shock = bool(
-            re.search(
-                r"(?:%|\b(?:vs\.?|versus|against|contra|refused|crushes|destroys|kills|deadly|impossible|instant|second|seconds|minute|minutes|meters|feet|miles|percent|psi|mph|celsius|degrees|decibels|nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|shocking|terrified|ambush|strike|pierces|boils|paralyzes|never|always|expose|exposes|fail|fails|confess|trap|caught|freeze|freezes|panic|liar|liars|guilty)\b)",
-                combined,
-                re.IGNORECASE | re.UNICODE,
-            )
+        _shock_pattern = (
+            r"(?:%|\b(?:vs\.?|versus|against|contra|refused|crushes|destroys|kills|deadly|impossible|instant|second|seconds|minute|minutes|meters|feet|miles|percent|psi|mph|celsius|degrees|decibels|"
+            r"nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|veneno|erro|olhe|repare|"
+            r"shocking|terrified|ambush|strike|pierces|boils|paralyzes|never|always|expose|exposes|fail|fails|confess|trap|caught|freeze|freezes|panic|liar|liars|guilty|mistake|look\s+closely|watch)\b)"
+        )
+        s1_has_shock = bool(re.search(_shock_pattern, s1_narr, re.IGNORECASE | re.UNICODE))
+        has_confrontation_or_shock = bool(re.search(_shock_pattern, combined, re.IGNORECASE | re.UNICODE))
+        has_hook_violation = bool(
+            weak_q or abstract_metaphor or is_colon_header_echo or is_early_outcome_spoiler
+            or (title_hook_overlap >= 0.62 and len(title_tokens & s1_clause_tokens) >= 3)
         )
         if vague_title_match:
             score = min(score, 6.5)
@@ -211,10 +266,10 @@ class ScriptCritic:
                 f"VAGUE TITLE BLOCKED: Title hides the primary entity ('{eff_title}'). "
                 f"Explicitly name the exact species/entity/location + concrete physical metric or 'Entity A vs Entity B' in the title!"
             )
-        elif (has_number and has_confrontation_or_shock) and 3 <= w_cnt <= 18:
+        elif not has_hook_violation and (s1_has_shock and (s1_has_number or has_number)) and 3 <= w_cnt <= 14:
             score = max(score, 8.8)
             score = min(9.8, score + 0.3)
-        elif (has_number or has_confrontation_or_shock) and 3 <= w_cnt <= 18:
+        elif not has_hook_violation and s1_has_shock and 3 <= w_cnt <= 14:
             score = max(score, 8.3)
         elif not has_number and not has_confrontation_or_shock:
             score = max(1.0, score - 0.8)
@@ -236,8 +291,9 @@ class ScriptCritic:
                 )
             )
             if not has_mid_twist_or_metric:
+                score = min(score, 7.6)
                 extra_critiques.append(
-                    "Scenes 3-5 (Seconds 14-20) lack a Mid-Video Climax Twist + second shocking metric, risking mid-video viewer drop-off."
+                    "MID-VIDEO FLATLINE BLOCKED: Scenes 3-5 (Seconds 14-20) lack a Mid-Video Climax Twist ('But...', 'Mas...', 'However...') + second shocking metric, causing mid-video drop-off."
                 )
 
         return round(score, 1), extra_critiques
@@ -417,12 +473,16 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
 
         min_hook = float(cal.get("min_hook_score", 8.0))
         min_overall = float(cal.get("min_overall_score", 8.0))
-        # CHẶN CỨNG: Bắt buộc cả tổng điểm VÀ điểm Hook Cảnh 1 đều phải vượt qua ngưỡng hiệu chỉnh từ dữ liệu thật!
-        passed = (overall >= min_overall) and (hook_s >= min_hook)
+        # CHẶN CỨNG: Bắt buộc tổng điểm, điểm Hook Cảnh 1 VÀ nhịp điệu Pacing (>= 7.5) đều phải vượt qua ngưỡng chuẩn!
+        passed = (overall >= min_overall) and (hook_s >= min_hook) and (pace_s >= 7.5)
         if not passed and hook_s < min_hook:
             msg = f"Scene 1 Hook ({hook_s:.1f}/10) is below the channel anti-swipe threshold ({min_hook:.1f}/10 — Avg Swipe-Away: {cal.get('avg_swipe_away_pct', 31.0):.1f}%)."
             if msg not in critiques:
                 critiques.insert(0, msg)
+        if not passed and pace_s < 7.5:
+            msg_p = f"Story Pacing ({pace_s:.1f}/10) is too flat or mechanical (< 7.5/10). Inject a dramatic 2-way escalation and mid-video reversal twist at Scene 4!"
+            if msg_p not in critiques:
+                critiques.insert(0, msg_p)
 
         return ScriptEvaluationReport(
             hook_strength=ScriptCriteriaScore(score=hook_s, feedback=h.get("feedback", "")),
@@ -495,7 +555,7 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
         if loop_score < 8.0:
             critiques.append("Final scene must not include spoken Subscribe CTAs; bridge seamlessly back to Scene 1.")
 
-        passed = (overall >= min_overall) and (hook_score >= min_hook)
+        passed = (overall >= min_overall) and (hook_score >= min_hook) and (pace_score >= 7.5)
 
         return ScriptEvaluationReport(
             hook_strength=ScriptCriteriaScore(score=hook_score, feedback="Evaluated against real channel swipe-away rate"),

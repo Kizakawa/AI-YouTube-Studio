@@ -265,10 +265,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                     d.setdefault("monster_media_mode", "3D_CGI_VIDEO")
             elif t_chosen == "fetch_clean_cinematic_portrait_or_broll":
                 d.setdefault("human_action_query", s.get("visual_keyword") or default_overall_q)
-                if is_mandatory_video_scene and str(d.get("media_preference", "")).upper() == "CLEAN_PORTRAIT_PHOTO":
-                    d["media_preference"] = "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT"
-                else:
-                    d.setdefault("media_preference", "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT")
+                if str(d.get("media_preference", "")).upper() in ("", "CLEAN_PORTRAIT_PHOTO"):
+                    d["media_preference"] = "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT" if (sid % 2 == 1) else "VIDEO_BROLL"
             elif t_chosen == "render_doodle_2d_explainer_scene":
                 d.setdefault("character_tag", "@MANIPULATOR")
                 d.setdefault("prop_type", "puppet_strings")
@@ -308,7 +306,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "scope_audited": True,
             })
         elif llm_portrait_ref is not None:
-            m_pref_inh = "VIDEO_BROLL"
+            m_pref_inh = "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT" if (sid % 2 == 1) else "VIDEO_BROLL"
             final_plan.append({
                 "tool_name": "fetch_clean_cinematic_portrait_or_broll",
                 "scene_id": sid,
@@ -350,6 +348,24 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "camera_motion": motion_cycle[idx % len(motion_cycle)],
                 "scope_audited": True,
             })
+
+    # Kênh Tâm lý học / Triết học: Nếu toàn bộ phân cảnh chỉ gọi portrait/broll mà chưa có Doodle 2D Explainer
+    # cho các cảnh cơ chế tâm lý ở giữa bài, tự động xen kẽ 2 cảnh Doodle 2D (Scene 3 & Scene 5) để tạo nhịp điệu thị giác đa dạng
+    if str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy") and total_scenes >= 5:
+        doodle_count = sum(1 for d_it in final_plan if d_it.get("tool_name") == "render_doodle_2d_explainer_scene")
+        if doodle_count == 0:
+            doodle_targets = [
+                (3, "@MANIPULATOR", "puppet_strings"),
+                (min(5, total_scenes - 1), "@MODERNYOU", "mask"),
+            ]
+            for t_sid, c_tag, p_type in doodle_targets:
+                for d_it in final_plan:
+                    if int(d_it.get("scene_id") or 0) == t_sid and t_sid not in (1, total_scenes):
+                        d_it["tool_name"] = "render_doodle_2d_explainer_scene"
+                        d_it["character_tag"] = c_tag
+                        d_it["prop_type"] = p_type
+                        d_it["scene_concept_summary"] = d_it.get("human_action_query") or d_it.get("youtube_search_query") or default_overall_q
+                        break
 
     try:
         from app.services.video_memory_rag import get_video_memory_rag
