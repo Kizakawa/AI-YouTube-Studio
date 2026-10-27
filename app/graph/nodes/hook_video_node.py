@@ -367,6 +367,23 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     if not base_scenes:
         return {"current_step": "HOOK_VIDEO_SKIPPED", "pre_resolved_hook_media": {}}
 
+    video_format = str(
+        state.get("video_format")
+        or script_data.get("video_format")
+        or ("long" if len(base_scenes) >= 14 else "short")
+    ).strip().lower()
+    if video_format == "long":
+        logger.info(
+            "🎬 [HookVideoNode] Chế độ Video Dài 16:9 (Long-Form): "
+            "Bỏ qua săn YouTube Shorts dọc 9:16, chuyển sang luồng tải đồng loạt 16:9 Bilibili Safe-Crop & Documentary HD tại node_fetch_media."
+        )
+        return {
+            "current_step": "HOOK_VIDEO_LONGFORM_BYPASS",
+            "pre_resolved_hook_media": {},
+            "progress_percent": 50,
+            "progress_message": "🎬 Video Dài 16:9: Chuyển sang luồng săn đồng loạt 16:9 Bilibili Safe-Crop & Documentary HD...",
+        }
+
     def _get_scene_dur_sec(sid: int, default_s: float = 3.5) -> float:
         sc_a = next((s for s in scenes_audio if isinstance(s, dict) and int(s.get("scene_id") or 0) == sid), {})
         ms = sc_a.get("audio_duration_ms") or sc_a.get("duration_ms") or 0

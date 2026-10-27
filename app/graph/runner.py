@@ -10,6 +10,7 @@ app.graph.runner — Runner điều phối thực thi LangGraph Video Workflow t
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional, Callable, Awaitable, Dict, Any
 
@@ -269,6 +270,39 @@ class GraphRunner:
                     j.error_message = str(ex)
             raise ex
 
+        # 3.5. Tự động đẩy lên Google Drive đối với Video Dài 16:9 (hoặc khi bật ENABLE_DRIVE_VIDEO_BACKUP)
+        rendered_video_path = final_state.get("rendered_video_path")
+        final_video_format = str(
+            final_state.get("video_format")
+            or (final_state.get("script_data") or {}).get("video_format")
+            or resolved_video_format
+            or "short"
+        ).strip().lower()
+        drive_upload_info: Optional[Dict[str, Any]] = None
+        auto_drive_long = os.getenv("AUTO_UPLOAD_DRIVE_LONGFORM", "true").lower() in ("1", "true", "yes")
+        auto_drive_all = os.getenv("ENABLE_DRIVE_VIDEO_BACKUP", "false").lower() in ("1", "true", "yes")
+        if rendered_video_path and Path(rendered_video_path).exists() and (final_video_format == "long" and auto_drive_long or auto_drive_all):
+            try:
+                await self._report("DRIVE_UPLOAD", "☁️ Đang tự động đẩy Video lên Google Drive...", 95)
+                from app.agents.drive_agent import DriveAgent
+                v_title = (final_state.get("script_data") or {}).get("title") or title or topic or f"Video_{self.job_id}"
+                folder_root = "AI YouTube Long-Form" if final_video_format == "long" else "AI YouTube Videos"
+                drv_agent = DriveAgent()
+                if drv_agent.service:
+                    drive_upload_info = await asyncio.to_thread(
+                        drv_agent.upload_video,
+                        local_video_path=rendered_video_path,
+                        video_title=v_title,
+                        channel_name=channel_id,
+                        folder_name=folder_root,
+                    )
+                    if drive_upload_info and drive_upload_info.get("drive_link"):
+                        final_state["drive_link"] = drive_upload_info["drive_link"]
+                        final_state["drive_folder_link"] = drive_upload_info.get("folder_link")
+                        logger.info(f"☁️ [LangGraph Job {self.job_id}] Đã tự động tải lên Google Drive: {drive_upload_info['drive_link']}")
+            except Exception as e_drv:
+                logger.warning(f"[LangGraph Job {self.job_id}] Tự động tải lên Google Drive không thành công: {e_drv}")
+
         # 4. Lưu toàn bộ kết quả vào Database
         with get_db() as db:
             j = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
@@ -277,6 +311,8 @@ class GraphRunner:
                 j.audio_path = final_state.get("full_audio_path")
                 j.subtitle_path = final_state.get("subtitle_path")
                 j.audio_duration_ms = final_state.get("total_audio_duration_ms")
+                if final_state.get("drive_link"):
+                    j.drive_link = final_state.get("drive_link")
                 
                 if final_state.get("script_data"):
                     s_data = dict(final_state["script_data"])
@@ -319,12 +355,17 @@ class GraphRunner:
                     "hook_video_grader": final_state.get("hook_video_eval"),
                     "audio_qa": final_state.get("audio_eval"),
                     "video_qa": final_state.get("video_eval"),
+                    "video_format": final_video_format,
+                    "drive_upload": drive_upload_info,
                 }
                 j.quality_scores = json.dumps(scores_summary, ensure_ascii=False)
                 
                 j.status = "RENDERED"
                 j.progress_percent = 100
-                j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 5 tầng kiểm định chất lượng."
+                if final_state.get("drive_link"):
+                    j.progress_message = f"✅ Video hoàn thành & đã tải lên Google Drive: {final_state['drive_link']}"
+                else:
+                    j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 5 tầng kiểm định chất lượng."
                 j.error_message = None
 
         self._finish_trace("COMPLETED", final_state=final_state)

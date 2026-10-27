@@ -263,7 +263,8 @@ class VideoPipeline:
 
                     self._save_render_manifest(render_job)
                     self._update_status(JobStatus.RENDERED)
-                    await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!", percent=100)
+                    drv_link_msg = f" | ☁️ Drive: {state.get('drive_link')}" if state.get("drive_link") else ""
+                    await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!{drv_link_msg}", percent=100)
                     render_succeeded = True
                     return render_job
                 except Exception as e:

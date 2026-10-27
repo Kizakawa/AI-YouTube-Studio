@@ -135,6 +135,105 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
     }
 
 
+def _fetch_longform_16x9_broll_clip_sync(
+    scene_id: int,
+    query: str,
+    primary_entity: str,
+    topic: str,
+    narration: str,
+    target_duration_sec: float,
+    media_dir: Path,
+    used_bvids: set,
+    used_urls: set,
+    bvid_lock,
+    media_agent: MediaAgent,
+    is_scifi: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """
+    Săn B-Roll 16:9 Widescreen (1920x1080) chuyên biệt cho Video Dài (Long-Form Documentary):
+    1. Ưu tiên Bilibili 16:9 Safe-Crop HD (cắt bỏ 8% mép trên logo + 14% mép dưới phụ đề Trung, chống trùng bvid 100%).
+    2. Dự phòng Pexels / Pixabay 16:9 Landscape HD Video.
+    """
+    out_path = str(media_dir / f"scene_{scene_id:03d}_16x9.mp4")
+    if Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
+        return {
+            "media_path": out_path,
+            "media_type": "video",
+            "production_method": "BILIBILI_16X9_CACHED",
+            "source_url": out_path,
+            "rationale": f"16:9 Cached Documentary Clip ({Path(out_path).name})",
+        }
+
+    try:
+        from app.services.media.bilibili_fetcher import (
+            download_and_crop_bilibili_broll_clip,
+            search_bilibili_videos,
+            translate_query_to_chinese,
+        )
+        base_q = clean_scene_search_query(query or primary_entity or topic, max_words=6) or topic
+        zh_query = translate_query_to_chinese(
+            query=base_q,
+            primary_entity=primary_entity or topic,
+            is_3d_or_scifi=is_scifi,
+        )
+        bili_cands = search_bilibili_videos(zh_query, max_results=8, min_dur_s=10.0, max_dur_s=600.0)
+        for cand in bili_cands:
+            bvid = str(cand.get("bvid") or cand.get("id") or "").strip()
+            if not bvid:
+                continue
+            with bvid_lock:
+                if bvid in used_bvids:
+                    continue
+                used_bvids.add(bvid)
+            b_info = download_and_crop_bilibili_broll_clip(
+                url_or_id=bvid,
+                output_path=out_path,
+                target_duration_sec=max(4.5, target_duration_sec + 0.8),
+                aspect_ratio="16:9",
+            )
+            if b_info and Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
+                b_title = str(cand.get("title") or bvid)[:45]
+                logger.info(f"Scene {scene_id}: 🎬 [Long-Form 16:9 Bilibili Safe-Crop] Đã tải {bvid} ({zh_query}) -> {Path(out_path).name}")
+                return {
+                    "media_path": out_path,
+                    "media_type": "video",
+                    "production_method": "BILIBILI_16X9_SAFECROP_HD",
+                    "source_url": f"https://www.bilibili.com/video/{bvid}",
+                    "rationale": f"Bilibili 16:9 Safe-Crop ({bvid} - {b_title})",
+                }
+    except Exception as e_bili_16x9:
+        logger.debug(f"Scene {scene_id}: Long-form Bilibili 16:9 lookup skip: {e_bili_16x9}")
+
+    # Fallback: Pexels / Pixabay 16:9 Landscape Stock Video
+    try:
+        best_vid = media_agent.search_best_video_clip(
+            query or primary_entity or topic,
+            used_urls,
+            {"video_format": "long"},
+            narration,
+            topic,
+        )
+        if best_vid and best_vid.get("url"):
+            cand_u = str(best_vid["url"])
+            with bvid_lock:
+                if cand_u not in used_urls:
+                    used_urls.add(cand_u)
+                    dl_ok = media_agent.download_file(cand_u, out_path)
+                    if dl_ok and Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
+                        logger.info(f"Scene {scene_id}: 🎥 [Long-Form 16:9 Stock HD] Đã tải Landscape B-Roll -> {Path(out_path).name}")
+                        return {
+                            "media_path": out_path,
+                            "media_type": "video",
+                            "production_method": "STOCK_16X9_LANDSCAPE_HD",
+                            "source_url": cand_u,
+                            "rationale": f"Stock 16:9 Landscape HD ({str(best_vid.get('title') or query)[:45]})",
+                        }
+    except Exception as e_stock_16x9:
+        logger.debug(f"Scene {scene_id}: Long-form Stock 16:9 lookup skip: {e_stock_16x9}")
+
+    return None
+
+
 async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     """
     Node thực thi SONG SONG toàn bộ các lệnh `@tool` do LLM Đạo diễn chỉ định cho từng cảnh:
@@ -154,6 +253,17 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     is_scifi_val = (current_niche == "scifi") or any(k in state.get("topic", "").lower() for k in ("scifi", "sci-fi", "alien", "cyborg", "viễn tưởng"))
 
     script = ScriptContract(**script_data)
+    video_format_val = str(
+        state.get("video_format")
+        or (script_data or {}).get("video_format")
+        or getattr(script, "video_format", "short")
+        or "short"
+    ).strip().lower()
+    is_long_form = (video_format_val == "long") or (len(script.scenes) >= 14)
+    import threading as _threading
+    longform_bvid_lock = _threading.Lock()
+    longform_used_bvids: set = set()
+
     media_agent = MediaAgent()
     image_agent = ImageAgent()
     ai_video_agent = AIVideoAgent()
@@ -321,6 +431,43 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.info(
                         f"Scene {scene.scene_id}: ⚡ Tái sử dụng {len(valid_cached_imgs)} ảnh đã tải trong cache: {Path(media_path).name}"
                     )
+
+        # ══════════════════════════════════════════════════════════════════════
+        # NHÁNH ĐẶC QUYỀN VIDEO DÀI 16:9 (LONG-FORM WIDESCREEN DOCUMENTARY):
+        # Săn đồng loạt 16:9 Bilibili Safe-Crop HD + Stock Landscape 1920x1080
+        # ══════════════════════════════════════════════════════════════════════
+        if not media_path and is_long_form:
+            lf_q = (
+                sc_strat.get("action_or_concept_query")
+                or sc_strat.get("youtube_search_query")
+                or sc_strat.get("smart_image_query")
+                or kw
+                or state.get("topic", "")
+            )
+            lf_res = await asyncio.to_thread(
+                _fetch_longform_16x9_broll_clip_sync,
+                scene_id=scene.scene_id,
+                query=lf_q,
+                primary_entity=primary_entity or state.get("topic", ""),
+                topic=state.get("topic", ""),
+                narration=scene.narration,
+                target_duration_sec=dur,
+                media_dir=media_dir,
+                used_bvids=longform_used_bvids,
+                used_urls=used_pool_urls,
+                bvid_lock=longform_bvid_lock,
+                media_agent=media_agent,
+                is_scifi=is_scifi_val,
+            )
+            if lf_res and lf_res.get("media_path"):
+                media_path = lf_res["media_path"]
+                media_type = "video"
+                vision_curated = True
+                prod_method = lf_res.get("production_method", "BILIBILI_16X9_SAFECROP_HD")
+                chosen_strategy = "LONGFORM_16X9_DOCUMENTARY_VIDEO"
+                tool = "bilibili_16x9_safecrop"
+                source_url_used = str(lf_res.get("source_url") or "")
+                rationale = str(lf_res.get("rationale") or "16:9 Documentary B-Roll")
 
         # ══════════════════════════════════════════════════════════════════════
         # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ 6 @TOOL CHUYÊN BIỆT CỦA LLM ĐẠO DIỄN
@@ -2061,12 +2208,16 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     d_dur_s = get_duration_ms(donor_v) / 1000.0
                     d_off_s = max(0.4, min(max(0.0, d_dur_s - sc_dur - 0.2), d_dur_s * 0.45)) if d_dur_s > sc_dur + 0.8 else 0.0
                     out_final_rescue = str(media_dir / f"scene_{sid:03d}_final_clean_rescue.mp4")
+                    is_lf_eval = (
+                        str(state.get("video_format") or (state.get("script_data") or {}).get("video_format") or "short").strip().lower() == "long"
+                        or len(scenes_media) >= 14
+                    )
                     trim_video(
                         input_path=donor_v,
                         duration_seconds=sc_dur,
                         output_path=out_final_rescue,
-                        width=1080,
-                        height=1920,
+                        width=1920 if is_lf_eval else 1080,
+                        height=1080 if is_lf_eval else 1920,
                         fps=30,
                         is_scifi=is_scifi_val,
                         niche=current_niche,
