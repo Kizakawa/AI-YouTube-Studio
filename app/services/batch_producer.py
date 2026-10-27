@@ -56,14 +56,17 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 21,
         "director_notes": (
-            "Target channel The mysteries of the world (US English). High-retention 5-Act abyssal showdown & lethal ocean physics arc (28-34s crisp runtime, 6-7 scenes, 75-92 words for >90% APV): "
-            "HOOK (0-2s): Blunt 5-8 word statement naming the specific abyssal predator duel ('A vs B') or lethal deep-sea anomaly + exact physical number (feet, PSI, °F/°C, years). NEVER open with vague philosophical questions or 'The secret to... is terrifying'. "
-            "DEVELOPMENT: Real depth measurements (feet/meters), biomechanical weapons, sonar data, or extreme thermal/chemical/pressure danger. "
-            "CLIMAX (Scene 4 - 15s Twist): The fatal strike, survival reversal, or terrifying scientific discovery at the bottom of the ocean. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: suspenseful, dark, adrenaline-pumping, eerie documentary style. Strict English only."
+            "Target channel The mysteries of the world (US English). Deep 5-Act Dual-Peak abyssal showdown & lethal ocean/earth physics arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
+            "TITLE (YT_SEARCH Anchor): Explicitly name both high-search entities/phenomena ('[Entity A] vs [Entity B]: [Extreme Metric]', e.g. °F/°C, feet, PSI, 1,200x). NEVER hide the entity in the title! "
+            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation 'Look closely at...', 2. The Fatal Mistake, 3. 2nd-Person Survival Simulation 'If you...', 4. The Illusion Breaker). NEVER repeat the title verbatim or spoil the final metric at 0.0s! "
+            "ACT 2 (Scenes 2-3): Reveal Entity A's real depth, biomechanical weapon, or thermal/chemical danger with the first hard number. "
+            "ACT 3 (Scene 4 - 15s Twist): Second explosive peak / counter-mechanism with a second concrete metric that flips the viewer's assumption. "
+            "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
+            "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict English only."
         ),
         "topics": [
+            "Blue-Ringed Octopus vs Giant Moray Eel: How a 5-Inch Ocean Creature Carries Tetrodotoxin Venom 1,200 Times Deadlier Than Cyanide",
+            "Naica Cave of the Crystals vs 136°F Steam at 1,000 Feet Deep: Why Human Lungs Drown Inside Mexico Giant Crystal Chamber",
             "Sharks vs Kavachi Underwater Volcano: Why Hammerheads Hunt Inside a 212°F Acidic Ocean Crater",
             "400-Year-Old Greenland Shark vs Giant Squid: The Blind Apex Predator Hunting at 6,500 Feet in the Arctic Abyss",
             "Brine Pool at 3,300 Feet: The Underwater Toxic Lake That Paralyzes Deep-Sea Sharks in 3 Seconds",
@@ -94,15 +97,19 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 17,
         "director_notes": (
-            "Target channel Psychology of the world (US English). High-retention 5-Act Forensic Crime, Extreme Brain Experiments & Money/Power Psychology arc (28-34s crisp runtime, 6-7 scenes, 75-92 words for >90% APV): "
-            "STRICT NICHE PIVOT: Focus ONLY on (1) Forensic Courtroom & FBI Interrogation Psychology, (2) Extreme Human Brain & Sensory Deprivation Experiments, and (3) Casino/Billionaire Financial Mind Traps. NEVER write generic dating/texting/fake-friend listicles! "
-            "HOOK (0-2s): Blunt 5-8 word Grade-5 English statement naming the exact courtroom/interrogation test, brain experiment, or money trap + concrete number (decibels, hours, volts, seconds, dollars). "
-            "DEVELOPMENT: Real FBI/courtroom case mechanics, neurological reaction (amygdala, dopamine, vagus nerve), or behavioral economics proof. "
-            "CLIMAX (Scene 4 - 14s Twist): The shocking scientific/forensic reveal or counter-move that flips the viewer's assumption. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology / Zack D. Films style). Strict English only."
+            "Target channel Psychology of the world (US English). Deep 5-Act Dual-Peak Forensic Interrogation, Famous Brain Experiments & Behavioral Traps arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
+            "STRICT NICHE PIVOT: Focus ONLY on (1) Forensic Courtroom & Detective Interrogation Psychology, (2) Famous University Brain & Obedience Experiments, and (3) Casino/Billionaire Behavioral Traps. "
+            "TITLE (YT_SEARCH Anchor): Explicitly name the exact test/experiment vs target ('[Test/Experiment A] vs [Target B]: [Concrete Metric]'). "
+            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (e.g. 'Watch what a suspect does the second...', 'Psychiatrists predicted only one percent of people...'). NEVER repeat the title verbatim at 0.0s! "
+            "ACT 2 (Scenes 2-3): Real courtroom/experiment setup and first neurological/behavioral metric. "
+            "ACT 3 (Scene 4 - 15s Twist): The hidden second mechanism (amygdala cortisol spike, agentic state shift) + exact percentage/voltage that flips expectations. "
+            "ACT 4-5 (Scenes 6-8): Practical counter-move and Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
+            "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology style). Strict English only."
         ),
         "topics": [
+            "Water Cup Barrier Test vs Guilty Suspects: Why Detectives Place a Paper Cup 6 Inches From Your Hand to Expose Deception",
+            "Las Vegas Casino Labyrinth vs Human Brain: How Zero Clocks and Curved Carpets Trigger a 400% Dopamine Trap",
+            "1961 Yale Milgram Experiment vs 450-Volt Authority Switch: Why 65% of Ordinary People Obeyed the Final Lethal Command",
             "The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a Suspect",
             "Inside the -9.4 Decibel Chamber: Why No Human Brain Can Survive 45 Minutes of Total Silence",
             "Why Guilty Suspects Repeat Your Exact Question Before Answering in Police Interrogations",
@@ -135,14 +142,17 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 18,
         "director_notes": (
-            "Target channel Wild Odyssey. Intense 5-Act wildlife predator action (28-35s crisp runtime for >80% APV): "
-            "HOOK (0-2s): Blunt 5-8 word statement naming both specific animals ('A vs B') + exact biomechanical number (PSI, Volts, MPH, lbs). "
-            "DEVELOPMENT: Compare bite force, venom, armor, or reflex speed vs the rival predator. "
-            "CLIMAX (Scene 4 - 15s Twist): The unexpected counter-weapon or fatal strike that flips the fight. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA; HUD badge handles Subscribe). "
-            "Tone: cinematic, adrenaline-pumping, dramatic, nature documentary style. Strict English only."
+            "Target channel Wild Odyssey (US English). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
+            "TITLE (YT_SEARCH Anchor): Explicitly name both animals + extreme physical metric ('[Animal A] vs [Animal B]: [PSI / MPH / Volts / Lbs]'). NEVER hide the animal name behind 'This Beast' or 'This Giant'! "
+            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation, 2. The Fatal Mistake, 3. 2nd-Person Survival, 4. Role Reversal). NEVER repeat the title verbatim or spoil the final metric at 0.0s! "
+            "ACT 2 (Scenes 2-3): Animal A's offensive weapon and first biomechanical metric. "
+            "ACT 3 (Scene 4 - 15s Twist): Animal B's counter-mechanism or the unexpected biomechanical twist with a second concrete metric. "
+            "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
+            "Tone: cinematic, adrenaline-pumping, National Geographic documentary style. Strict English only."
         ),
         "topics": [
+            "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive and 440 PSI Talons",
+            "Siberian Tiger vs 1,000-Pound Brown Bear: How a 660-Pound Big Cat Uses a 1,050 PSI Cervical Bite in the Frozen Taiga",
             "Electric Eel vs Caiman: How an 860-Volt Biological Taser Stops a River Predator",
             "African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop a 150-Pound Ambush",
             "Cassowary: Why Nothing in the Jungle Messes With This 130-Pound Dinosaur Bird's 5-Inch Dagger Kick",
@@ -172,14 +182,17 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 17,
         "director_notes": (
-            "Target channel Alternate History & What If. Epic counterfactual history & 1-minute butterfly effect arc: "
-            "HOOK (0-3s): The exact 1-minute historical turning point or fatal blunder that rewrote the world map. "
-            "DEVELOPMENT: Historical proof and what happened in real timeline vs counterfactual timeline. "
-            "CLIMAX: How the modern world today would be completely unrecognizable. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin style. Strict English only."
+            "Target channel Alternate History & What If (US English). Deep 5-Act Dual-Peak historical showdown & butterfly-effect arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
+            "TITLE (YT_SEARCH Anchor): Explicitly name the historical event/empire/year + opposing force or concrete metric ('[Historical Force A] vs [Force B]: [Metric]'). "
+            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Open with 1 of the 4 Psychological-Visual Hook Archetypes (Fatal Mistake, Illusion Breaker, or Visual Observation) without repeating the title verbatim. "
+            "ACT 2 (Scenes 2-3): Documented historical scale and first hard number (ships, troops, megatons, year). "
+            "ACT 3 (Scene 4 - 15s Twist): The hidden tactical blunder or physical chain-reaction twist at second 15 that sealed the outcome. "
+            "ACT 5 (Scene 7/8): Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
+            "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin documentary style. Strict English only."
         ),
         "topics": [
+            "1281 Kamikaze Mega-Typhoon vs Kublai Khan 4,400 Warships: How a 2-Day Hurricane Sank 140,000 Troops and Saved Samurai Japan",
+            "1815 Mount Tambora Super-Eruption vs The Year Without a Summer: How a VEI-7 Volcano Froze Crops in June 1816",
             "How 1 Unlocked Gate in 1453 Ended the 1,100-Year Byzantine Empire at Constantinople",
             "What If the 1983 Stanislav Petrov Satellite Glitch Launched 10,000 Nuclear Warheads?",
             "What If the Mongol Typhoon of 1281 Never Stopped Kublai Khan's 4,400 Warships?",
@@ -209,14 +222,17 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 21,
         "director_notes": (
-            "Target channel Odisseia Selvagem (Brazilian Portuguese). Intense 5-Act wildlife predator action (29-35s, 7 scenes, 85-100 words): "
-            "HOOK (0-2s): Active visual pointer or asymmetric apex fear paradox in Portuguese (strictly 5-8 words, e.g., 'Seis leões famintos recuam deste monstro!', 'Essas garras arrancam presas de penhascos!'). NEVER use dry dictionary labels ('Nome: número'). "
-            "DEVELOPMENT: Real biomechanics, speed, venom or crushing force, and terrain advantage. "
-            "CLIMAX: The decisive strike or unexpected survival reversal. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
+            "Target channel Odisseia Selvagem (Brazilian Portuguese). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
+            "TÍTULO (Âncora YT_SEARCH): Nomeie explicitamente os dois animais + métrica física extrema ('[Animal A] vs [Animal B]: [Métrica Extrema]'). NUNCA esconda o nome do animal no título! "
+            "HOOK DA CENA 1 (0,0s-2,2s, 6-10 palavras): Use 1 dos 4 Arquétipos Visuais-Psicológicos (1. Apontamento Micro-Visual 'Olhe bem para...', 2. O Último Erro 'O último erro desse...', 3. Simulação em 2ª Pessoa 'Se você...', 4. Quebra de Expectativa). NUNCA repita o título palavra por palavra no segundo 0! "
+            "ATO 2 (Cenas 2-3): Arma biomecânica do Animal A com o primeiro número exato. "
+            "ATO 3 (Cena 4 - Twist de 15s): Contra-ataque ou mecanismo oculto do Animal B com o segundo número físico. "
+            "ATO 5 (Cena 7/8): Frase completa conectando em loop infinito de volta à Cena 1 (ZERO CTA falado de Inscreva-se). "
             "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Porco-Espinho-Africano vs Leopardo: Como 30.000 Espinhos Farpados de Queratina Param um Felino de 70 Quilos na Savana",
+            "Carcaju de 16 Quilos vs Urso-Pardo de 350 Quilos: Como o Demônio da Neve Usa Mandíbulas Quebradoras de Ossos no Ártico",
             "Mamba-Negra vs Mangusto: O Reflexo de 15 Milissegundos Que Humilha a Cobra Mais Letal da África",
             "Crocodilo-do-Nilo vs Búfalo-Africano: Como a Manada Inteira Vira o Jogo Contra o Monstro do Rio",
             "Casuar: Por Que Nenhum Predador Ousa Enfrentar a Ave-Dinossauro Mais Perigosa do Mundo",
@@ -243,15 +259,17 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 21,
         "director_notes": (
-            "Target channel Mistérios do Mundo (Brazilian Portuguese). High-retention 5-Act abyssal showdown & lethal ocean mystery arc (28-34s crisp runtime, 6-7 scenes, 75-92 words for >95% APV): "
-            "HOOK (0-2s): Blunt 5-8 word statement in Portuguese naming the specific abyssal predator duel ('A vs B') or lethal ocean anomaly + exact physical number (meters, °C, PSI, years). NEVER open with vague philosophical questions. "
-            "DEVELOPMENT: Real depth measurements (meters), biomechanical weapons, sonar data, or extreme thermal/chemical danger. "
-            "CLIMAX (Scene 4 - 15s Twist): The fatal strike, survival reversal, or terrifying scientific discovery at the bottom of the sea. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: suspenseful, dark, adrenaline-pumping, eerie documentary style. Strict Brazilian Portuguese (pt-BR) only. "
-            "REGRA DE ALTERNÂNCIA VISUAL 1-1 & ANTI-FADIGA DE TEMA (QUEBRA DO TETO DE ~1.000 VIEWS): NUNCA inicie o Título ou a Cena 1 com o mesmo animal/sujeito principal dos últimos 2-3 vídeos do canal! Destaque sempre o fenômeno físico extremo inédito ou oponente novo na abertura."
+            "Target channel Mistérios do Mundo (Brazilian Portuguese). Deep 5-Act Dual-Peak abyssal showdown & extreme ocean/earth mystery arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
+            "TÍTULO (Âncora YT_SEARCH): Nomeie explicitamente as entidades ou o fenômeno extremo + número físico ('[Entidade A] vs [Entidade B]: [Métrica]'). NUNCA esconda o sujeito principal! "
+            "HOOK DA CENA 1 (0,0s-2,2s, 6-10 palavras): Use 1 dos 4 Arquétipos Visuais-Psicológicos ('Olhe bem para...', 'O último erro...', 'Se esse tubo branco tocar...', 'Ninguém imaginava...') sem repetir o título palavra por palavra no segundo 0! "
+            "ATO 2 (Cenas 2-3): Profundidade real, veneno, temperatura ou pressão com o primeiro número exato. "
+            "ATO 3 (Cena 4 - Twist de 15s): Segundo pico explosivo / mecanismo reverso no segundo 15 que muda tudo. "
+            "ATO 5 (Cena 7/8): Frase 100% completa fechando o Loop Infinito com a Cena 1 (ZERO CTA falado de Inscreva-se). "
+            "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Caravela-Portuguesa vs Tartaruga-de-Couro: Como uma Gigante de 700 Quilos Devora Tentáculos Venenosos de 50 Metros no Mar",
+            "Dedo Gélido da Morte (Brinicle) a -2°C vs Fundo do Mar da Antártida: O Tornado de Gelo Submarino Que Congela Tudo",
             # [1-1 VISUAL CONTRAST INTERLEAVED QUEUE — Đan xen Dị thường Địa chất/Nhiệt độ/Hóa học <-> Đại chiến Sinh vật Đa dạng Họ]
             "Chaminés Hidrotermais Negras a 400°C: Os Vermes Gigantes Que Vivem Sem Sol no Fundo do Oceano",
             "Enguia-Pelicano vs Lula-Vampiro: Como Monstros a 2.500 Metros Caçam Sem Oxigênio na Zona da Meia-Noite",
@@ -523,10 +541,6 @@ async def produce_channel_video(
                 continue
             topic = cand_t
             break
-            topic = cand_t
-            break
-            topic = cand_t
-            break
 
         if not topic:
             remaining = [
@@ -634,6 +648,7 @@ async def produce_channel_video(
         enable_affiliate=False,
         enable_donation=False,
     )
+    final_pinned_comment = pub_agent.sanitize_engagement_comment(final_pinned_comment)
     if smart_bundle["description_hashtags"] not in final_description:
         final_description = f"{final_description.strip()}\n\n{smart_bundle['description_hashtags']}".strip()
 
@@ -826,7 +841,7 @@ async def produce_channel_video(
                 s_refined = json.loads(scenes_json_str) if isinstance(scenes_json_str, str) else scenes_json_str
                 if isinstance(s_refined, dict):
                     if s_refined.get("pinned_comment"):
-                        final_pinned_comment = str(s_refined["pinned_comment"]).strip()
+                        final_pinned_comment = pub_agent.sanitize_engagement_comment(str(s_refined["pinned_comment"]).strip())
                     if s_refined.get("description"):
                         ref_desc = str(s_refined["description"]).strip()
                         if smart_bundle["description_hashtags"] not in ref_desc:
@@ -936,6 +951,7 @@ async def main():
     parser.add_argument("--send-telegram", action="store_true", help="Send rendered MP4 preview directly to Telegram")
     parser.add_argument("--telegram-chat-id", type=str, default=None, help="Optional Telegram chat_id override")
     parser.add_argument("--send-existing-job", type=int, default=None, help="Send an already rendered Job ID to Telegram for preview")
+    parser.add_argument("--concurrency", type=int, default=1, help="Number of channels to produce concurrently (default: 1)")
     args = parser.parse_args()
 
     if args.send_existing_job:
@@ -1005,30 +1021,65 @@ async def main():
 
     results = []
     videos_per_ch = max(1, int(args.count or 1))
+    concurrency = max(1, int(getattr(args, "concurrency", 1) or 1))
 
-    for t in targets:
-        for v_idx in range(1, videos_per_ch + 1):
-            try:
-                res = await produce_channel_video(
-                    t,
-                    custom_topic=args.topic,
-                    dry_run=args.dry_run,
-                    render_only=args.render_only,
-                    send_telegram=args.send_telegram,
-                    telegram_chat_id=args.telegram_chat_id,
-                    video_index=v_idx,
-                    total_per_channel=videos_per_ch,
-                )
-                if res:
-                    results.append(res)
-            except Exception as e:
-                logger.error(f"❌ Lỗi khi sản xuất video #{v_idx} cho kênh {t}: {e}", exc_info=True)
-                results.append({
-                    "channel": CHANNELS_CONFIG.get(t, {}).get("name", t),
-                    "channel_id": t,
-                    "title": f"FAILED (Video #{v_idx})",
-                    "error": str(e),
-                })
+    if concurrency <= 1 or len(targets) <= 1:
+        for t in targets:
+            for v_idx in range(1, videos_per_ch + 1):
+                try:
+                    res = await produce_channel_video(
+                        t,
+                        custom_topic=args.topic,
+                        dry_run=args.dry_run,
+                        render_only=args.render_only,
+                        send_telegram=args.send_telegram,
+                        telegram_chat_id=args.telegram_chat_id,
+                        video_index=v_idx,
+                        total_per_channel=videos_per_ch,
+                    )
+                    if res:
+                        results.append(res)
+                except Exception as e:
+                    logger.error(f"❌ Lỗi khi sản xuất video #{v_idx} cho kênh {t}: {e}", exc_info=True)
+                    results.append({
+                        "channel": CHANNELS_CONFIG.get(t, {}).get("name", t),
+                        "channel_id": t,
+                        "title": f"FAILED (Video #{v_idx})",
+                        "error": str(e),
+                    })
+    else:
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _run_channel_queue(ch_key: str):
+            ch_results = []
+            async with sem:
+                for v_idx in range(1, videos_per_ch + 1):
+                    try:
+                        res = await produce_channel_video(
+                            ch_key,
+                            custom_topic=args.topic,
+                            dry_run=args.dry_run,
+                            render_only=args.render_only,
+                            send_telegram=args.send_telegram,
+                            telegram_chat_id=args.telegram_chat_id,
+                            video_index=v_idx,
+                            total_per_channel=videos_per_ch,
+                        )
+                        if res:
+                            ch_results.append(res)
+                    except Exception as e:
+                        logger.error(f"❌ Lỗi khi sản xuất video #{v_idx} cho kênh {ch_key}: {e}", exc_info=True)
+                        ch_results.append({
+                            "channel": CHANNELS_CONFIG.get(ch_key, {}).get("name", ch_key),
+                            "channel_id": ch_key,
+                            "title": f"FAILED (Video #{v_idx})",
+                            "error": str(e),
+                        })
+            return ch_results
+
+        batches = await asyncio.gather(*(_run_channel_queue(t) for t in targets))
+        for b in batches:
+            results.extend(b)
 
     print("\n" + "#" * 85)
     print(f"📋 TỔNG KẾT SẢN XUẤT ({len(results)} VIDEO TRÊN {len(targets)} KÊNH):")

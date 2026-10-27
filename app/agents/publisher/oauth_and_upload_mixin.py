@@ -744,9 +744,10 @@ class OAuthAndUploadMixin:
                         if "quotaExceeded" in err_str or "exceeded your quota" in err_str:
                             raise up_err
 
-                        # Xử lý các lỗi mạng hoặc session upload bị đứt giữa chừng (bao gồm cả SSLEOFError / TLS drop)
+                        # Xử lý các lỗi mạng hoặc session upload bị đứt giữa chừng (bao gồm cả SSLEOFError / TLS drop / WinError 10053-10054)
                         is_recoverable = (
-                            "410" in err_str
+                            isinstance(up_err, (ConnectionError, TimeoutError))
+                            or "410" in err_str
                             or "Gone" in err_str
                             or any(code in err_str for code in ["500", "502", "503", "504"])
                             or any(
@@ -756,9 +757,14 @@ class OAuthAndUploadMixin:
                                     "connection reset",
                                     "broken pipe",
                                     "remotely closed",
+                                    "forcibly closed",
                                     "eof occurred",
                                     "ssl",
                                     "connection aborted",
+                                    "connection was aborted",
+                                    "aborted by the software",
+                                    "winerror 10053",
+                                    "winerror 10054",
                                     "incomplete read",
                                     "badstatusline",
                                 ]
@@ -771,6 +777,10 @@ class OAuthAndUploadMixin:
                                 f"Khởi tạo phiên mới và thử lại lần {upload_attempt + 1}/{max_upload_retries} sau {wait_sec}s..."
                             )
                             time.sleep(wait_sec)
+                            try:
+                                self._init_service()
+                            except Exception:
+                                pass
                             recovered_vid = self._find_live_duplicate_on_youtube(clean_title, max_check=8)
                             if recovered_vid:
                                 logger.info(

@@ -109,13 +109,21 @@ _STRUCTURAL_HEADLINE_TOKENS = {
     "oceano", "ocean", "mar", "sea", "fundo", "deep", "abismo", "abyss", "abissal",
     "agua", "water", "rio", "river", "lago", "lake", "ilha", "island",
     "metro", "metros", "meter", "meters", "feet", "foot", "tonelada", "toneladas",
-    "ton", "tons", "segundo", "segundos", "second", "seconds", "minuto", "minutos",
+    "ton", "tons", "pound", "pounds", "quilo", "quilos", "gram", "grams",
+    "inch", "inches", "centimetro", "centimetros", "mile", "miles", "mph", "kmh",
+    "psi", "volt", "volts", "watt", "watts", "newton", "newtons", "degree", "degrees",
+    "segundo", "segundos", "second", "seconds", "minuto", "minutos",
     "hora", "horas", "hour", "hours", "ano", "anos", "year", "years", "dia", "dias",
     "maior", "biggest", "largest", "pequeno", "menor", "gigante", "giant", "colossal",
     "negro", "black", "branco", "white", "azul", "blue", "vermelho", "red",
     "proibido", "forbidden", "isolado", "isolated", "impossivel", "impossible",
     "verdade", "truth", "motivo", "reason", "nunca", "never", "sempre", "always",
     "todo", "toda", "todos", "todas", "cada", "outro", "outra", "novo", "nova",
+    "predator", "predators", "predador", "predadores", "animal", "animals", "animais",
+    "creature", "creatures", "criatura", "criaturas", "monstro", "monstros", "monster",
+    "apex", "documentario", "documentary", "completo", "complete", "test", "rule", "trap",
+    "ambush", "emboscada", "bite", "mordida", "claw", "garra", "force", "forca",
+    "covert", "liar", "liars", "interrogation",
 }
 
 
