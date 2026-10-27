@@ -17,6 +17,8 @@ from app.services.media import license_policy
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+# Điều tiết tối đa 3 luồng tải yt-dlp vật lý cùng lúc để tránh YouTube CDN bóp băng thông (throttling xuống 20 KB/s)
+_yt_download_sem = threading.BoundedSemaphore(3)
 from app.graph.tools.tool_schemas import (
     _yt_url_lock,
     _YT_QUERY_FILLER_WORDS,
@@ -274,13 +276,15 @@ def execute_youtube_short_peak_clone_sync(
                             pass
 
                     try:
-                        with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
-                            ydl_dl.download([vid_url])
+                        with _yt_download_sem:
+                            with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
+                                ydl_dl.download([vid_url])
                     except Exception:
                         dl_opts.pop("download_ranges", None)
                         try:
-                            with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
-                                ydl_dl2.download([vid_url])
+                            with _yt_download_sem:
+                                with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
+                                    ydl_dl2.download([vid_url])
                         except Exception:
                             rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                             continue
@@ -289,8 +293,9 @@ def execute_youtube_short_peak_clone_sync(
                     if not downloaded_files and "download_ranges" in dl_opts:
                         dl_opts.pop("download_ranges", None)
                         try:
-                            with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
-                                ydl_dl2.download([vid_url])
+                            with _yt_download_sem:
+                                with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
+                                    ydl_dl2.download([vid_url])
                         except Exception:
                             pass
                         downloaded_files = list(Path(tmp_dir).glob("raw_short.*"))

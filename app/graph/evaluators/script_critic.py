@@ -297,8 +297,14 @@ class ScriptCritic:
             else "2. story_pacing (Target Shorts 9:16: Smooth, complete 5-Act story of 30 - 40s, 85 - 120 words, 7 - 9 scenes — NEVER ABRUPT):"
         )
 
+        from app.services.niche_manager import build_llm_production_overview_prompt
+        niche_yaml_blueprint = build_llm_production_overview_prompt(
+            channel_style or "general",
+            include_all_niches_map=False,
+        )
+
         prompt = f"""You are a World-Class YouTube {'16:9 Documentary & ' if is_long_form else ''}Shorts Creative Director and Retention Script Critic.
-Your task: Strictly evaluate and critique the following script based on REAL RETENTION DATA of the channel.
+Your task: Semantically evaluate and critique the following script based on REAL RETENTION DATA and the YAML NICHE BLUEPRINT of the channel (use contextual intelligence — never apply rigid keyword censorship to valid scientific, historical, psychological, or wildlife vocabulary).
 
 Topic: {topic}
 Proposed Title: {title}
@@ -306,6 +312,8 @@ Format Mode: {'LONG-FORM DOCUMENTARY 16:9 (16-26 scenes, 340-650 words)' if is_l
 Channel Style: {channel_style}
 Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for hook_strength >= {min_hook_req}/10.
 {entity_instruction}{winners_block}
+
+{niche_yaml_blueprint}
 
 --- SCRIPT CONTENT ---
 {scenes_formatted}

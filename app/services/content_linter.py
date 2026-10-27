@@ -107,38 +107,20 @@ class ScriptValidationLinter:
         niche_profile: Dict[str, Any]
     ) -> Tuple[List[str], List[str]]:
         """
-        Kiểm tra xem kịch bản có chứa từ ngữ dị biệt, lạc ngách hoặc ảo giác (hallucination) không.
-        Đọc cấu hình động từ niche_profile (banned_lexicon).
+        Kiểm tra các câu sáo rỗng mở đầu/kết thúc kiểu YouTube meta-talk ('in this video', 'don't forget to subscribe').
+        Không lọc từ khóa ngữ nghĩa đơn lẻ bằng danh sách cứng để tránh làm nghèo nàn vốn từ kịch bản;
+        việc đánh giá ngữ cảnh kịch bản theo từng ngách do Đạo diễn LLM (ContentAgent & ScriptCritic) đọc trực tiếp từ YAML.
         """
         issues = []
         detected_words = []
 
         blueprint = niche_profile.get("script_blueprint", {})
-        banned_list = niche_profile.get("banned_lexicon") or blueprint.get("banned_lexicon") or []
-        
-        # Bổ sung các từ bị cấm mặc định trong blueprint
         forbidden_cliches = blueprint.get("forbidden_words", [])
-
         full_text = f"{script.title} {script.hook} {script.full_narration}".lower()
 
-        # 1. Kiểm tra banned_lexicon (từ ngữ dị biệt / lạc ngách)
-        for word in banned_list:
-            word_clean = str(word).strip().lower()
-            if not word_clean:
-                continue
-            # Dùng regex word boundary để tránh bắt nhầm substring
-            pattern = r'\b' + re.escape(word_clean) + r'\b'
-            if re.search(pattern, full_text):
-                detected_words.append(word_clean)
-                issues.append(
-                    f"Forbidden/out-of-niche term detected: '{word_clean}'. "
-                    f"This concept is strictly irrelevant or incongruent with the '{niche_profile.get('name', 'current')}' niche."
-                )
-
-        # 2. Kiểm tra forbidden clichés (câu sáo rỗng mở đầu/kết thúc)
         for cliche in forbidden_cliches:
             cliche_clean = str(cliche).strip().lower()
-            if len(cliche_clean) > 3 and cliche_clean in full_text:
+            if len(cliche_clean) > 8 and " " in cliche_clean and cliche_clean in full_text:
                 issues.append(f"Forbidden cliché detected: '{cliche_clean}'. Remove YouTube meta-talk.")
 
         return issues, detected_words
@@ -260,31 +242,6 @@ class ScriptValidationLinter:
                         f"Remove all spoken CTAs and end with a Seamless Infinite Loop Bridge that connects directly back to Scene 1."
                     )
 
-        # Kiểm tra tiêu đề kênh Animal Rescue tránh rơi vào bẫy bi lụy đơn thuần không có curiosity/payoff
-        if "rescue" in niche_id or "animal" in niche_id:
-            title_lower = (script.title or "").lower()
-            bleak_only_terms = ("frozen", "shivering", "starving", "tied in rain", "dying", "paralyzed", "bleeding")
-            transformation_cues = (
-                "until", "finally", "moment", "realized", "refused", "saved", "safe",
-                "miracle", "changed", "never", "watch what", "wait for", "heart", "love"
-            )
-            if any(b in title_lower for b in bleak_only_terms) and not any(t in title_lower for t in transformation_cues):
-                issues.append(
-                    f"Bleak/passive rescue title detected ('{script.title}'). Purely depressing titles get swiped away! "
-                    f"Reframe the title around a curiosity gap or emotional breakthrough (e.g., 'He Refused to Let Go Until...', "
-                    f"'The Exact Moment This Shivering Puppy Realized He Was Safe')."
-                )
-
-        # Kiểm tra tiêu đề kênh Wildlife Predators tránh chung chung mơ hồ ('Invisible Monsters Waiting To Strike')
-        if "wildlife" in niche_id or "predator" in niche_id:
-            title_lower = (script.title or "").lower()
-            vague_wildlife_titles = ("invisible monsters", "unstoppable survivers", "unstoppable survivors", "prehistoric apex predators")
-            if any(v in title_lower for v in vague_wildlife_titles):
-                issues.append(
-                    f"Vague/generic wildlife title detected ('{script.title}'). Always name the specific apex predator or 1v1 matchup "
-                    f"(e.g., 'Green Anaconda vs. Black Caiman', 'Why 6 Lions Backed Down From 1 Honey Badger')."
-                )
-
         return issues
 
     @classmethod
@@ -321,54 +278,17 @@ class ScriptValidationLinter:
 
         return issues, repeated
 
-    # Các cụm từ vi phạm Chính sách Tiêu chuẩn Cộng đồng YouTube (Animal Abuse/Suffering, Staged Rescue, Graphic Gore, Self-Harm)
-    COMMUNITY_GUIDELINES_BANNED_PHRASES = [
-        # Animal suffering / Staged rescue triggers (Nguyên nhân gây xóa video Job #309)
-        "paralyzed", "dragged herself", "dragged his", "dragged her", "dragging its",
-        "bloodied", "bleeding", "open wound", "flesh wound", "spinal trauma",
-        "broken spine", "crushed spine", "mangled", "chained for", "tied in rain",
-        "tied up in", "starving to death", "frozen to death", "dying in the",
-        "tortured", "abused", "beaten", "suffocating", "choking", "drowning",
-        # Portuguese equivalents for Brazil channels
-        "paralisado", "paralisada", "arrastando as patas", "sangrando", "espancado",
-        "acorrentado", "torturado", "morrendo de fome",
-        # Graphic violence / Gore triggers
-        "bites into brains", "shatters skulls", "ripping flesh", "tearing flesh",
-        "bloodbath", "mutilated", "disembowel", "decapitate",
-        # Self-harm / Extreme violence triggers
-        "suicide", "self-harm", "kill yourself", "serial killer", "serial killers",
-        "weaponize death", "buried alive",
-    ]
+    COMMUNITY_GUIDELINES_BANNED_PHRASES: List[str] = []
 
     @classmethod
     def check_community_guidelines_safety(cls, script: ScriptContract) -> List[str]:
         """
-        Kiểm tra nghiêm ngặt Tiêu chuẩn Cộng đồng YouTube (YouTube Community Guidelines Safety Gate):
-        Chặn tuyệt đối ngôn từ mô tả hành hạ động vật, thương tích máu me, kéo lê chân liệt (Staged/Graphic Animal Suffering),
-        bạo lực máu me (Graphic Gore) hoặc tự gây hại.
+        Không dùng bộ lọc từ khóa cứng (như 'paralyzed', 'bleeding', 'drowning') trong Python
+        vì làm nghèo nàn ngôn từ kịch bản và bắt nhầm ngữ cảnh khoa học/tâm lý/sinh tồn.
+        Việc thẩm định ngữ cảnh & an toàn chính sách theo từng ngách được giao cho Đạo diễn LLM (ContentAgent & ScriptCritic)
+        đọc trực tiếp từ bản đồ YAML (`config/niches/*.yaml`).
         """
-        issues = []
-        combined_text = " ".join([
-            script.title or "",
-            script.hook or "",
-            script.full_narration or "",
-            " ".join((s.narration or "") + " " + (s.visual_keyword or "") + " " + (s.visual_prompt or "") for s in (script.scenes or []))
-        ]).lower()
-
-        violated = []
-        for phrase in cls.COMMUNITY_GUIDELINES_BANNED_PHRASES:
-            pattern = r'\b' + re.escape(phrase.lower()) + r'\b'
-            if re.search(pattern, combined_text):
-                violated.append(phrase)
-
-        if violated:
-            v_str = ", ".join(f"'{v}'" for v in violated)
-            issues.append(
-                f"YOUTUBE COMMUNITY GUIDELINES VIOLATION DETECTED ({v_str}): "
-                f"Strictly avoid graphic animal suffering, paralysis/dragging limbs, blood/wounds, chaining/tying animals, "
-                f"graphic gore, or self-harm/violence terms. Focus on gentle care, shelter discovery, curiosity, and joyful recovery."
-            )
-        return issues
+        return []
 
     @classmethod
     def check_metric_and_fact_consistency(cls, script: ScriptContract) -> List[str]:
