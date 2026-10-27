@@ -917,7 +917,8 @@ async function fetchSmartChannelIdeas() {
     if (gridEl) gridEl.style.display = 'none';
 
     try {
-        const data = await apiGet(`/api/channels/${encodeURIComponent(channelId)}/topics/suggest?count=5`);
+        const video_format = document.getElementById('input-video-format')?.value || 'short';
+        const data = await apiGet(`/api/channels/${encodeURIComponent(channelId)}/topics/suggest?count=5&video_format=${encodeURIComponent(video_format)}`);
         if (loadingEl) loadingEl.style.display = 'none';
         if (!data || !Array.isArray(data.ideas) || data.ideas.length === 0) {
             showToast('⚠️ Chưa lấy được gợi ý ý tưởng cho kênh này.', 'warning');

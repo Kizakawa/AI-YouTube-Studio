@@ -46,7 +46,8 @@ from app.services.intelligence.niche_topic_fallbacks import _get_curated_niche_f
 def suggest_channel_topics(
     channel_id: str,
     count: int = 5,
-    exclude_additional: Optional[List[str]] = None
+    exclude_additional: Optional[List[str]] = None,
+    video_format: str = "short",
 ) -> List[Dict[str, Any]]:
     """
     Thuật toán AI gợi ý ý tưởng làm video riêng biệt cho từng kênh:
@@ -198,10 +199,21 @@ DO NOT center any candidate around these fatigued terms!
     except Exception:
         pass
 
-    prompt = f"""You are the Master Creative Director and Viral Algorithm Strategist for YouTube Shorts channel '{channel_name}'.
+    is_long_form = str(video_format or "short").strip().lower() in ("long", "16:9", "documentary", "landscape")
+    format_directive = ""
+    if is_long_form:
+        format_directive = """
+═══════════════════════════════════════════════════════════
+🎬 LONG-FORM 16:9 WIDESCREEN DOCUMENTARY MODE (5 CHAPTERS / 3.5–4.5 MINUTES):
+You are generating 16:9 Widescreen Long-Form Documentary concepts (NOT vertical Shorts!):
+1. Each concept MUST use a 5-Chapter Countdown or 5-Case Deep-Dive structure expanding on the channel's highest-performing entities (e.g., "5 Animais Que Riem do Veneno da Mamba-Negra (O #1 É Quase Imortal!) 🐍🔥", "5 Anomalias Submarinas Que o Sonar da Marinha Não Consegue Explicar 🌊🔊", "5 Técnicas Psicológicas do FBI Que Desmascaram Qualquer Mentiroso 🧠🕵️").
+2. DO NOT include "#Shorts" in the title! Keep titles 45–80 characters with named high-search entities and extreme physical metrics.
+"""
+
+    prompt = f"""You are the Master Creative Director and Viral Algorithm Strategist for YouTube {'Long-Form 16:9 Documentary' if is_long_form else 'Shorts'} channel '{channel_name}'.
 Niche: '{niche_profile.get('name')}' ({niche_id})
 Target Language: {lang}
-
+{format_directive}
 ═══════════════════════════════════════════════════════════
 🚫 STRICT ANTI-DUPLICATION RULE (HIGHEST PRIORITY):
 The following titles and concepts ALREADY EXIST on this channel:

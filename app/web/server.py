@@ -5749,10 +5749,10 @@ async def calculate_forecast_endpoint(req: ForecastRequest):
 # ═════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/channels/{channel_id}/topics/suggest")
-async def suggest_channel_topics_endpoint(channel_id: str, count: int = 5):
+async def suggest_channel_topics_endpoint(channel_id: str, count: int = 5, video_format: str = "short"):
     """
-    Gợi ý ý tưởng video Shorts độc lạ cho kênh dựa trên phân tích DNA Top Performer & Flop,
-    chống trùng lặp 100% với video cũ và tự động khớp ngôn ngữ kênh.
+    Gợi ý ý tưởng video Shorts (9:16) hoặc Video Dài 5 Chương (16:9 Documentary) cho kênh
+    dựa trên phân tích DNA Top Performer & Flop, chống trùng lặp 100% với video cũ và tự động khớp ngôn ngữ kênh.
     """
     try:
         from app.services.channel_intelligence import (
@@ -5760,8 +5760,9 @@ async def suggest_channel_topics_endpoint(channel_id: str, count: int = 5):
             get_channel_existing_portfolio,
             extract_saturated_channel_concepts,
         )
+        vf_norm = "long" if str(video_format or "short").strip().lower() in ("long", "16:9", "documentary") else "short"
         portfolio = await asyncio.to_thread(get_channel_existing_portfolio, channel_id)
-        ideas = await asyncio.to_thread(suggest_channel_topics, channel_id=channel_id, count=count)
+        ideas = await asyncio.to_thread(suggest_channel_topics, channel_id=channel_id, count=count, video_format=vf_norm)
         vids_ranked = portfolio.get("videos_with_views", [])
         saturated = extract_saturated_channel_concepts(portfolio.get("all_titles", []), vids_ranked)
         top_video = vids_ranked[0] if vids_ranked else None
