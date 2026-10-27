@@ -611,8 +611,10 @@ class SubtitleHelper:
                     if not w_text:
                         continue
                     candidate_len = cur_len + len(w_text) + (1 if cur_words else 0)
+                    max_w_lim = 6 if is_long_form else 3
+                    max_c_lim = 38 if is_long_form else 20
                     should_break = (
-                        (len(cur_words) >= 3 or candidate_len > 20) and len(cur_words) >= 2
+                        (len(cur_words) >= max_w_lim or candidate_len > max_c_lim) and len(cur_words) >= 2
                     ) or (
                         w_text.endswith((".", "!", "?", ":", ";", "—")) and len(cur_words) >= 2
                     )
@@ -684,7 +686,11 @@ class SubtitleHelper:
                     )
             else:
                 # ── CHẾ ĐỘ 2: FALLBACK PHÂN BỔ KÝ TỰ (Khi không có word_timings) ──
-                chunks = cls.split_text_to_chunks(scene.narration)
+                chunks = cls.split_text_to_chunks(
+                    scene.narration,
+                    max_words=(6 if is_long_form else 3),
+                    max_chars=(38 if is_long_form else 20),
+                )
                 if not chunks:
                     if getattr(scene, "start_offset_ms", None) is not None:
                         current_offset_ms = scene.start_offset_ms + scene_duration_ms

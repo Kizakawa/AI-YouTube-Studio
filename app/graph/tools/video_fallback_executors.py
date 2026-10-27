@@ -39,6 +39,7 @@ def _try_bilibili_broll_fallback(
     used: Set[str],
     job_id: int,
     eff_scene_id: int,
+    aspect_ratio: str = "9:16",
 ) -> Optional[Dict[str, Any]]:
     """Tầng 1.5: Săn B-Roll độc quyền trên Bilibili (Safe-Crop logo/phụ đề + duyệt Gemini Vision)."""
     from app.services.media.media_history import extract_media_identity, record_used_media
@@ -80,6 +81,7 @@ def _try_bilibili_broll_fallback(
                 url_or_id=bvid,
                 output_path=output_path,
                 target_duration_sec=max(3.5, target_duration_sec),
+                aspect_ratio=aspect_ratio,
             )
             if not b_info or not Path(output_path).exists() or Path(output_path).stat().st_size < 30_000:
                 rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
@@ -166,6 +168,7 @@ def _try_licensed_stock_video_fallback(
     used: Set[str],
     job_id: int,
     eff_scene_id: int,
+    aspect_ratio: str = "9:16",
 ) -> Optional[Dict[str, Any]]:
     """Tầng 2: Fallback tự động sang Video HD dọc bản quyền Pexels / Pixabay / Wikimedia Commons."""
     from app.services.media.media_history import extract_media_identity, is_media_already_used, record_used_media

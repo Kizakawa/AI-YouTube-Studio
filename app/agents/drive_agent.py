@@ -18,11 +18,13 @@ class DriveAgent:
     - Tiết kiệm dung lượng ổ cứng local sau khi tải lên thành công
     """
 
-    DEFAULT_ACCOUNT = "account_2"
+    DEFAULT_ACCOUNT = "acccount4"
+    FALLBACK_ACCOUNTS = ["acccount4", "account_2", "account_3", "account_1", "accout3", "acount_2"]
 
     def __init__(self, account_name: Optional[str] = None, token_path: Optional[str] = None):
         self.account_name = account_name or self.DEFAULT_ACCOUNT
         self.token_path = token_path or f"credentials/accounts/{self.account_name}/drive_token.json"
+        self._tried_accounts = {self.account_name}
         self.service = None
         self._init_service()
 
@@ -49,20 +51,18 @@ class DriveAgent:
                 except Exception as ex_test:
                     self.service = None
                     if "invalid_grant" in str(ex_test):
-                        if self.account_name == "account_1":
-                            logger.warning(f"⚠️ Token '{self.account_name}' bị invalid_grant, tự động chuyển sang 'account_2'...")
-                            self.account_name = "account_2"
-                            self.token_path = "credentials/accounts/account_2/drive_token.json"
-                            self._init_service()
-                            return
-                        elif self.account_name == "account_2":
-                            logger.warning(f"⚠️ Token '{self.account_name}' bị invalid_grant, tự động chuyển sang 'account_3'...")
-                            self.account_name = "account_3"
-                            self.token_path = "credentials/accounts/account_3/drive_token.json"
-                            self._init_service()
-                            return
-                        else:
-                            logger.error(f"⚠️ Tất cả token Google Drive đều đã hết hạn hoặc bị thu hồi (invalid_grant). Hãy vào Web Dashboard -> Tab 'Kênh & Tài Khoản' -> Bấm '☁️ Kết Nối Google Drive' để cấp lại quyền.")
+                        for next_acc in self.FALLBACK_ACCOUNTS:
+                            if next_acc in self._tried_accounts:
+                                continue
+                            cand_path = f"credentials/accounts/{next_acc}/drive_token.json"
+                            if os.path.exists(cand_path):
+                                logger.warning(f"⚠️ Token '{self.account_name}' bị invalid_grant, tự động chuyển sang '{next_acc}'...")
+                                self.account_name = next_acc
+                                self.token_path = cand_path
+                                self._tried_accounts.add(next_acc)
+                                self._init_service()
+                                return
+                        logger.error(f"⚠️ Tất cả token Google Drive đều đã hết hạn hoặc bị thu hồi (invalid_grant). Hãy vào Web Dashboard -> Tab 'Kênh & Tài Khoản' -> Bấm '☁️ Kết Nối Google Drive' để cấp lại quyền.")
                     else:
                         raise ex_test
             else:
