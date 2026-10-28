@@ -179,13 +179,19 @@ def _try_licensed_stock_video_fallback(
         try:
             from app.graph.evaluators.visual_critic import VisualCritic
             media_agent = MediaAgent()
+            scene_core_2w = _clean_yt_search_phrase(search_query or (search_phrases[0] if search_phrases else ""), max_words=2)
             scene_subj_hint = (
-                f"{search_phrases[0]} (hoặc {subject_entity or topic})"
+                f"{search_phrases[0]} (hoặc {scene_core_2w or subject_entity})"
                 if (effective_scope == "SCENE_SPECIFIC" and search_phrases)
                 else (subject_entity or topic)
             )
             stock_query_candidates: List[str] = []
-            for cand_sq in [*search_phrases, overall_script_query, subject_entity]:
+            raw_cand_sources = (
+                [search_query, scene_core_2w, *search_phrases]
+                if effective_scope == "SCENE_SPECIFIC"
+                else [*search_phrases, overall_script_query, subject_entity]
+            )
+            for cand_sq in raw_cand_sources:
                 c_clean = (cand_sq or "").strip()
                 if c_clean and c_clean.lower() not in [x.lower() for x in stock_query_candidates]:
                     stock_query_candidates.append(c_clean)
@@ -198,7 +204,7 @@ def _try_licensed_stock_video_fallback(
                 "core_visual_entity": scene_subj_hint,
                 "topic": topic or overall_script_query,
                 "expected_visual_content": f"{scene_subj_hint} — {narration}",
-                "search_queries": stock_query_candidates[:4],
+                "search_queries": stock_query_candidates[:3],
                 "is_hook_scene": ((clip_role or "").upper() == "HOOK"),
             }
             effective_narr = (
@@ -207,33 +213,43 @@ def _try_licensed_stock_video_fallback(
                 else narration
             )
             # Thử tối đa 3 truy vấn từ cụ thể -> rút gọn danh từ gốc (2 từ -> 1 từ) + bổ sung nguồn thứ 5 Wikimedia Commons HD Video
-            for idx_sq, st_q in enumerate(stock_query_candidates[:3]):
+            for idx_sq, st_q in enumerate(stock_query_candidates[:2]):
                 va_iter = dict(va_vid)
-                if idx_sq > 0:
-                    va_iter["search_queries"] = [st_q]
-                best_stock_v = media_agent.search_best_video_clip(
-                    query=st_q,
-                    used_urls=used,
-                    visual_analysis=va_iter,
-                    narration=effective_narr,
-                    topic=topic or overall_script_query,
-                )
-                if (not best_stock_v or not best_stock_v.get("url")) and hasattr(media_agent, "_stock_fetcher"):
-                    try:
-                        wiki_vids = media_agent._stock_fetcher.search_wikimedia_videos(st_q, per_page=6) or []
-                        for wv in wiki_vids:
-                            w_url = wv.get("url")
-                            if w_url and not is_media_already_used(w_url, used):
-                                best_stock_v = wv
-                                break
-                    except Exception:
-                        pass
+                q_2w = _clean_yt_search_phrase(st_q, max_words=2)
+                va_iter["search_queries"] = list(dict.fromkeys([q for q in (st_q, q_2w) if q]))
+                best_stock_v = None
+                for _claim_retry in range(2):
+                    best_stock_v = media_agent.search_best_video_clip(
+                        query=st_q,
+                        used_urls=used,
+                        visual_analysis=va_iter,
+                        narration=effective_narr,
+                        topic=topic or overall_script_query,
+                    )
+                    if (not best_stock_v or not best_stock_v.get("url")) and hasattr(media_agent, "_stock_fetcher"):
+                        try:
+                            wiki_vids = media_agent._stock_fetcher.search_wikimedia_videos(st_q, per_page=6) or []
+                            for wv in wiki_vids:
+                                w_url = wv.get("url")
+                                if w_url and not is_media_already_used(w_url, used):
+                                    best_stock_v = wv
+                                    break
+                        except Exception:
+                            pass
+                    if not best_stock_v or not best_stock_v.get("url"):
+                        break
+                    v_url_try = best_stock_v["url"]
+                    st_title_try = str(best_stock_v.get("title") or "")
+                    if rag.try_claim_in_job_video(job_id=job_id, url=v_url_try, title=st_title_try, scene_id=eff_scene_id):
+                        break
+                    with _yt_url_lock:
+                        used.update(extract_media_identity(v_url_try))
+                        used.add(v_url_try)
+                    best_stock_v = None
                 if not best_stock_v or not best_stock_v.get("url"):
                     continue
                 v_url = best_stock_v["url"]
                 st_title = str(best_stock_v.get("title") or "")
-                if not rag.try_claim_in_job_video(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id):
-                    continue
                 with tempfile.TemporaryDirectory() as tmp_s:
                     raw_stock = str(Path(tmp_s) / "stock_raw.mp4")
                     media_agent.download_file(v_url, raw_stock)

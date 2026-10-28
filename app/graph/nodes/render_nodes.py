@@ -202,10 +202,10 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             logger.info(f"[RenderNode] Đã bảo lưu video thành phẩm an toàn vào: {permanent_output}")
         final_output = permanent_output
 
-    # Tự động chèn YouTube Chapters (0:00 Intro...) vào script_data.description nếu là Long-Form 16:9
-    # và tự động render Thumbnail 2–3 từ Two-Tone chuẩn @FossilVideos / @IFinity_What
+    # Tự động chèn YouTube Chapters (0:00 Intro...) vào script_data.description cho cả Long-Form 16:9 và Shorts nhiều vòng/Gauntlet
+    # và tự động render Thumbnail 2–3 từ Two-Tone chuẩn @FossilVideos / @IFinity_What từ clip gốc sạch (trước khi burn phụ đề .ass)
     updated_script_data = dict(state.get("script_data") or {})
-    if is_long_form and enriched_scenes:
+    if enriched_scenes and len(enriched_scenes) >= 3:
         try:
             from app.agents.publisher.seo_tags_mixin import build_youtube_chapters_from_scenes
             chap_str = build_youtube_chapters_from_scenes(
@@ -225,12 +225,50 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     if Path(final_output).exists():
         try:
             from app.services.thumbnail_service import ThumbnailService
+            from PIL import Image, ImageFilter, ImageStat
+            import subprocess
+            import tempfile
+            clean_thumb_source = final_output
+            best_src_score = -1.0
+            with tempfile.TemporaryDirectory() as td_th:
+                for idx_th, sc_th in enumerate(enriched_scenes):
+                    mp_th = str(
+                        (sc_th.get("media_path") if isinstance(sc_th, dict) else getattr(sc_th, "media_path", ""))
+                        or ""
+                    )
+                    if not (mp_th and Path(mp_th).exists() and mp_th.lower().endswith((".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png"))):
+                        continue
+                    try:
+                        f_probe = str(Path(td_th) / f"th_p_{idx_th}.jpg")
+                        if mp_th.lower().endswith((".mp4", ".mov", ".webm")):
+                            subprocess.run(
+                                ["ffmpeg", "-v", "error", "-y", "-ss", "0.8", "-i", mp_th, "-frames:v", "1", f_probe],
+                                capture_output=True, timeout=6, check=False,
+                            )
+                        else:
+                            f_probe = mp_th
+                        if Path(f_probe).exists() and Path(f_probe).stat().st_size > 1000:
+                            with Image.open(f_probe) as im_p:
+                                g_p = im_p.convert("L").resize((180, 320))
+                                e_p = g_p.filter(ImageFilter.FIND_EDGES)
+                                top_e = float(ImageStat.Stat(e_p.crop((0, 0, 180, 56))).mean[0])
+                                bot_e = float(ImageStat.Stat(e_p.crop((0, 264, 180, 320))).mean[0])
+                                mid_e = float(ImageStat.Stat(e_p.crop((0, 70, 180, 250))).mean[0])
+                                # Ưu tiên clip tràn viền 9:16 thật (top_e & bot_e sắc nét, không bị dải mờ boxblur)
+                                is_full_bleed = 1.0 if (top_e >= 6.5 and bot_e >= 6.5) else 0.35
+                                sc_val = mid_e * is_full_bleed
+                                if sc_val > best_src_score:
+                                    best_src_score = sc_val
+                                    clean_thumb_source = mp_th
+                    except Exception:
+                        if clean_thumb_source == final_output:
+                            clean_thumb_source = mp_th
             th_srv = ThumbnailService(output_dir=str(outputs_dir))
             th_res = th_srv.generate_viral_thumbnail(
                 job_id=job_id,
                 topic=str(state.get("topic") or title),
                 viral_title=title,
-                video_path=final_output,
+                video_path=clean_thumb_source,
                 niche_id=str(niche),
                 custom_text=str(updated_script_data.get("thumbnail_text") or ""),
             )

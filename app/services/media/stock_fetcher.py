@@ -203,7 +203,12 @@ class StockFetcher:
                 results = []
                 for h in hits:
                     vids = h.get("videos", {})
-                    v_info = vids.get("large") or vids.get("medium") or vids.get("small")
+                    med_v = vids.get("medium") or {}
+                    v_info = (
+                        med_v
+                        if int(med_v.get("height") or 0) >= 720 and med_v.get("url")
+                        else (vids.get("large") or med_v or vids.get("small"))
+                    )
                     if v_info and v_info.get("url"):
                         thumb = v_info.get("thumbnail") or (vids.get("medium") or {}).get("thumbnail") or (
                             f"https://i.vimeocdn.com/video/{h.get('picture_id', '')}_640x360.jpg" if h.get("picture_id") else ""
@@ -760,18 +765,19 @@ class StockFetcher:
             for pq_fallback in ["close up eyes dark lighting", "man intense stare", "silhouette person walking night", "dramatic portrait lighting"]:
                 _push(pq_fallback)
         _push(clean_q)
+        if len(words) >= 2:
+            _push(" ".join(words[:2]))
         if visual_analysis and visual_analysis.get("search_queries"):
             for sq in visual_analysis["search_queries"]:
                 _push(sq)
-        elif not has_preplanned_queries:
-            for b in ladder["broadened"]:
-                _push(b)
-            if len(words) >= 2:
-                _push(" ".join(words[-2:]))
-            if not ladder["broadened"] and not establishing and not _establishing_pass:
-                for w in words:
-                    if not is_vague_single_word(w) and len(w) >= 4:
-                        _push(w)
+        for b in ladder["broadened"]:
+            _push(b)
+        if len(words) >= 2:
+            _push(" ".join(words[-2:]))
+        if not has_preplanned_queries and not ladder["broadened"] and not establishing and not _establishing_pass:
+            for w in words:
+                if not is_vague_single_word(w) and len(w) >= 4:
+                    _push(w)
         _push(query)
 
         def _try_establishing_pass(reason: str) -> Optional[Dict]:
@@ -917,10 +923,11 @@ class StockFetcher:
         used_urls: Optional[set] = None,
         topic: str = "",
         narration: str = "",
+        prefer_pixabay: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """
-        Tìm kiếm nhanh Video B-Roll chuẩn ngang 16:9 (1920x1080 / 1280x720, width > height) trên Pexels & Pixabay
-        dành riêng cho Video Dài (Long-Form 16:9 Documentary).
+        Tìm kiếm nhanh Video B-Roll chuẩn ngang 16:9 (1920x1080 / 1280x720, width > height) đa nguồn
+        (Pexels 16:9 HD + Pixabay 16:9 HD + Wikimedia Commons 16:9) dành riêng cho Video Dài (Long-Form 16:9 Documentary).
         """
         from app.services.media.media_history import (
             extract_media_identity,
@@ -942,7 +949,33 @@ class StockFetcher:
             if q_short and q_short not in search_q_list:
                 search_q_list.append(q_short)
 
-        for q_try in search_q_list[:6]:
+        def _try_pixabay_for_q(q_try: str) -> Optional[Dict[str, Any]]:
+            px_vids = self.search_pixabay_videos(q_try, per_page=8)
+            for pv in (px_vids or []):
+                p_url = str(pv.get("url") or "")
+                pw = int(pv.get("width") or 0)
+                ph = int(pv.get("height") or 0)
+                p_title = str(pv.get("title") or "")
+                if is_incongruent_stock_image(p_title, topic=f"{topic} {q_try}".strip(), narration=narration):
+                    continue
+                if p_url and pw > ph and ph >= 720 and not is_media_already_used(p_url, used):
+                    record_used_media(p_url, query=q_try, source="pixabay_16x9_video")
+                    ids = extract_media_identity(p_url)
+                    if used_urls is not None:
+                        used_urls.update(ids)
+                        used_urls.add(p_url)
+                    return {
+                        "url": p_url,
+                        "title": pv.get("title", f"Pixabay 16:9 HD: {q_try}"),
+                        "width": pw,
+                        "height": ph,
+                        "duration": float(pv.get("duration") or 10.0),
+                        "media_type": "video",
+                        "source": "pixabay_16x9_video",
+                    }
+            return None
+
+        def _try_pexels_for_q(q_try: str) -> Optional[Dict[str, Any]]:
             vids = self.search_videos(q_try, per_page=10, orientation="landscape")
             for v in (vids or []):
                 v_desc = str(v.get("url") or v.get("title") or "")
@@ -991,25 +1024,23 @@ class StockFetcher:
                             "media_type": "video",
                             "source": "pexels_16x9_video",
                         }
+            return None
 
-            px_vids = self.search_pixabay_videos(q_try, per_page=6)
-            for pv in (px_vids or []):
-                p_url = str(pv.get("url") or "")
-                pw = int(pv.get("width") or 0)
-                ph = int(pv.get("height") or 0)
-                if p_url and pw > ph and ph >= 720 and not is_media_already_used(p_url, used):
-                    record_used_media(p_url, query=q_try, source="pixabay_16x9_video")
-                    ids = extract_media_identity(p_url)
-                    if used_urls is not None:
-                        used_urls.update(ids)
-                        used_urls.add(p_url)
-                    return {
-                        "url": p_url,
-                        "title": pv.get("title", f"Pixabay 16:9 HD: {q_try}"),
-                        "width": pw,
-                        "height": ph,
-                        "duration": float(pv.get("duration") or 10.0),
-                        "media_type": "video",
-                        "source": "pixabay_16x9_video",
-                    }
+        for idx_q, q_try in enumerate(search_q_list[:6]):
+            use_px_first = prefer_pixabay if idx_q == 0 else ((idx_q % 2 == 1) ^ prefer_pixabay)
+            if use_px_first:
+                res_px = _try_pixabay_for_q(q_try)
+                if res_px:
+                    return res_px
+                res_pe = _try_pexels_for_q(q_try)
+                if res_pe:
+                    return res_pe
+            else:
+                res_pe = _try_pexels_for_q(q_try)
+                if res_pe:
+                    return res_pe
+                res_px = _try_pixabay_for_q(q_try)
+                if res_px:
+                    return res_px
+
         return None

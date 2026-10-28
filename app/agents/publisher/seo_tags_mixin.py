@@ -548,9 +548,11 @@ def build_youtube_chapters_from_scenes(
             dur_s = max(float(_get_field(sc, "estimated_seconds") or 4.5), 2.0)
         cum_sec += dur_s
 
-    # Chỉ bật Chapters khi tổng thời lượng >= 50s (hoặc kịch bản có >= 10 cảnh)
-    if cum_sec < 50.0 and len(scenes) < 10:
+    # Hỗ trợ Chapters cho cả Long-Form (>= 50s) và Shorts nhiều vòng / Gauntlet (>= 26s, >= 4 cảnh)
+    if cum_sec < 26.0 and len(scenes) < 4:
         return ""
+    min_gap_sec = 11.0 if cum_sec >= 55.0 else 7.5
+    min_tail_sec = 8.0 if cum_sec >= 55.0 else 4.0
 
     is_pt = str(language or "").strip().lower().startswith("pt")
     is_vi = str(language or "").strip().lower().startswith("vi")
@@ -570,11 +572,16 @@ def build_youtube_chapters_from_scenes(
         "to", "from", "up", "down", "in", "out", "on", "off", "over", "under", "is", "are", "was", "were",
         "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "shall", "should",
         "can", "could", "may", "might", "must", "your", "their", "our", "his", "her", "its", "my",
+        "this", "these", "those", "massive", "giant", "huge", "extreme", "ultimate", "deadly", "raw",
+        "true", "exact", "single", "pure", "total", "complete", "easily", "instantly", "literally", "nearly",
     }
 
     def _strip_dangling_words(words_list: List[str]) -> List[str]:
         cleaned = list(words_list)
-        while len(cleaned) > 2 and cleaned[-1].lower().strip(".,!?:;—–-'\"") in _TRAILING_STOP_WORDS:
+        while len(cleaned) > 2 and (
+            cleaned[-1].lower().strip(".,!?:;—–-'\"") in _TRAILING_STOP_WORDS
+            or cleaned[-1].lower().strip(".,!?:;—–-'\"").endswith("ly")
+        ):
             cleaned.pop()
         return cleaned
 
@@ -589,20 +596,28 @@ def build_youtube_chapters_from_scenes(
                     if len(clean_b) >= 4:
                         title_b = clean_b.title()
                         return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else f"Chapter {chap_num}: {title_b}")
+                elif field_name == "overlay_badge" and 4 <= len(raw_val) <= 32:
+                    title_b = raw_val.strip(" :—–-|").title()
+                    return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else f"Chapter {chap_num}: {title_b}")
+
+        vk = str(_get_field(sc, "visual_keyword") or "").strip()
+        if vk and vk.lower() != "null":
+            vk_words = [
+                w for w in vk.split()
+                if w.lower() not in {"4k", "hd", "footage", "video", "clip", "cinematic", "realistic", "close", "up", "shot"}
+            ]
+            vk_clean = " ".join(_strip_dangling_words(vk_words[:4])).title()
+            if len(vk_clean) >= 4:
+                return f"{intro_prefix} — {vk_clean}" if is_first else (f"Capítulo {chap_num}: {vk_clean}" if is_pt else f"Chapter {chap_num}: {vk_clean}")
 
         narration = str(_get_field(sc, "narration") or "").strip()
         if narration:
             first_clause = re.split(r"[.!?;:—–\-]", narration)[0].strip()
             words = [w for w in re.findall(r"[\w'’-]+", first_clause) if w]
-            words = _strip_dangling_words(words[:6])
+            words = _strip_dangling_words(words[:7])
             if words:
                 snippet = " ".join(words).title()
                 return f"{intro_prefix} — {snippet}" if is_first else (f"Capítulo {chap_num}: {snippet}" if is_pt else f"Chapter {chap_num}: {snippet}")
-
-        vk = str(_get_field(sc, "visual_keyword") or "").strip()
-        if vk:
-            vk_clean = " ".join(_strip_dangling_words(vk.split()[:4])).title()
-            return f"{intro_prefix} — {vk_clean}" if is_first else (f"Capítulo {chap_num}: {vk_clean}" if is_pt else f"Chapter {chap_num}: {vk_clean}")
 
         return intro_prefix if is_first else (f"Capítulo {chap_num}" if is_pt else f"Chapter {chap_num}")
 
@@ -616,14 +631,15 @@ def build_youtube_chapters_from_scenes(
         if b_raw and b_raw.lower() != "null" and any(k in b_raw.lower() for k in ("chapter", "capítulo", "round", "phase", "twist", "boss", "record")):
             badge_candidates.append(idx)
 
-    if len(badge_candidates) >= 3:
+    if len(badge_candidates) >= 2:
         for b_idx in badge_candidates:
             st_sec = scene_starts[b_idx][1]
-            if st_sec - last_chap_sec >= 11.0 and (cum_sec - st_sec) >= 8.0:
+            if st_sec - last_chap_sec >= min_gap_sec and (cum_sec - st_sec) >= min_tail_sec:
                 selected_indices.append(b_idx)
                 last_chap_sec = st_sec
 
-    if len(selected_indices) < 4:
+    min_req_chapters = 4 if cum_sec >= 55.0 else 3
+    if len(selected_indices) < min_req_chapters:
         selected_indices = [0]
         last_chap_sec = 0.0
         target_chapters = 10 if len(scenes) >= 32 else (5 if len(scenes) >= 12 else 4)
@@ -631,7 +647,7 @@ def build_youtube_chapters_from_scenes(
         step = max(2, len(scenes) // target_chapters)
         for idx in range(step, len(scenes) - 1, step):
             st_sec = scene_starts[idx][1]
-            if st_sec - last_chap_sec >= 11.0 and (cum_sec - st_sec) >= 8.0:
+            if st_sec - last_chap_sec >= min_gap_sec and (cum_sec - st_sec) >= min_tail_sec:
                 selected_indices.append(idx)
                 last_chap_sec = st_sec
                 if len(selected_indices) >= max_chapters_cap:

@@ -306,13 +306,12 @@ class ThumbnailService:
 
                 for w_idx, w_tok in enumerate(line_words):
                     # Quy tắc Two-Tone chuẩn @FossilVideos / @IFinity_What:
-                    # - Nếu có 1 dòng: từ cuối (hoặc từ chứa số) mang màu Accent, từ đầu màu Trắng.
-                    # - Nếu có >= 2 dòng: dòng cuối (hoặc từ chứa số) mang màu Accent, dòng đầu màu Trắng.
-                    has_digit = any(ch.isdigit() for ch in w_tok)
+                    # - Nếu có 1 dòng (>= 2 từ): từ đầu màu Trắng (#FFFFFF), từ cuối mang màu Accent (#FFD800 / #FF2A2A).
+                    # - Nếu có >= 2 dòng: dòng đầu màu Trắng (#FFFFFF), dòng cuối mang màu Accent.
                     if len(lines) == 1:
-                        is_accent = (w_idx == len(line_words) - 1 and len(line_words) > 1) or has_digit
+                        is_accent = (w_idx == len(line_words) - 1 and len(line_words) > 1)
                     else:
-                        is_accent = (idx == len(lines) - 1) or has_digit
+                        is_accent = (idx == len(lines) - 1)
                     w_fill = accent_color if is_accent else text_color
 
                     # 1. Bóng đổ sâu (Deep Drop Shadow)

@@ -392,7 +392,7 @@ def _resolve_adaptive_search_queries(
     if scope_norm == "SCRIPT_OVERALL":
         ordered = [q for q in dict.fromkeys([q_overall, q_scene, q_fallback]) if q]
     else:
-        ordered = [q for q in dict.fromkeys([q_scene, q_overall, q_fallback]) if q]
+        ordered = [q for q in dict.fromkeys([q_scene, q_fallback, q_overall]) if q]
 
     return scope_norm, ordered
 

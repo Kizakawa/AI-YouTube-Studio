@@ -176,28 +176,45 @@ def _fetch_longform_16x9_broll_clip_sync(
             "rationale": f"16:9 Cached Documentary Clip ({Path(out_path).name})",
         }
 
-    def _try_stock_16x9_landscape() -> Optional[Dict[str, Any]]:
+    slot_in_4 = (int(scene_id) - 1) % 4
+    chapter_num = ((int(scene_id) - 1) // 4) + 1
+
+    def _try_stock_16x9_landscape(prefer_pixabay: bool = False) -> Optional[Dict[str, Any]]:
         try:
             from app.services.media.longform_chapter_pool import extract_longform_scene_with_internal_jumpcut
             q_parts = [p.strip() for p in str(query or "").split("|||") if p.strip()]
             if not q_parts:
                 q_parts = [query or primary_entity or topic]
-            q_parts.extend([
-                "businessman dark office",
-                "tense business meeting office",
-                "brain scan medical screen",
-                "man dark portrait eye contact",
-                "chess board game dark",
-                "hands tapping table nervous",
-            ])
+            narr_clean = clean_scene_search_query(narration or "", max_words=4)
+            if narr_clean and narr_clean not in q_parts:
+                q_parts.append(narr_clean)
+            fallback_facets = [
+                "tense executive meeting",
+                "close up human eye",
+                "chess strategy game",
+                "city night traffic",
+                "neural network brain",
+                "man walking rain night",
+                "hourglass sand time",
+                "silhouette window skyline",
+                "hands typing dark room",
+                "ocean waves dark storm",
+                "clock gears macro",
+                "corridor shadow walking",
+            ]
+            rot_idx = (int(scene_id) * 3) % len(fallback_facets)
+            q_parts.extend(fallback_facets[rot_idx : rot_idx + 3] + fallback_facets[:2])
             best_vid = media_agent._stock.search_landscape_16x9_video_clip(
                 queries=q_parts,
                 used_urls=used_urls,
                 topic=topic,
                 narration=narration,
+                prefer_pixabay=prefer_pixabay,
             )
             if best_vid and best_vid.get("url"):
                 cand_u = str(best_vid["url"])
+                src_tag = str(best_vid.get("source") or "pexels_16x9_video").lower()
+                prod_lbl = "PIXABAY_16X9_LANDSCAPE_HD" if "pixabay" in src_tag else "PEXELS_16X9_LANDSCAPE_HD"
                 raw_stock = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw.mp4")
                 dl_ok = media_agent.download_file(cand_u, raw_stock)
                 if dl_ok and Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 40_000:
@@ -219,59 +236,71 @@ def _fetch_longform_16x9_broll_clip_sync(
                                 _ensure_hook_clip_sharpness_and_luma(out_path, min_sharpness=12.3)
                             except Exception:
                                 pass
-                        logger.info(f"Scene {scene_id}: 🎥 [Long-Form 16:9 Stock HD] Đã tải & cắt Landscape B-Roll -> {Path(out_path).name}")
+                        logger.info(f"Scene {scene_id}: 🎥 [Long-Form {prod_lbl}] Đã tải & cắt Landscape B-Roll -> {Path(out_path).name}")
                         return {
                             "media_path": out_path,
                             "media_type": "video",
-                            "production_method": "STOCK_16X9_LANDSCAPE_HD",
+                            "production_method": prod_lbl,
                             "source_url": cand_u,
-                            "rationale": f"Stock 16:9 Landscape HD ({str(best_vid.get('title') or query)[:45]})",
+                            "rationale": f"{prod_lbl} ({str(best_vid.get('title') or query)[:45]})",
                         }
                 Path(raw_stock).unlink(missing_ok=True)
         except Exception as e_stock_16x9:
             logger.debug(f"Scene {scene_id}: Long-form Stock 16:9 lookup skip: {e_stock_16x9}")
         return None
 
-    # Ưu tiên số 1: Bộ máy Chapter-Pool & Multi-Segment Local Cut (YouTube 16:9 HD Documentary -> Bilibili 16:9 Safe-Crop)
-    # Tải 1 video nguồn 16:9 cho mỗi Cụm Chương (3 cảnh/Chương) rồi cắt trực tiếp trên ổ cứng kèm Internal Jump-Cut!
-    try:
-        from app.services.media.longform_chapter_pool import fetch_or_slice_longform_chapter_clip_sync
-        pool_res = fetch_or_slice_longform_chapter_clip_sync(
-            job_id=job_id,
-            scene_id=scene_id,
-            query=query,
-            primary_entity=primary_entity,
-            topic=topic,
-            narration=narration,
-            target_duration_sec=target_duration_sec,
-            media_dir=media_dir,
-            used_bvids=used_bvids,
-            used_urls=used_urls,
-            bvid_lock=bvid_lock,
-            media_agent=media_agent,
-            is_scifi=is_scifi,
-            scenes_per_chapter=4,
-        )
-        if pool_res and pool_res.get("media_path"):
-            if output_override_path and str(Path(pool_res["media_path"]).resolve()) != str(Path(output_override_path).resolve()):
-                import shutil as _sh_cp
-                _sh_cp.copy2(pool_res["media_path"], output_override_path)
-                pool_res["media_path"] = output_override_path
-            if scene_id == 1 and Path(pool_res["media_path"]).exists():
-                try:
-                    from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-                    _ensure_hook_clip_sharpness_and_luma(pool_res["media_path"], min_sharpness=12.3)
-                except Exception:
-                    pass
-            return pool_res
-    except Exception as e_pool_16x9:
-        logger.debug(f"Scene {scene_id}: Long-form ChapterPool 16:9 skip: {e_pool_16x9}")
+    def _try_chapter_pool_16x9() -> Optional[Dict[str, Any]]:
+        try:
+            from app.services.media.longform_chapter_pool import fetch_or_slice_longform_chapter_clip_sync
+            pool_res = fetch_or_slice_longform_chapter_clip_sync(
+                job_id=job_id,
+                scene_id=scene_id,
+                query=query,
+                primary_entity=primary_entity,
+                topic=topic,
+                narration=narration,
+                target_duration_sec=target_duration_sec,
+                media_dir=media_dir,
+                used_bvids=used_bvids,
+                used_urls=used_urls,
+                bvid_lock=bvid_lock,
+                media_agent=media_agent,
+                is_scifi=is_scifi,
+                scenes_per_chapter=2,
+            )
+            if pool_res and pool_res.get("media_path"):
+                if output_override_path and str(Path(pool_res["media_path"]).resolve()) != str(Path(output_override_path).resolve()):
+                    import shutil as _sh_cp
+                    _sh_cp.copy2(pool_res["media_path"], output_override_path)
+                    pool_res["media_path"] = output_override_path
+                if scene_id == 1 and Path(pool_res["media_path"]).exists():
+                    try:
+                        from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                        _ensure_hook_clip_sharpness_and_luma(pool_res["media_path"], min_sharpness=12.3)
+                    except Exception:
+                        pass
+                return pool_res
+        except Exception as e_pool_16x9:
+            logger.debug(f"Scene {scene_id}: Long-form ChapterPool 16:9 skip: {e_pool_16x9}")
+        return None
 
-    stock_fb_res = _try_stock_16x9_landscape()
-    if stock_fb_res:
-        return stock_fb_res
+    # Điều phối Đa Nguồn (Multi-Source Interleaving) trong mỗi Chương 4 cảnh:
+    # - Slot 0 (Cảnh 1, 5, 9...): Ưu tiên YouTube 16:9 Documentary / Bilibili 16:9 Master -> dự phòng Pexels/Pixabay 16:9
+    # - Slot 1 (Cảnh 2, 6, 10...): Ưu tiên Pexels 16:9 / Pixabay 16:9 HD -> dự phòng YouTube/Bilibili Chapter Pool
+    # - Slot 3 (Cảnh 4, 8, 12...): Đan xen Pixabay 16:9 HD (chương lẻ) & YouTube 16:9 Master độc lập (chương chẵn)
+    prefer_stock_first = (slot_in_4 == 1) or (slot_in_4 == 3 and chapter_num % 2 == 1)
+    prefer_px = (slot_in_4 == 3) or (chapter_num % 2 == 0)
 
-    return None
+    if prefer_stock_first:
+        st_res = _try_stock_16x9_landscape(prefer_pixabay=prefer_px)
+        if st_res:
+            return st_res
+        return _try_chapter_pool_16x9()
+    else:
+        cp_res = _try_chapter_pool_16x9()
+        if cp_res:
+            return cp_res
+        return _try_stock_16x9_landscape(prefer_pixabay=prefer_px)
 
 
 async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
@@ -2360,7 +2389,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
             # Ưu tiên tuyệt đối các ứng viên hook_candidates/*.mp4 chưa dùng hoặc *_fullpeak.mp4 dài (> 7s)
             # trước khi dùng clip cảnh khác (để tránh trùng dHash intra-video!)
             clean_donors: List[str] = []
-            for cand_hp in sorted((work_dir / "hook_candidates").glob("*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
+            for cand_hp in sorted((work_dir / "hook_candidates").glob("hook_peak_clean_*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
                 if cand_hp.exists() and cand_hp.stat().st_size > 25_000:
                     if str(cand_hp.resolve()) not in used_active_paths:
                         clean_donors.append(str(cand_hp))
@@ -2583,6 +2612,17 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         return True, "clean_image"
 
+    refine_visual_plan = state.get("visual_plan") or {}
+    refine_strategy_map = {
+        int(s.get("scene_id") or 0): s
+        for s in (refine_visual_plan.get("scenes_strategy") or [])
+        if isinstance(s, dict) and s.get("scene_id")
+    }
+    scene_eval_issues_map: Dict[int, List[str]] = {}
+    for sc_sc in (media_eval.get("scene_scores") or []):
+        if isinstance(sc_sc, dict) and sc_sc.get("scene_id"):
+            scene_eval_issues_map[int(sc_sc["scene_id"])] = [str(x) for x in (sc_sc.get("issues") or [])]
+
     async def _refine_single_item(item: Dict[str, Any]) -> None:
         if item.get("scene_id") not in failed_ids:
             return
@@ -2590,21 +2630,30 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         kw = item.get("visual_keyword", "")
         narr = item.get("narration", "")
         vp = item.get("visual_prompt", None)
+        sc_strat_ref = refine_strategy_map.get(scene_id) or {}
+        sc_subj_raw = sc_strat_ref.get("creature_name") or sc_strat_ref.get("subject_entity") or ""
         clean_kw_q = clean_search_query_from_prompt(kw or vp or "", narration=narr, topic=state.get("topic", ""), max_words=6) or kw
         overall_refine_q = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4) or clean_kw_q
-        subj_refine = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2) or overall_refine_q
-        if subj_refine and subj_refine.lower().split()[0] not in (clean_kw_q or "").lower():
+        subj_refine = clean_scene_search_query(sc_subj_raw or primary_entity or state.get("topic", ""), max_words=2) or overall_refine_q
+        if (
+            subj_refine
+            and len((clean_kw_q or "").split()) < 2
+            and subj_refine.lower().split()[0] not in (clean_kw_q or "").lower()
+        ):
             clean_kw_q = f"{subj_refine} {clean_kw_q}".strip()
         is_mandatory_vid = scene_id in mandatory_video_refine_sids
         is_video = True
         replaced = False
         sc_dur_sec = _scene_audio_duration(work_dir, scene_id)
+        sc_issues_list = scene_eval_issues_map.get(scene_id) or []
+        has_semantic_vision_defect = any("Gemini Vision ContactSheet" in iss or "trùng lặp" in iss.lower() for iss in sc_issues_list)
 
-        # 0. Bảo vệ Video Hook thật ở Cảnh 1 & Cảnh 2: thử nâng nét/làm sạch tại chỗ trước khi tải lại
+        # 0. Bảo vệ Video Hook thật ở Cảnh 1 & Cảnh 2 (CHỈ khi không bị Gemini Vision ContactSheet bắt lỗi AI dị dạng/chữ rác/trùng lặp):
         existing_mp = str(item.get("media_path") or "")
         existing_pm = str(item.get("production_method") or "").upper()
         if (
             scene_id in (1, 2)
+            and not has_semantic_vision_defect
             and existing_mp
             and Path(existing_mp).exists()
             and existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
@@ -2757,7 +2806,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     rag_ref = get_video_memory_rag()
                     out_slice_v = str(media_dir / f"scene_{scene_id:03d}_refined_peak_slice.mp4")
                     cand_vids = sorted(
-                        (work_dir / "hook_candidates").glob("yt_hook_cand_*.mp4"),
+                        (work_dir / "hook_candidates").glob("hook_peak_clean_*.mp4"),
                         key=lambda p: p.stat().st_size,
                         reverse=True,
                     )
@@ -2935,9 +2984,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     and int(m.get("scene_id") or 0) not in failed_ids
                     and Path(str(m.get("media_path"))).exists()
                 }
-                # Ưu tiên số 1: Các ứng viên video độc lập chưa dùng trong hook_candidates/ hoặc *_fullpeak.mp4
+                # Ưu tiên số 1: Các ứng viên video độc lập ĐÃ QUA KIỂM DUYỆT VISION trong hook_candidates/hook_peak_clean_*.mp4 hoặc *_fullpeak.mp4
                 if (work_dir / "hook_candidates").exists():
-                    for cand_hp in sorted((work_dir / "hook_candidates").glob("*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
+                    for cand_hp in sorted((work_dir / "hook_candidates").glob("hook_peak_clean_*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
                         if cand_hp.exists() and cand_hp.stat().st_size > 25_000 and str(cand_hp.resolve()) not in active_used_paths:
                             clean_video_donors.append(str(cand_hp))
                 for fp_cand in sorted(media_dir.glob("*_fullpeak.mp4"), key=lambda p: p.stat().st_size, reverse=True):

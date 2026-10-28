@@ -343,7 +343,10 @@ def _ensure_hook_clip_sharpness_and_luma(
                 scores.append(float(VisualCritic._measure_sharpness(f_jpg)))
         if not scores:
             return False, 0.0
-        eff_sharp = max(scores) if min(scores) >= 8.5 else min(scores)
+        sorted_sc = sorted(scores, reverse=True)
+        # Lấy trung bình các khung hình nét nhất (bỏ qua 1 frame có thể rơi đúng nhịp chuyển cảnh/motion blur nhanh)
+        top_k = sorted_sc[: max(1, len(sorted_sc) - 1)] if min(sorted_sc) >= 6.0 else sorted_sc
+        eff_sharp = sum(top_k) / len(top_k) if min(sorted_sc) >= 6.0 else min(sorted_sc)
         return eff_sharp >= min_sharpness, round(eff_sharp, 2)
 
     try:
@@ -352,43 +355,44 @@ def _ensure_hook_clip_sharpness_and_luma(
             return True, sharp_init
 
         cur_best_sharp = sharp_init
-        # Tuyệt đối KHÔNG áp dụng unsharp quá mạnh (13:13:1.95) hay hạ độ phân giải (scale=iw/6) + bơm hạt noise
-        # vì sẽ làm bệt da mặt, nổ hạt (digital grain) và tạo viền trắng giả (halo) trên các cảnh quay cận mặt / nền tối!
-        # Chỉ áp dụng 1 lớp làm nét vi mô chuẩn Cinema Mastering (unsharp=5:5:0.55) nếu clip thực sự hơi mềm (< min_sharpness).
-        tmp_enh = str(p_clip.with_name(f"{p_clip.stem}_sharp_enh_clean.mp4"))
-        vf_enhance = (
-            "eq=brightness=0.02:contrast=1.06:saturation=1.04,"
-            "unsharp=5:5:0.55:5:5:0.0"
-        )
-        subprocess.run(
+        # Chỉ áp dụng làm nét vi mô chuẩn Cinema Mastering nếu clip hơi mềm (< min_sharpness).
+        for pass_idx, vf_enhance in enumerate(
             [
-                "ffmpeg", "-v", "error", "-y",
-                "-i", str(p_clip),
-                "-vf", vf_enhance,
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
-                "-pix_fmt", "yuv420p", "-color_range", "tv",
-                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-                "-c:a", "copy",
-                tmp_enh,
+                "eq=brightness=0.02:contrast=1.06:saturation=1.04,unsharp=5:5:0.65:3:3:0.25",
+                "eq=brightness=0.02:contrast=1.08:saturation=1.05,unsharp=5:5:0.95:3:3:0.45",
             ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=40,
-            check=False,
-        )
-        if Path(tmp_enh).exists() and Path(tmp_enh).stat().st_size > 8_000:
-            passed_enh, sharp_enh = _probe_clip_sharpness(tmp_enh)
-            if sharp_enh > cur_best_sharp:
-                shutil.move(tmp_enh, str(p_clip))
-                logger.info(
-                    f"✨ [HookSharpnessGate Clean-Mastering] Đã tinh chỉnh độ nét tự nhiên cho Hook '{p_clip.name}': "
-                    f"{cur_best_sharp:.2f} -> {sharp_enh:.2f} (yêu cầu >= {min_sharpness:.1f})"
-                )
-                cur_best_sharp = sharp_enh
-                if passed_enh:
-                    return True, cur_best_sharp
-            else:
-                Path(tmp_enh).unlink(missing_ok=True)
+            start=1,
+        ):
+            tmp_enh = str(p_clip.with_name(f"{p_clip.stem}_sharp_enh_p{pass_idx}.mp4"))
+            subprocess.run(
+                [
+                    "ffmpeg", "-v", "error", "-y",
+                    "-i", str(p_clip),
+                    "-vf", vf_enhance,
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
+                    "-pix_fmt", "yuv420p", "-color_range", "tv",
+                    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+                    "-c:a", "copy",
+                    tmp_enh,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=40,
+                check=False,
+            )
+            if Path(tmp_enh).exists() and Path(tmp_enh).stat().st_size > 8_000:
+                passed_enh, sharp_enh = _probe_clip_sharpness(tmp_enh)
+                if sharp_enh > cur_best_sharp:
+                    shutil.move(tmp_enh, str(p_clip))
+                    logger.info(
+                        f"✨ [HookSharpnessGate Clean-Mastering P{pass_idx}] Đã tinh chỉnh độ nét tự nhiên cho Hook '{p_clip.name}': "
+                        f"{cur_best_sharp:.2f} -> {sharp_enh:.2f} (yêu cầu >= {min_sharpness:.1f})"
+                    )
+                    cur_best_sharp = sharp_enh
+                    if passed_enh:
+                        return True, cur_best_sharp
+                else:
+                    Path(tmp_enh).unlink(missing_ok=True)
         return cur_best_sharp >= min_sharpness, cur_best_sharp
     except Exception as e_sh_gate:
         logger.debug(f"[HookSharpnessGate] Lỗi kiểm tra/nâng độ nét '{clip_path}': {e_sh_gate}")

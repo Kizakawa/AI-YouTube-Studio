@@ -76,8 +76,8 @@ class VisualCritic:
                         tile = edges.crop((tx, ty, tx + 32, ty + 32))
                         tile_means.append(float(ImageStat.Stat(tile).mean[0]))
                 tile_means.sort(reverse=True)
-                top_subject_mean = sum(tile_means[:22]) / 22.0 if tile_means else whole_mean
-                return round(max(whole_mean, top_subject_mean * 0.62), 2)
+                top_subject_mean = sum(tile_means[:14]) / 14.0 if tile_means else whole_mean
+                return round(max(whole_mean, top_subject_mean * 0.72), 2)
         except Exception:
             return 10.0
 
@@ -652,6 +652,9 @@ class VisualCritic:
                 if (
                     "DOODLE_2D" in prod_m_cs
                     or "16X9" in prod_m_cs
+                    or "DUAL_BEAT_FAST_CUT" in prod_m_cs
+                    or "HOOK_CONTINUOUS" in prod_m_cs
+                    or Path(mpath).name.lower().startswith("hook_motion_")
                     or mpath.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4", "_16x9.mp4"))
                 ):
                     continue
@@ -684,7 +687,9 @@ class VisualCritic:
                     draw = ImageDraw.Draw(im_obj)
                     draw.rectangle([(0, 0), (96, 30)], fill=(0, 0, 0))
                     draw.text((8, 7), f"SCENE #{sid}", fill=(255, 230, 0))
-                    thumbs.append((sid, im_obj, narr[:90]))
+                    vis_kw_t = str(item.get("visual_keyword") or "").strip()
+                    label_desc = f"[Target Visual: {vis_kw_t}] {narr[:90]}" if vis_kw_t else narr[:90]
+                    thumbs.append((sid, im_obj, label_desc))
 
         if not thumbs:
             return {}
@@ -704,15 +709,17 @@ class VisualCritic:
         b64_sheet = base64.b64encode(buf.getvalue()).decode("ascii")
 
         prompt = f"""You are a strict Visual Continuity & Quality Director inspecting the final scene frames of a YouTube Short BEFORE rendering.
-Main Subject / Entity of this video: "{primary_entity}"
-Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ...):
+Primary Protagonist / Anchor Entity of this video: "{primary_entity}"
+Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ... along with each scene's [Target Visual] and spoken narration):
 {chr(10).join(scene_lines)}
 
 Inspect every labeled tile carefully and flag ONLY scenes that have severe visual defects:
-1. Magazine / Textbook / Infographic clutter: Frames containing paragraphs of explanatory text, anatomy callout arrows/labels, or big magazine logos (e.g. "HOW IT WORKS").
-2. Completely wrong species or absurdly off-topic environment:
-   - e.g. Showing a striped skunk or leopard when the subject is specifically a Honey Badger.
-   - e.g. Showing a purple DJ audio mixer board, a person lying in a green forest, or a car on a snowy highway when the video is about a deep-sea monster ("{primary_entity}") in the ocean trench.
+1. Magazine / Textbook / Infographic / Burned-in Subtitle or Mirrored Text clutter: Frames containing paragraphs of explanatory text, anatomy callout arrows/labels, big channel logos/banners, or burned-in third-party TikTok/Shorts subtitles/mirrored text at the top or bottom.
+2. Surreal AI Deformities: Frames showing grotesque AI hallucinations (e.g. a human arm/leg grafted onto an animal, gibberish digital meters, or mutated body parts).
+3. Wrong Species / Missing Subject / Unrelated Object (SPECIES-ONLY CHECK — IGNORE HABITAT/ACTION DIFFERENCES):
+   - Check ONLY whether the animal/entity species shown in the frame is valid for either "{primary_entity}" OR the species named in that scene's text (e.g., Wolf in Round 1, Tiger in Round 2, Hippo in Round 3, Polar Bear).
+   - MANDATORY PASS OVERRIDE: If the frame clearly shows the CORRECT ANIMAL SPECIES mentioned in that scene (for example: a real Hippo in a Hippo scene, a real Tiger in a Tiger scene, a real Wolf in a Wolf scene, a real Polar Bear in a Polar Bear scene), you MUST PASS IT and NEVER include it in `failed_scenes` — even if the animal is on land/grass instead of river water, walking instead of roaring, or in a different pose/setting than the narration describes!
+   - ONLY flag under Rule 3 if the frame shows a COMPLETELY WRONG SPECIES/OBJECT (e.g. a purple DJ mixer, a human office, a car) OR an empty background texture (e.g. empty cracked mud/ice) where the required animal subject is completely missing.
 
 Return ONLY valid JSON in this exact format:
 {{
