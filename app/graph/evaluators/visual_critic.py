@@ -635,8 +635,11 @@ class VisualCritic:
             for item in scenes_media:
                 sid = int(item.get("scene_id") or 0)
                 mpath = str(item.get("media_path") or "")
+                prod_m_cs = str(item.get("production_method") or "")
                 narr = str(item.get("narration") or item.get("visual_keyword") or "")
                 if sid <= 0 or not mpath or not Path(mpath).exists():
+                    continue
+                if prod_m_cs == "TOOL_DOODLE_2D_EXPLAINER" or mpath.lower().endswith("_doodle_2d.mp4"):
                     continue
                 p = Path(mpath)
                 im_obj: Optional[Image.Image] = None
@@ -781,7 +784,11 @@ Return ONLY valid JSON in this exact format:
                 }
 
             failed = False
-            is_long_peak_cont = str(item.get("production_method") or "") == "LONG_PEAK_CONTINUOUS_FLOW"
+            is_long_peak_cont = str(item.get("production_method") or "") in (
+                "LONG_PEAK_CONTINUOUS_FLOW",
+                "REFINED_CLEAN_MOTION_RESCUE",
+                "FINAL_GATE_CLEAN_VIDEO_RESCUE",
+            )
             if media_type == "image":
                 # Kiểm tra & lọc sạch danh sách pose_images (nếu có) để loại bỏ file phụ lỗi/đen/vỡ hạt/dính chữ trước khi dựng
                 raw_poses = item.get("pose_images")
@@ -861,11 +868,18 @@ Return ONLY valid JSON in this exact format:
                 try:
                     sig = self._media_signature(str(p))
                     prod_m = str(item.get("production_method") or "")
-                    is_pregraded_hook = media_type == "hook_ready_video" or prod_m in (
-                        "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK",
-                        "CLIMAX_PEAK_SHORT_SPLICE",
-                        "MONSTER_3D_CGI_VIDEO_PEAK",
-                        "CLIMAX_STOCK_VIDEO_REAL_MOTION",
+                    is_pregraded_hook = (
+                        media_type == "hook_ready_video"
+                        or prod_m in (
+                            "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK",
+                            "CLIMAX_PEAK_SHORT_SPLICE",
+                            "MONSTER_3D_CGI_VIDEO_PEAK",
+                            "CLIMAX_STOCK_VIDEO_REAL_MOTION",
+                            "TOOL_DOODLE_2D_EXPLAINER",
+                            "REFINED_CLEAN_MOTION_RESCUE",
+                            "FINAL_GATE_CLEAN_VIDEO_RESCUE",
+                        )
+                        or p.name.lower().endswith("_doodle_2d.mp4")
                     )
                     if scene_id == 1:
                         from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
@@ -971,7 +985,7 @@ Return ONLY valid JSON in this exact format:
                     seen_hashes[img_hash] = scene_id
 
             if sig:
-                dup_id = self._find_duplicate(sig, seen_signatures)
+                dup_id = None if is_long_peak_cont else self._find_duplicate(sig, seen_signatures)
                 if dup_id is not None and not any("trùng lặp" in i for i in issues):
                     issues.append(f"Hình ảnh/clip trùng lặp với Cảnh #{dup_id}")
                     aes_score -= 4.0

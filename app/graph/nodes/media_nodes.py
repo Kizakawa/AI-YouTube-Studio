@@ -2786,6 +2786,25 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 out_resc_v = str(media_dir / f"scene_{scene_id:03d}_refined_clean_rescue.mp4")
                 clean_video_donors: List[str] = []
                 clean_image_donors: List[str] = []
+                active_used_paths = {
+                    str(Path(m.get("media_path")).resolve())
+                    for m in scenes_media
+                    if isinstance(m, dict)
+                    and m.get("media_path")
+                    and int(m.get("scene_id") or 0) not in failed_ids
+                    and Path(str(m.get("media_path"))).exists()
+                }
+                # Ưu tiên số 1: Các ứng viên video độc lập chưa dùng trong hook_candidates/ hoặc *_fullpeak.mp4
+                if (work_dir / "hook_candidates").exists():
+                    for cand_hp in sorted((work_dir / "hook_candidates").glob("*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
+                        if cand_hp.exists() and cand_hp.stat().st_size > 25_000 and str(cand_hp.resolve()) not in active_used_paths:
+                            clean_video_donors.append(str(cand_hp))
+                for fp_cand in sorted(media_dir.glob("*_fullpeak.mp4"), key=lambda p: p.stat().st_size, reverse=True):
+                    if fp_cand.exists() and fp_cand.stat().st_size > 25_000 and str(fp_cand.resolve()) not in active_used_paths:
+                        clean_video_donors.append(str(fp_cand))
+
+                # Ưu tiên số 2: Các cảnh thân (o_sid != 1) có thời lượng đủ dài để cắt khúc khác
+                fallback_s1_donors: List[str] = []
                 for other_m in scenes_media:
                     if not isinstance(other_m, dict):
                         continue
@@ -2796,34 +2815,34 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     if not o_path or not Path(o_path).exists():
                         continue
                     if o_path.lower().endswith((".mp4", ".mov", ".webm")):
-                        clean_video_donors.append(o_path)
+                        if o_sid == 1:
+                            fallback_s1_donors.append(o_path)
+                        else:
+                            clean_video_donors.append(o_path)
                     else:
                         ok_d_img, _ = await asyncio.to_thread(_verify_and_sanitize_refined_media, o_path, False, scene_id)
                         if ok_d_img:
                             clean_image_donors.append(o_path)
-
-                for cand_hp in sorted((work_dir / "hook_candidates").glob("*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
-                    if cand_hp.exists() and cand_hp.stat().st_size > 25_000:
-                        clean_video_donors.append(str(cand_hp))
+                clean_video_donors.extend(fallback_s1_donors)
+                clean_video_donors = list(dict.fromkeys(clean_video_donors))
 
                 for donor_v in clean_video_donors:
                     d_dur_s = get_duration_ms(donor_v) / 1000.0
-                    d_off_s = max(0.35, min(max(0.0, d_dur_s - sc_dur_sec - 0.2), d_dur_s * 0.45)) if d_dur_s > sc_dur_sec + 0.8 else 0.0
-                    trim_video(
-                        input_path=donor_v,
-                        duration_seconds=sc_dur_sec,
-                        output_path=out_resc_v,
-                        width=1080,
-                        height=1920,
-                        fps=30,
-                        is_scifi=is_scifi_val,
-                        niche=current_niche,
-                        apply_grading=True,
-                        is_hook_scene=(scene_id == 1),
-                        fair_use_transform=True,
-                        start_offset_sec=d_off_s,
-                        preserve_continuous_flow=True,
+                    d_off_s = max(0.45, min(max(0.0, d_dur_s - sc_dur_sec - 0.2), d_dur_s * 0.50)) if d_dur_s > sc_dur_sec + 0.6 else 0.0
+                    vf_rescue = (
+                        "hflip,scale=1252:2228:force_original_aspect_ratio=increase,"
+                        "crop=1080:1920,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
                     )
+                    cmd_resc = [
+                        "ffmpeg", "-y", "-v", "error",
+                        "-ss", f"{d_off_s:.2f}",
+                        "-i", donor_v,
+                        "-t", f"{sc_dur_sec:.2f}",
+                        "-an", "-vf", vf_rescue,
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                        "-pix_fmt", "yuv420p", out_resc_v,
+                    ]
+                    subprocess.run(cmd_resc, capture_output=True, timeout=25, check=False)
                     if Path(out_resc_v).exists() and Path(out_resc_v).stat().st_size > 12_000:
                         from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
                         _ensure_hook_clip_sharpness_and_luma(out_resc_v, min_sharpness=12.0 if scene_id == 1 else 6.5)
@@ -2832,7 +2851,10 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         item["pose_images"] = []
                         item["production_method"] = "REFINED_CLEAN_MOTION_RESCUE"
                         replaced = True
-                        logger.info(f"Scene {scene_id}: 🛡️ [Zero-Failed-Scene Guarantee] Đã thay thế cảnh lỗi bằng clip chuyển động sạch '{Path(donor_v).name}'")
+                        logger.info(
+                            f"Scene {scene_id}: 🛡️ [Zero-Failed-Scene Guarantee] Đã thay thế cảnh lỗi bằng clip chuyển động độc lập "
+                            f"(hflip+crop @+{d_off_s:.1f}s) từ '{Path(donor_v).name}'"
+                        )
                         break
 
                 if not replaced and not is_mandatory_vid and clean_image_donors:

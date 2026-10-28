@@ -279,10 +279,10 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
         return [
             "-c:v", "h264_nvenc",
             "-preset", "p3" if is_high else "p2",
-            "-cq", "19" if is_high else "21",
-            "-b:v", "10M" if is_high else "7M",
-            "-maxrate", "14M" if is_high else "10M",
-            "-bufsize", "20M" if is_high else "14M",
+            "-cq", "20" if is_high else "22",
+            "-b:v", "5M" if is_high else "4M",
+            "-maxrate", "6.5M" if is_high else "5.5M",
+            "-bufsize", "13M" if is_high else "11M",
             "-spatial-aq", "1",
             "-aq-strength", "8",
             "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
@@ -290,22 +290,22 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
     elif encoder == "h264_mf":
         return [
             "-c:v", "h264_mf",
-            "-b:v", "10M" if is_high else "7M",
+            "-b:v", "5M" if is_high else "4M",
             "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     elif encoder == "h264_qsv":
         return [
             "-c:v", "h264_qsv",
-            "-global_quality", "19" if is_high else "21",
-            "-b:v", "10M" if is_high else "7M",
-            "-maxrate", "14M" if is_high else "10M",
-            "-bufsize", "20M" if is_high else "14M",
+            "-global_quality", "20" if is_high else "22",
+            "-b:v", "5M" if is_high else "4M",
+            "-maxrate", "6.5M" if is_high else "5.5M",
+            "-bufsize", "13M" if is_high else "11M",
             "-pix_fmt", "nv12",
         ]
     elif encoder == "h264_videotoolbox":
         return [
             "-c:v", "h264_videotoolbox",
-            "-b:v", "10M" if is_high else "7M",
+            "-b:v", "5M" if is_high else "4M",
             "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     elif encoder == "h264_amf":
@@ -313,19 +313,20 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-c:v", "h264_amf",
             "-quality", "balanced" if is_high else "speed",
             "-rc", "cbr",
-            "-b:v", "10M" if is_high else "7M",
+            "-b:v", "5M" if is_high else "4M",
             "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     else:
         # Mặc định CPU libx264 (superfast nhanh hơn veryfast ~35% trên hệ thống đa nhân mà vẫn giữ nguyên độ nét 1080p Shorts)
         # Bổ sung -aq-mode 3 (Auto-Variance AQ ưu tiên giữ chi tiết vùng tối/biển sâu) + -x264-params VUI color tags chuẩn Y2A-Auto
+        # Tối ưu bitrate chuẩn YouTube Shorts 1080p30 (-crf 20 -b:v 5M -maxrate 6.5M -bufsize 13M -> ~18-22MB/video, upload nhanh gấp 3x)
         return [
             "-c:v", "libx264",
             "-preset", "superfast",
-            "-crf", "19" if is_high else "21",
-            "-b:v", "10M" if is_high else "7M",
-            "-maxrate", "14M" if is_high else "10M",
-            "-bufsize", "20M" if is_high else "14M",
+            "-crf", "20" if is_high else "22",
+            "-b:v", "5M" if is_high else "4M",
+            "-maxrate", "6.5M" if is_high else "5.5M",
+            "-bufsize", "13M" if is_high else "11M",
             "-aq-mode", "3",
             "-aq-strength", "0.8",
             "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",

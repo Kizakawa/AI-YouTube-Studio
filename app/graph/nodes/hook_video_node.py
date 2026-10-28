@@ -1048,9 +1048,10 @@ Return ONLY valid JSON:
         return results_for_cand
 
     if top_curated_yt_cands and len(candidate_videos) < 8:
-        cands_to_dl = list(enumerate(top_curated_yt_cands[:8]))
-        with ThreadPoolExecutor(max_workers=min(4, len(cands_to_dl))) as dl_pool:
-            dl_batches = list(dl_pool.map(_download_and_extract_single_short, cands_to_dl))
+        # Tải & lọc trước Wave 1 (Top 4 ứng viên điểm cao nhất); chỉ tải tiếp Wave 2 (#5-#8) nếu Wave 1 có < 3 clip vượt cổng kỹ thuật
+        wave1_cands = list(enumerate(top_curated_yt_cands[:4]))
+        with ThreadPoolExecutor(max_workers=min(4, len(wave1_cands))) as dl_pool:
+            dl_batches = list(dl_pool.map(_download_and_extract_single_short, wave1_cands))
         for batch in dl_batches:
             for _dl_i, v_str, peak_meta in batch:
                 if v_str in validated_peaks or v_str in candidate_videos:
@@ -1058,7 +1059,18 @@ Return ONLY valid JSON:
                 validated_peaks[v_str] = peak_meta
                 if peak_meta.get("passed") and len(candidate_videos) < 8:
                     candidate_videos.append(v_str)
-        cand_seq_idx = len(cands_to_dl) + 10
+        if len(candidate_videos) < 3 and len(top_curated_yt_cands) > 4:
+            wave2_cands = list(enumerate(top_curated_yt_cands[4:8], start=4))
+            with ThreadPoolExecutor(max_workers=min(4, len(wave2_cands))) as dl_pool2:
+                dl_batches2 = list(dl_pool2.map(_download_and_extract_single_short, wave2_cands))
+            for batch in dl_batches2:
+                for _dl_i, v_str, peak_meta in batch:
+                    if v_str in validated_peaks or v_str in candidate_videos:
+                        continue
+                    validated_peaks[v_str] = peak_meta
+                    if peak_meta.get("passed") and len(candidate_videos) < 8:
+                        candidate_videos.append(v_str)
+        cand_seq_idx = min(8, len(top_curated_yt_cands)) + 10
 
     # ── TẦNG DỰ PHÒNG SỐ 2 (CHỈ KHI 100% YOUTUBE SHORTS TẦNG 1 KHÔNG TÌM ĐƯỢC CLIP NÀO): PEXELS HD + PIXABAY HD + WIKIMEDIA ──
     # Tuyệt đối KHÔNG trộn Stock Video vào cùng bể ứng viên Tầng 1 của YouTube Shorts để đảm bảo mở đầu luôn là Peak Viral trên YT Shorts!
@@ -1179,9 +1191,15 @@ Return ONLY valid JSON:
     scored_candidates: List[Dict[str, Any]] = []
     passing_candidates: List[Dict[str, Any]] = []
     best_candidate: Optional[Dict[str, Any]] = None
+    _early_stop_lock = threading.Lock()
+    _strong_passing_count = 0
 
     def _grade_single_hook_candidate(idx_pair: tuple[int, str]) -> Optional[tuple[int, Dict[str, Any]]]:
+        nonlocal _strong_passing_count
         idx, v_path = idx_pair
+        with _early_stop_lock:
+            if _strong_passing_count >= 2:
+                return None
         pre_v = validated_peaks.get(v_path)
         if pre_v and pre_v.get("passed"):
             peak_offset_sec = float(pre_v["peak_offset_sec"])
@@ -1350,7 +1368,14 @@ Return ONLY valid JSON:
 
         # Nếu cửa sổ Peak #1 của video Short chưa đạt (do đoạn đầu bị khuất/chưa xuất hiện chủ thể hoặc chưa tới đoạn cao trào):
         # Tự động quét cửa sổ Peak #2 (loại trừ vùng Peak #1) ngay trong cùng video Short đó và kiểm định lại bằng Gemini Vision!
-        if score_res is not None and not score_res.get("passed"):
+        _skip_w2 = False
+        if score_res is not None and score_res.get("passed") and float(score_res.get("overall_score", 0.0)) >= 8.0:
+            with _early_stop_lock:
+                _strong_passing_count += 1
+        elif score_res is not None and not score_res.get("passed"):
+            with _early_stop_lock:
+                _skip_w2 = _strong_passing_count >= 2
+        if score_res is not None and not score_res.get("passed") and not _skip_w2:
             try:
                 alt_excl_v = [(max(0.0, peak_offset_sec - 1.5), peak_offset_sec + 5.5)]
                 alt_off2, alt_dur2 = find_hook_peak_window(

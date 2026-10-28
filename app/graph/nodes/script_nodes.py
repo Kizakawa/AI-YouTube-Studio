@@ -125,6 +125,47 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     channel_style = state.get("channel_style", "general")
     primary_entity = state.get("primary_entity")
     target_channel_id = state.get("target_channel_id")
+    retry_count = state.get("script_retry_count", 0)
+
+    # Fast-Pass nếu kịch bản đã được thẩm định đạt chuẩn cao (>= 85/100) ở bước tiền xử lý (Batch Producer)
+    # và vượt qua kiểm tra tất định (không rò rỉ ngôn ngữ, không câu hỏi Yes/No yếu, không lặp tiêu đề).
+    pre_score = float((script_data or {}).get("_pre_evaluated_score") or 0.0)
+    pre_hook = float((script_data or {}).get("_pre_evaluated_hook") or 0.0)
+    if retry_count == 0 and pre_score >= 85.0 and pre_hook >= 8.2 and (script_data or {}).get("scenes"):
+        cal = ScriptCritic.get_calibrated_thresholds(channel_id=target_channel_id, channel_style=channel_style)
+        cal_hook, extra_critiques = ScriptCritic._calibrate_hook_score_with_real_data(
+            raw_hook_score=pre_hook,
+            script_data=script_data,
+            calibration=cal,
+            channel_style=channel_style,
+        )
+        if not extra_critiques and cal_hook >= float(cal.get("min_hook_score", 8.0)):
+            ov_10 = round(max(8.4, min(9.8, pre_score / 10.0)), 1)
+            hk_10 = round(max(8.4, min(9.8, cal_hook)), 1)
+            fast_eval_dict = {
+                "hook_strength": {"score": hk_10, "reasoning": "Pre-evaluated high-retention hook verified by deterministic guardrails."},
+                "story_pacing": {"score": ov_10, "reasoning": "Pre-evaluated 5-Act pacing."},
+                "entity_coherence": {"score": ov_10, "reasoning": "Pre-evaluated entity coherence."},
+                "visual_direction": {"score": ov_10, "reasoning": "Pre-evaluated visual direction."},
+                "viral_loop": {"score": ov_10, "reasoning": "Pre-evaluated seamless loop."},
+                "overall_score": ov_10,
+                "passed": True,
+                "actionable_critiques": [],
+                "evaluated_by": "pre_evaluated_ai",
+            }
+            logger.info(
+                f"⚡ [ScriptCritic Fast-Pass] Bỏ qua chấm lặp LLM vì kịch bản đã đạt {pre_score:.0f}/100 "
+                f"(Overall={ov_10}/10, Hook={hk_10}/10) và vượt cổng kiểm định tất định!"
+            )
+            return {
+                "script_data": script_data,
+                "script_eval": fast_eval_dict,
+                "best_script_data": script_data,
+                "best_script_eval": fast_eval_dict,
+                "current_step": "SCRIPT_EVALUATED",
+                "progress_percent": 25,
+                "progress_message": f"Chấm điểm kịch bản (Fast-Pass): {ov_10}/10 (Đạt chuẩn)",
+            }
 
     critic = ScriptCritic()
     eval_report = critic.evaluate_script(

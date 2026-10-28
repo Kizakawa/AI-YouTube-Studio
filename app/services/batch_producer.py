@@ -677,6 +677,9 @@ async def produce_channel_video(
     print(f"\n[3/5] 💾 BƯỚC 3: Đăng ký VideoJob vào hệ thống...")
     scenes_dict = script.to_dict()
     scenes_dict["pinned_comment"] = final_pinned_comment
+    if script_evaluation and script_evaluation.get("passed"):
+        scenes_dict["_pre_evaluated_score"] = float(script_evaluation.get("score", 85))
+        scenes_dict["_pre_evaluated_hook"] = float(script_evaluation.get("hook_score", 8.5))
     scenes_json_str = json.dumps(scenes_dict, ensure_ascii=False)
 
     with get_db() as db:

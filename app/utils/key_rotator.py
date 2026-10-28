@@ -173,19 +173,21 @@ class KeyRotator:
             elif (
                 "timed out" in err_low
                 or "timeout" in err_low
+                or "overloaded" in err_low
+                or "unavailable" in err_low
                 or status_code in (500, 502, 503, 504)
                 or "internal error" in err_low
             ):
-                wait_t = cooldown_sec or 25.0
+                wait_t = cooldown_sec or 90.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_t
-                # Nếu chính endpoint của model trên server Google bị treo Timeout -> khóa tạm toàn cục *:model 25s
-                # để luồng kế tiếp nhảy ngay sang model khác thay vì đợi thêm 12s timeout trên key thứ 2!
-                if "timed out" in err_low or "timeout" in err_low:
+                # Khi model trên server Google bị 503 Overloaded hoặc treo Timeout -> khóa tạm toàn cục *:model 90s
+                # để toàn bộ các Node tiếp theo nhảy ngay sang model khỏe mạnh thay vì chờ 25s mỗi lượt!
+                if status_code in (502, 503, 504) or "timed out" in err_low or "timeout" in err_low or "overloaded" in err_low:
                     self._model_cooldowns[f"*:{model}"] = now + wait_t
                 active_t_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_t_locks >= max(len(self.keys), 1) or "timed out" in err_low or "timeout" in err_low:
+                if active_t_locks >= max(len(self.keys), 1) or status_code in (502, 503, 504) or "timed out" in err_low or "timeout" in err_low:
                     self._model_cooldowns[f"*:{model}"] = now + wait_t
                     if model in KeyRotator._verified_live_models:
                         KeyRotator._verified_live_models = [
@@ -198,14 +200,14 @@ class KeyRotator:
             ):
                 self._global_cooldowns[key] = now + (cooldown_sec or 3600.0)
             else:
-                wait_s = cooldown_sec or 45.0
+                wait_s = cooldown_sec or 90.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
-                # Chỉ khóa toàn cục *:model khi TOÀN BỘ các key trong pool đều bị 429 trên cùng model này
+                # Khóa toàn cục *:model 90s khi >= 2 key (hoặc toàn bộ pool) bị 429 trên cùng model này
                 active_key_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_key_locks >= max(len(self.keys), 1):
-                    self._model_cooldowns[f"*:{model}"] = now + 35.0
+                if active_key_locks >= min(2, max(len(self.keys), 1)):
+                    self._model_cooldowns[f"*:{model}"] = now + wait_s
                     if model in KeyRotator._verified_live_models:
                         KeyRotator._verified_live_models = [
                             m for m in KeyRotator._verified_live_models if m != model
