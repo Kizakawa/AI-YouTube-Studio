@@ -615,12 +615,18 @@ Respond ONLY in valid JSON:
             total_cuts = 0
             try:
                 import re as _re_qa
-                vf_qa = "crop=iw*0.72:ih*0.42:iw*0.14:ih*0.16,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-52dB:d=2.4,scdet=t=8.5"
+                freeze_noise_db = "-60dB" if is_long_form else "-52dB"
+                freeze_min_d = "3.6" if is_long_form else "2.4"
+                vf_qa = f"crop=iw*0.72:ih*0.42:iw*0.14:ih*0.16,blackdetect=d=0.10:pic_th=0.98,freezedetect=n={freeze_noise_db}:d={freeze_min_d},scdet=t=8.5"
+                qa_cmd = ["ffmpeg", "-v", "info"]
+                if duration_sec > 55.0:
+                    qa_cmd.extend(["-t", "55.0"])
+                qa_cmd.extend(["-i", str(p), "-vf", vf_qa, "-an", "-f", "null", "-"])
                 res_qa = subprocess.run(
-                    ["ffmpeg", "-v", "info", "-i", str(p), "-vf", vf_qa, "-an", "-f", "null", "-"],
+                    qa_cmd,
                     capture_output=True,
                     text=True,
-                    timeout=35,
+                    timeout=45,
                 )
                 qa_log = (res_qa.stderr or "") + "\n" + (res_qa.stdout or "")
                 b_durs = [float(x) for x in _re_qa.findall(r"black_duration:\s*([0-9.]+)", qa_log)]
@@ -634,10 +640,11 @@ Respond ONLY in valid JSON:
                 f_durs = [float(x) for x in _re_qa.findall(r"freeze_duration:\s*([0-9.]+)", qa_log)]
                 if f_durs:
                     freeze_max_sec = max(f_durs)
-                if freeze_max_sec >= 2.3:
+                max_freeze_allowed = 4.5 if is_long_form else 2.3
+                if freeze_max_sec >= max_freeze_allowed:
                     hard_fail = True
                     frame_pts = min(frame_pts, 2.0)
-                    issues.append(f"Phát hiện ảnh/hình đứng yên {freeze_max_sec:.2f}s (>= 2.3s) — chặn xuất bản!")
+                    issues.append(f"Phát hiện ảnh/hình đứng yên {freeze_max_sec:.2f}s (>= {max_freeze_allowed:.1f}s) — chặn xuất bản!")
 
                 raw_scd_times = sorted(float(x) for x in _re_qa.findall(r"lavfi\.scd\.time:\s*([0-9.]+)", qa_log))
                 # Gom cụm các frame scdet liên tiếp trong cùng 1 hiệu ứng chuyển cảnh xfade / pan (< 0.45s) thành 1 nhát cắt thực tế

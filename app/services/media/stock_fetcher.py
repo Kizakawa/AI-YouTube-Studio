@@ -911,3 +911,96 @@ class StockFetcher:
 
         return None
 
+    def search_landscape_16x9_video_clip(
+        self,
+        queries: List[str],
+        used_urls: Optional[set] = None,
+        topic: str = "",
+        narration: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Tìm kiếm nhanh Video B-Roll chuẩn ngang 16:9 (1920x1080 / 1280x720, width > height) trên Pexels & Pixabay
+        dành riêng cho Video Dài (Long-Form 16:9 Documentary).
+        """
+        from app.services.media.media_history import (
+            extract_media_identity,
+            get_recent_media_urls,
+            is_media_already_used,
+            record_used_media,
+        )
+        from app.services.media.entity_detector import is_incongruent_stock_image
+
+        used = set(used_urls) if used_urls else set()
+        used.update(get_recent_media_urls(limit=120))
+
+        search_q_list: List[str] = []
+        for raw_q in (queries or []):
+            q_c = clean_scene_search_query(str(raw_q or ""), max_words=4) or str(raw_q or "").strip()
+            if q_c and q_c not in search_q_list:
+                search_q_list.append(q_c)
+            q_short = clean_scene_search_query(str(raw_q or ""), max_words=2)
+            if q_short and q_short not in search_q_list:
+                search_q_list.append(q_short)
+
+        for q_try in search_q_list[:6]:
+            vids = self.search_videos(q_try, per_page=10, orientation="landscape")
+            for v in (vids or []):
+                v_desc = str(v.get("url") or v.get("title") or "")
+                if is_incongruent_stock_image(v_desc, topic=f"{topic} {q_try}".strip(), narration=narration):
+                    continue
+                v_files = v.get("video_files") or []
+                landscape_files = [
+                    vf for vf in v_files
+                    if int(vf.get("width") or 0) > int(vf.get("height") or 0)
+                    and int(vf.get("height") or 0) >= 720
+                    and int(vf.get("height") or 0) <= 1440
+                    and (str(vf.get("link", "")).endswith(".mp4") or "mp4" in str(vf.get("file_type", "")))
+                ]
+                if not landscape_files:
+                    continue
+                landscape_files.sort(
+                    key=lambda vf: (
+                        3000 if abs(int(vf.get("height") or 0) - 1080) <= 20 else 2000,
+                        int(vf.get("width") or 0),
+                    ),
+                    reverse=True,
+                )
+                for best in landscape_files:
+                    link = str(best.get("link") or "")
+                    if link and not is_media_already_used(link, used):
+                        record_used_media(link, query=q_try, source="pexels_16x9_video")
+                        ids = extract_media_identity(link)
+                        if used_urls is not None:
+                            used_urls.update(ids)
+                            used_urls.add(link)
+                        return {
+                            "url": link,
+                            "title": f"Pexels 16:9 HD: {v.get('url', q_try)}",
+                            "width": int(best.get("width") or 1920),
+                            "height": int(best.get("height") or 1080),
+                            "duration": float(v.get("duration") or 10.0),
+                            "media_type": "video",
+                            "source": "pexels_16x9_video",
+                        }
+
+            px_vids = self.search_pixabay_videos(q_try, per_page=6)
+            for pv in (px_vids or []):
+                p_url = str(pv.get("url") or "")
+                pw = int(pv.get("width") or 0)
+                ph = int(pv.get("height") or 0)
+                if p_url and pw > ph and ph >= 720 and not is_media_already_used(p_url, used):
+                    record_used_media(p_url, query=q_try, source="pixabay_16x9_video")
+                    ids = extract_media_identity(p_url)
+                    if used_urls is not None:
+                        used_urls.update(ids)
+                        used_urls.add(p_url)
+                    return {
+                        "url": p_url,
+                        "title": pv.get("title", f"Pixabay 16:9 HD: {q_try}"),
+                        "width": pw,
+                        "height": ph,
+                        "duration": float(pv.get("duration") or 10.0),
+                        "media_type": "video",
+                        "source": "pixabay_16x9_video",
+                    }
+        return None

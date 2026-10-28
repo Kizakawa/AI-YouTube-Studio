@@ -32,12 +32,12 @@ _chapter_locks: Dict[str, threading.Lock] = {}
 _yt_longform_dl_sem = threading.BoundedSemaphore(3)
 
 LANDSCAPE_16X9_YTDLP_FORMAT = (
-    "bestvideo[protocol=https][aspect_ratio>1][height>=720][height<=1440][ext=mp4]/"
-    "bestvideo[aspect_ratio>1][height>=720][height<=1440][ext=mp4]/"
-    "best[aspect_ratio>1][height>=720][height<=1440][ext=mp4]/"
-    "bestvideo[protocol=https][height>=720][height<=1440][ext=mp4]/"
-    "bestvideo[height>=720][height<=1440][ext=mp4]/"
-    "bestvideo[height>=720][height<=1440]/"
+    "bestvideo[protocol=https][aspect_ratio>1][height>=720][height<=1080][filesize<24M][ext=mp4]/"
+    "bestvideo[aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
+    "best[aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
+    "bestvideo[protocol=https][height>=720][height<=1080][ext=mp4]/"
+    "bestvideo[height>=720][height<=1080][ext=mp4]/"
+    "bestvideo[height>=720][height<=1080]/"
     "best[height>=480][ext=mp4]/bestvideo/best"
 )
 
@@ -117,6 +117,18 @@ def _search_youtube_16x9_documentary_candidates(
                 if any(b in meta_low for b in _TALKING_HEAD_BLOCKLIST):
                     continue
                 if any(b in meta_low for b in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST):
+                    continue
+                if any(
+                    edu_b in meta_low
+                    for edu_b in (
+                        "ted-ed", "ted ed", "tedx", "ted talks", "psych2go", "kurzgesagt",
+                        "infographics show", "sprouts", "crashcourse", "crash course",
+                        "khan academy", "after skool", "practical psychology", "whiteboard",
+                        "cartoon", "animated", "animation", "lecture", "podcast", "interview",
+                        "reaction", "vlog", "webinar", "therapist", "counselor", "coach",
+                        "dr. ", "storytime", "my experience", "slides",
+                    )
+                ):
                     continue
 
                 # Ưu tiên video ngang 16:9 (không phải /shorts/)
@@ -220,8 +232,8 @@ Look at the 3 horizontal frames (Frame 1 on left, Frame 2 in middle, Frame 3 on 
 
 REJECT IMMEDIATELY (`"passed": false`) IF:
 1. The video is a vertical phone clip placed inside a 16:9 template/collage with sidebars, blurred borders, or background text like "SUBSCRIBE TO OUR CHANNEL", "DAILY VIRAL VIDEOS", channel logos, or TikTok/Shorts captions.
-2. All frames show a talking head, studio host, video game, cartoon, zoo cage/aquarium glass tank when the story is wild ocean/nature, or the wrong animal/subject.
-3. There are visible watermarks, channel bugs, or burned-in subtitles on the footage.
+2. The frames show a YouTuber/vlogger/therapist/podcast host speaking into a camera/webcam/microphone (talking-head video), white-background cartoon/infographic (like TED-Ed, Psych2Go, whiteboard animation), text lecture slides, video game UI, zoo cage/aquarium glass tank when the story is wild ocean/nature, or a completely unrelated subject.
+3. There are visible watermarks, channel logos (e.g. TED-Ed), channel bugs, or burned-in subtitles on the footage.
 
 IF Frame 1 (left) shows a channel intro/title card, BUT Frame 2 (middle) and Frame 3 (right) show 100% CLEAN, FULL-SCREEN 16:9 WIDESCREEN footage of "{primary_entity or topic}" with zero borders/watermarks/text:
 Set `"passed": true` and `"clean_start_frame": 2`. Otherwise if Frame 1 is already clean full-screen 16:9 footage, set `"clean_start_frame": 1`.
@@ -324,7 +336,7 @@ def _download_youtube_chapter_master(
     import yt_dlp
     from app.graph.evaluators.visual_critic import VisualCritic
 
-    for cand in candidates[:4]:
+    for cand in candidates[:2]:
         vid_id = cand["id"]
         vid_url = cand["url"]
         with url_lock:
@@ -336,14 +348,14 @@ def _download_youtube_chapter_master(
         cand_dur = float(cand.get("duration") or 60.0)
         used_range_dl = False
         start_s = 12.0 if cand_dur > 55.0 else (6.0 if cand_dur > 30.0 else 1.5)
-        end_s = min(cand_dur - 2.0, start_s + 68.0)
+        end_s = min(cand_dur - 2.0, start_s + 44.0)
 
         tmp_base = str(Path(master_out_path).with_suffix("")) + "_raw.%(ext)s"
         dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "max_filesize": 55 * 1024 * 1024,
+            "max_filesize": 26 * 1024 * 1024,
             "format": LANDSCAPE_16X9_YTDLP_FORMAT,
             "merge_output_format": "mp4",
             "outtmpl": tmp_base,
@@ -351,7 +363,7 @@ def _download_youtube_chapter_master(
             "retries": 1,
             "nopart": True,
         })
-        if cand_dur > 95.0:
+        if cand_dur > 48.0:
             try:
                 from yt_dlp.utils import download_range_func
                 dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s)])
@@ -598,13 +610,14 @@ def fetch_or_slice_longform_chapter_clip_sync(
     chapter_dir.mkdir(parents=True, exist_ok=True)
     master_file = str(chapter_dir / f"chapter_{chapter_idx:02d}_master.mp4")
     meta_file = chapter_dir / f"chapter_{chapter_idx:02d}_meta.txt"
+    failed_marker = chapter_dir / f"chapter_{chapter_idx:02d}_failed.txt"
 
     ch_lock = _get_chapter_lock(f"job_{job_id}_ch_{chapter_idx}")
     master_source_label = f"Chapter #{chapter_idx} Master"
     master_url = ""
 
     with ch_lock:
-        if not (Path(master_file).exists() and Path(master_file).stat().st_size > 60_000):
+        if not (Path(master_file).exists() and Path(master_file).stat().st_size > 60_000) and not failed_marker.exists():
             # Ưu tiên 1: Tải 1 video Master 16:9 từ YouTube cho cả Chương (3 cảnh)
             yt_cands = _search_youtube_16x9_documentary_candidates(
                 query=query,
@@ -644,8 +657,8 @@ def fetch_or_slice_longform_chapter_clip_sync(
                         primary_entity=primary_entity or topic,
                         is_3d_or_scifi=is_scifi,
                     )
-                    bili_cands = search_bilibili_videos(zh_query, max_results=8, min_dur_s=35.0, max_dur_s=600.0)
-                    for cand in bili_cands:
+                    bili_cands = search_bilibili_videos(zh_query, max_results=6, min_dur_s=35.0, max_dur_s=600.0)
+                    for cand in bili_cands[:2]:
                         bvid = str(cand.get("bvid") or cand.get("id") or "").strip()
                         if not bvid:
                             continue
@@ -680,6 +693,11 @@ def fetch_or_slice_longform_chapter_clip_sync(
                             break
                 except Exception as e_bili:
                     logger.debug(f"[LongForm ChapterPool] Bilibili master skip: {e_bili}")
+                if not (Path(master_file).exists() and Path(master_file).stat().st_size > 60_000):
+                    try:
+                        failed_marker.write_text("failed", encoding="utf-8")
+                    except Exception:
+                        pass
 
     if meta_file.exists():
         try:

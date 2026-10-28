@@ -58,6 +58,16 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
             f"với rate={explicit_rate} để khắc phục lỗi AudioQA: {feedback_reason}"
         )
 
+    job_id = state.get("job_id")
+    target_channel_id = state.get("target_channel_id")
+    video_format = str(
+        state.get("video_format")
+        or getattr(script, "video_format", "")
+        or (script_data or {}).get("video_format")
+        or ("long" if len(script.scenes) >= 14 else "short")
+    ).strip().lower()
+    is_long_form = video_format == "long"
+
     async def _run_visual_tool_planner():
         if state.get("visual_plan"):
             return state.get("visual_plan")
@@ -70,26 +80,23 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
                 scenes=scenes_dicts,
                 primary_entity=primary_entity,
                 channel_niche=channel_style,
+                is_long_form=is_long_form,
             )
             return {
-                "topic_classification": "HYBRID_TOOL_CALLING",
-                "director_vision": "YouTube Shorts Peak Clone (Hook + 2-3 Peak Clips) kết hợp Google Top Search Images",
-                "scenes_strategy": tool_decisions, "scope_audited": False,
+                "topic_classification": "LONGFORM_16X9_HYBRID" if is_long_form else "HYBRID_TOOL_CALLING",
+                "director_vision": (
+                    "Long-Form 16:9 Chapter-Pool Master Video + Internal Jump-Cuts + Hybrid 2D Doodle Explainer"
+                    if is_long_form
+                    else "YouTube Shorts Peak Clone (Hook + 2-3 Peak Clips) kết hợp Google Top Search Images"
+                ),
+                "scenes_strategy": tool_decisions,
+                "scope_audited": False,
             }
         except Exception as e_plan:
             logger.warning(f"[ParallelPlanner] Lỗi lập kế hoạch Tool song song: {e_plan}")
             return None
 
     # Chạy SONG SONG: (1) Sinh Audio TTS tất cả các cảnh + (2) LLM bind_tools chọn công cụ hình ảnh cho tất cả các cảnh
-    job_id = state.get("job_id")
-    target_channel_id = state.get("target_channel_id")
-    video_format = str(
-        state.get("video_format")
-        or getattr(script, "video_format", "")
-        or (script_data or {}).get("video_format")
-        or "short"
-    ).strip().lower()
-    is_long_form = video_format == "long"
 
     gen_kwargs: Dict[str, Any] = {
         "scenes": script.scenes,

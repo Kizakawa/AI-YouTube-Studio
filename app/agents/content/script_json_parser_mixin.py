@@ -472,7 +472,8 @@ class ScriptJsonParserMixin:
                     paced_scenes.append(sc_second)
                 else:
                     min_dur = 1.9 if idx_sc == 0 else 2.5
-                    sc["estimated_seconds"] = round(max(min_dur, min(5.4, w_count / 2.75)), 1)
+                    max_est_dur = 15.0 if str(raw_data.get("video_format") or "short").lower() == "long" else 5.4
+                    sc["estimated_seconds"] = round(max(min_dur, min(max_est_dur, w_count / 2.75)), 1)
                     paced_scenes.append(sc)
 
             # Đánh lại số thứ tự scene_id chuẩn xác 1..N và làm giàu highlight_words / camera_motion / sfx_cue

@@ -301,6 +301,28 @@ class DoodleSceneConfig:
             tag_upper = "@" + tag_upper
         self.character_tag = tag_upper
         self.accent_rgb = TAG_COLOR_RGB.get(tag_upper, TAG_COLOR_RGB["@MODERNYOU"])
+        raw_p = (self.prop_type or "").strip().lower()
+        valid_props = ("alarm", "block", "spear_nature", "split", "puppet_strings", "brain_battery", "money_scale")
+        if raw_p not in valid_props:
+            ctx_p = f"{raw_p} {self.narration}".lower()
+            if any(k in ctx_p for k in ("puppet", "manipulat", "control", "string", "toxic")):
+                self.prop_type = "puppet_strings"
+            elif any(k in ctx_p for k in ("neural", "brain", "lobe", "cortex", "amygdala", "dopamine", "cortisol", "battery", "fuel")):
+                self.prop_type = "brain_battery"
+            elif any(k in ctx_p for k in ("clock", "timer", "alarm", "second", "pause", "time")):
+                self.prop_type = "alarm"
+            elif any(k in ctx_p for k in ("scale", "money", "debt", "power", "balance", "status")):
+                self.prop_type = "money_scale"
+            elif any(k in ctx_p for k in ("split", "conflict", "attack", "defense", "dissonance", "vs")):
+                self.prop_type = "split"
+            elif any(k in ctx_p for k in ("spear", "nature", "gaze", "calm", "stoic", "boundary", "holding")):
+                self.prop_type = "spear_nature"
+            elif any(k in ctx_p for k in ("block", "trap", "shield", "spotlight", "weight", "burden", "stress")):
+                self.prop_type = "block"
+            else:
+                self.prop_type = valid_props[max(0, self.scene_id) % len(valid_props)]
+        if self.sub_badge and self.sub_badge.upper().startswith("SCENE "):
+            self.sub_badge = ""
         if not self.raw_prompt:
             self.raw_prompt = (
                 f"{self.character_tag} in 2D hand-drawn doodle cartoon style on warm cream paper, "
@@ -594,29 +616,45 @@ def render_doodle_frame(
     t_sec = frame_idx / float(max(1, fps))
     scene_seed = sc.scene_id * 100
 
-    cx, cy = canvas_w * 0.5, canvas_h * 0.53
-    font_h1 = _get_font(56, bold=True)
-    font_badge = _get_font(40, bold=True)
+    is_landscape = width > height
+    cx = canvas_w * 0.5
+    cy = canvas_h * (0.57 if is_landscape else 0.53)
+    font_h1 = _get_font(44 if is_landscape else 56, bold=True)
+    font_badge = _get_font(34 if is_landscape else 40, bold=True)
 
     # Hiệu ứng Pop-in mượt ở 0.3s đầu cảnh
     entry_p = min(1.0, t_sec / 0.32)
     entry_scale = _ease_out_back(entry_p, overshoot=1.15)
-    header_y_off = (1.0 - entry_scale) * -90.0
+    header_y_off = (1.0 - entry_scale) * -60.0
 
-    # Top Tag Pill + Headline
-    tag_box = [110, int(135 + header_y_off), canvas_w - 110, int(235 + header_y_off)]
-    draw.rounded_rectangle(tag_box, radius=24, fill=sc.accent_rgb, outline=INK_BLACK, width=6)
-    draw.text(
-        (canvas_w // 2, int(185 + header_y_off)),
-        f"{sc.character_tag}  •  {sc.camera_motion.upper()}",
-        fill=(255, 255, 255),
-        font=font_badge,
-        anchor="mm",
-    )
-    draw.text((canvas_w // 2, int(305 + header_y_off)), sc.headline, fill=INK_BLACK, font=font_h1, anchor="mm")
+    # Top Concept Headline Banner (đặt tại y=185..255 cho 16:9 để không bao giờ bị cắt viền trên khi camera zoom 1.14x)
+    if is_landscape:
+        banner_w = min(canvas_w - 320, max(720, len(sc.headline) * 31 + 120))
+        b_x1 = int(cx - banner_w // 2)
+        b_x2 = int(cx + banner_w // 2)
+        tag_box = [b_x1, int(185 + header_y_off), b_x2, int(255 + header_y_off)]
+        draw.rounded_rectangle(tag_box, radius=20, fill=sc.accent_rgb, outline=INK_BLACK, width=6)
+        draw.text(
+            (canvas_w // 2, int(220 + header_y_off)),
+            sc.headline,
+            fill=(255, 255, 255),
+            font=font_h1,
+            anchor="mm",
+        )
+    else:
+        tag_box = [110, int(145 + header_y_off), canvas_w - 110, int(245 + header_y_off)]
+        draw.rounded_rectangle(tag_box, radius=24, fill=sc.accent_rgb, outline=INK_BLACK, width=6)
+        draw.text(
+            (canvas_w // 2, int(195 + header_y_off)),
+            sc.headline,
+            fill=(255, 255, 255),
+            font=font_badge,
+            anchor="mm",
+        )
 
     # Mặt đất vẽ tay
-    _draw_sketch_line(draw, (110, cy + 220), (canvas_w - 110, cy + 220), t_sec=t_sec, seed=scene_seed + 1, width=8)
+    ground_y = cy + (195 if is_landscape else 220)
+    _draw_sketch_line(draw, (110, ground_y), (canvas_w - 110, ground_y), t_sec=t_sec, seed=scene_seed + 1, width=8)
 
     # 8 Đạo cụ Ẩn dụ Trực quan (với chuyển động liên tục theo t_sec)
     if sc.prop_type == "alarm":
@@ -732,20 +770,35 @@ def render_doodle_frame(
         _draw_sketch_circle(draw, cx, bulb_y, 58, t_sec, scene_seed + 80, fill=GOLD_ACCENT, width=7)
         draw.text((cx, bulb_y), "!", fill=INK_BLACK, font=font_h1, anchor="mm")
 
-    # Stamp Badge có nhịp thở nhẹ (Pulse)
-    if sc.sub_badge:
-        pulse = math.sin(t_sec * 5.0) * 6.0
-        stamp_box = [
-            int(canvas_w // 2 - 270 - pulse),
-            int(cy + 265 - pulse * 0.4),
-            int(canvas_w // 2 + 270 + pulse),
-            int(cy + 355 + pulse * 0.4),
-        ]
-        draw.rounded_rectangle(stamp_box, radius=20, fill=GOLD_ACCENT, outline=INK_BLACK, width=6)
-        draw.text((canvas_w // 2, int(cy + 310)), sc.sub_badge, fill=INK_BLACK, font=font_badge, anchor="mm")
+    # Stamp Badge có nhịp thở nhẹ (chỉ vẽ khi có số liệu thật, đặt ở góc trên bên phải cho 16:9 để nhường đáy cho phụ đề ASS)
+    if sc.sub_badge and not sc.sub_badge.upper().startswith("SCENE "):
+        pulse = math.sin(t_sec * 5.0) * 5.0
+        if is_landscape:
+            bx_c = int(canvas_w - 270)
+            by_c = int(152 + header_y_off)
+            stamp_box = [
+                int(bx_c - 145 - pulse),
+                int(by_c - 38 - pulse * 0.3),
+                int(bx_c + 145 + pulse),
+                int(by_c + 38 + pulse * 0.3),
+            ]
+            draw.rounded_rectangle(stamp_box, radius=18, fill=GOLD_ACCENT, outline=INK_BLACK, width=5)
+            draw.text((bx_c, by_c), sc.sub_badge, fill=INK_BLACK, font=font_badge, anchor="mm")
+        else:
+            badge_y = int(cy + 275)
+            stamp_box = [
+                int(canvas_w // 2 - 250 - pulse),
+                int(badge_y - 42 - pulse * 0.4),
+                int(canvas_w // 2 + 250 + pulse),
+                int(badge_y + 42 + pulse * 0.4),
+            ]
+            draw.rounded_rectangle(stamp_box, radius=20, fill=GOLD_ACCENT, outline=INK_BLACK, width=6)
+            draw.text((canvas_w // 2, badge_y), sc.sub_badge, fill=INK_BLACK, font=font_badge, anchor="mm")
 
-    # Hộp phụ đề Karaoke chạy từng từ theo phase 30 FPS
-    _draw_karaoke_caption_box(draw, sc.narration, phase, canvas_w, canvas_h)
+    # Chỉ vẽ hộp phụ đề nội bộ khi render clip Doodle độc lập có đính kèm audio_path riêng
+    # (Trong luồng LangGraph/VideoAgent chính, phụ đề Karaoke ASS đã được burn-in thống nhất toàn video, tránh đè 2 lớp phụ đề!)
+    if sc.audio_path:
+        _draw_karaoke_caption_box(draw, sc.narration, phase, canvas_w, canvas_h)
 
     # ── SUB-PIXEL FLOATING-POINT CAMERA ENGINE (ZERO PIXEL JUDDER) ────────────
     eased_p = _ease_in_out_cubic(phase)
@@ -912,17 +965,17 @@ class DoodleAnimationTool:
             narration,
             re.IGNORECASE,
         )
-        badge = m_num.group(1).upper() if m_num else f"SCENE {scene_id}/{total_scenes}"
+        badge = m_num.group(1).upper() if m_num else ""
 
         clean_words = [re.sub(r"[^\w$-]", "", w).upper() for w in narration.split() if len(w) > 2]
-        head_words: List[str] = []
+        acc_words: List[str] = []
         for cw in clean_words[:5]:
-            cand_h = " ".join([*head_words, cw])
-            if len(cand_h) <= 32 or not head_words:
-                head_words.append(cw)
+            cand_h = " ".join(acc_words + [cw])
+            if len(cand_h) <= 34 or not acc_words:
+                acc_words.append(cw)
             else:
                 break
-        headline = " ".join(head_words) if head_words else f"ACT {scene_id}"
+        headline = " ".join(acc_words) if acc_words else f"ACT {scene_id}"
 
         return tag, prop, cam, headline, badge[:22]
 

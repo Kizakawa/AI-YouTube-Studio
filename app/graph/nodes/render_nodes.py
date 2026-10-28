@@ -87,7 +87,10 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                             m["media_type"] = "hook_ready_video"
                 except Exception as e_s1_conv:
                     logger.debug(f"[RenderNode] Pre-render hook image-to-multicut skip: {e_s1_conv}")
-            if cur_media_path.lower().endswith((".mp4", ".mov", ".webm")):
+            if (
+                cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
+                and not cur_media_path.lower().endswith(("_doodle.mp4", "_doodle_2d.mp4"))
+            ):
                 try:
                     from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
                     _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=13.2 if render_retry_count > 0 else 12.6)

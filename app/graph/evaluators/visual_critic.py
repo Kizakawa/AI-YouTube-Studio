@@ -639,7 +639,11 @@ class VisualCritic:
                 narr = str(item.get("narration") or item.get("visual_keyword") or "")
                 if sid <= 0 or not mpath or not Path(mpath).exists():
                     continue
-                if prod_m_cs == "TOOL_DOODLE_2D_EXPLAINER" or mpath.lower().endswith("_doodle_2d.mp4"):
+                if (
+                    "DOODLE_2D" in prod_m_cs
+                    or "16X9" in prod_m_cs
+                    or mpath.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4", "_16x9.mp4"))
+                ):
                     continue
                 p = Path(mpath)
                 im_obj: Optional[Image.Image] = None
@@ -784,7 +788,20 @@ Return ONLY valid JSON in this exact format:
                 }
 
             failed = False
-            is_long_peak_cont = str(item.get("production_method") or "") == "LONG_PEAK_CONTINUOUS_FLOW"
+            prod_m_raw = str(item.get("production_method") or "")
+            is_doodle_clip = (
+                "DOODLE_2D" in prod_m_raw
+                or p.name.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4"))
+            )
+            is_longform_chapter_clip = (
+                prod_m_raw.startswith("LONGFORM_")
+                or p.name.lower().endswith("_16x9.mp4")
+            )
+            is_long_peak_cont = (
+                prod_m_raw == "LONG_PEAK_CONTINUOUS_FLOW"
+                or is_doodle_clip
+                or is_longform_chapter_clip
+            )
             if media_type == "image":
                 # Kiểm tra & lọc sạch danh sách pose_images (nếu có) để loại bỏ file phụ lỗi/đen/vỡ hạt/dính chữ trước khi dựng
                 raw_poses = item.get("pose_images")
@@ -866,6 +883,8 @@ Return ONLY valid JSON in this exact format:
                     prod_m = str(item.get("production_method") or "")
                     is_pregraded_hook = (
                         media_type == "hook_ready_video"
+                        or is_doodle_clip
+                        or is_longform_chapter_clip
                         or prod_m in (
                             "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK",
                             "CLIMAX_PEAK_SHORT_SPLICE",
@@ -875,9 +894,11 @@ Return ONLY valid JSON in this exact format:
                             "REFINED_CLEAN_MOTION_RESCUE",
                             "FINAL_GATE_CLEAN_VIDEO_RESCUE",
                         )
-                        or p.name.lower().endswith("_doodle_2d.mp4")
+                        or p.name.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4", "_16x9.mp4"))
                     )
-                    if scene_id == 1:
+                    if is_doodle_clip:
+                        aes_score = 9.4
+                    elif scene_id == 1:
                         from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
                         ok_s1_sh, s1_sh_val = _ensure_hook_clip_sharpness_and_luma(str(p), min_sharpness=12.0)
                         if not ok_s1_sh:

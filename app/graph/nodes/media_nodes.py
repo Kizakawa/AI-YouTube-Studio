@@ -63,6 +63,12 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
     primary_entity = state.get("primary_entity") or script_data.get("primary_entity")
     channel_style = state.get("channel_style", "cinematic")
     scenes = script_data.get("scenes", [])
+    video_format = str(
+        state.get("video_format")
+        or (script_data or {}).get("video_format")
+        or ("long" if len(scenes) >= 14 else "short")
+    ).strip().lower()
+    is_long_form = video_format == "long"
 
     from app.graph.tools.media_tools import (
         plan_media_tools_with_llm_sync,
@@ -103,6 +109,7 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
         scenes=scenes,
         primary_entity=primary_entity,
         channel_niche=channel_style,
+        is_long_form=is_long_form,
     )
     if tool_decisions and all(isinstance(d, dict) and d.get("scope_audited") for d in tool_decisions):
         audited_decisions = tool_decisions
@@ -169,6 +176,72 @@ def _fetch_longform_16x9_broll_clip_sync(
             "rationale": f"16:9 Cached Documentary Clip ({Path(out_path).name})",
         }
 
+    def _try_stock_16x9_landscape() -> Optional[Dict[str, Any]]:
+        try:
+            from app.services.media.longform_chapter_pool import extract_longform_scene_with_internal_jumpcut
+            q_parts = [p.strip() for p in str(query or "").split("|||") if p.strip()]
+            if not q_parts:
+                q_parts = [query or primary_entity or topic]
+            q_parts.extend([
+                "businessman dark office",
+                "tense business meeting office",
+                "brain scan medical screen",
+                "man dark portrait eye contact",
+                "chess board game dark",
+                "hands tapping table nervous",
+            ])
+            best_vid = media_agent._stock.search_landscape_16x9_video_clip(
+                queries=q_parts,
+                used_urls=used_urls,
+                topic=topic,
+                narration=narration,
+            )
+            if best_vid and best_vid.get("url"):
+                cand_u = str(best_vid["url"])
+                raw_stock = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw.mp4")
+                dl_ok = media_agent.download_file(cand_u, raw_stock)
+                if dl_ok and Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 40_000:
+                    cut_ok = extract_longform_scene_with_internal_jumpcut(
+                        master_path=raw_stock,
+                        output_path=out_path,
+                        start_offset_sec=0.0,
+                        target_duration_sec=max(4.5, target_duration_sec + 0.5),
+                        scene_id=scene_id,
+                    )
+                    if not cut_ok:
+                        Path(raw_stock).replace(out_path)
+                    else:
+                        Path(raw_stock).unlink(missing_ok=True)
+                    if Path(out_path).exists() and Path(out_path).stat().st_size > 35_000:
+                        logger.info(f"Scene {scene_id}: 🎥 [Long-Form 16:9 Stock HD] Đã tải & cắt Landscape B-Roll -> {Path(out_path).name}")
+                        return {
+                            "media_path": out_path,
+                            "media_type": "video",
+                            "production_method": "STOCK_16X9_LANDSCAPE_HD",
+                            "source_url": cand_u,
+                            "rationale": f"Stock 16:9 Landscape HD ({str(best_vid.get('title') or query)[:45]})",
+                        }
+                Path(raw_stock).unlink(missing_ok=True)
+        except Exception as e_stock_16x9:
+            logger.debug(f"Scene {scene_id}: Long-form Stock 16:9 lookup skip: {e_stock_16x9}")
+        return None
+
+    # Với chủ đề Con người / Tâm lý học / Y khoa / Công sở (nơi YouTube dễ trả về Vlog ngồi nói chuyện hoặc hoạt hình TED-Ed),
+    # ưu tiên Pexels/Pixabay 16:9 Landscape HD (kèm Internal Jump-Cut & Documentary Zoom) siêu sạch & tải 1.5s trước!
+    ctx_16x9 = f"{topic} {primary_entity} {query}".lower()
+    prefer_clean_stock_first = (not is_scifi) and any(
+        k in ctx_16x9
+        for k in (
+            "psychology", "narcissist", "manipulat", "brain", "dopamine", "cortisol",
+            "amygdala", "meeting", "interrogation", "polygraph", "eye contact",
+            "nervous", "office", "portrait", "stoic", "temporal lobe", "cortex",
+        )
+    )
+    if prefer_clean_stock_first:
+        stock_first_res = _try_stock_16x9_landscape()
+        if stock_first_res:
+            return stock_first_res
+
     try:
         from app.services.media.longform_chapter_pool import fetch_or_slice_longform_chapter_clip_sync
         pool_res = fetch_or_slice_longform_chapter_clip_sync(
@@ -196,72 +269,10 @@ def _fetch_longform_16x9_broll_clip_sync(
     except Exception as e_pool_16x9:
         logger.debug(f"Scene {scene_id}: Long-form ChapterPool 16:9 skip: {e_pool_16x9}")
 
-    try:
-        from app.services.media.bilibili_fetcher import (
-            download_and_crop_bilibili_broll_clip,
-            search_bilibili_videos,
-            translate_query_to_chinese,
-        )
-        base_q = clean_scene_search_query(query or primary_entity or topic, max_words=6) or topic
-        zh_query = translate_query_to_chinese(
-            query=base_q,
-            primary_entity=primary_entity or topic,
-            is_3d_or_scifi=is_scifi,
-        )
-        bili_cands = search_bilibili_videos(zh_query, max_results=8, min_dur_s=10.0, max_dur_s=600.0)
-        for cand in bili_cands:
-            bvid = str(cand.get("bvid") or cand.get("id") or "").strip()
-            if not bvid:
-                continue
-            with bvid_lock:
-                if bvid in used_bvids:
-                    continue
-                used_bvids.add(bvid)
-            b_info = download_and_crop_bilibili_broll_clip(
-                url_or_id=bvid,
-                output_path=out_path,
-                target_duration_sec=max(4.5, target_duration_sec + 0.8),
-                aspect_ratio="16:9",
-            )
-            if b_info and Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
-                b_title = str(cand.get("title") or bvid)[:45]
-                logger.info(f"Scene {scene_id}: 🎬 [Long-Form 16:9 Bilibili Safe-Crop] Đã tải {bvid} ({zh_query}) -> {Path(out_path).name}")
-                return {
-                    "media_path": out_path,
-                    "media_type": "video",
-                    "production_method": "BILIBILI_16X9_SAFECROP_HD",
-                    "source_url": f"https://www.bilibili.com/video/{bvid}",
-                    "rationale": f"Bilibili 16:9 Safe-Crop ({bvid} - {b_title})",
-                }
-    except Exception as e_bili_16x9:
-        logger.debug(f"Scene {scene_id}: Long-form Bilibili 16:9 lookup skip: {e_bili_16x9}")
-
-    # Fallback: Pexels / Pixabay 16:9 Landscape Stock Video
-    try:
-        best_vid = media_agent.search_best_video_clip(
-            query or primary_entity or topic,
-            used_urls,
-            {"video_format": "long"},
-            narration,
-            topic,
-        )
-        if best_vid and best_vid.get("url"):
-            cand_u = str(best_vid["url"])
-            with bvid_lock:
-                if cand_u not in used_urls:
-                    used_urls.add(cand_u)
-                    dl_ok = media_agent.download_file(cand_u, out_path)
-                    if dl_ok and Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
-                        logger.info(f"Scene {scene_id}: 🎥 [Long-Form 16:9 Stock HD] Đã tải Landscape B-Roll -> {Path(out_path).name}")
-                        return {
-                            "media_path": out_path,
-                            "media_type": "video",
-                            "production_method": "STOCK_16X9_LANDSCAPE_HD",
-                            "source_url": cand_u,
-                            "rationale": f"Stock 16:9 Landscape HD ({str(best_vid.get('title') or query)[:45]})",
-                        }
-    except Exception as e_stock_16x9:
-        logger.debug(f"Scene {scene_id}: Long-form Stock 16:9 lookup skip: {e_stock_16x9}")
+    if not prefer_clean_stock_first:
+        stock_fb_res = _try_stock_16x9_landscape()
+        if stock_fb_res:
+            return stock_fb_res
 
     return None
 
@@ -361,7 +372,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             56
         )
 
-    is_hybrid_tool_mode = (visual_plan.get("topic_classification") == "HYBRID_TOOL_CALLING")
+    is_hybrid_tool_mode = visual_plan.get("topic_classification") in ("HYBRID_TOOL_CALLING", "LONGFORM_16X9_HYBRID")
     batch_analyses: Dict[int, Dict[str, Any]] = {}
     if not is_hybrid_tool_mode:
         try:
@@ -469,14 +480,19 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # Kết hợp Chapter-Pool 16:9 Multi-Segment Jump-Cut + Hỗ trợ @tool Doodle 2D 16:9 / Ảnh Tư Liệu 8K
         # ══════════════════════════════════════════════════════════════════════
         if not media_path and is_long_form and tool_name not in ("render_doodle_2d_explainer_scene", "search_google_cinematic_image"):
-            lf_q = (
-                sc_strat.get("action_or_concept_query")
-                or sc_strat.get("human_action_query")
-                or sc_strat.get("youtube_search_query")
-                or sc_strat.get("smart_image_query")
-                or kw
-                or state.get("topic", "")
-            )
+            lf_parts = [
+                p for p in (
+                    sq,
+                    kw,
+                    sc_strat.get("action_or_concept_query"),
+                    sc_strat.get("human_action_query"),
+                    sc_strat.get("youtube_search_query"),
+                    sc_strat.get("smart_image_query"),
+                    state.get("topic", ""),
+                )
+                if p
+            ]
+            lf_q = "|||".join(dict.fromkeys(str(p).strip() for p in lf_parts if str(p).strip()))
             lf_res = await asyncio.to_thread(
                 _fetch_longform_16x9_broll_clip_sync,
                 scene_id=scene.scene_id,
@@ -502,19 +518,26 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 tool = "longform_chapter_pool_16x9"
                 source_url_used = str(lf_res.get("source_url") or "")
                 rationale = str(lf_res.get("rationale") or "16:9 Documentary Chapter-Pool Jump-Cut")
+            else:
+                tool_name = "render_doodle_2d_explainer_scene"
 
         # ══════════════════════════════════════════════════════════════════════
         # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ 6 @TOOL CHUYÊN BIỆT CỦA LLM ĐẠO DIỄN
         # (`summon_epic_monster_cinematic_media` | `fetch_clean_cinematic_portrait_or_broll` | `render_doodle_2d_explainer_scene` | `clone_youtube_short_peak_clip` | `search_pexels_pixabay_stock_video` | `search_google_cinematic_image`)
         # ══════════════════════════════════════════════════════════════════════
-        if not media_path and tool_name in (
-            "clone_youtube_short_peak_clip",
-            "search_pexels_pixabay_stock_video",
-            "search_google_cinematic_image",
-            "summon_epic_monster_cinematic_media",
-            "fetch_clean_cinematic_portrait_or_broll",
-            "render_doodle_2d_explainer_scene",
-        ):
+        allowed_tools = (
+            ("render_doodle_2d_explainer_scene", "search_google_cinematic_image")
+            if is_long_form
+            else (
+                "clone_youtube_short_peak_clip",
+                "search_pexels_pixabay_stock_video",
+                "search_google_cinematic_image",
+                "summon_epic_monster_cinematic_media",
+                "fetch_clean_cinematic_portrait_or_broll",
+                "render_doodle_2d_explainer_scene",
+            )
+        )
+        if not media_path and tool_name in allowed_tools:
             from app.graph.tools.media_tools import (
                 execute_youtube_short_peak_clone_sync,
                 execute_google_cinematic_image_sync,
@@ -631,10 +654,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
             elif tool_name == "render_doodle_2d_explainer_scene":
                 from app.services.media.doodle_animation_tool import DoodleAnimationTool
-                c_tag = str(sc_strat.get("character_tag") or "@MANIPULATOR").strip()
-                if not c_tag.startswith("@"):
-                    c_tag = f"@{c_tag.upper()}"
-                p_type = str(sc_strat.get("prop_type") or "puppet_strings").strip()
+                raw_c_tag = str(sc_strat.get("character_tag") or "").strip()
+                c_tag = (raw_c_tag if raw_c_tag.startswith("@") else f"@{raw_c_tag.upper()}") if raw_c_tag else None
+                p_type = str(sc_strat.get("prop_type") or "").strip() or None
                 out_doodle = str(media_dir / f"scene_{scene.scene_id:03d}_doodle_2d.mp4")
                 doodle_res = await asyncio.to_thread(
                     DoodleAnimationTool.render_scene_clip,
@@ -642,6 +664,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     output_path=out_doodle,
                     duration_seconds=dur + 0.25,
                     scene_id=scene.scene_id,
+                    total_scenes=total_scenes,
                     character_tag=c_tag,
                     prop_type=p_type,
                     camera_motion=camera_motion,

@@ -148,7 +148,7 @@ def validate_output(file_path: str) -> Dict:
         result["errors"].append("Không có audio stream")
     if result["duration_ms"] < 5000:
         result["errors"].append(f"Video quá ngắn: {result['duration_ms']}ms (tối thiểu 5s)")
-    if result["duration_ms"] > 61000:
+    if result["duration_ms"] > (900000 if str(result.get("resolution", "")).startswith("1920x") else 61000):
         result["errors"].append(f"Video quá dài cho Shorts: {result['duration_ms']}ms (tối đa 60s)")
     if result["file_size_mb"] < 0.1:
         result["errors"].append(f"File quá nhỏ: {result['file_size_mb']}MB — có thể bị corrupt")

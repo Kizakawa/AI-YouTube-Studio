@@ -33,6 +33,8 @@ def plan_media_tools_with_llm_sync(
     scenes: List[Dict[str, Any]],
     primary_entity: Optional[str] = None,
     channel_niche: str = "cinematic",
+    is_long_form: bool = False,
+    **kwargs,
 ) -> List[Dict[str, Any]]:
     """
     Sử dụng Gemini gắn `bind_tools(MEDIA_DIRECTOR_TOOLS)` gồm 4 công cụ chuyên biệt:
@@ -62,12 +64,12 @@ def plan_media_tools_with_llm_sync(
         include_all_niches_map=True,
     )
 
-    is_long_form_dir = total_scenes >= 14
+    is_long_form_dir = bool(is_long_form) or (total_scenes >= 12)
     longform_chapter_note = (
-        "\n- LONG-FORM 16:9 WIDESCREEN DOCUMENTARY MODE ACTIVE (16–24 SCENES ACROSS 5 CHAPTERS):\n"
-        "  * Scenes are grouped into Chapter Clusters (3 consecutive scenes per Chapter Master video: Scenes 1-3 = Ch.1, 4-6 = Ch.2, 7-9 = Ch.3, etc.).\n"
-        "  * For the first scene of each Chapter Cluster (Scenes 1, 4, 7, 10, 13, 16, 19), write a crisp 3–5 word 16:9 documentary search query (`youtube_search_query` / `action_or_concept_query` / `human_action_query`) that captures the entire Chapter's visual theme so our Chapter-Pool engine downloads ONE rich 16:9 master video and slices multiple non-contiguous angles locally!\n"
-        "  * Interleave ~75%–85% real 16:9 documentary video tools (`clone_youtube_short_peak_clip`, `summon_epic_monster_cinematic_media`, `fetch_clean_cinematic_portrait_or_broll`) with ~15%–25% analytical visual metaphors (`render_doodle_2d_explainer_scene` at 1920x1080 for psychology/mechanisms, or `search_google_cinematic_image` for archival maps/diagrams on middle scenes).\n"
+        "\n- LONG-FORM 16:9 WIDESCREEN DOCUMENTARY MODE ACTIVE (14–24 SCENES ACROSS 5 CHAPTERS):\n"
+        "  * Scenes are grouped into Chapter Clusters (4 consecutive scenes per Chapter Master video: Scenes 1-4 = Ch.1, 5-8 = Ch.2, 9-12 = Ch.3, 13-16 = Ch.4, etc.).\n"
+        "  * For the first scene of each Chapter Cluster (Scenes 1, 5, 9, 13, 17), write a crisp 3–5 word 16:9 documentary search query (`youtube_search_query` / `action_or_concept_query` / `human_action_query`) that captures the entire Chapter's visual theme so our Chapter-Pool engine downloads ONE rich 16:9 master video and slices multiple non-contiguous angles locally!\n"
+        "  * Interleave ~75%–80% real 16:9 documentary video tools (`clone_youtube_short_peak_clip`, `summon_epic_monster_cinematic_media`, `fetch_clean_cinematic_portrait_or_broll`) with ~20%–25% analytical visual metaphors (`render_doodle_2d_explainer_scene` at 1920x1080 for psychology/mechanisms on 1 scene per chapter).\n"
         if is_long_form_dir
         else ""
     )
@@ -383,24 +385,54 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "scope_audited": False,
             })
 
-    # Kênh Tâm lý học / Triết học: Nếu toàn bộ phân cảnh chỉ gọi portrait/broll mà chưa có Doodle 2D Explainer
-    # cho các cảnh cơ chế tâm lý ở giữa bài, tự động xen kẽ 2 cảnh Doodle 2D (Scene 3 & Scene 5) để tạo nhịp điệu thị giác đa dạng
+    # Kênh Tâm lý học / Triết học: Cân bằng tỷ lệ vàng giữa Video B-Roll người thật 16:9 (>= 75%) và Hoạt họa 2D Doodle Explainer (~24%: Scene 3, 7, 11, 15)
     if str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy") and total_scenes >= 5:
-        doodle_count = sum(1 for d_it in final_plan if d_it.get("tool_name") == "render_doodle_2d_explainer_scene")
-        if doodle_count == 0:
-            doodle_targets = [
-                (3, "@MANIPULATOR", "puppet_strings"),
-                (min(5, total_scenes - 1), "@MODERNYOU", "mask"),
-            ]
-            for t_sid, c_tag, p_type in doodle_targets:
-                for d_it in final_plan:
-                    if int(d_it.get("scene_id") or 0) == t_sid and t_sid not in (1, total_scenes):
-                        d_it["tool_name"] = "render_doodle_2d_explainer_scene"
-                        d_it["character_tag"] = c_tag
-                        d_it["prop_type"] = p_type
-                        d_it["scene_concept_summary"] = d_it.get("human_action_query") or d_it.get("youtube_search_query") or default_overall_q
-                        break
+        doodle_cycle = [
+            ("@MANIPULATOR", "puppet_strings"),
+            ("@MODERNYOU", "split"),
+            ("@PLEASER", "brain_battery"),
+            ("@ANCESTOR", "spear_nature"),
+        ]
+        target_doodle_sids = (
+            {s_id for s_id in range(3, total_scenes, 4) if s_id not in (1, total_scenes)}
+            if is_long_form_dir
+            else {3, min(5, total_scenes - 1)}
+        )
+        if is_long_form_dir:
+            for idx_d, d_it in enumerate(final_plan):
+                s_id_cur = int(d_it.get("scene_id") or (idx_d + 1))
+                if s_id_cur in target_doodle_sids:
+                    c_tag, p_type = doodle_cycle[(s_id_cur // 4) % len(doodle_cycle)]
+                    d_it["tool_name"] = "render_doodle_2d_explainer_scene"
+                    d_it["character_tag"] = c_tag
+                    d_it["prop_type"] = p_type
+                    d_it["scene_concept_summary"] = d_it.get("human_action_query") or d_it.get("youtube_search_query") or default_overall_q
+                elif d_it.get("tool_name") == "render_doodle_2d_explainer_scene":
+                    d_it["tool_name"] = "fetch_clean_cinematic_portrait_or_broll"
+        else:
+            doodle_count = sum(1 for d_it in final_plan if d_it.get("tool_name") == "render_doodle_2d_explainer_scene")
+            if doodle_count < 1:
+                for idx_d, t_sid in enumerate(sorted(target_doodle_sids)):
+                    for d_it in final_plan:
+                        if int(d_it.get("scene_id") or 0) == t_sid and d_it.get("tool_name") != "render_doodle_2d_explainer_scene":
+                            c_tag, p_type = doodle_cycle[idx_d % len(doodle_cycle)]
+                            d_it["tool_name"] = "render_doodle_2d_explainer_scene"
+                            d_it["character_tag"] = c_tag
+                            d_it["prop_type"] = p_type
+                            d_it["scene_concept_summary"] = d_it.get("human_action_query") or d_it.get("youtube_search_query") or default_overall_q
+                            break
 
+    try:
+        from app.services.video_memory_rag import get_video_memory_rag
+        final_plan = get_video_memory_rag().diversify_intra_video_scene_queries(
+            job_id=0,
+            scenes_strategy=final_plan,
+            topic=topic,
+            primary_entity=primary_entity or topic,
+            scenes_raw=scenes,
+        )
+    except Exception:
+        pass
     return final_plan
 
 
@@ -409,6 +441,7 @@ def audit_and_decide_search_scopes_with_llm_sync(
     scenes: List[Dict[str, Any]],
     proposed_decisions: List[Dict[str, Any]],
     primary_entity: Optional[str] = None,
+    **kwargs,
 ) -> List[Dict[str, Any]]:
     """
     LLM Node Đánh Giá & Phê Duyệt Quyết Định Tìm Kiếm (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`):
@@ -469,8 +502,6 @@ STEP 2 — AUDIT & REWRITE `approved_query` (FOR YOUTUBE SHORTS) AND `approved_f
    - NEVER drop the head noun (never output `"African Crested"` without `"Porcupine"`) and NEVER output generic textures (`"microscopic texture"`, `"needle texture"`).
 3. `approved_subject_entity` (Scene-Accurate Subject Filter for Vision Auditor):
    - In a 2-entity duel (`Entity A vs Entity B`), set `approved_subject_entity` to the exact entity shown in that scene OR `"Entity A or Entity B"` (e.g., `"Leopard or African Crested Porcupine"`) so our Vision Auditor accepts valid footage of either contender!
-4. `INTRA-VIDEO QUERY UNIQUENESS` (Mandatory Across All Scenes 1..N):
-   - Across all scenes in the video, NEVER assign the exact same `approved_query` string to two different scenes. Differentiate each scene's `approved_query` by its specific action, anatomical detail, or camera angle so every scene fetches a distinct video clip.
 
 Return ONLY a valid JSON object in this exact format:
 {{
@@ -561,12 +592,24 @@ Return ONLY a valid JSON object in this exact format:
                                         item["scope_audited"] = True
                                         audited_list.append(item)
 
+                                    try:
+                                        from app.services.video_memory_rag import get_video_memory_rag
+                                        audited_list = get_video_memory_rag().diversify_intra_video_scene_queries(
+                                            job_id=0,
+                                            scenes_strategy=audited_list,
+                                            topic=topic,
+                                            primary_entity=primary_entity or topic,
+                                            scenes_raw=scenes,
+                                        )
+                                    except Exception:
+                                        pass
+
                                     verdict_log = ", ".join(
                                         f"S{x.get('scene_id')}:{x.get('tool_name')}[{x.get('search_scope')}]"
                                         for x in audited_list
                                     )
                                     logger.info(
-                                        f"⚖️ [LLM Scope Judge Node] Đã thẩm định xong {len(audited_list)} cảnh "
+                                        f"⚖️ [LLM Scope Judge Node + MiniRAG] Đã thẩm định & đa dạng hóa xong {len(audited_list)} cảnh "
                                         f"qua `{model_name}` -> {verdict_log}"
                                     )
                                     return audited_list

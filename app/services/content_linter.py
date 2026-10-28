@@ -143,10 +143,10 @@ class ScriptValidationLinter:
 
         is_long_form = str(getattr(script, "video_format", "short") or "short").strip().lower() == "long"
         if is_long_form:
-            min_words = 260
+            min_words = 220
             max_words = 900
-            target_range_str = "360 to 650 words (2.5-4.5 min Long-Form Documentary across 16-26 complete scenes)"
-            min_scenes = 14
+            target_range_str = "300 to 650 words (2.0-4.5 min Long-Form Documentary across 14-26 complete scenes)"
+            min_scenes = 12
             max_scenes = 32
         else:
             min_words = 82
@@ -206,9 +206,11 @@ class ScriptValidationLinter:
             s1 = script.scenes[0]
             s1_narr = (s1.narration or "").strip()
             s1_words = re.findall(r'\b\w+\b', s1_narr)
-            if len(s1_words) > 14:
+            is_long_form = str(getattr(script, "video_format", "short") or "short").strip().lower() == "long"
+            max_s1_words = 22 if is_long_form else 14
+            if len(s1_words) > max_s1_words:
                 issues.append(
-                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 6 and 11 punchy words for an instant thumb-stopper."
+                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 6 and {max_s1_words} punchy words for an instant thumb-stopper."
                 )
             elif len(s1_words) < 3:
                 issues.append(
@@ -441,13 +443,20 @@ class ScriptValidationLinter:
         all_issues.extend(ent_issues)
 
         is_valid = len(all_issues) == 0
+        is_long_form = str(getattr(script, "video_format", "short") or "short").strip().lower() == "long"
 
         retry_hint = None
         if not is_valid:
-            word_target_instruction = (
-                "Write a smooth, full-bodied, complete story of 85 to 120 words (30-40s across 7 to 9 natural scenes, "
-                "flexible 8-16 words per body scene so sentences flow smoothly and never feel abrupt or truncated)."
-            )
+            if is_long_form:
+                word_target_instruction = (
+                    "Write a smooth, full-bodied, complete 16:9 Widescreen Documentary of 360 to 650 words "
+                    "(2.5-4.5 min across 16 to 24 natural scenes, 18-26 words per body scene)."
+                )
+            else:
+                word_target_instruction = (
+                    "Write a smooth, full-bodied, complete story of 85 to 120 words (30-40s across 7 to 9 natural scenes, "
+                    "flexible 8-16 words per body scene so sentences flow smoothly and never feel abrupt or truncated)."
+                )
             bullet_points = "\n".join(f"- {issue}" for issue in all_issues)
             retry_hint = (
                 f"CRITICAL QUALITY GATE VIOLATIONS DETECTED:\n"

@@ -239,6 +239,7 @@ class VideoAgent:
                         "_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d",
                         "_motion3d", "_anim", "_fb_motion", "hook_motion_", "hook_peak_",
                         "hook_climax_", "_yt_peak", "_fullpeak", "_long_peak", "_vfirst",
+                        "_16x9", "_doodle", "_clean_broll", "_motion_rescue",
                     )
                 )
             )
