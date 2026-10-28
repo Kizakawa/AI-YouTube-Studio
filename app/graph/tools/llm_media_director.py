@@ -396,7 +396,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         target_doodle_sids = (
             {s_id for s_id in range(3, total_scenes, 4) if s_id not in (1, total_scenes)}
             if is_long_form_dir
-            else {3, min(5, total_scenes - 1)}
+            else {s_id for s_id in (2, 4, 6) if 1 < s_id < total_scenes}
         )
         if is_long_form_dir:
             for idx_d, d_it in enumerate(final_plan):
@@ -411,7 +411,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                     d_it["tool_name"] = "fetch_clean_cinematic_portrait_or_broll"
         else:
             doodle_count = sum(1 for d_it in final_plan if d_it.get("tool_name") == "render_doodle_2d_explainer_scene")
-            if doodle_count < 1:
+            if doodle_count < 2:
                 for idx_d, t_sid in enumerate(sorted(target_doodle_sids)):
                     for d_it in final_plan:
                         if int(d_it.get("scene_id") or 0) == t_sid and d_it.get("tool_name") != "render_doodle_2d_explainer_scene":
@@ -421,18 +421,14 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                             d_it["prop_type"] = p_type
                             d_it["scene_concept_summary"] = d_it.get("human_action_query") or d_it.get("youtube_search_query") or default_overall_q
                             break
+            # Kênh Tâm lý học: Tuyệt đối không dùng ảnh tĩnh MRI/infographic (search_google_cinematic_image),
+            # tự động nâng lên Video B-Roll người thật (fetch_clean_cinematic_portrait_or_broll)
+            for d_it in final_plan:
+                if d_it.get("tool_name") == "search_google_cinematic_image":
+                    d_it["tool_name"] = "fetch_clean_cinematic_portrait_or_broll"
+                    if not d_it.get("human_action_query"):
+                        d_it["human_action_query"] = d_it.get("smart_image_query") or d_it.get("youtube_search_query") or "person intense eye contact closeup"
 
-    try:
-        from app.services.video_memory_rag import get_video_memory_rag
-        final_plan = get_video_memory_rag().diversify_intra_video_scene_queries(
-            job_id=0,
-            scenes_strategy=final_plan,
-            topic=topic,
-            primary_entity=primary_entity or topic,
-            scenes_raw=scenes,
-        )
-    except Exception:
-        pass
     return final_plan
 
 
@@ -502,6 +498,11 @@ STEP 2 — AUDIT & REWRITE `approved_query` (FOR YOUTUBE SHORTS) AND `approved_f
    - NEVER drop the head noun (never output `"African Crested"` without `"Porcupine"`) and NEVER output generic textures (`"microscopic texture"`, `"needle texture"`).
 3. `approved_subject_entity` (Scene-Accurate Subject Filter for Vision Auditor):
    - In a 2-entity duel (`Entity A vs Entity B`), set `approved_subject_entity` to the exact entity shown in that scene OR `"Entity A or Entity B"` (e.g., `"Leopard or African Crested Porcupine"`) so our Vision Auditor accepts valid footage of either contender!
+4. `NICHE-SPECIFIC ANTI-FLOP GUARDRAILS` (MANDATORY):
+   - **Animal Rescue (`animal_rescue` / Paws & Hearts)**: Enforce SINGLE-BREED CONTINUITY across all scenes 1..N! Every scene's `approved_query` and `approved_fallback_stock_query` MUST specify the exact same dog/cat breed and color (e.g. `"white poodle rescue"`, `"golden retriever puppy rescue"`) so the video never stitches 8 different breeds of stray dogs together.
+   - **Psychology (`psychology`)**: NEVER output academic infographic or MRI brain scan queries (`"tactical infographic overlay"`, `"neural mapping silhouette"`, `"amygdala brain spike"`). Always rewrite `approved_query` to real human micro-expressions, interrogation, or body language action (`"detective interrogation nervous suspect"`, `"person avoiding eye contact"`, `"confident handshake body language"`).
+   - **Alternate History (`alternate_history`)**: NEVER output static portraits or utility-wire queries (`"JP Morgan portrait"`, `"telegraph office"`, `"power lines"`). Always rewrite `approved_query` to high-motion cinematic action footage (`"roman empire siege battle"`, `"mongol cavalry charge"`, `"volcano eruption ash cloud"`, `"tesla coil lightning arc"`).
+   - **Intra-Video Uniqueness**: Across all scenes 1..N, NEVER assign the exact same `approved_query` string to two different scenes.
 
 Return ONLY a valid JSON object in this exact format:
 {{
@@ -592,24 +593,12 @@ Return ONLY a valid JSON object in this exact format:
                                         item["scope_audited"] = True
                                         audited_list.append(item)
 
-                                    try:
-                                        from app.services.video_memory_rag import get_video_memory_rag
-                                        audited_list = get_video_memory_rag().diversify_intra_video_scene_queries(
-                                            job_id=0,
-                                            scenes_strategy=audited_list,
-                                            topic=topic,
-                                            primary_entity=primary_entity or topic,
-                                            scenes_raw=scenes,
-                                        )
-                                    except Exception:
-                                        pass
-
                                     verdict_log = ", ".join(
                                         f"S{x.get('scene_id')}:{x.get('tool_name')}[{x.get('search_scope')}]"
                                         for x in audited_list
                                     )
                                     logger.info(
-                                        f"⚖️ [LLM Scope Judge Node + MiniRAG] Đã thẩm định & đa dạng hóa xong {len(audited_list)} cảnh "
+                                        f"⚖️ [LLM Scope Judge Node] Đã thẩm định xong {len(audited_list)} cảnh "
                                         f"qua `{model_name}` -> {verdict_log}"
                                     )
                                     return audited_list

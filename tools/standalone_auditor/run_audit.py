@@ -189,6 +189,7 @@ def _fetch_analytics_metrics(yta_service: Any) -> Tuple[Dict[str, Any], Dict[str
         logger.debug(f"Analytics channel query error: {e}")
 
     # 2. Chỉ số chi tiết từng video (Top 200 video từ 2024-01-01 để lấy đủ mọi video đã chốt sổ Analytics)
+    reliable_rows = []
     try:
         v_rep = yta_service.reports().query(
             ids="channel==MINE",
@@ -202,18 +203,43 @@ def _fetch_analytics_metrics(yta_service: Any) -> Tuple[Dict[str, Any], Dict[str
         for r in v_rep.get("rows", []):
             vid_id, v_views, v_engaged, v_avd, v_apv = r[0], float(r[1] or 0), float(r[2] or 0), float(r[3] or 0), float(r[4] or 0)
             if v_views > 0:
+                is_reliable = bool(v_views >= 25 and 1.0 <= v_apv <= 200.0 and v_avd > 0.0)
                 v_stay = round(min(100.0, (v_engaged / v_views) * 100.0), 1)
                 v_swipe = round(max(0.0, 100.0 - v_stay), 1)
                 vid_map[vid_id] = {
                     "yta_views": int(v_views),
                     "engaged_views": int(v_engaged),
-                    "avd_sec": round(v_avd, 1),
-                    "apv_pct": round(v_apv, 1),
-                    "stay_pct": v_stay,
-                    "swipe_pct": v_swipe,
+                    "avd_sec": round(v_avd, 1) if is_reliable else None,
+                    "apv_pct": round(v_apv, 1) if is_reliable else None,
+                    "stay_pct": v_stay if is_reliable else None,
+                    "swipe_pct": v_swipe if is_reliable else None,
+                    "raw_avd_sec": round(v_avd, 1),
+                    "raw_apv_pct": round(v_apv, 1),
+                    "raw_stay_pct": v_stay,
+                    "analytics_reliable": is_reliable,
                 }
+                if is_reliable:
+                    reliable_rows.append((v_views, v_engaged, v_avd, v_apv))
     except Exception as e:
         logger.debug(f"Analytics video query error: {e}")
+
+    # Nếu chỉ số APV/AVD trung bình kênh bị nhiễu do các video ít view treo tab lặp (ví dụ APV > 85% hoặc AVD > 32s trên kênh ít view),
+    # tính trung bình có trọng số (weighted average) trên tập các video đủ mẫu tin cậy (yta_views >= 25 & APV <= 200%).
+    if reliable_rows and (ch_summary.get("apv_pct", 0.0) > 85.0 or not ch_summary.get("has_data")):
+        tot_v = sum(x[0] for x in reliable_rows)
+        tot_e = sum(x[1] for x in reliable_rows)
+        if tot_v > 0:
+            w_stay = round(min(100.0, (tot_e / tot_v) * 100.0), 1)
+            w_avd = round(sum(x[0] * x[2] for x in reliable_rows) / tot_v, 1)
+            w_apv = round(sum(x[0] * x[3] for x in reliable_rows) / tot_v, 1)
+            ch_summary = {
+                "avd_sec": w_avd,
+                "apv_pct": w_apv,
+                "stay_pct": w_stay,
+                "swipe_pct": round(max(0.0, 100.0 - w_stay), 1),
+                "has_data": True,
+                "sample_views": int(tot_v),
+            }
 
     return ch_summary, vid_map
 
@@ -421,6 +447,9 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                             "comments": comments,
                             "like_rate_pct": like_rate,
                             "views_per_hour": round(views / age_h, 1),
+                            "yta_views": ya.get("yta_views"),
+                            "engaged_views": ya.get("engaged_views"),
+                            "analytics_reliable": ya.get("analytics_reliable", False),
                             "avd_sec": ya.get("avd_sec"),
                             "apv_pct": ya.get("apv_pct"),
                             "stay_pct": ya.get("stay_pct"),
