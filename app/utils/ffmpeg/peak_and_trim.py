@@ -418,11 +418,13 @@ def trim_video(
     # - Nếu nguồn là 16:9 ngang (is_landscape_source) cần đưa vào khung 9:16: tuyệt đối KHÔNG cộng dồn zoom 1.18x (vì scale 9:16 đã tự động lấy trọn chiều dọc 100%, nếu zoom thêm sẽ làm mất góc chủ thể).
     if width < height:
         if is_native_portrait:
-            zoom_mult = 1.04 if (fair_use_transform and not is_already_rendered) else 1.0
+            # Khi bật fair_use_transform trên nguồn dọc (YouTube/Bilibili Shorts), phóng 1.16x để tự động cắt gọt sạch
+            # 8% mép trên và 10% mép dưới (nơi thường chứa nhãn '+IA', phụ đề đốt cứng ở đáy hoặc logo góc của kênh gốc)
+            zoom_mult = 1.16 if (fair_use_transform and not is_already_rendered) else 1.0
         elif is_landscape_source:
             zoom_mult = 1.0
         else:
-            zoom_mult = 1.06 if (fair_use_transform and not is_already_rendered) else 1.02
+            zoom_mult = 1.12 if (fair_use_transform and not is_already_rendered) else 1.02
     else:
         if is_already_rendered:
             zoom_mult = 1.0
@@ -499,10 +501,11 @@ def trim_video(
             crop_y_ratio = max(0.42, min(0.58, crop_y_ratio))
 
     if fair_use_transform and not is_already_rendered:
-        eff_x_ratio = round(1.0 - crop_x_ratio, 3)
+        # Tuyệt đối KHÔNG dùng hflip (lật gương ngang) vì sẽ làm ngược chữ/con số/biển báo trong cảnh quay thật
+        eff_y_ratio = 0.44 if (is_native_portrait and not has_letterbox) else crop_y_ratio
         scale_crop_chain = (
-            f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={width}:{height}:(iw-{width})*{eff_x_ratio:.3f}:(ih-{height})*{crop_y_ratio:.3f}"
+            f"scale={zw}:{zh}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={width}:{height}:(iw-{width})*{crop_x_ratio:.3f}:(ih-{height})*{eff_y_ratio:.3f}"
         )
     else:
         eff_sw, eff_sh = (zw, zh) if zoom_mult > 1.10 else (width, height)
@@ -551,7 +554,7 @@ def trim_video(
         cw1, ch1 = max(2, (int(width / 1.24) // 2) * 2), max(2, (int(height / 1.24) // 2) * 2)
         cw2, ch2 = max(2, (int(width / 1.16) // 2) * 2), max(2, (int(height / 1.16) // 2) * 2)
         cw3, ch3 = max(2, (int(width / 1.36) // 2) * 2), max(2, (int(height / 1.36) // 2) * 2)
-        fair_use_prefix = f"hflip,scale={zw_h}:{zh_h}:force_original_aspect_ratio=increase,crop={width}:{height}," if fair_use_transform else f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
+        fair_use_prefix = f"scale={zw_h}:{zh_h}:force_original_aspect_ratio=increase,crop={width}:{height}," if fair_use_transform else f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
         filter_complex = (
             f"[0:v]{pts_prefix}{fair_use_prefix}setsar=1,fps={fps},split=4[v0][v1][v2][v3];"
             f"[v0]trim=0:{t1},setpts=PTS-STARTPTS[s0];"

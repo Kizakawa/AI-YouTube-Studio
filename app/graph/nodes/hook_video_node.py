@@ -211,12 +211,12 @@ def _splice_dual_beat_hook_clip(
             preserve_continuous_flow=True,
         )
         if punch_in_b and Path(beat_b_raw).exists() and Path(beat_b_raw).stat().st_size > 8_000:
-            # Kết hợp lật gương ngang (hflip) + Punch-In 1.26x lệch tâm 1/3 trên + tăng tương phản
-            # để tạo cú đổi góc máy rõ rệt 100% tại giây 1.12s (vượt chắc chắn ngưỡng scdet=t=8.5)
+            # Punch-In 1.28x lệch tâm 1/3 trên + tăng tương phản (TUYỆT ĐỐI KHÔNG dùng hflip để tránh lật ngược chữ/biển hiệu/số liệu trong cảnh thật)
+            # tạo cú đổi góc máy rõ rệt 100% tại giây 1.12s (vượt chắc chắn ngưỡng scdet=t=8.5)
             cmd_punch = [
                 "ffmpeg", "-y",
                 "-i", beat_b_raw,
-                "-vf", "hflip,scale=1360:2418,crop=1080:1920:(iw-1080)*0.32:(ih-1920)*0.30,eq=contrast=1.08:brightness=0.02,setsar=1",
+                "-vf", "scale=1382:2456,crop=1080:1920:(iw-1080)*0.28:(ih-1920)*0.30,eq=contrast=1.08:brightness=0.02,setsar=1",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
                 "-pix_fmt", "yuv420p", "-r", "30", "-an",
                 beat_b_out,
@@ -466,6 +466,18 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     topic = state.get("topic") or script_data.get("topic") or ""
     primary_entity = state.get("primary_entity") or script_data.get("primary_entity") or ""
     niche = state.get("channel_style") or state.get("niche") or "general"
+    channel_id_norm = str(state.get("target_channel_id") or "").strip().lower()
+    if str(niche).strip().lower() in ("psychology", "doodle_2d_explainer") or "psychology" in channel_id_norm:
+        logger.info(
+            "🎨 [HookVideoNode] Kênh Tâm lý học (2D Doodle Explainer): "
+            "Bỏ qua săn video người thật/stock ở Cảnh 1-2 để đồng bộ 100% hoạt họa 2D Doodle từ giây 0.0s tại node_fetch_media."
+        )
+        return {
+            "current_step": "HOOK_VIDEO_DOODLE_BYPASS",
+            "pre_resolved_hook_media": {},
+            "progress_percent": 50,
+            "progress_message": "🎨 Kênh Psychology: Chuyển sang dựng đồng bộ 100% hoạt họa 2D Doodle từ Cảnh 1 (0.0s)...",
+        }
     visual_keyword = scene_1.get("visual_keyword") or topic
     hook_narration = scene_1.get("narration") or audio_1.get("narration") or script_data.get("hook") or ""
 
@@ -1592,8 +1604,9 @@ Return ONLY valid JSON:
                 f"entity={best_candidate.get('entity_match_score')}/10, clean={best_candidate.get('clean_frame_score')}/10)"
             )
 
-    # Dọn dẹp ngay toàn bộ các file ứng viên `.mp4` đã bị Gemini Vision đánh trượt khỏi `hook_candidates/`
-    # để tuyệt đối không cho `node_refine_media` hoặc `FinalVisualGate` nhặt nhầm clip sai chủ đề (như tàu container ở Job #612)!
+    # Dọn dẹp ngay toàn bộ các file ứng viên `.mp4` đã bị Gemini Vision hoặc VisualCritic đánh trượt khỏi `hook_candidates/`
+    # (bao gồm cả các file trả về None ở _grade_single_hook_candidate) để tuyệt đối không cho `node_refine_media`,
+    # `LOCAL_PEAK_RESCUE` hoặc `ENDING_UNUSED_CANDIDATE_VIDEO` nhặt nhầm clip chứa phụ đề/watermark cứng!
     approved_cand_paths: set = set()
     for _pc in passing_candidates:
         if _pc.get("video_path"):
@@ -1608,6 +1621,12 @@ Return ONLY valid JSON:
                     Path(str(_vp)).unlink(missing_ok=True)
                 except Exception:
                     pass
+    for _raw_vp in list(candidate_videos) + [str(p) for p in hook_cand_dir.glob("*.mp4")]:
+        if _raw_vp and str(Path(str(_raw_vp)).resolve()) not in approved_cand_paths:
+            try:
+                Path(str(_raw_vp)).unlink(missing_ok=True)
+            except Exception:
+                pass
 
     # ──────────────────────────────────────────────────────────────────────────
     # BƯỚC 4: CẮT ĐOẠN PEAK GHÉP VÀO ĐẦU VIDEO (ƯU TIÊN DUAL-BEAT FAST-CUT TRONG CẢNH 1 + MỞ RỘNG CẢNH 2 LIỀN MẠCH)
@@ -1745,21 +1764,40 @@ Return ONLY valid JSON:
                     alt_peak_start = float(alt_cand.get("peak_offset_sec", 0.0))
                     alt_out_tmp = str(work_dir / "hook_motion_001_alt_sharp.mp4")
                     try:
-                        trim_video(
-                            input_path=alt_clean_p if alt_use_pre else alt_v_path,
-                            duration_seconds=target_hook_duration_sec,
-                            output_path=alt_out_tmp,
-                            width=1080,
-                            height=1920,
-                            fps=30,
-                            is_scifi=is_scifi,
-                            niche=atmosphere_fx,
-                            apply_grading=True,
-                            is_hook_scene=True,
-                            fair_use_transform=not alt_use_pre,
-                            start_offset_sec=0.0 if alt_use_pre else alt_peak_start,
-                            preserve_continuous_flow=True,
-                        )
+                        alt_src = alt_clean_p if alt_use_pre else alt_v_path
+                        alt_base_off = 0.0 if alt_use_pre else alt_peak_start
+                        alt_spliced = False
+                        if target_hook_duration_sec >= 2.05:
+                            alt_spliced = _splice_dual_beat_hook_clip(
+                                clip_a_path=alt_src,
+                                start_a=alt_base_off,
+                                clip_b_path=alt_src,
+                                start_b=alt_base_off + 1.15,
+                                total_duration_sec=target_hook_duration_sec,
+                                output_path=alt_out_tmp,
+                                work_dir=work_dir,
+                                is_scifi=is_scifi,
+                                niche=atmosphere_fx,
+                                fair_use_a=not alt_use_pre,
+                                fair_use_b=not alt_use_pre,
+                                punch_in_b=True,
+                            )
+                        if not alt_spliced:
+                            trim_video(
+                                input_path=alt_src,
+                                duration_seconds=target_hook_duration_sec,
+                                output_path=alt_out_tmp,
+                                width=1080,
+                                height=1920,
+                                fps=30,
+                                is_scifi=is_scifi,
+                                niche=atmosphere_fx,
+                                apply_grading=True,
+                                is_hook_scene=True,
+                                fair_use_transform=not alt_use_pre,
+                                start_offset_sec=alt_base_off,
+                                preserve_continuous_flow=True,
+                            )
                         ok_alt_sh, alt_sh_val = _ensure_hook_clip_sharpness_and_luma(alt_out_tmp, min_sharpness=12.0)
                         if ok_alt_sh or alt_sh_val > s1_sharp_val:
                             import shutil as _sh_alt
@@ -2417,12 +2455,12 @@ Return ONLY valid JSON:
                 logger.debug(f"[HookVideoNode] Direct stock video rescue skip: {e_s1_broll}")
 
         # CỨU HỘ TẦNG 2 (CHỐNG RỚT VỀ ẢNH TĨNH `TRADITIONAL_SCENE_FALLBACK`):
-        # Nếu vẫn chưa có `stock_hook_ok`, ưu tiên (A) Cắt đoạn chuyển động tốt nhất từ ứng viên `.mp4` đã tải trong `hook_cand_dir`
-        # hoặc (B) Tải Bilibili HD Safe-Crop 9:16 trước khi dùng đa ảnh 3D Motion!
+        # Tuyệt đối KHÔNG lấy `yt_hook_cand_*.mp4` (vì các ứng viên đó đã bị Gemini Vision / OCR đánh trượt ở Bước 3!).
+        # Chỉ lấy `hook_peak_clean_*.mp4` hoặc `s1_stock_rescue_raw.mp4` nếu có, hoặc chuyển sang Bilibili HD Safe-Crop 9:16.
         if not stock_hook_ok:
             try:
                 local_cand_mp4s = sorted(
-                    hook_cand_dir.glob("*.mp4"),
+                    list(hook_cand_dir.glob("hook_peak_clean_*.mp4")) + list(hook_cand_dir.glob("s1_stock_rescue_*.mp4")),
                     key=lambda p: p.stat().st_size if p.exists() else 0,
                     reverse=True,
                 )

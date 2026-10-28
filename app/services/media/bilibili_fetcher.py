@@ -562,7 +562,8 @@ def download_and_crop_bilibili_broll_clip(
             if (not preserve_continuous_master) and clip_dur >= 9.0 and avail_dur_s >= (second_start + rem_d + 0.4):
                 fc = (
                     f"[0:v]trim={peak_start:.2f}:{peak_start + half_d:.2f},setpts=PTS-STARTPTS,{base_16x9_vf}[v1];"
-                    f"[0:v]trim={second_start:.2f}:{second_start + rem_d:.2f},setpts=PTS-STARTPTS,hflip,{base_16x9_vf}[v2];"
+                    f"[0:v]trim={second_start:.2f}:{second_start + rem_d:.2f},setpts=PTS-STARTPTS,{base_16x9_vf},"
+                    f"scale=iw*1.12:ih*1.12:flags=lanczos,crop=1920:1080:(iw-1920)/2:(ih-1080)*0.40[v2];"
                     f"[v1][v2]concat=n=2:v=1:a=0[vout]"
                 )
                 cmd = [
