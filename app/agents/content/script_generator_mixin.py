@@ -329,6 +329,8 @@ Return ONLY valid JSON:
             end = raw_bp.rfind("}")
             if start != -1 and end != -1 and end > start:
                 bp_data = json.loads(raw_bp[start : end + 1])
+                if bp_data.get("primary_entity"):
+                    self._last_primary_entity = str(bp_data.get("primary_entity")).strip()
                 logger.info(
                     f"🧠 [ContentAgent Stage-1 Deep Blueprint] Winning Angle: {bp_data.get('winning_angle', '')[:80]} | "
                     f"Archetype: {bp_data.get('selected_hook_archetype', '')} | "

@@ -333,17 +333,32 @@ def _clean_yt_search_phrase(
     """
     Chuẩn hóa nhẹ câu truy vấn do LLM sinh ra:
     - Chỉ loại bỏ các tag kỹ thuật thừa (`4k`, `8k`, `hd`, `short`, `shorts`) và giới hạn độ dài `max_words`.
-    - TÔN TRỌNG 100% câu truy vấn của LLM: Không dùng danh sách từ khóa cứng để ép ghép `subject_entity` đè lên truy vấn của LLM
-      (chỉ dùng `subject_entity` làm dự phòng khi câu truy vấn `q` bị rỗng).
+    - Khi `strip_distractor_props=True` và rút gọn thực thể (`max_words <= 3`), tự động tách phần tiêu đề trước dấu `:` / `vs`
+      và giữ danh từ chính ở cuối cụm danh từ tiếng Anh (`core[-max_words:]`, VD: `'Crested Porcupine'` / `'Porcupine'` thay vì `'African Crested'`).
     """
-    _ = strip_distractor_props
-    words = re.findall(r"[a-zA-Z0-9]+", q or "")
-    core = [w for w in words if w.lower() not in _YT_QUERY_FILLER_WORDS and len(w) >= 2]
+    raw_q = str(q or "").strip()
+    if strip_distractor_props and max_words <= 3 and raw_q:
+        raw_q = re.split(r"[:—–\-]\s+", raw_q, maxsplit=1)[0].strip()
+        if max_words <= 3:
+            raw_q = re.split(r"\b(?:vs\.?|versus)\b", raw_q, maxsplit=1, flags=re.IGNORECASE)[0].strip() or raw_q
+
+    words = re.findall(r"[a-zA-Z0-9]+", raw_q)
+    extra_skip = {"vs", "versus"} if strip_distractor_props else set()
+    core = [
+        w for w in words
+        if w.lower() not in _YT_QUERY_FILLER_WORDS
+        and w.lower() not in extra_skip
+        and len(w) >= 2
+    ]
     if not core and subject_entity:
         core = [
             w for w in re.findall(r"[a-zA-Z0-9]+", subject_entity)
-            if w.lower() not in _YT_QUERY_FILLER_WORDS and len(w) >= 2
+            if w.lower() not in _YT_QUERY_FILLER_WORDS
+            and w.lower() not in extra_skip
+            and len(w) >= 2
         ]
+    if strip_distractor_props and max_words in (1, 2) and len(core) > max_words:
+        return " ".join(core[-max_words:]).strip()
     return " ".join(core[:max_words]).strip()
 
 

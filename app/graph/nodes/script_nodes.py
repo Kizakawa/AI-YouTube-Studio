@@ -73,9 +73,6 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     language = state.get("language", "en")
     director_notes = state.get("director_notes")
 
-    if primary_entity and primary_entity.lower() not in topic.lower():
-        topic = f"{topic} (Focus on {primary_entity})"
-
     target_channel_id = state.get("target_channel_id", "")
     video_format = str(state.get("video_format") or "short").strip().lower()
     if video_format not in ("short", "long"):
@@ -90,6 +87,7 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         channel_id=target_channel_id,
         video_format=video_format,
     )
+    resolved_entity = getattr(content_agent, "_last_primary_entity", None) or primary_entity
 
     # Chống trùng lặp tiêu đề với kho video cũ của kênh
     if target_channel_id:
@@ -109,13 +107,16 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
             logger.debug(f"[LangGraph] Lỗi kiểm tra trùng tiêu đề: {_e_dup}")
 
     script_dict = script.to_dict()
-    return {
+    out_state: Dict[str, Any] = {
         "script_data": script_dict,
         "video_format": script.video_format,
         "current_step": "SCRIPT_GENERATED",
         "progress_percent": 20,
         "progress_message": f"Đã sinh kịch bản ({'Video Dài 16:9' if script.video_format == 'long' else 'Shorts 9:16'}): {script.title} ({len(script.scenes)} cảnh)",
     }
+    if resolved_entity:
+        out_state["primary_entity"] = resolved_entity
+    return out_state
 
 
 def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
@@ -279,9 +280,8 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
             f"MANDATORY TARGET: Overall >= 8.2/10 and Scene 1 Hook >= 8.5/10]. "
             f"Surgically fix ALL of the following Critic issues: {'; '.join(critiques)}. "
             f"CORE SHORTS REQUIREMENTS: "
-            f"(1) SCENE 1 (HOOK 6-9 WORDS, ~2.0 SECONDS) MUST OPEN WITH THE PRIMARY ENTITY/SUBJECT + VISCERAL PHYSICAL ACTION OR PSYCHOLOGICAL POINTER at 0.0s "
-            f"(Never hide the subject at Scene 1, never start with vague pronouns or Yes/No questions!); "
-            f"(2) TOTAL SCRIPT LENGTH: 85-115 words across 7-8 complete scenes (11-15 words per body scene, golden duration 32s-40s); "
+            f"(1) TITLE vs. HOOK SEPARATION OF DUTY: Keep exact searchable entity names in `title` (`[Entity A] vs [Entity B]: [Metric]`, 28-55 chars, NEVER drop a main entity from `title`!), while Scene 1 Hook (0.0s, 6-10 words) uses 1 of the 4 Psychological-Visual Hook Archetypes without repeating `title` verbatim and without '?' questions; "
+            f"(2) TOTAL SCRIPT LENGTH: 92-118 words across 7-8 complete scenes (11-16 words per body scene, golden duration 34s-40s); "
             f"(3) Final scene bridges seamlessly back to Scene 1 (Zero Spoken Subscribe CTA); "
             f"(4) 100% LANGUAGE INTEGRITY: Every single word in title, hook, and narration MUST be in '{language}' (ZERO Vietnamese words or syllables!)."
         )

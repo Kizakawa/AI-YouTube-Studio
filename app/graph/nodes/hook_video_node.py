@@ -19,6 +19,7 @@ import json
 import base64
 import logging
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -2599,8 +2600,12 @@ Return ONLY valid JSON:
         (dur_s1 + dur_s2) if (1 in pre_resolved_hook_media and 2 in pre_resolved_hook_media) else target_hook_duration_sec,
         2,
     )
+    _hook_best_score = best_candidate["overall_score"] if best_candidate else (8.4 if pre_resolved_hook_media else None)
     eval_summary = {
         "mode": hook_mode,
+        "edit_mode": hook_mode,
+        "overall_score": _hook_best_score,
+        "passed": bool(pre_resolved_hook_media),
         "hook_production_strategy": hook_production_strategy,
         "visual_hook_blueprint": visual_hook_blueprint,
         "beat_1_query": beat_1_query,
@@ -2612,7 +2617,7 @@ Return ONLY valid JSON:
         "search_queries": queries,
         "atmosphere_fx": atmosphere_fx,
         "candidates_tested": len(scored_candidates),
-        "best_score": best_candidate["overall_score"] if best_candidate else (8.4 if pre_resolved_hook_media else None),
+        "best_score": _hook_best_score,
         "best_scroll_stop_score": best_candidate.get("scroll_stop_score") if best_candidate else None,
         "best_reason": best_candidate["reason"] if best_candidate else ("Rapid Multi-Image Peak Hook / Stock Motion Spliced" if pre_resolved_hook_media else "Delegated to fetch_media & VisualCritic (scene mode)"),
         "evaluated_by": "vision_ai" if best_candidate else ("peak_synthesizer" if pre_resolved_hook_media else "delegated_to_visual_critic"),

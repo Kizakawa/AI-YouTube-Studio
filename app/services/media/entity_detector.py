@@ -205,7 +205,7 @@ _HISTORICAL_ENTITIES_AND_CIVILIZATIONS = {
     "thomas edison": ("Thomas Edison", "person"),
     "rockefeller": ("John D. Rockefeller", "person"),
     "john d. rockefeller": ("John D. Rockefeller", "person"),
-    "newton": ("Isaac Newton", "person"),
+    "sir isaac newton": ("Isaac Newton", "person"),
     "isaac newton": ("Isaac Newton", "person"),
     "darwin": ("Charles Darwin", "person"),
     "charles darwin": ("Charles Darwin", "person"),
@@ -258,11 +258,11 @@ _KNOWN_FIGURES = {
     "abraham lincoln": "Abraham Lincoln",
     "washington": "George Washington",
     "george washington": "George Washington",
-    "jobs": "Steve Jobs",
+
     "steve jobs": "Steve Jobs",
-    "gates": "Bill Gates",
+
     "bill gates": "Bill Gates",
-    "newton": "Isaac Newton",
+    "sir isaac newton": "Isaac Newton",
     "isaac newton": "Isaac Newton",
     "darwin": "Charles Darwin",
     "charles darwin": "Charles Darwin",

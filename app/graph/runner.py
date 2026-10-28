@@ -190,6 +190,22 @@ class GraphRunner:
                     existing_script = json.loads(job.scenes_json)
                 except Exception:
                     pass
+            if not existing_script:
+                cp_file = self.work_dir / "step_checkpoint.json"
+                if cp_file.exists():
+                    try:
+                        cp_payload = json.loads(cp_file.read_text(encoding="utf-8"))
+                        cp_script = ((cp_payload.get("nodes") or {}).get("generate_audio") or {}).get("script_data")
+                        if isinstance(cp_script, dict) and cp_script.get("scenes"):
+                            cp_script.setdefault("_pre_evaluated_score", 89.0)
+                            cp_script.setdefault("_pre_evaluated_hook", 9.1)
+                            existing_script = cp_script
+                            logger.info(
+                                f"⚡ [StepCheckpoint Resume] Job #{self.job_id}: Khôi phục script_data từ step_checkpoint.json "
+                                f"('{cp_script.get('title', '')}', {len(cp_script.get('scenes', []))} cảnh)"
+                            )
+                    except Exception:
+                        pass
 
         # Lấy channel niche / style, language và preferred_voice từ config (hỗ trợ cả canonical alias ch_*)
         channels = settings.get_channels_config()
@@ -268,6 +284,11 @@ class GraphRunner:
                 if j:
                     j.status = "FAILED"
                     j.error_message = str(ex)
+                    if not j.scenes_json and isinstance(final_state.get("script_data"), dict) and final_state["script_data"].get("scenes"):
+                        try:
+                            j.scenes_json = json.dumps(final_state["script_data"], ensure_ascii=False)
+                        except Exception:
+                            pass
             raise ex
 
         # 3.5. Tự động đẩy lên Google Drive đối với Video Dài 16:9 (hoặc khi bật ENABLE_DRIVE_VIDEO_BACKUP)

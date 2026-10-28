@@ -352,8 +352,11 @@ Target Language: {language} ({target_lang_display})
 {lang_instruction}
 
 HARD RETENTION & FULL-BODIED STORYTELLING RULES:
+0. GOLDEN SEPARATION OF DUTY (TITLE FOR `YT_SEARCH` vs. SCENE 1 HOOK 0.0s FOR `SHORTS FEED`):
+   - TITLE RULE (NEVER VIOLATE): Keep exact, high-search-volume entity names in `title` (`[Entity A] vs [Entity B]: [Extreme Physical Metric]`, 28-55 chars, e.g., `Leopard vs Porcupine: 30,000 Quills 🦔🐆 #Shorts`). NEVER drop a primary entity from `title` or replace it with a vague pronoun/curiosity phrase!
+   - SCENE 1 HOOK (0.0s) RULE: Open with 1 of the 4 Million-View Psychological-Visual Hook Archetypes (Visual Micro-Observation, The Fatal Mistake, 2nd-Person Survival Scenario, or Illusion Breaker, {'8-14 words' if is_long_form else '6-10 words'}) that NEVER repeats the `title` verbatim!
 1. SCENE 1 PATTERN INTERRUPT HOOK (CRITICAL TO PREVENT SWIPING):
-   - Scene 1 spoken text must use an urgent warning, 1v1 apex duel, elite interrogation tactic, dark law, or counter-intuitive shock ({'8-14 words' if is_long_form else '5-9 words'}).
+   - Scene 1 spoken text must use an urgent warning, 1v1 apex duel, elite interrogation tactic, dark law, or counter-intuitive shock ({'8-14 words' if is_long_form else '6-10 words'}).
 2. SMOOTH, COMPLETE NARRATIVE ({'360-560 words total across 16-22 scenes (5 Chapters), 18-26 words per body scene' if is_long_form else '85-120 words total across 7-9 scenes, flexible 8-16 words per body scene'} — NEVER write choppy or truncated sentences!):
    - Act 1 (Scene 1): Hook ({'8-14 words' if is_long_form else '5-9 words'}).
    - Act 2: Smooth context + concrete real-life verbal quote/example or specific historical/scientific proof.
