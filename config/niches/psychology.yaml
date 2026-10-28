@@ -15,26 +15,13 @@ script_blueprint:
   tone_of_voice: Trầm tĩnh, sắc lạnh như hồ sơ pháp y FBI & giải phẫu thần kinh học,
     trực diện không một từ thừa (Surgical forensic profiler & neuro-scientist — Grade-5
     US spoken clarity, Zack D. Films / JCS Criminal Psychology vibe).
-  pacing: Thời lượng vàng 28 - 35 giây (6 - 7 phân cảnh súc tích, 75 - 92 từ, 4.0
-    - 4.8 giây/cảnh để đẩy APV > 90%). CẤM dùng câu 1 từ rời rạc và CẤM làm chủ đề
-    tình cảm/nhắn tin/bạn bè chung chung. Cảnh 1 (0-2.0s) PHẢI là câu 5-8 từ trực
-    diện nêu thẳng vụ án/thí nghiệm não bộ/bẫy tiền bạc kèm con số vật lý cụ thể.
-    Cảnh 2-3 mô tả hiện trường phòng thẩm vấn/phòng thí nghiệm/sòng bạc, Cảnh 4 (giây
-    14-18) là Mid-Video Twist giải phẫu cơ chế thần kinh học (amygdala, dopamine,
-    vagus nerve, cognitive load), Cảnh 5-6 đưa ra bằng chứng thực nghiệm hoặc phép
-    thử tự kiểm chứng, Cảnh 7 là Cầu nối Vòng lặp Vô tận (Infinite Loop Bridge) nối
-    mượt về Cảnh 1.
+  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 phân cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh để đạt APV > 95% và qua bài kiểm tra Cohort ngày 2). TUÂN THỦ QUY TẮC VÀNG PHÂN VAI (Charisma on Command 9.78M / The Behavioral Arts 1.25M / Dr Julie 1.23M Formula) — Tiêu đề (title) BẮT BUỘC nêu rõ tình huống tâm lý/thẩm vấn hoặc cơ chế não bộ có lượng tìm kiếm YT_SEARCH cao, còn Cảnh 1 (0.0s-2.2s, 6-10 từ) TUYỆT ĐỐI KHÔNG đọc lại tiêu đề hay định nghĩa sách giáo khoa! Cảnh 1 phải mở bằng (1) Một câu thoại công kích/khen đểu ngoài đời thực, hoặc (2) Chỉ điểm vi biểu cảm/cử chỉ tay chân của nghi phạm trên màn hình, sau đó Cảnh 2-3 mổ xẻ cơ chế thần kinh/FBI và Cảnh 4-7 đưa ra đòn phản công thực chiến 2 bước!"
   hook_formulas:
-  - Forensic Courtroom / Interrogation Glitch (#1 Proven Channel Winner - 39.1% Stayed)
-    - 'Guilty suspects always fail this two-second water cup test!'
-  - Extreme Brain / Sensory Deprivation Experiment (#1 US Macro Niche - 4M Avg Views)
-    - 'Forty-five minutes in this silent room makes your brain hallucinate!'
-  - Polygraph & FBI Behavioral Trap - 'FBI interrogators watch your feet, never your
-    eyes, when you lie!'
-  - Casino & Billionaire Money Trap (High-RPM Finance Psychology) - 'Casinos banned
-    windows and clocks to hijack your dopamine!'
-  - Criminal Profiling Paradox - 'Why serial killers smile the exact second the judge
-    reads the verdict!'
+  - 'Real-Life Spoken Insult / Manipulation Trap (Charisma on Command 9.78M Formula): ''"You actually look good today" is a hidden insult — watch their eyes next.'''
+  - 'Forensic Micro-Expression Pointer (The Behavioral Arts 1.25M Formula): ''Watch this suspect''s hands the exact second the detective mentions the car.'''
+  - 'Courtroom / FBI Water Cup Glitch (#1 Channel Winner): ''If a suspect touches their neck while apologizing, they are hiding something.'''
+  - 'Extreme Brain / Sensory Deprivation Warning: ''If the door to this silent chamber closes, your brain hallucinates within minutes.'''
+  - 'Casino & Billionaire Mind Trap: ''Look at the carpet and ceiling the next time you walk into a casino.'''
   viral_topic_bank_2026:
   - 'The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a
     Suspect'

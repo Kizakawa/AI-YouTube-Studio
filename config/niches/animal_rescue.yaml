@@ -9,31 +9,22 @@ target_audience: Hàng trăm triệu người yêu động vật toàn cầu, ph
 script_blueprint:
   tone_of_voice: Truyền cảm, ấm áp, thắt nghẹn ở phần đầu và vỡ òa xúc động ở phần kết, chạm thẳng vào
     trái tim người xem, kích hoạt phản xạ đồng cảm tức thì.
-  pacing: Nhịp điệu xúc động sâu sắc, thời lượng vàng 35 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ),
-    đủ 4 giai đoạn chuyển hóa cảm xúc để đạt APV > 90% và tỷ lệ chuyển đổi Subscribe cao nhất.
+  pacing: "Nhịp điệu kể chuyện ấm áp, truyền cảm bằng giọng đọc thật (166 - 190 WPM, TUYỆT ĐỐI KHÔNG xuất video chỉ có nhạc nền không lời!), thời lượng vàng 35 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ), đủ 4 giai đoạn chuyển hóa cảm xúc có mốc thời gian cụ thể theo công thức GeoBeats Animals (2.77M views, 10.84% Like) & Rocky Kanaka (645K views)."
   hook_formulas:
-  - 'Refused To Let Go (Proven #1 Winner 2,282 Views & +32 Subs): ''He refused to let go of the rescuer''s
-    hand until this heartbreaking truth came out...'''
-  - 'Relief Transformation (Proven #2 Winner 1,205 Views & 94.8% APV): ''The exact second this terrified
-    rescue dog realized he was finally safe, everything changed...'''
-  - 'Day 1 vs Day 30 Emotional Payoff (Cuddle & Rescue 20.6M Formula): ''Nobody recognized this trembling
-    stray dog 30 days after one kind stranger stopped his car...'''
-  - 'The First Tail Wag Breakthrough: ''He spent 3 years hiding in the corner of the shelter, until a
-    little girl sat silently outside his kennel...'''
-  - 'Saved Mother Gratitude: ''This stray mama dog led a rescuer half a mile into the rain — and what
-    he found inside the drain pipe broke him...'''
+  - 'Time-Anchored Abandonment Hook (GeoBeats Animals 2.77M & 10.84% Like Formula): ''He spent ten years completely alone in a concrete cage without a single soft bed.'''
+  - 'Train Station / Street Discovery Hook (GeoBeats Animals 786K Formula): ''Found roaming a freezing train station severely underweight, this puppy refused to move.'''
+  - 'The 50-Minute Shelter Trust Breakthrough (Rocky Kanaka 645K Formula): ''Watch the exact second this terrified shelter dog rests his head on a human hand.'''
+  - 'Senior Street Cat Retirement (GeoBeats Animals 2.03M Formula): ''After years surviving out of trash cans, this scarred street cat walked onto the right porch.'''
+  - 'Saved Mother Gratitude: ''This stray mama dog led a rescuer into the rain toward a flooded drain pipe.'''
   viral_topic_bank_2026:
   - He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm
   - The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe
   - Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign
   - Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time
-  - Watch How This Rescued Golden Retriever Reacts The First Time He Sees A Bed
+  - Watch How This Rescued Golden Retriever Reacts The First Time He Sees A Soft Bed
   - She Guarded Her Injured Brother In The Rain Until Help Finally Arrived
   - 'Day 1 vs Day 30: The Stray Dog Nobody Wanted To Touch'
-  narrative_structure: Khoảnh khắc nghịch lý gây tò mò hoặc từ chối buông tay (Hook 0-5s) -> Bàn tay kiên
-    nhẫn và hơi ấm tiếp cận (5-15s, Mid-Video Re-Hook Cảnh 4) -> Khoảnh khắc tan chảy nhận ra mình được
-    yêu thương (15-35s) -> Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng ấm (Payoff bắt buộc Cảnh 6-9)
-    -> Lời kêu gọi nhân văn & Infinite Loop.
+  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Hoàn cảnh bị bỏ rơi + địa điểm/thời gian cụ thể (KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 (Act 2) - Đêm đầu tiên có chiếc giường êm / bữa ăn ấm áp đầu tiên -> Cảnh 4-5 (Act 3 - Mid-Video 15s Trust Breakthrough) - Khoảnh khắc trong 5 phút đầu tiên bước vào nhà mới, con vật ngừng run và chủ động xin ôm/vẫy đuôi -> Cảnh 6-7 (Act 4 Payoff) - Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng xuân -> Cảnh 8 - Cầu nối Infinite Loop quay về ánh mắt ở Cảnh 1 (Zero Spoken Subscribe CTA)."
   forbidden_words:
   - Chào mừng các bạn đến với kênh yêu thú cưng
   - Hôm nay mình sẽ kể cho các bạn nghe
@@ -93,9 +84,9 @@ subtitles:
   outline_width: 3
   margin_bottom: 600
 audio:
-  preferred_voice_en: en-US-JennyNeural
+  preferred_voice_en: en-US-AvaMultilingualNeural
   preferred_voice_vi: vi-VN-HoaiMyNeural
-  rate: +3%
+  rate: +5%
   pitch: 0Hz
   bgm_vibe: emotional acoustic piano into soaring orchestral violin, heartwarming, tears of joy, gentle
     hopeful warmth
@@ -105,7 +96,7 @@ audio:
   - riser
   - whoosh_fast
 banned_lexicon: *id001
-target_wpm: 154
+target_wpm: 168
 monetization:
   affiliate_enabled: false
   affiliate_category: pet_care

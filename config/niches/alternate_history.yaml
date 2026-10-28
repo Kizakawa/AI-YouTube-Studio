@@ -5,14 +5,14 @@ icon: ⏳
 description: Khám phá các dòng thời gian song song, những bước ngoặt lịch sử chấn động (What If?), các siêu thảm họa kỹ thuật/tự nhiên có thật và thế giới sẽ ra sao nếu lịch sử rẽ sang hướng khác.
 target_audience: Khán giả Mỹ và toàn cầu đam mê lịch sử kịch tính, thảm họa lịch sử có thật, siêu dự án quân sự và câu hỏi giả định (18-45 tuổi).
 script_blueprint:
-  tone_of_voice: "Kịch tính, nhịp độ dồn dập, ngôn ngữ Tiếng Anh giao tiếp lớp 5 sắc gọn (Zack D. Films / Historically / Dan Carlin), mở đầu bằng con số vật lý và xung đột sinh tử ngay ở giây 0.0s."
-  pacing: "Thời lượng vàng 32 - 38 giây (7 - 8 cảnh trọn câu, 85 - 108 từ tổng, 3.5 - 4.5 giây/cảnh). Cảnh 1 (0.0s-2.0s) chỉ 5-8 từ chỉ điểm trực diện va chạm vật lý, Cảnh 4 (giây 12-15) là Mid-Video Climax Twist (con số chấn động thứ 2), Cảnh cuối bắc cầu Infinite Loop về Cảnh 1."
+  tone_of_voice: "Kịch tính, nhịp độ dồn dập, ngôn ngữ Tiếng Anh giao tiếp lớp 5 sắc gọn (HistoryMarche 5.33M / Zack D. Films 51.4M / Historically vibe), nhảy thẳng vào giữa tâm chấn trận đánh hoặc khoảnh khắc sai lầm lịch sử (In Medias Res) ngay ở giây 0.0s."
+  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 cảnh trọn câu, 92 - 118 từ tổng, ~4.5 giây/cảnh). TUÂN THỦ QUY TẮC VÀNG PHÂN VAI: Tiêu đề (title) chứa tên Đế chế/Danh tướng/Thảm họa + Con số để ăn YT_SEARCH, còn Cảnh 1 (0.0s-2.2s, 6-10 từ) nhảy thẳng vào hành động (In Medias Res) mà KHÔNG đọc lặp lại tiêu đề; Cảnh 2-3 tung thông số đầu tiên; Cảnh 4 (giây 14-18) tung Cú Lật Kèo Phục Kích ('But what they didn't know...'); Cảnh cuối bắc cầu Infinite Loop về Cảnh 1."
   hook_formulas:
-  - 'Catastrophe vs. Shield Confrontation (Proven #1 Winner): ''Earth survived only because one volcano killed thousands.'' / ''Two four-megaton nukes fell straight onto North Carolina.'''
-  - 'Deictic Physical Scale Shock (5-8 words): ''This 1,720-foot mega-tsunami erased an entire mountain.'' / ''Three divers swam into Chernobyl''s radioactive basement.'''
-  - 'Bizarre Military Megaproject Clash (A vs. B): ''Britain built a two-million-ton warship out of ice.'' / ''America planned to nuke the Moon in 1958.'''
-  - 'Geopolitical Trillion-Dollar Blunder: ''Russia sold Alaska for two cents an acre.'' / ''Australia lost a war against twenty thousand birds.'''
-  - 'Split-Second Doomsday Switch: ''One low-voltage switch saved America in 1961.'' / ''This 15-megaton asteroid missed London by four hours.'''
+  - 'In Medias Res Battlefield Trap (HistoryMarche 5.33M Hannibal Formula): ''The Roman legions pushed forward, walking straight into a hidden riverbed trap.'''
+  - 'The False Gap / Tactical Feint (HistoryMarche 2.18M Alexander Formula): ''Retreating in the center looked like panic, until the cavalry turned around.'''
+  - 'Split-Second Doomsday Mistake: ''One low-voltage switch was the only thing standing between Carolina and nuclear fire.'''
+  - 'Visual Micro-Observation on Archival Mystery: ''Look closely at the hull of this warship built entirely out of frozen ice.'''
+  - 'Counterfactual Catastrophe Shield: ''Europe survived only because three divers swam into a flooded radioactive basement.'''
   viral_topic_bank_2026:
   - "1961 Goldsboro B-52 Crash: Two 4-Megaton Nukes vs. One Low-Voltage Switch in North Carolina"
   - "1958 Lituya Bay Mega-Tsunami: 1,720-Foot Wave vs. The Empire State Building"
@@ -24,7 +24,7 @@ script_blueprint:
   - "Operation Plowshare: America's Plan To Carve A Canal With 520 Nuclear Bombs"
   - "1932 Great Emu War: 10,000 Machine Gun Rounds vs. 20,000 Unstoppable Birds"
   - "1908 Tunguska 15-Megaton Airburst: What If The Asteroid Hit 4 Hours Later Over Europe?"
-  narrative_structure: "Act 1 (0.0-2.0s): 5-8 Word Physical Confrontation Hook ('A vs. B' + extreme number) -> Act 2 (2.0-11.0s): Exact Historical Date, Location & Lethal Mechanism -> Act 3 (11.0-21.0s): Mid-Video Climax Twist (The hidden 2nd physical metric or counterfactual domino effect) -> Act 4 (21.0-30.0s): How The World Narrowly Escaped / Rewritten Map -> Act 5 (30.0-36.0s): Jaw-Dropping Final Payoff + Seamless Infinite Loop Bridge back to Scene 1 (Zero Spoken Subscribe CTA)"
+  narrative_structure: "Act 1 (0.0-2.2s): 6-10 Word In-Medias-Res Action / Fatal Mistake Hook (NEVER repeats Title verbatim) -> Act 2 (2.2-12.0s): Exact Historical Date, Location & First Hard Metric -> Act 3 (12.0-22.0s): Mid-Video Climax Twist ('But what they didn't know...' hidden ambush or 2nd physical metric) -> Act 4 (22.0-32.0s): How The Battle/World Turned -> Act 5 (32.0-38.0s): Jaw-Dropping Final Payoff + Seamless Infinite Loop Bridge back to Scene 1 (Zero Spoken Subscribe CTA)"
   forbidden_words:
   - Welcome back to our channel
   - Today we will talk about
@@ -35,9 +35,9 @@ script_blueprint:
   - Imagine a world where
   - Chào mừng các bạn đã quay trở lại
   cta_templates:
-  - "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below & SUBSCRIBE for daily historical showdowns! 👇"
-  - "Who wins this historical showdown: (1) Human Engineering or (2) Nature's Wrath? Vote 1 or 2 below & SUBSCRIBE! 👇"
-  - "Did humanity get lucky in this moment: (1) Pure Luck or (2) Calculated Heroism? Drop 1 or 2 in the comments! 👇"
+  - "Honestly: if Hannibal didn't have those 2,000 hidden cavalry in the riverbed, do the Romans win at Trebia? (1) Yes or (2) Hannibal still wins? 👇"
+  - "If that final safety switch had failed in 1961, does the Cold War turn hot immediately: (1) Total War or (2) Emergency Stand-down? 👇"
+  - "Was this turning point (1) Brilliant Strategy or (2) Pure Historical Luck? 👇"
   anti_hallucination_rules:
   - Phải dựa trên các sự kiện, thảm họa, chiến dịch quân sự và con số vật lý có thật 100% trong lịch sử (năm, địa điểm, megaton, độ cao, nhiệt độ, PSI), kết hợp góc nhìn đối đầu trực diện ('A vs. B') hoặc giả thuyết 'What If' sắc bén.
   - Tiêu đề BẮT BUỘC ưu tiên cấu trúc '[Thực thể/Thảm họa A] vs. [Mục tiêu/Lá chắn B] + Con số/Năm cụ thể' (dưới 60 ký tự) hoặc nghịch lý lịch sử có số liệu định lượng, tuyệt đối tránh câu mở đầu học thuật dài dòng.

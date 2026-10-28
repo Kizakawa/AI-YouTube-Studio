@@ -347,15 +347,15 @@ class VoiceAgent:
 
         nid = (niche or "").strip().lower()
         if any(k in nid for k in ("psych", "mind", "stoic", "dark", "crime")):
-            niche_default = 6
+            niche_default = 7
         elif any(k in nid for k in ("animal_rescue", "rescue", "pet", "paws", "wholesome")):
-            niche_default = 3
+            niche_default = 5
         elif any(k in nid for k in ("wildlife", "predator", "mystery", "mysteries", "deep_sea", "ocean", "history", "alternate", "what_if")):
-            niche_default = 4
+            niche_default = 5
         elif "animal" in nid:
-            niche_default = 3
+            niche_default = 5
         else:
-            niche_default = 4
+            niche_default = 5
 
         if nid:
             try:
@@ -367,9 +367,9 @@ class VoiceAgent:
                     if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
                         try:
                             val = int(cfg_rate.replace("%", "").replace("+", "").strip())
-                            if 0 <= val <= 7:
+                            if 0 <= val <= 8:
                                 return f"{val:+d}%"
-                            elif val > 7:
+                            elif val > 8:
                                 return f"{niche_default:+d}%"
                         except Exception:
                             pass

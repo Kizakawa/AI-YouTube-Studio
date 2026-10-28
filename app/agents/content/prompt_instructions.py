@@ -76,7 +76,7 @@ def build_language_integrity_instruction(language: str) -> str:
 def build_regional_hook_mastery_instruction(language: str, channel_niche: str = "general") -> str:
     """
     Xây dựng chỉ dẫn tối ưu Hook 0.0s–2.0s chuyên biệt theo từng khu vực địa lý (US/Global English vs. Brasil pt-BR vs. Việt Nam)
-    dựa trên dữ liệu phân tích 368 video YouTube Shorts triệu view (1M–371M views) từ YouTube Data API v3,
+    dựa trên dữ liệu phân tích 976 video YouTube Shorts triệu view (1M–371M views) từ YouTube Data API v3 + Transcript WPM,
     kết hợp Quy tắc Vàng Phân Vai: Title (YT_SEARCH) vs. Scene 1 Hook (4 Đòn Tâm Lý Thị Giác 0.0s).
     """
     lang_clean = (language or "en").strip().lower()
@@ -175,18 +175,18 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
      * "Look closely at the circular scars on this whale's head."
      * "What looks like a dead tree branch in this river just opened its eyes."
      * "Watch this suspect's hands the exact second the detective mentions the car."
-   - [Archetype 2 — The Fatal Mistake / Hunter Becomes Hunted]: Drop the viewer into the exact moment a predator, historical figure, or suspect makes a lethal miscalculation:
+   - [Archetype 2 — The Fatal Mistake / In Medias Res Trap]: Drop the viewer into the exact moment a predator, army, or person makes a lethal miscalculation (Casual Geographic / HistoryMarche 5.33M Formula):
      * "This caiman's last mistake was climbing onto this riverbank without looking up."
+     * "The Roman legions pushed forward, walking straight into Hannibal's hidden riverbed trap."
      * "Drinking from this crystal-clear desert pool was a fatal mistake."
-     * "One wrong turn by a single driver in 1914 triggered a world war."
-   - [Archetype 3 — 2nd-Person Survival / Behavioral Simulation ("If you ever...")]: Put the viewer directly inside the high-stakes scenario using "If you..." or "When someone...":
+   - [Archetype 3 — 2nd-Person Survival / Real-Life Spoken Trap ("If you ever..." / Quoted Insult)]: Put the viewer inside the danger or open with a real-life manipulation quote (Charisma on Command 9.78M / Zack D. Films 15.7M Formula):
+     * "Saying 'you actually look good today' is a hidden insult—watch their eyes next."
      * "If a submarine touches this white line on the seafloor, it never surfaces."
      * "If someone touches their neck while apologizing, watch what their eyes do next."
-     * "If you were standing ten miles from this volcano, you wouldn't even hear it."
-   - [Archetype 4 — The Illusion Breaker / Role Reversal]: Present an undeniable visual paradox that defies common sense:
+   - [Archetype 4 — The Illusion Breaker / Time-Anchored Emotional Shock]: Present a visual paradox or concrete abandonment duration (Casual Geographic 8.6M / GeoBeats Animals 2.77M Formula):
      * "Six starving lions surrounded this tiny animal, and the lions are running away."
+     * "He spent ten years completely alone in a concrete cage without a soft bed."
      * "Everyone walked past this muddy canal drain, not realizing two eyes were staring back."
-     * "Earth survived total nuclear war in 1983 because one man refused an order."
 3. STRICTLY BANNED IN US HOOKS:
    - NO verbatim Title repetition in Scene 1, NO dry Wikipedia metric recitation at 0.0s, NO abstract poetry ("loaded weapon", "silent cage"), and NO passive Yes/No questions ("Did you know...?").
 4. 1-1 VISUAL CONTRAST & LEAD-SUBJECT ALTERNATION RULE (BREAKING THE ~1,000-VIEW SEED COHORT CEILING):

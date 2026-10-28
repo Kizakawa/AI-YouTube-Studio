@@ -9,18 +9,12 @@ target_audience: Khán giả toàn cầu đam mê thế giới động vật hoa
 script_blueprint:
   tone_of_voice: Trầm hùng, dồn dập, sắc bén, kích thích adrenaline tột độ, uy lực và tôn kính trước sự
     tàn khốc hoàn hảo của mẹ thiên nhiên.
-  pacing: Siêu cuốn hút, thời lượng vàng 35 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh),
-    nhịp điệu phim tài liệu kịch tính khớp chuẩn công thức ngày 21/10, tối ưu đồng thời Stayed-to-Watch
-    > 50% và APV 70-95% (AVD 24-35s).
+  pacing: "Siêu cuốn hút, thời lượng vàng 34 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu phim tài liệu kịch tính tối ưu đồng thời Stayed-to-Watch > 65% và APV 90-115%. TUÂN THỦ QUY TẮC VÀNG PHÂN VAI — Tiêu đề (title) BẮT BUỘC chứa tên thực thể + chỉ số vật lý cực hạn để ăn tìm kiếm YT_SEARCH, còn Cảnh 1 (0.0s-2.2s, 6-10 từ) TUYỆT ĐỐI KHÔNG đọc lặp lại tiêu đề hay đọc con số khô khan ở giây 0.0s mà phải dùng 1 trong 4 Đòn Tâm Lý Thị Giác!"
   hook_formulas:
-  - 'Counter-Intuitive Apex Fear (Nature Lens 7.0M Formula): ''This is why 1,000-pound Caimans are terrified
-    the second a Jaguar steps into the river...'''
-  - 'Physics-Defying Survival (FleshlyPaws 12.7M Formula): ''When a Leopard leaps from a 50-foot tree
-    branch, here is how it survives the impact without breaking a single bone...'''
-  - 'Bite Force Skull-Piercer: ''With a bone-crushing 1,500 PSI bite force, the Jaguar ignores the throat
-    and pierces straight through the skull...'''
-  - 'Venom Immunity Shock: ''A single bite from a King Cobra drops an elephant in 3 hours — yet the Honey
-    Badger wakes up and finishes its meal...'''
+  - 'Visual Micro-Observation / Camouflage Pointer (Casual Geographic 8.6M Formula): ''What looks like a dead tree branch in this river just opened its eyes.'''
+  - 'The Fatal Mistake / Hunter Becomes Hunted (FiveZero Safaris 18.7M Formula): ''This caiman''s last mistake was climbing onto this riverbank without looking up.'''
+  - 'Illusion Breaker / Role Reversal (ViralHog 1.59M Formula): ''Six starving lions surrounded this small badger, and the lions are backing away.'''
+  - 'Portuguese Extreme Confrontation Pointer (Richard Rasmussen 5.31M Formula): ''O último erro desse jacaré foi subir nesse barranco sem olhar para cima.'''
   viral_topic_bank_2026:
   - 'Electric Eel vs Caiman: How An 860-Volt Biological Taser Stops A River Predator'
   - 'African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop An Ambush'
@@ -29,10 +23,7 @@ script_blueprint:
   - Why A Pack Of Giant River Otters Can Drive A Jaguar Out Of Its Territory
   - 'Wolverine vs Grizzly Bear: Why 35 Pounds Of Fury Forces An 800lb Giant To Back Off'
   - 'Orca Pod vs Great White Shark: The Tonic Immobility Surgical Ambush'
-  narrative_structure: Hook đối đầu sinh tử cụ thể giữa 2 loài săn mồi kèm thông số vật lý ở 0.0s (5-8
-    từ) -> So sánh vũ khí sinh học & cơ học sát thương -> Mid-Video Re-Hook (Cảnh 4 - Đòn đánh quyết định
-    lật ngược thế cờ kèm chỉ số thứ 2) -> Kết cục tàn khốc của kẻ chiến thắng (Payoff Cảnh 5-6) -> Cú
-    chốt Infinite Loop nối mượt về Cảnh 1 + HUD Badge nhắc bình chọn & Subscribe
+  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Đòn Tâm Lý Thị Giác (Chỉ điểm chi tiết ngụy trang / Sai lầm chí mạng / Đảo chiều kẻ săn mồi, KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 (Act 2) - Tung thông số vũ khí sinh học thứ nhất (PSI, km/h, Volt, mg độc tố) -> Cảnh 4-5 (Act 3 - Mid-Video 15s Twist) - Kẻ bị săn tung cơ chế phản đòn bất ngờ kèm thông số thứ 2 -> Cảnh 6-7 (Act 4 Payoff) - Đòn kết liễu sinh học xác thực -> Cảnh 8 (Act 5) - Cầu nối Vòng lặp Vô tận (Infinite Loop Bridge) nối mượt về Cảnh 1 (Zero Spoken Subscribe CTA)"
   forbidden_words:
   - Chào mừng các bạn đến với thế giới động vật
   - Hôm nay chúng ta sẽ tìm hiểu về loài
@@ -42,12 +33,9 @@ script_blueprint:
   - Welcome back to our channel
   - In today's video
   cta_templates:
-  - 'Who takes the crown in this 1v1 survival showdown: (1) Predator or (2) Challenger? Drop your vote
-    below & SUBSCRIBE for daily Apex Battles! 🦁🔥👇'
-  - Could any predator survive a direct strike from this beast? Vote (1) YES or (2) NO in the comments
-    & SUBSCRIBE for daily wildlife showdowns! 👇⚡
-  - 'Quem vence esse duelo mortal na selva: (1) ou (2)? Deixe seu voto nos comentários e INSCREVA-SE para
-    duelos diários! 👇🔥'
+  - 'Honestly: if two adult Caimans attacked at the exact same time, could the Jaguar still win in deep water? (1) Yes or (2) No chance? 👇'
+  - 'If this fight happened in deep water instead of dry land, who survives: (1) The Challenger or (2) The Apex Predator? 👇'
+  - 'Honestamente: se fossem dois jacarés adultos na água funda, a onça ainda venceria? (1) Sim ou (2) Sem chance? 👇'
   anti_hallucination_rules:
   - Mọi thông số sinh học (tốc độ tối đa, lực cắn PSI, chiều dài móng vuốt, nồng độ độc tố LD50) phải
     chuẩn xác theo tài liệu sinh học động vật thực tế.

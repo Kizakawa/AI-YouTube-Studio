@@ -7,29 +7,14 @@ target_audience: Khán giả quốc tế mê mẩn bí ẩn đại dương, thá
 script_blueprint:
   tone_of_voice: Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập đánh trực diện vào giác quan và
     nỗi sợ nguyên thủy của người xem, khiến họ lạnh gáy nhưng không thể rời mắt.
-  pacing: Thời lượng vàng 35 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu bí
-    ẩn cuốn hút khớp chuẩn công thức ngày 21/10 (AVD 26-39s, APV 70-103%). Cảnh 1 là Hook 2s trực diện
-    (Thực thể sinh học/địa chất cụ thể + Nghịch lý vật lý tử thần), Cảnh 2-3 dẫn dắt bối cảnh thực tế,
-    Cảnh 4-5 là Mid-Video Re-Hook đẩy cao trào bằng thông số thứ 2, Cảnh 6-7 mới tung lời giải mã cơ chế
-    khoa học chấn động (tuyệt đối không lộ đáp án ở Cảnh 2), Cảnh 8 là Infinite Seamless Loop nối mượt
-    về chủ ngữ Cảnh 1.
-  narrative_structure: Hook thực thể cụ thể + con số vật lý tử thần 2s (Cấm mở đầu mơ hồ) -> Dẫn chứng
-    khoa học / Hiện tượng vật lý cực đoan -> Mid-Video Re-Hook (Cảnh 4 - Bằng chứng thực nghiệm không
-    ngờ tới) -> Cú sốc nhận thức giải mã toàn bộ bí ẩn (Payoff Cảnh 5-7) -> Infinite Seamless Loop
+  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu bí ẩn cuốn hút chuẩn Zack D. Films (10.27M views avg) & Você Sabia? (47.3M subs). TUÂN THỦ QUY TẮC VÀNG PHÂN VAI — Tiêu đề (title) BẮT BUỘC nêu rõ thực thể/địa danh + hậu quả vật lý cực hạn để ăn YT_SEARCH, còn Cảnh 1 (0.0s-2.2s, 6-10 từ) dùng 1 trong 4 Đòn Tâm Lý Thị Giác (chỉ điểm chi tiết lạ trên màn hình / cảnh báo sinh tồn ngôi thứ 2 / sai lầm chí mạng), TUYỆT ĐỐI KHÔNG đọc lặp lại tiêu đề hay tiết lộ con số cuối ở giây 0.0s; để dành thông số vật lý cho Cảnh 2-3 và Cảnh 4 Twist!"
+  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Đòn Tâm Lý Thị Giác chỉ điểm dị thường trên màn hình hoặc cảnh báo sinh tồn ngôi thứ 2 (KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 - Dẫn chứng khoa học & thông số vật lý thứ nhất (độ sâu, nhiệt độ, áp suất) -> Cảnh 4-5 (Mid-Video 15s Twist) - Bằng chứng thực nghiệm lật ngược dự đoán kèm thông số thứ 2 -> Cảnh 6-7 (Payoff) - Giải mã cơ chế khoa học chấn động -> Cảnh 8 - Infinite Seamless Loop nối mượt về Cảnh 1"
   hook_formulas:
-  - 'Abyssal Apex Showdown Hook (Proven #1 Winner 2,981 Views, 52.7% Stayed, +6 Subs): ''At 2,000 meters
-    in pitch-black water, a 50-ton Sperm Whale plunges into a deadly duel with a 14-meter Colossal Squid...'''
-  - 'Lethal Geo-Chemical Trap Hook (Proven #1 Velocity 71.1 views/h & 112.5% APV): ''At the bottom of
-    the ocean lies a toxic brine lake so dense that any shark swimming into it is paralyzed in 3 seconds...''
-    / ''Deep in the Amazon, a river boils at 93°C with no volcano for 700 kilometers...'''
-  - 'Forbidden Isolation & Acoustic Anomaly Hook (Proven #1 Sub Converter +8 Subs & 3.98% Like/View):
-    ''There is an island in Brazil where the Navy forbids any human from stepping foot because 4,000 deadly
-    vipers rule every square meter...'' / ''Why NASA crashes dead spacecraft into Point Nemo, 2,700km
-    from any human...'''
-  - 'Instinctive Phobia & Diver Rule Hook (Proven 1,242 Views): ''Why saturation divers at 300 meters
-    never look up at the ocean surface at night...'''
-  - 'Body vs Extreme Earth Physics (Zack D. Films Formula): ''What happens to the human body if a deep-sea
-    submersible loses pressure at 3,000 meters for 0.1 seconds...'''
+  - 'Visual Micro-Observation Pointer (Zack D. Films 15.7M Formula): ''Look closely at the circular scars on this whale''s head.'''
+  - '2nd-Person Survival Warning (Você Sabia? 6.6M Formula): ''Se um submarino tocar nessa linha branca no fundo do mar, ele não volta.'''
+  - 'The Fatal Mistake / Boundary Violation: ''Stepping onto this crystal-clear African lake shore turns birds into stone.'''
+  - 'Diver Forbidden Rule Hook: ''If you ever see square waves forming at the beach, get out immediately.'''
+  - 'Body vs Extreme Earth Physics (Zack D. Films Formula): ''Watch what happens to a steel hull the second it crosses this depth line.'''
   viral_topic_bank_2026:
   - 'Colossal Squid vs Sperm Whale: Deadly Duel At 2,000m In The Abyssal Ocean'
   - The Deadly Underwater Brine Lake That Paralyzes Sharks In Seconds
