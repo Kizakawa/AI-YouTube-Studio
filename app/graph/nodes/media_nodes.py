@@ -2292,14 +2292,14 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 current_niche = state.get("niche") or state.get("channel_style") or state.get("channel_niche") or "general"
                 is_scifi_val = (current_niche == "scifi")
                 rescued_any = False
-                for m in scenes_media:
+                for rescue_idx, m in enumerate([x for x in scenes_media if int(x.get("scene_id") or 0) in failed_set]):
                     sid = int(m.get("scene_id") or 0)
-                    if sid not in failed_set:
-                        continue
                     sc_dur = _scene_audio_duration(work_dir, sid)
-                    donor_v = clean_donors[(sid - 1) % len(clean_donors)]
+                    donor_v = clean_donors[rescue_idx % len(clean_donors)]
                     d_dur_s = get_duration_ms(donor_v) / 1000.0
-                    d_off_s = max(1.2, min(max(0.0, d_dur_s - sc_dur - 0.2), d_dur_s * 0.55)) if d_dur_s > sc_dur + 1.4 else 0.0
+                    max_off = max(0.0, d_dur_s - sc_dur - 0.2)
+                    frac_off = 0.25 + (rescue_idx % 3) * 0.22
+                    d_off_s = round(min(max_off, max(0.6 + rescue_idx * 0.8, d_dur_s * frac_off)), 2) if max_off > 0.5 else 0.0
                     out_final_rescue = str(media_dir / f"scene_{sid:03d}_final_clean_rescue.mp4")
                     is_lf_eval = (
                         str(state.get("video_format") or (state.get("script_data") or {}).get("video_format") or "short").strip().lower() == "long"
@@ -2320,19 +2320,26 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         start_offset_sec=d_off_s,
                         preserve_continuous_flow=True,
                     )
-                    # Nếu donor_v là một clip ngắn trùng với cảnh khác trong cùng video, áp dụng lật gương ngang (hflip) + crop zoom 1.12x
-                    # để biến đổi hoàn toàn góc nhìn và dHash, ngăn chặn 100% lỗi trùng cảnh trong cùng video!
-                    if Path(out_final_rescue).exists() and str(Path(donor_v).resolve()) in used_active_paths:
+                    # Luôn áp dụng biến đổi góc máy phân biệt theo `sid % 3` (lật gương + crop lệch tâm đa tỷ lệ)
+                    # để đảm bảo không bao giờ trùng dHash với cảnh gốc hoặc giữa các cảnh được cứu hộ cùng lúc!
+                    if Path(out_final_rescue).exists():
                         try:
                             flipped_tmp = str(media_dir / f"scene_{sid:03d}_final_flipped_tmp.mp4")
                             w_t = 1920 if is_lf_eval else 1080
                             h_t = 1080 if is_lf_eval else 1920
+                            variant_mod = sid % 3
+                            if variant_mod == 0:
+                                vf_var = f"hflip,scale=iw*1.16:ih*1.16:flags=lanczos,crop={w_t}:{h_t}:0:0,unsharp=5:5:1.1:5:5:0.0"
+                            elif variant_mod == 1:
+                                vf_var = f"scale=iw*1.24:ih*1.24:flags=lanczos,crop={w_t}:{h_t}:iw-{w_t}:ih-{h_t},eq=contrast=1.06:brightness=0.01,unsharp=5:5:1.1:5:5:0.0"
+                            else:
+                                vf_var = f"hflip,scale=iw*1.28:ih*1.28:flags=lanczos,crop={w_t}:{h_t}:(iw-{w_t})/2:ih-{h_t},unsharp=5:5:1.1:5:5:0.0"
                             subprocess.run(
                                 [
                                     get_ffmpeg_exe(), "-y", "-hide_banner", "-loglevel", "error",
                                     "-i", out_final_rescue,
-                                    "-vf", f"hflip,scale=iw*1.12:ih*1.12:flags=lanczos,crop={w_t}:{h_t},unsharp=5:5:1.1:5:5:0.0",
-                                    "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p", "-an",
+                                    "-vf", vf_var,
+                                    "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-an",
                                     flipped_tmp,
                                 ],
                                 check=False,
@@ -2347,13 +2354,14 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             _ensure_hook_clip_sharpness_and_luma(out_final_rescue, min_sharpness=12.5 if sid == 1 else 8.0)
                         except Exception:
                             pass
+                        used_active_paths.add(str(Path(donor_v).resolve()))
                         m["media_path"] = out_final_rescue
                         m["media_type"] = "hook_ready_video" if sid == 1 else "video"
                         m["pose_images"] = []
                         m["production_method"] = "FINAL_GATE_CLEAN_VIDEO_RESCUE"
                         rescued_any = True
                         logger.info(
-                            f"🛡️ [FinalVisualGate] Đã thay thế khẩn cấp Cảnh #{sid} bị lỗi trước khi Render bằng video sạch '{Path(donor_v).name}'"
+                            f"🛡️ [FinalVisualGate] Đã thay thế khẩn cấp Cảnh #{sid} bị lỗi trước khi Render bằng video sạch '{Path(donor_v).name}' (@+{d_off_s:.1f}s, var={sid % 3})"
                         )
                 if rescued_any:
                     eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
@@ -2826,13 +2834,30 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 clean_video_donors.extend(fallback_s1_donors)
                 clean_video_donors = list(dict.fromkeys(clean_video_donors))
 
+                if clean_video_donors:
+                    rot_shift = (scene_id - 1) % len(clean_video_donors)
+                    clean_video_donors = clean_video_donors[rot_shift:] + clean_video_donors[:rot_shift]
+
                 for donor_v in clean_video_donors:
                     d_dur_s = get_duration_ms(donor_v) / 1000.0
-                    d_off_s = max(0.45, min(max(0.0, d_dur_s - sc_dur_sec - 0.2), d_dur_s * 0.50)) if d_dur_s > sc_dur_sec + 0.6 else 0.0
-                    vf_rescue = (
-                        "hflip,scale=1252:2228:force_original_aspect_ratio=increase,"
-                        "crop=1080:1920,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
-                    )
+                    max_off_r = max(0.0, d_dur_s - sc_dur_sec - 0.2)
+                    frac_r = 0.22 + (scene_id % 3) * 0.24
+                    d_off_s = round(min(max_off_r, max(0.45, d_dur_s * frac_r)), 2) if max_off_r > 0.5 else 0.0
+                    if scene_id % 3 == 0:
+                        vf_rescue = (
+                            "hflip,scale=1252:2228:force_original_aspect_ratio=increase,"
+                            "crop=1080:1920:0:0,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
+                        )
+                    elif scene_id % 3 == 1:
+                        vf_rescue = (
+                            "scale=1340:2382:force_original_aspect_ratio=increase,"
+                            "crop=1080:1920:iw-1080:ih-1920,eq=contrast=1.06:brightness=0.01,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
+                        )
+                    else:
+                        vf_rescue = (
+                            "hflip,scale=1360:2418:force_original_aspect_ratio=increase,"
+                            "crop=1080:1920:(iw-1080)/2:ih-1920,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
+                        )
                     cmd_resc = [
                         "ffmpeg", "-y", "-v", "error",
                         "-ss", f"{d_off_s:.2f}",

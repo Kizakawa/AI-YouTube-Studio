@@ -784,11 +784,7 @@ Return ONLY valid JSON in this exact format:
                 }
 
             failed = False
-            is_long_peak_cont = str(item.get("production_method") or "") in (
-                "LONG_PEAK_CONTINUOUS_FLOW",
-                "REFINED_CLEAN_MOTION_RESCUE",
-                "FINAL_GATE_CLEAN_VIDEO_RESCUE",
-            )
+            is_long_peak_cont = str(item.get("production_method") or "") == "LONG_PEAK_CONTINUOUS_FLOW"
             if media_type == "image":
                 # Kiểm tra & lọc sạch danh sách pose_images (nếu có) để loại bỏ file phụ lỗi/đen/vỡ hạt/dính chữ trước khi dựng
                 raw_poses = item.get("pose_images")
