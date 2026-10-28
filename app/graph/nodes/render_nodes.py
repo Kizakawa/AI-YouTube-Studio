@@ -273,6 +273,6 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
         "video_eval": qa_dict,
         "current_step": "QA_DONE",
         "progress_percent": 100,
-        "progress_message": f"Kiểm định VideoQA: Đạt chuẩn ({video_score}/100, 1080x1920 30fps)",
+        "progress_message": f"Kiểm định VideoQA: Đạt chuẩn ({video_score}/100, {qa_report.width}x{qa_report.height} {qa_report.fps}fps)",
         "status": "COMPLETED",
     }

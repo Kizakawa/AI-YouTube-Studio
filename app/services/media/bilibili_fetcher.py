@@ -476,13 +476,15 @@ def download_and_crop_bilibili_broll_clip(
     target_duration_sec: float = 4.5,
     max_range_bytes: int = 7 * 1024 * 1024,
     aspect_ratio: str = "9:16",
+    preserve_continuous_master: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
     Tải nhanh phân đoạn đầu/cao trào từ luồng H.264 1080p/720p của Bilibili,
     sau đó áp dụng **Bilibili Safe-Crop + Lanczos Optical Sharpening**:
       - Với 16:9 Long-Form: Bắt buộc nguồn ngang (`width > height`, `>= 720p/1080p`),
-        tải chunk 15MB để lấy đủ độ dài 12-18s thực tế (không kéo giãn slow-mo),
-        cắt tinh gọn `crop=iw*0.92:ih*0.84:iw*0.04:ih*0.04` + `scale=1920:1080:flags=lanczos` + `unsharp=5:5:0.85:5:5:0.0`.
+        tải chunk 15MB–28MB để lấy đủ độ dài thực tế (không kéo giãn slow-mo),
+        cắt tinh gọn `crop=iw*0.86:ih*0.82:iw*0.07:ih*0.09` (loại bỏ hoàn toàn watermark góc Bilibili)
+        + `scale=1920:1080:flags=lanczos` + `unsharp=5:5:0.85:5:5:0.0`.
       - Với 9:16 Shorts: Cắt chuẩn `1080x1920`, tắt tiếng gốc (`-an`) và khóa màu `BT.709`.
     """
     is_16x9 = str(aspect_ratio or "9:16").strip() in ("16:9", "long", "landscape", "horizontal")
@@ -496,7 +498,8 @@ def download_and_crop_bilibili_broll_clip(
 
     stream_url = info["video_stream_url"]
     dl_headers = dict(info.get("http_headers") or _BILI_HEADERS)
-    eff_range_bytes = max(int(max_range_bytes), 15 * 1024 * 1024) if is_16x9 else int(max_range_bytes)
+    min_16x9_bytes = 26 * 1024 * 1024 if (is_16x9 and target_duration_sec >= 24.0) else (15 * 1024 * 1024)
+    eff_range_bytes = max(int(max_range_bytes), min_16x9_bytes) if is_16x9 else int(max_range_bytes)
     dl_headers["Range"] = f"bytes=0-{eff_range_bytes - 1}"
 
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -526,7 +529,7 @@ def download_and_crop_bilibili_broll_clip(
         if avail_dur_s < 3.2:
             return None
 
-        max_allowed_dur = 18.0 if is_16x9 else 8.0
+        max_allowed_dur = (48.0 if preserve_continuous_master else 18.0) if is_16x9 else 8.0
         req_dur = min(max(3.2, float(target_duration_sec)), max_allowed_dur, max(3.2, avail_dur_s - 0.5))
         try:
             peak_start, peak_len = find_hook_peak_window(
@@ -544,19 +547,19 @@ def download_and_crop_bilibili_broll_clip(
         # Bilibili Safe-Crop + Crisp Lanczos + Optical Unsharp Mask:
         if is_16x9:
             base_16x9_vf = (
-                "crop=iw*0.92:ih*0.84:iw*0.04:ih*0.04,"
+                "crop=iw*0.86:ih*0.82:iw*0.07:ih*0.09,"
                 "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
                 "crop=1920:1080,"
                 "unsharp=5:5:0.85:5:5:0.0,"
                 "eq=contrast=1.04:saturation=1.05,"
                 "setsar=1,fps=30,format=yuv420p"
             )
-            # Khi cảnh dài >= 9.0s và video nguồn đủ dài: Tự động tách thành 2 nhịp cắt (< 7s/nhịp)
-            # để vừa chống Content ID 100% vừa tăng nhịp điệu điện ảnh mà không bao giờ bị kéo giãn slow-mo
+            # Khi cảnh đơn lẻ dài >= 9.0s (không phải file Master của ChapterPool) và video nguồn đủ dài:
+            # Tự động tách thành 2 nhịp cắt (< 7s/nhịp) để chống Content ID 100%
             half_d = round(clip_dur * 0.5, 2)
             rem_d = round(clip_dur - half_d, 2)
             second_start = round(peak_start + half_d + 3.5, 2)
-            if clip_dur >= 9.0 and avail_dur_s >= (second_start + rem_d + 0.4):
+            if (not preserve_continuous_master) and clip_dur >= 9.0 and avail_dur_s >= (second_start + rem_d + 0.4):
                 fc = (
                     f"[0:v]trim={peak_start:.2f}:{peak_start + half_d:.2f},setpts=PTS-STARTPTS,{base_16x9_vf}[v1];"
                     f"[0:v]trim={second_start:.2f}:{second_start + rem_d:.2f},setpts=PTS-STARTPTS,hflip,{base_16x9_vf}[v2];"

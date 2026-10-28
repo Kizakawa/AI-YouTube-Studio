@@ -148,14 +148,19 @@ def _fetch_longform_16x9_broll_clip_sync(
     bvid_lock,
     media_agent: MediaAgent,
     is_scifi: bool = False,
+    job_id: int = 0,
+    output_override_path: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Săn B-Roll 16:9 Widescreen (1920x1080) chuyên biệt cho Video Dài (Long-Form Documentary):
-    1. Ưu tiên Bilibili 16:9 Safe-Crop HD (cắt bỏ 8% mép trên logo + 14% mép dưới phụ đề Trung, chống trùng bvid 100%).
-    2. Dự phòng Pexels / Pixabay 16:9 Landscape HD Video.
+    0. Ưu tiên số 1: Bộ máy Chapter-Pool & Multi-Segment Local Cut (`longform_chapter_pool.py`) —
+       Chỉ tải 1 video nguồn YouTube/Bilibili 16:9 cho mỗi Cụm Chương (3 cảnh/Chương) rồi cắt trực tiếp trên ổ cứng
+       kèm Internal Jump-Cut + Dynamic Documentary Zoom (`102% Wide -> 110% Close-up`) chống Content ID 100%.
+    1. Dự phòng: Bilibili 16:9 Safe-Crop HD đơn lẻ.
+    2. Dự phòng: Pexels / Pixabay 16:9 Landscape HD Video.
     """
-    out_path = str(media_dir / f"scene_{scene_id:03d}_16x9.mp4")
-    if Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
+    out_path = output_override_path or str(media_dir / f"scene_{scene_id:03d}_16x9.mp4")
+    if not output_override_path and Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
         return {
             "media_path": out_path,
             "media_type": "video",
@@ -163,6 +168,33 @@ def _fetch_longform_16x9_broll_clip_sync(
             "source_url": out_path,
             "rationale": f"16:9 Cached Documentary Clip ({Path(out_path).name})",
         }
+
+    try:
+        from app.services.media.longform_chapter_pool import fetch_or_slice_longform_chapter_clip_sync
+        pool_res = fetch_or_slice_longform_chapter_clip_sync(
+            job_id=job_id,
+            scene_id=scene_id,
+            query=query,
+            primary_entity=primary_entity,
+            topic=topic,
+            narration=narration,
+            target_duration_sec=target_duration_sec,
+            media_dir=media_dir,
+            used_bvids=used_bvids,
+            used_urls=used_urls,
+            bvid_lock=bvid_lock,
+            media_agent=media_agent,
+            is_scifi=is_scifi,
+            scenes_per_chapter=3,
+        )
+        if pool_res and pool_res.get("media_path"):
+            if output_override_path and str(Path(pool_res["media_path"]).resolve()) != str(Path(output_override_path).resolve()):
+                import shutil as _sh_cp
+                _sh_cp.copy2(pool_res["media_path"], output_override_path)
+                pool_res["media_path"] = output_override_path
+            return pool_res
+    except Exception as e_pool_16x9:
+        logger.debug(f"Scene {scene_id}: Long-form ChapterPool 16:9 skip: {e_pool_16x9}")
 
     try:
         from app.services.media.bilibili_fetcher import (
@@ -434,11 +466,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         # ══════════════════════════════════════════════════════════════════════
         # NHÁNH ĐẶC QUYỀN VIDEO DÀI 16:9 (LONG-FORM WIDESCREEN DOCUMENTARY):
-        # Săn đồng loạt 16:9 Bilibili Safe-Crop HD + Stock Landscape 1920x1080
+        # Kết hợp Chapter-Pool 16:9 Multi-Segment Jump-Cut + Hỗ trợ @tool Doodle 2D 16:9 / Ảnh Tư Liệu 8K
         # ══════════════════════════════════════════════════════════════════════
-        if not media_path and is_long_form:
+        if not media_path and is_long_form and tool_name not in ("render_doodle_2d_explainer_scene", "search_google_cinematic_image"):
             lf_q = (
                 sc_strat.get("action_or_concept_query")
+                or sc_strat.get("human_action_query")
                 or sc_strat.get("youtube_search_query")
                 or sc_strat.get("smart_image_query")
                 or kw
@@ -458,16 +491,17 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 bvid_lock=longform_bvid_lock,
                 media_agent=media_agent,
                 is_scifi=is_scifi_val,
+                job_id=job_id,
             )
             if lf_res and lf_res.get("media_path"):
                 media_path = lf_res["media_path"]
                 media_type = "video"
                 vision_curated = True
-                prod_method = lf_res.get("production_method", "BILIBILI_16X9_SAFECROP_HD")
+                prod_method = lf_res.get("production_method", "CHAPTER_POOL_16X9_JUMPCUT_HD")
                 chosen_strategy = "LONGFORM_16X9_DOCUMENTARY_VIDEO"
-                tool = "bilibili_16x9_safecrop"
+                tool = "longform_chapter_pool_16x9"
                 source_url_used = str(lf_res.get("source_url") or "")
-                rationale = str(lf_res.get("rationale") or "16:9 Documentary B-Roll")
+                rationale = str(lf_res.get("rationale") or "16:9 Documentary Chapter-Pool Jump-Cut")
 
         # ══════════════════════════════════════════════════════════════════════
         # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ 6 @TOOL CHUYÊN BIỆT CỦA LLM ĐẠO DIỄN
@@ -611,6 +645,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     character_tag=c_tag,
                     prop_type=p_type,
                     camera_motion=camera_motion,
+                    width=1920 if is_long_form else 1080,
+                    height=1080 if is_long_form else 1920,
                 )
                 if doodle_res and Path(doodle_res).exists():
                     media_path = doodle_res
@@ -1687,36 +1723,67 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 # để minh họa cơ chế tâm lý trừu tượng sinh động thay vì ảnh chân dung tĩnh
                 if is_psych_niche and r_sid not in (1, n_slots) and (r_pos % 2 == 1):
                     try:
-                        from app.graph.tools.media_tools import execute_doodle_2d_explainer_scene_sync
+                        from app.services.media.doodle_animation_tool import DoodleAnimationTool
                         d_char = doodle_char_cycle[r_sid % len(doodle_char_cycle)]
                         d_prop = doodle_prop_cycle[r_sid % len(doodle_prop_cycle)]
-                        d_res = await asyncio.to_thread(
-                            execute_doodle_2d_explainer_scene_sync,
+                        d_path = await asyncio.to_thread(
+                            DoodleAnimationTool.render_scene_clip,
+                            narration=str(r_sc.get("narration") or state.get("topic", "")),
+                            output_path=r_out_mp4,
+                            duration_seconds=r_dur + 0.25,
+                            scene_id=r_sid,
                             character_tag=d_char,
                             prop_type=d_prop,
-                            scene_concept_summary=str(r_sc.get("visual_keyword") or r_sc.get("narration") or state.get("topic", ""))[:90],
-                            output_path=r_out_mp4,
-                            narration=str(r_sc.get("narration") or state.get("topic", "")),
-                            target_duration_sec=r_dur + 0.25,
                             camera_motion=str(r_sc.get("camera_motion") or "zoom_in"),
-                            highlight_words=r_sc.get("highlight_words") or [],
-                            scene_id=r_sid,
+                            width=1920 if is_long_form else 1080,
+                            height=1080 if is_long_form else 1920,
                         )
-                        if d_res and d_res.get("media_path") and Path(d_res["media_path"]).exists():
-                            r_sc["media_path"] = d_res["media_path"]
+                        if d_path and Path(d_path).exists():
+                            r_sc["media_path"] = d_path
                             r_sc["media_type"] = "video"
                             r_sc["pose_images"] = []
                             r_sc["production_method"] = "MOTION_FLOOR_RESCUE_DOODLE_2D"
                             r_sc["visual_strategy"] = "DOODLE_2D_EXPLAINER_VIDEO"
                             rescued_ok = True
                             logger.info(
-                                f"  🎨 [Real-Motion Floor Rescue] Scene {r_sid}: Đã dựng Doodle 2D Animation ({d_char} + {d_prop}) -> {Path(d_res['media_path']).name}"
+                                f"  🎨 [Real-Motion Floor Rescue] Scene {r_sid}: Đã dựng Doodle 2D Animation ({d_char} + {d_prop}) -> {Path(d_path).name}"
                             )
                     except Exception as _re_dd:
                         logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Doodle 2D rescue skip: {_re_dd}")
 
+                # 0A. Nếu là Video Dài 16:9 (Long-Form), ưu tiên cắt/tải qua Chapter-Pool 16:9 Widescreen
+                if not rescued_ok and is_long_form:
+                    try:
+                        lf_resc = await asyncio.to_thread(
+                            _fetch_longform_16x9_broll_clip_sync,
+                            scene_id=r_sid,
+                            query=r_kw,
+                            primary_entity=primary_entity or state.get("topic", ""),
+                            topic=state.get("topic", ""),
+                            narration=str(r_sc.get("narration") or state.get("topic", "")),
+                            target_duration_sec=r_dur,
+                            media_dir=media_dir,
+                            used_bvids=longform_used_bvids,
+                            used_urls=used_pool_urls,
+                            bvid_lock=longform_bvid_lock,
+                            media_agent=media_agent,
+                            is_scifi=is_scifi_val,
+                            job_id=job_id,
+                            output_override_path=r_out_mp4,
+                        )
+                        if lf_resc and lf_resc.get("media_path") and Path(lf_resc["media_path"]).exists():
+                            r_sc["media_path"] = lf_resc["media_path"]
+                            r_sc["media_type"] = "video"
+                            r_sc["pose_images"] = []
+                            r_sc["production_method"] = lf_resc.get("production_method", "MOTION_FLOOR_RESCUE_16X9")
+                            r_sc["visual_strategy"] = "LONGFORM_16X9_DOCUMENTARY_VIDEO"
+                            rescued_ok = True
+                            logger.info(f"  ✅ [Real-Motion Floor Rescue 16:9] Scene {r_sid}: Đã nâng cấp sang Video 16:9 ({Path(lf_resc['media_path']).name})")
+                    except Exception as _re_lf:
+                        logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} 16:9 rescue skip: {_re_lf}")
+
                 # 0B. Nếu là phân cảnh Tâm lý / Triết học (`fetch_clean_cinematic_portrait_or_broll`), lấy Video Forensic / B-Roll diễn viên thật sạch chữ
-                if not rescued_ok and is_portrait_tool:
+                if not rescued_ok and is_portrait_tool and not is_long_form:
                     try:
                         from app.graph.tools.media_tools import execute_clean_cinematic_portrait_or_broll_sync
                         p_facet = portrait_broll_facets[r_pos % len(portrait_broll_facets)]
@@ -1762,7 +1829,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     (f"{r_subj} {facet_tag}".strip(), f"{r_subj} cinematic".strip(), "SCRIPT_OVERALL"),
                 ]
                 for q_main, q_fb, q_scope in yt_rescue_queries:
-                    if rescued_ok:
+                    if rescued_ok or is_long_form:
                         break
                     try:
                         yt_rescue = await asyncio.to_thread(
@@ -1814,7 +1881,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 media_agent.search_best_video_clip,
                                 sq_try,
                                 used_pool_urls,
-                                None,
+                                {"video_format": "long"} if is_long_form else None,
                                 str(r_sc.get("narration") or state.get("topic", "")),
                                 state.get("topic", ""),
                             )
@@ -1833,8 +1900,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                         input_path=raw_dl_mp4,
                                         duration_seconds=r_dur + 0.25,
                                         output_path=r_out_mp4,
-                                        width=1080,
-                                        height=1920,
+                                        width=1920 if is_long_form else 1080,
+                                        height=1080 if is_long_form else 1920,
                                         fps=30,
                                         is_scifi=is_scifi_val,
                                         niche=current_niche,
@@ -1898,8 +1965,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 input_path=str(src_vp),
                                 duration_seconds=r_dur + 0.3,
                                 output_path=r_out_mp4,
-                                width=1080,
-                                height=1920,
+                                width=1920 if is_long_form else 1080,
+                                height=1080 if is_long_form else 1920,
                                 fps=30,
                                 is_scifi=is_scifi_val,
                                 niche=current_niche,
@@ -1937,30 +2004,30 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 # 4. Tầng bảo hiểm cuối cho kênh Tâm lý học: Nếu vẫn chưa có video thật, dựng ngay Doodle 2D Explainer (.mp4 24fps)
                 if not rescued_ok and is_psych_niche:
                     try:
-                        from app.graph.tools.media_tools import execute_doodle_2d_explainer_scene_sync
+                        from app.services.media.doodle_animation_tool import DoodleAnimationTool
                         d_char = doodle_char_cycle[r_sid % len(doodle_char_cycle)]
                         d_prop = doodle_prop_cycle[r_sid % len(doodle_prop_cycle)]
-                        d_res = await asyncio.to_thread(
-                            execute_doodle_2d_explainer_scene_sync,
+                        d_path = await asyncio.to_thread(
+                            DoodleAnimationTool.render_scene_clip,
+                            narration=str(r_sc.get("narration") or state.get("topic", "")),
+                            output_path=r_out_mp4,
+                            duration_seconds=r_dur + 0.25,
+                            scene_id=r_sid,
                             character_tag=d_char,
                             prop_type=d_prop,
-                            scene_concept_summary=str(r_sc.get("visual_keyword") or r_sc.get("narration") or state.get("topic", ""))[:90],
-                            output_path=r_out_mp4,
-                            narration=str(r_sc.get("narration") or state.get("topic", "")),
-                            target_duration_sec=r_dur + 0.25,
                             camera_motion=str(r_sc.get("camera_motion") or "zoom_in"),
-                            highlight_words=r_sc.get("highlight_words") or [],
-                            scene_id=r_sid,
+                            width=1920 if is_long_form else 1080,
+                            height=1080 if is_long_form else 1920,
                         )
-                        if d_res and d_res.get("media_path") and Path(d_res["media_path"]).exists():
-                            r_sc["media_path"] = d_res["media_path"]
+                        if d_path and Path(d_path).exists():
+                            r_sc["media_path"] = d_path
                             r_sc["media_type"] = "video"
                             r_sc["pose_images"] = []
                             r_sc["production_method"] = "MOTION_FLOOR_RESCUE_DOODLE_2D"
                             r_sc["visual_strategy"] = "DOODLE_2D_EXPLAINER_VIDEO"
                             rescued_ok = True
                             logger.info(
-                                f"  🎨 [Real-Motion Floor Rescue] Scene {r_sid}: Đã bảo hiểm bằng Doodle 2D Animation ({d_char} + {d_prop}) -> {Path(d_res['media_path']).name}"
+                                f"  🎨 [Real-Motion Floor Rescue] Scene {r_sid}: Đã bảo hiểm bằng Doodle 2D Animation ({d_char} + {d_prop}) -> {Path(d_path).name}"
                             )
                     except Exception as _re_dd_fb:
                         logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Doodle 2D fallback skip: {_re_dd_fb}")
@@ -2158,11 +2225,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     return synth_p
                             except Exception:
                                 pass
-                        ai_q = f"{sc_kw}, {task_obj['ai_angle']}, dramatic vertical 9:16 photography, 8k sharp focus"
+                        ar_str = "16:9" if is_long_form else "9:16"
+                        ai_q = f"{sc_kw}, {task_obj['ai_angle']}, dramatic {'widescreen 16:9' if is_long_form else 'vertical 9:16'} photography, 8k sharp focus"
                         return image_agent.generate_scene_image(
                             ai_q,
                             task_obj["ai_cut_p"],
-                            "9:16",
+                            ar_str,
                             state.get("channel_style", "cinematic"),
                             sid,
                             sc_item.get("visual_prompt"),
@@ -2537,18 +2605,24 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         if is_video:
             if is_lf_refine:
                 try:
+                    import threading as _th_ref
                     out_lf_ref = str(media_dir / f"scene_{scene_id:03d}_refined_16x9.mp4")
                     lf_ref_res = await asyncio.to_thread(
-                        _fetch_longform_16x9_broll_sync,
-                        search_query=clean_kw_q or overall_refine_q,
-                        output_path=out_lf_ref,
-                        target_duration_sec=sc_dur_sec,
-                        used_urls=used_refine_urls,
-                        subject_entity=subj_refine,
-                        narration=narr or state.get("topic", ""),
-                        topic=state.get("topic", ""),
-                        job_id=job_id_refine,
+                        _fetch_longform_16x9_broll_clip_sync,
                         scene_id=scene_id,
+                        query=clean_kw_q or overall_refine_q,
+                        primary_entity=subj_refine,
+                        topic=state.get("topic", ""),
+                        narration=narr or state.get("topic", ""),
+                        target_duration_sec=sc_dur_sec,
+                        media_dir=media_dir,
+                        used_bvids=set(),
+                        used_urls=used_refine_urls,
+                        bvid_lock=_th_ref.Lock(),
+                        media_agent=media_agent,
+                        is_scifi=is_scifi_val,
+                        job_id=job_id_refine,
+                        output_override_path=out_lf_ref,
                     )
                     if lf_ref_res and lf_ref_res.get("media_path") and Path(lf_ref_res["media_path"]).exists():
                         ok_lf_clean, _ = await asyncio.to_thread(

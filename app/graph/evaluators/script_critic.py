@@ -211,11 +211,13 @@ class ScriptCritic:
                 f"(Visual Micro-Observation 'Look closely at...', Fatal Mistake 'O último erro...', or Survival Paradox)!"
             )
 
-        # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-11 từ để đọc trọn trong 1.6-2.4s đầu)
-        if w_cnt > 14 or w_cnt < 3:
+        # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-14 từ cho Shorts, 4-28 từ cho Long-Form Documentary)
+        is_lf_hook = str(s_data.get("video_format") or "short").strip().lower() == "long" or len(scenes) >= 14
+        max_hook_w = 28 if is_lf_hook else 14
+        if w_cnt > max_hook_w or w_cnt < 3:
             score = max(1.0, score - 1.2)
             extra_critiques.append(
-                f"Scene 1 hook length ({w_cnt} words) is suboptimal. Condense to 6-9 words (max 12 words) to match the 1.8-second opening cut."
+                f"Scene 1 hook length ({w_cnt} words) is suboptimal. Condense to 6-9 words (max {max_hook_w} words) to match the opening cut."
             )
 
         # 3. Đối chiếu chống lặp lại mô-típ của Bottom 3 Losers (video có swipe_away_pct cao nhất kênh)
@@ -266,10 +268,10 @@ class ScriptCritic:
                 f"VAGUE TITLE BLOCKED: Title hides the primary entity ('{eff_title}'). "
                 f"Explicitly name the exact species/entity/location + concrete physical metric or 'Entity A vs Entity B' in the title!"
             )
-        elif not has_hook_violation and (s1_has_shock and (s1_has_number or has_number)) and 3 <= w_cnt <= 14:
+        elif not has_hook_violation and (s1_has_shock and (s1_has_number or has_number)) and 3 <= w_cnt <= max_hook_w:
             score = max(score, 8.8)
             score = min(9.8, score + 0.3)
-        elif not has_hook_violation and s1_has_shock and 3 <= w_cnt <= 14:
+        elif not has_hook_violation and s1_has_shock and 3 <= w_cnt <= max_hook_w:
             score = max(score, 8.3)
         elif not has_number and not has_confrontation_or_shock:
             score = max(1.0, score - 0.8)

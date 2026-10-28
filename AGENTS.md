@@ -26,6 +26,7 @@
 
 ## 5. Universal Engineering & AI System Guardrails (All Projects)
 - Always adhere to the universal engineering skills in `.agents/skills/` (and `~/.gemini/config/skills/`):
+  - **[post-video-qa-langsmith-debug](.agents/skills/post-video-qa-langsmith-debug/SKILL.md)**: Whenever you generate a video (Shorts or Long-form) or upgrade the video pipeline, you **MUST** inspect the rendered video's technical/visual quality (including frame extraction check), debug via LangSmith Waterfall (`python -m app.utils.langsmith_tracer --job <id>`) and logs (`storage/logs/app.log`), and fix any root-cause errors or bottlenecks before completing the task.
   - **[verification-before-completion](.agents/skills/verification-before-completion/SKILL.md)**: Never claim a task or bugfix is complete without running fresh verification (`py_compile`, smoke tests, output inspection) after the final code edit.
   - **[architecture-first-design](.agents/skills/architecture-first-design/SKILL.md)**: Keep modules focused (Single Responsibility, no God-files), preserve backward-compatible signatures (`**kwargs`), and clean up dead code immediately.
   - **[llm-agentic-system-design](.agents/skills/llm-agentic-system-design/SKILL.md)**: Keep semantic reasoning in LLM System Prompts / Multimodal Vision (preferring Batch Prompting over sequential loops) and keep deterministic validation/math/key-rotation in code.

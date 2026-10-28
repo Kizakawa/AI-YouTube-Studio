@@ -915,9 +915,16 @@ class DoodleAnimationTool:
         badge = m_num.group(1).upper() if m_num else f"SCENE {scene_id}/{total_scenes}"
 
         clean_words = [re.sub(r"[^\w$-]", "", w).upper() for w in narration.split() if len(w) > 2]
-        headline = " ".join(clean_words[:4]) if clean_words else f"ACT {scene_id}"
+        head_words: List[str] = []
+        for cw in clean_words[:5]:
+            cand_h = " ".join([*head_words, cw])
+            if len(cand_h) <= 32 or not head_words:
+                head_words.append(cw)
+            else:
+                break
+        headline = " ".join(head_words) if head_words else f"ACT {scene_id}"
 
-        return tag, prop, cam, headline[:28], badge[:22]
+        return tag, prop, cam, headline, badge[:22]
 
     @classmethod
     def render_scene_clip(
@@ -936,9 +943,11 @@ class DoodleAnimationTool:
         audio_path: Optional[str] = None,
         sfx_path: Optional[str] = None,
         fps: int = DEFAULT_FPS,
+        width: int = 1080,
+        height: int = 1920,
     ) -> Optional[str]:
         """
-        Render trực tiếp 1 video clip MP4 (1080x1920 @ True 30 FPS) hoạt họa 2D Doodle siêu mượt
+        Render trực tiếp 1 video clip MP4 (1080x1920 cho Shorts hoặc 1920x1080 cho Long-Form @ True 30 FPS) hoạt họa 2D Doodle siêu mượt
         bằng cách tính toán 100% các khung hình độc lập (`int(duration_s * 30)` frames) trên đa luồng CPU
         và truyền thẳng qua ống dẫn `rawvideo` vào FFmpeg (không qua file JPEG trung gian).
         """
@@ -965,7 +974,7 @@ class DoodleAnimationTool:
         out_p.parent.mkdir(parents=True, exist_ok=True)
 
         total_frames = max(30, int(round(dur_s * fps)))
-        width, height = 1080, 1920
+        width, height = int(width or 1080), int(height or 1920)
 
         # Render song song toàn bộ total_frames khung hình độc lập ở chuẩn 30 FPS
         with ThreadPoolExecutor(max_workers=8) as pool:
