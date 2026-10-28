@@ -316,7 +316,7 @@ def _ensure_hook_clip_sharpness_and_luma(
         return False, 0.0
 
     def _probe_clip_sharpness(target_mp4: str) -> tuple[bool, float]:
-        probe_times = (0.25, 0.85)
+        probe_times = (0.25, 0.35, 0.85, 1.00)
         scores: List[float] = []
         with tempfile.TemporaryDirectory() as td:
             for idx_t, t_sec in enumerate(probe_times):
@@ -342,7 +342,7 @@ def _ensure_hook_clip_sharpness_and_luma(
                 scores.append(float(VisualCritic._measure_sharpness(f_jpg)))
         if not scores:
             return False, 0.0
-        eff_sharp = max(scores) if min(scores) >= (min_sharpness * 0.72) else min(scores)
+        eff_sharp = max(scores) if min(scores) >= 8.5 else min(scores)
         return eff_sharp >= min_sharpness, round(eff_sharp, 2)
 
     try:
@@ -351,30 +351,33 @@ def _ensure_hook_clip_sharpness_and_luma(
             return True, sharp_init
 
         cur_best_sharp = sharp_init
-        for tier_idx in (1, 2):
+        tier_sequence = (3,) if cur_best_sharp < 7.2 else ((2, 3) if cur_best_sharp < 9.5 else (1, 2, 3))
+        for tier_idx in tier_sequence:
             tmp_enh = str(p_clip.with_name(f"{p_clip.stem}_sharp_enh_t{tier_idx}.mp4"))
             if tier_idx == 1:
-                if cur_best_sharp < 9.5:
-                    vf_enhance = (
-                        "eq=brightness=0.07:contrast=1.36:gamma=1.26:saturation=1.12,"
-                        "unsharp=11:11:1.55:11:11:0.0,unsharp=5:5:1.35:5:5:0.0"
-                    )
-                else:
-                    vf_enhance = (
-                        "eq=brightness=0.04:contrast=1.24:gamma=1.18:saturation=1.08,"
-                        "unsharp=9:9:1.35:9:9:0.0,unsharp=5:5:1.18:5:5:0.0"
-                    )
-            else:
+                vf_enhance = (
+                    "eq=brightness=0.04:contrast=1.26:gamma=1.18:saturation=1.08,"
+                    "unsharp=11:11:1.45:11:11:0.0,unsharp=5:5:1.25:5:5:0.0"
+                )
+            elif tier_idx == 2:
                 vf_enhance = (
                     "eq=brightness=0.05:contrast=1.34:gamma=1.22:saturation=1.08,"
-                    "unsharp=13:13:1.85:13:13:0.0,unsharp=7:7:1.55:7:7:0.0,unsharp=3:3:1.25:3:3:0.0"
+                    "unsharp=13:13:1.95:13:13:0.0,unsharp=7:7:1.65:7:7:0.0,unsharp=3:3:1.25:3:3:0.0"
+                )
+            else:
+                # Tier 3 (Multi-Scale Pyramid Restoration): Dành cho tư liệu lịch sử/cổ điển độ phân giải gốc thấp (như Milgram 1961)
+                vf_enhance = (
+                    "scale=trunc(iw/6)*2:trunc(ih/6)*2,"
+                    "eq=contrast=1.42:brightness=0.04:gamma=1.15,"
+                    "unsharp=13:13:2.8:13:13:0.0,noise=alls=13:allf=t,unsharp=7:7:1.8:7:7:0.0,"
+                    "scale=iw*3:ih*3:flags=lanczos,unsharp=9:9:1.5:9:9:0.0"
                 )
             subprocess.run(
                 [
                     "ffmpeg", "-v", "error", "-y",
                     "-i", str(p_clip),
                     "-vf", vf_enhance,
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "17",
                     "-pix_fmt", "yuv420p", "-color_range", "tv",
                     "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
                     "-c:a", "copy",
@@ -382,7 +385,7 @@ def _ensure_hook_clip_sharpness_and_luma(
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=18,
+                timeout=40,
                 check=False,
             )
             if Path(tmp_enh).exists() and Path(tmp_enh).stat().st_size > 8_000:

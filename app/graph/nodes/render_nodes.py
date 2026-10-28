@@ -40,6 +40,15 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
 
     audio_map = {s.get("scene_id"): s for s in scenes_audio if isinstance(s, dict) and s.get("scene_id")}
     enriched_scenes = []
+    video_format_pre = str(
+        state.get("video_format")
+        or (state.get("script_data") or {}).get("video_format")
+        or ("long" if len(scenes_media) >= 14 else "short")
+    ).strip().lower()
+    is_lf_pre = video_format_pre == "long"
+    target_w = 1920 if is_lf_pre else 1080
+    target_h = 1080 if is_lf_pre else 1920
+    render_retry_count = int(state.get("render_retry_count", 0) or 0)
 
     for idx_m, m in enumerate(scenes_media):
         if not isinstance(m, dict):
@@ -63,8 +72,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                             image_paths=pose_imgs,
                             duration_seconds=max(dur_ms / 1000.0, 2.2) + 0.18,
                             output_path=pre_hook_mp4,
-                            width=1080,
-                            height=1920,
+                            width=target_w,
+                            height=target_h,
                             fps=30,
                             min_cuts=3,
                             is_scifi=bool(state.get("is_scifi")),
@@ -81,7 +90,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             if cur_media_path.lower().endswith((".mp4", ".mov", ".webm")):
                 try:
                     from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-                    _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=12.5)
+                    _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=13.2 if render_retry_count > 0 else 12.6)
                 except Exception as e_s1_pre:
                     logger.debug(f"[RenderNode] Pre-render hook sharpness check skip: {e_s1_pre}")
 
@@ -168,6 +177,14 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     agent = VideoAgent()
     await agent.render(render_job)
 
+    # Nếu đang ở vòng thử lại render (render_retry_count > 0), đảm bảo khung hình mở đầu của file đã render đạt độ nét >= 12.5
+    if Path(final_output).exists() and render_retry_count > 0:
+        try:
+            from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+            _ensure_hook_clip_sharpness_and_luma(final_output, min_sharpness=12.6)
+        except Exception as _e_post_sh:
+            logger.debug(f"[RenderNode] Post-render sharpness boost skip: {_e_post_sh}")
+
     # Đảm bảo video thành phẩm được lưu vĩnh viễn vào storage/outputs/video_{job_id}.mp4
     # (Tránh trường hợp bị xóa mất khi dọn dẹp thư mục tạm work_dir)
     import shutil
@@ -197,6 +214,11 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
     total_audio_duration_ms = state.get("total_audio_duration_ms", 0)
     render_retry_count = int(state.get("render_retry_count", 0) or 0)
     max_render_retries = max(0, int(os.getenv("MAX_RENDER_RETRIES", "1")))
+    video_format = str(
+        state.get("video_format")
+        or (state.get("script_data") or {}).get("video_format")
+        or "short"
+    ).strip().lower()
 
     qa_report = VideoQA.inspect_video(
         video_path=rendered_video_path,
@@ -207,6 +229,7 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
     eval_res = QualityEvaluator().evaluate_video(
         video_path=rendered_video_path,
         expected_duration_ms=total_audio_duration_ms,
+        video_format=video_format,
     )
     video_score = eval_res.get("score", 0)
     combined_passed = bool(qa_report.passed and eval_res.get("passed", True))

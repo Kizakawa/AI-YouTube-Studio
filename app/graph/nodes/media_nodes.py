@@ -2410,6 +2410,13 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     mandatory_video_refine_sids = {1, 2, max(1, total_scenes_refine - 1), total_scenes_refine}
     job_id_refine = int(state.get("job_id") or 0)
     channel_id_refine = str(state.get("target_channel_id") or state.get("channel_id") or "")
+    is_lf_refine = (
+        str(state.get("video_format") or (state.get("script_data") or {}).get("video_format") or "short").strip().lower() == "long"
+        or total_scenes_refine >= 14
+    )
+    w_ref = 1920 if is_lf_refine else 1080
+    h_ref = 1080 if is_lf_refine else 1920
+    ar_ref = "16:9" if is_lf_refine else "9:16"
 
     def _verify_and_sanitize_refined_media(
         cand_path: str,
@@ -2528,43 +2535,75 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 logger.debug(f"Scene {scene_id}: In-place hook video sanitize skip: {_e_inp}")
 
         if is_video:
-            # 1. Ưu tiên săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync)
-            try:
-                from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
-                out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak.mp4")
-                yt_ref_res = await asyncio.to_thread(
-                    execute_youtube_short_peak_clone_sync,
-                    search_query=clean_kw_q or overall_refine_q,
-                    output_path=out_yt_ref,
-                    target_duration_sec=sc_dur_sec,
-                    clip_role="HOOK" if scene_id == 1 else "PEAK",
-                    used_urls=used_refine_urls,
-                    fallback_query=overall_refine_q,
-                    subject_entity=subj_refine,
-                    narration=narr or state.get("topic", ""),
-                    topic=state.get("topic", ""),
-                    search_scope="SCRIPT_OVERALL" if is_mandatory_vid else "SCENE_SPECIFIC",
-                    overall_script_query=overall_refine_q,
-                    max_peak_duration_sec=14.0,
-                    job_id=job_id_refine,
-                    scene_id=scene_id,
-                    channel_id=channel_id_refine,
-                )
-                if yt_ref_res and yt_ref_res.get("media_path") and Path(yt_ref_res["media_path"]).exists():
-                    ok_yt_clean, _ = await asyncio.to_thread(
-                        _verify_and_sanitize_refined_media, yt_ref_res["media_path"], True, scene_id
+            if is_lf_refine:
+                try:
+                    out_lf_ref = str(media_dir / f"scene_{scene_id:03d}_refined_16x9.mp4")
+                    lf_ref_res = await asyncio.to_thread(
+                        _fetch_longform_16x9_broll_sync,
+                        search_query=clean_kw_q or overall_refine_q,
+                        output_path=out_lf_ref,
+                        target_duration_sec=sc_dur_sec,
+                        used_urls=used_refine_urls,
+                        subject_entity=subj_refine,
+                        narration=narr or state.get("topic", ""),
+                        topic=state.get("topic", ""),
+                        job_id=job_id_refine,
+                        scene_id=scene_id,
                     )
-                    if ok_yt_clean:
-                        item["media_path"] = yt_ref_res["media_path"]
-                        item["media_type"] = "video"
-                        item["pose_images"] = []
-                        item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
-                        replaced = True
-                        logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng YouTube Short Peak 9:16 mới: '{Path(yt_ref_res['media_path']).name}'")
-                    else:
-                        Path(yt_ref_res["media_path"]).unlink(missing_ok=True)
-            except Exception as ex_yt_r:
-                logger.debug(f"Scene {scene_id}: YouTube Short refine error: {ex_yt_r}")
+                    if lf_ref_res and lf_ref_res.get("media_path") and Path(lf_ref_res["media_path"]).exists():
+                        ok_lf_clean, _ = await asyncio.to_thread(
+                            _verify_and_sanitize_refined_media, lf_ref_res["media_path"], True, scene_id
+                        )
+                        if ok_lf_clean:
+                            item["media_path"] = lf_ref_res["media_path"]
+                            item["media_type"] = "video"
+                            item["pose_images"] = []
+                            item["production_method"] = "REFINED_LONGFORM_16X9_VIDEO"
+                            replaced = True
+                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video 16:9 Widescreen mới: '{Path(lf_ref_res['media_path']).name}'")
+                        else:
+                            Path(lf_ref_res["media_path"]).unlink(missing_ok=True)
+                except Exception as ex_lf_r:
+                    logger.debug(f"Scene {scene_id}: Long-form 16:9 refine error: {ex_lf_r}")
+
+            # 1. Ưu tiên săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync — chỉ cho Shorts)
+            if not replaced and not is_lf_refine:
+                try:
+                    from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                    out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak.mp4")
+                    yt_ref_res = await asyncio.to_thread(
+                        execute_youtube_short_peak_clone_sync,
+                        search_query=clean_kw_q or overall_refine_q,
+                        output_path=out_yt_ref,
+                        target_duration_sec=sc_dur_sec,
+                        clip_role="HOOK" if scene_id == 1 else "PEAK",
+                        used_urls=used_refine_urls,
+                        fallback_query=overall_refine_q,
+                        subject_entity=subj_refine,
+                        narration=narr or state.get("topic", ""),
+                        topic=state.get("topic", ""),
+                        search_scope="SCRIPT_OVERALL" if is_mandatory_vid else "SCENE_SPECIFIC",
+                        overall_script_query=overall_refine_q,
+                        max_peak_duration_sec=14.0,
+                        job_id=job_id_refine,
+                        scene_id=scene_id,
+                        channel_id=channel_id_refine,
+                    )
+                    if yt_ref_res and yt_ref_res.get("media_path") and Path(yt_ref_res["media_path"]).exists():
+                        ok_yt_clean, _ = await asyncio.to_thread(
+                            _verify_and_sanitize_refined_media, yt_ref_res["media_path"], True, scene_id
+                        )
+                        if ok_yt_clean:
+                            item["media_path"] = yt_ref_res["media_path"]
+                            item["media_type"] = "video"
+                            item["pose_images"] = []
+                            item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
+                            replaced = True
+                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng YouTube Short Peak 9:16 mới: '{Path(yt_ref_res['media_path']).name}'")
+                        else:
+                            Path(yt_ref_res["media_path"]).unlink(missing_ok=True)
+                except Exception as ex_yt_r:
+                    logger.debug(f"Scene {scene_id}: YouTube Short refine error: {ex_yt_r}")
 
             # 2. Tầng 2: Tìm kiếm Video Clip Pexels/Pixabay HD mới (kiểm tra RAG Intra-Video Dedup & dHash)
             if not replaced:
@@ -2647,8 +2686,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             input_path=str(src_vp),
                             duration_seconds=sc_dur_sec,
                             output_path=out_slice_v,
-                            width=1080,
-                            height=1920,
+                            width=w_ref,
+                            height=h_ref,
                             fps=30,
                             is_scifi=is_scifi_val,
                             niche=current_niche,
@@ -2724,7 +2763,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 lambda: image_agent.generate_scene_image(
                     prompt=fallback_kw,
                     output_path=ai_img_path,
-                    aspect_ratio="9:16",
+                    aspect_ratio=ar_ref,
                     niche="cinematic",
                     scene_id=scene_id,
                     visual_prompt=vp,
@@ -2843,20 +2882,23 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     max_off_r = max(0.0, d_dur_s - sc_dur_sec - 0.2)
                     frac_r = 0.22 + (scene_id % 3) * 0.24
                     d_off_s = round(min(max_off_r, max(0.45, d_dur_s * frac_r)), 2) if max_off_r > 0.5 else 0.0
+                    sw_0, sh_0 = int(w_ref * 1.16) // 2 * 2, int(h_ref * 1.16) // 2 * 2
+                    sw_1, sh_1 = int(w_ref * 1.24) // 2 * 2, int(h_ref * 1.24) // 2 * 2
+                    sw_2, sh_2 = int(w_ref * 1.26) // 2 * 2, int(h_ref * 1.26) // 2 * 2
                     if scene_id % 3 == 0:
                         vf_rescue = (
-                            "hflip,scale=1252:2228:force_original_aspect_ratio=increase,"
-                            "crop=1080:1920:0:0,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
+                            f"hflip,scale={sw_0}:{sh_0}:force_original_aspect_ratio=increase,"
+                            f"crop={w_ref}:{h_ref}:0:0,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
                         )
                     elif scene_id % 3 == 1:
                         vf_rescue = (
-                            "scale=1340:2382:force_original_aspect_ratio=increase,"
-                            "crop=1080:1920:iw-1080:ih-1920,eq=contrast=1.06:brightness=0.01,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
+                            f"scale={sw_1}:{sh_1}:force_original_aspect_ratio=increase,"
+                            f"crop={w_ref}:{h_ref}:iw-{w_ref}:ih-{h_ref},eq=contrast=1.06:brightness=0.01,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
                         )
                     else:
                         vf_rescue = (
-                            "hflip,scale=1360:2418:force_original_aspect_ratio=increase,"
-                            "crop=1080:1920:(iw-1080)/2:ih-1920,unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
+                            f"hflip,scale={sw_2}:{sh_2}:force_original_aspect_ratio=increase,"
+                            f"crop={w_ref}:{h_ref}:(iw-{w_ref})/2:ih-{h_ref},unsharp=5:5:0.85:3:3:0.0,fps=30,format=yuv420p"
                         )
                     cmd_resc = [
                         "ffmpeg", "-y", "-v", "error",
@@ -2887,8 +2929,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         image_paths=clean_image_donors[:4],
                         duration_seconds=sc_dur_sec,
                         output_path=out_resc_v,
-                        width=1080,
-                        height=1920,
+                        width=w_ref,
+                        height=h_ref,
                         fps=30,
                         min_cuts=max(2, min(4, len(clean_image_donors))),
                         is_scifi=is_scifi_val,

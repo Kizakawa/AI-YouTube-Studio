@@ -371,14 +371,15 @@ Respond ONLY in valid JSON:
     def evaluate_video(
         self,
         video_path: str,
-        expected_duration_ms: int = 0
+        expected_duration_ms: int = 0,
+        video_format: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Chấm điểm chất lượng video thành phẩm bằng thang đo thực tế liên tục (không còn trả về 100 cứng):
-        1. Stream & Portrait Integrity (0 - 25 điểm): 1080x1920 9:16, H.264 + AAC, ~30fps
+        Chấm điểm chất lượng video thành phẩm bằng thang đo thực tế liên tục (hỗ trợ cả Shorts 9:16 1080x1920 và Long-Form 16:9 1920x1080):
+        1. Stream & Aspect Integrity (0 - 25 điểm): 1080x1920 (9:16) hoặc 1920x1080 (16:9), H.264 + AAC, ~30fps
         2. Bitrate & Visual Encoding Density (0 - 25 điểm): đo Mbps thực tế
         3. A/V Sync Precision (0 - 25 điểm): đo độ lệch mili-giây giữa video stream và audio stream
-        4. Shorts Retention Duration Curve (0 - 15 điểm): so với khung vàng 30s - 45s
+        4. Retention Duration Curve (0 - 15 điểm): khung vàng 27s-42s (Shorts) hoặc 60s-900s (Long-Form)
         5. Frame Sharpness & Contrast Inspection (0 - 10 điểm): trích xuất khung hình kiểm tra độ nét & màn đen
         Đạt chuẩn (passed=True): Tổng điểm >= 78/100 và không vi phạm lỗi chặn cứng.
         """
@@ -448,17 +449,29 @@ Respond ONLY in valid JSON:
                     "feedback": "File MP4 thiếu luồng nghe/nhìn, chặn xuất bản."
                 }
 
-            # 1. Stream & Portrait Integrity (Tối đa 25 điểm)
+            # 1. Stream & Aspect Integrity (Tối đa 25 điểm — hỗ trợ cả Shorts 9:16 và Long-Form 16:9)
+            is_long_form = (str(video_format or "").strip().lower() == "long") or (width > height and width >= 1280)
             stream_pts = 0.0
-            if width == 1080 and height == 1920:
-                stream_pts += 15.0
-                strengths.append(f"Chuẩn dọc Shorts 9:16 ({width}x{height}).")
-            elif height > width and width >= 720:
-                stream_pts += 11.0
-                issues.append(f"Độ phân giải dọc chưa chuẩn 1080x1920 ({width}x{height}).")
+            if not is_long_form:
+                if width == 1080 and height == 1920:
+                    stream_pts += 15.0
+                    strengths.append(f"Chuẩn dọc Shorts 9:16 ({width}x{height}).")
+                elif height > width and width >= 720:
+                    stream_pts += 11.0
+                    issues.append(f"Độ phân giải dọc chưa chuẩn 1080x1920 ({width}x{height}).")
+                else:
+                    hard_fail = True
+                    issues.append(f"Sai tỉ lệ khung hình Shorts ({width}x{height}).")
             else:
-                hard_fail = True
-                issues.append(f"Sai tỉ lệ khung hình Shorts ({width}x{height}).")
+                if width == 1920 and height == 1080:
+                    stream_pts += 15.0
+                    strengths.append(f"Chuẩn ngang Long-Form 16:9 ({width}x{height}).")
+                elif width > height and height >= 720:
+                    stream_pts += 11.0
+                    issues.append(f"Độ phân giải ngang chưa chuẩn 1920x1080 ({width}x{height}).")
+                else:
+                    hard_fail = True
+                    issues.append(f"Sai tỉ lệ khung hình Long-Form 16:9 ({width}x{height}).")
 
             if 28.0 <= fps <= 61.0:
                 stream_pts += 5.0
@@ -525,20 +538,30 @@ Respond ONLY in valid JSON:
                 hard_fail = True
                 issues.append(f"AV Desync nghiêm trọng ({av_drift_ms:.0f}ms > 550ms) — chặn xuất bản!")
 
-            # 4. Shorts Retention Duration Curve (Tối đa 15 điểm — Khung vàng High-APV 27s - 42s)
-            if 27.0 <= duration_sec <= 42.0:
-                # Khung vàng giữ chân & APV > 80% cao nhất (đỉnh tại ~33.0s)
-                dist_from_33 = abs(duration_sec - 33.0)
-                dur_pts = max(13.5, 15.0 - dist_from_33 * 0.18)
-                strengths.append(f"Thời lượng nằm trong khung vàng High-APV Retention ({duration_sec:.1f}s).")
-            elif 20.0 <= duration_sec < 27.0:
-                dur_pts = 10.0 + (duration_sec - 20.0) * 0.45
-            elif 42.0 < duration_sec <= 60.0:
-                dur_pts = 13.0 - (duration_sec - 42.0) * 0.25
+            # 4. Retention Duration Curve (Tối đa 15 điểm — Shorts: 27s-42s | Long-Form 16:9: 60s-900s)
+            if is_long_form:
+                if 60.0 <= duration_sec <= 900.0:
+                    dur_pts = 15.0
+                    strengths.append(f"Thời lượng đạt chuẩn Long-Form Documentary ({duration_sec:.1f}s).")
+                elif 45.0 <= duration_sec < 60.0:
+                    dur_pts = 12.0
+                else:
+                    dur_pts = 6.0
+                    issues.append(f"Thời lượng Long-Form chưa tối ưu ({duration_sec:.1f}s, khuyến nghị 60s-900s).")
             else:
-                dur_pts = 4.0
-                hard_fail = True
-                issues.append(f"Thời lượng ngoài ngưỡng Shorts ({duration_sec:.1f}s, yêu cầu 20s-60s).")
+                if 27.0 <= duration_sec <= 42.0:
+                    # Khung vàng giữ chân & APV > 80% cao nhất (đỉnh tại ~33.0s)
+                    dist_from_33 = abs(duration_sec - 33.0)
+                    dur_pts = max(13.5, 15.0 - dist_from_33 * 0.18)
+                    strengths.append(f"Thời lượng nằm trong khung vàng High-APV Retention ({duration_sec:.1f}s).")
+                elif 20.0 <= duration_sec < 27.0:
+                    dur_pts = 10.0 + (duration_sec - 20.0) * 0.45
+                elif 42.0 < duration_sec <= 60.0:
+                    dur_pts = 13.0 - (duration_sec - 42.0) * 0.25
+                else:
+                    dur_pts = 4.0
+                    hard_fail = True
+                    issues.append(f"Thời lượng ngoài ngưỡng Shorts ({duration_sec:.1f}s, yêu cầu 20s-60s).")
 
             # 5. Frame Sharpness & Black-Screen Inspection tại Hook (Tối đa 10 điểm — Bắt buộc >= 12.0)
             frame_pts = 7.5
@@ -592,7 +615,7 @@ Respond ONLY in valid JSON:
             total_cuts = 0
             try:
                 import re as _re_qa
-                vf_qa = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-52dB:d=2.4,scdet=t=8.5"
+                vf_qa = "crop=iw*0.72:ih*0.42:iw*0.14:ih*0.16,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-52dB:d=2.4,scdet=t=8.5"
                 res_qa = subprocess.run(
                     ["ffmpeg", "-v", "info", "-i", str(p), "-vf", vf_qa, "-an", "-f", "null", "-"],
                     capture_output=True,
