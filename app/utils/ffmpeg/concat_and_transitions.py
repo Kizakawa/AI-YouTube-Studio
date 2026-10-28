@@ -38,7 +38,7 @@ def concat_videos(
 
     # Thích ứng tự động: FFmpeg >= 5.1 dùng -fps_mode cfr, FFmpeg cũ dùng -vsync cfr
     fps_flag = ["-fps_mode", "cfr"] if _supports_fps_mode() else ["-vsync", "cfr"]
-    enc_args = get_video_encoder_args(quality="high")
+    enc_args = get_video_encoder_args(quality="longform" if len(video_paths) >= 22 else "high")
 
     args = [
         "-f", "concat",
@@ -223,7 +223,7 @@ def concat_videos_with_xfade(
         current_label = sub_label
 
     filter_complex = ";".join(filter_parts)
-    enc_args = get_video_encoder_args(quality="high")
+    enc_args = get_video_encoder_args(quality="longform" if len(video_paths) >= 22 else "high")
 
     args = input_args + [
         "-filter_complex", filter_complex,

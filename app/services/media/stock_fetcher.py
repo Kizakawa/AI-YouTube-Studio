@@ -951,17 +951,16 @@ class StockFetcher:
                 v_files = v.get("video_files") or []
                 landscape_1080p = [
                     vf for vf in v_files
-                    if int(vf.get("width") or 0) >= 1920
-                    and int(vf.get("height") or 0) >= 1080
-                    and int(vf.get("height") or 0) <= 2160
-                    and int(vf.get("width") or 0) > int(vf.get("height") or 0)
+                    if int(vf.get("width") or 0) == 1920
+                    and int(vf.get("height") or 0) == 1080
                     and (str(vf.get("link", "")).endswith(".mp4") or "mp4" in str(vf.get("file_type", "")))
                 ]
                 landscape_files = landscape_1080p or [
                     vf for vf in v_files
                     if int(vf.get("width") or 0) > int(vf.get("height") or 0)
                     and int(vf.get("height") or 0) >= 720
-                    and int(vf.get("height") or 0) <= 1440
+                    and int(vf.get("height") or 0) <= 1080
+                    and int(vf.get("width") or 0) <= 1920
                     and (str(vf.get("link", "")).endswith(".mp4") or "mp4" in str(vf.get("file_type", "")))
                 ]
                 if not landscape_files:

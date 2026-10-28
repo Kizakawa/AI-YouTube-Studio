@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 _chapter_locks_guard = threading.Lock()
 _chapter_locks: Dict[str, threading.Lock] = {}
-_yt_longform_dl_sem = threading.BoundedSemaphore(3)
+_yt_longform_dl_sem = threading.BoundedSemaphore(6)
 
 LANDSCAPE_16X9_YTDLP_FORMAT = (
     "best[protocol=https][aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
@@ -69,15 +69,14 @@ def _search_youtube_16x9_documentary_candidates(
     base_phrase = q_first[0] if q_first else (query or primary_entity or topic)
     clean_q = _clean_yt_search_phrase(base_phrase, max_words=6) or _clean_yt_search_phrase(primary_entity or topic, max_words=5) or topic
     search_queries = [
-        f"{clean_q} 4k cinematic b roll footage",
-        f"{clean_q} 4k documentary footage",
+        f"{clean_q} cinematic 4k footage",
     ]
     flat_opts = {
         "quiet": True,
         "no_warnings": True,
         "extract_flat": "in_playlist",
         "skip_download": True,
-        "socket_timeout": 8,
+        "socket_timeout": 6,
         "ignoreerrors": True,
     }
 
@@ -155,20 +154,6 @@ def _search_youtube_16x9_documentary_candidates(
             logger.debug(f"[LongFormChapterPool] YouTube 16:9 search warning ({sq}): {e_yt}")
 
     candidates.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
-    try:
-        from app.graph.tools.youtube_search_ranker import _rank_youtube_candidates_with_llm
-        if len(candidates) > 1:
-            candidates = _rank_youtube_candidates_with_llm(
-                candidates=candidates,
-                topic=topic,
-                subject_entity=primary_entity or topic,
-                narration=clean_q,
-                search_query=clean_q,
-                clip_role="PEAK",
-                allow_3d_cgi_monster=False,
-            )
-    except Exception as e_rank_lf:
-        logger.debug(f"[LongFormChapterPool] LLM candidate ranker skip: {e_rank_lf}")
     return candidates
 
 
@@ -337,7 +322,7 @@ def _download_youtube_chapter_master(
     import yt_dlp
     from app.graph.evaluators.visual_critic import VisualCritic
 
-    for cand in candidates[:1]:
+    for cand in candidates[:2]:
         vid_id = cand["id"]
         vid_url = cand["url"]
         with url_lock:
@@ -348,23 +333,23 @@ def _download_youtube_chapter_master(
 
         cand_dur = float(cand.get("duration") or 60.0)
         used_range_dl = False
-        start_s = 12.0 if cand_dur > 55.0 else (6.0 if cand_dur > 30.0 else 1.5)
-        end_s = min(cand_dur - 2.0, start_s + 54.0)
+        start_s = 10.0 if cand_dur > 50.0 else (5.0 if cand_dur > 28.0 else 1.5)
+        end_s = min(cand_dur - 1.5, start_s + 46.0)
 
         tmp_base = str(Path(master_out_path).with_suffix("")) + "_raw.%(ext)s"
         dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "max_filesize": 22 * 1024 * 1024,
+            "max_filesize": 15 * 1024 * 1024,
             "format": LANDSCAPE_16X9_YTDLP_FORMAT,
             "merge_output_format": "mp4",
             "outtmpl": tmp_base,
-            "socket_timeout": 10,
+            "socket_timeout": 8,
             "retries": 1,
             "nopart": True,
         })
-        if cand_dur > 110.0:
+        if cand_dur > 58.0:
             try:
                 from yt_dlp.utils import download_range_func
                 dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s)])

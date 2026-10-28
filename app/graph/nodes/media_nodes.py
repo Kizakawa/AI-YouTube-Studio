@@ -213,6 +213,12 @@ def _fetch_longform_16x9_broll_clip_sync(
                     else:
                         Path(raw_stock).unlink(missing_ok=True)
                     if Path(out_path).exists() and Path(out_path).stat().st_size > 35_000:
+                        if scene_id == 1:
+                            try:
+                                from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                                _ensure_hook_clip_sharpness_and_luma(out_path, min_sharpness=12.3)
+                            except Exception:
+                                pass
                         logger.info(f"Scene {scene_id}: 🎥 [Long-Form 16:9 Stock HD] Đã tải & cắt Landscape B-Roll -> {Path(out_path).name}")
                         return {
                             "media_path": out_path,
@@ -251,6 +257,12 @@ def _fetch_longform_16x9_broll_clip_sync(
                 import shutil as _sh_cp
                 _sh_cp.copy2(pool_res["media_path"], output_override_path)
                 pool_res["media_path"] = output_override_path
+            if scene_id == 1 and Path(pool_res["media_path"]).exists():
+                try:
+                    from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                    _ensure_hook_clip_sharpness_and_luma(pool_res["media_path"], min_sharpness=12.3)
+                except Exception:
+                    pass
             return pool_res
     except Exception as e_pool_16x9:
         logger.debug(f"Scene {scene_id}: Long-form ChapterPool 16:9 skip: {e_pool_16x9}")
@@ -342,8 +354,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     from app.services.media.media_history import get_recent_media_urls, record_used_media
     used_pool_urls = get_recent_media_urls(limit=150)
 
-    # Mở rộng Semaphore lên 8 để toàn bộ 8-10 phân cảnh của Shorts chạy SONG SONG 100% cùng lúc
-    sem = asyncio.Semaphore(8)
+    # Mở rộng Semaphore lên 20 cho Video Dài 10 Chương (40 cảnh) để cả 10 Chương chạy song song 1 đợt duy nhất
+    sem = asyncio.Semaphore(20 if is_long_form else 8)
     completed_lock = asyncio.Lock()
     completed_count = 0
     total_scenes = len(script.scenes)

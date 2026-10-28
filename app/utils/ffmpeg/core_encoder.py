@@ -269,6 +269,26 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
 
+    if quality == "longform":
+        if encoder == "h264_nvenc":
+            return [
+                "-c:v", "h264_nvenc",
+                "-preset", "p1",
+                "-cq", "22",
+                "-b:v", "2.8M",
+                "-maxrate", "3.6M",
+                "-bufsize", "7.2M",
+                "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            ]
+        return [
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "22",
+            "-maxrate", "3.5M",
+            "-bufsize", "7M",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+        ]
+
     is_high = (quality == "high")
 
     # Trên máy nhiều nhân CPU (>= 8 luồng), libx264 superfast nhanh hơn và nét hơn h264_mf (Windows Media Foundation CBR)

@@ -259,11 +259,16 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                             sc_item["visual_reasoning"] = f"{ch_title_cur} — {cur_vr}" if cur_vr else ch_title_cur
                         narr_txt = str(sc_item.get("narration") or "").strip()
                         if target_id == 1:
-                            # Scene 1 Cold-Open Hook: giữ 14–26 từ sắc bén, không câu hỏi '?'
+                            # Scene 1 Cold-Open Hook: giữ 14–26 từ sắc bén, có số liệu chữ số (4s / 0.2s), không câu hỏi '?'
                             narr_txt = narr_txt.replace("?", ".")
+                            narr_txt = re.sub(r"\bfour\b", "4", narr_txt, flags=re.IGNORECASE)
+                            narr_txt = re.sub(r"\bthree\b", "3", narr_txt, flags=re.IGNORECASE)
+                            narr_txt = re.sub(r"\btwo\b", "2", narr_txt, flags=re.IGNORECASE)
+                            if not re.search(r"\d", narr_txt):
+                                narr_txt = f"Watch their pupils during the first 4 seconds of silence: {narr_txt}"
                             s1_words = narr_txt.split()
-                            if len(s1_words) > 28:
-                                narr_txt = " ".join(s1_words[:26]).rstrip(",;:") + "."
+                            if len(s1_words) > 26:
+                                narr_txt = " ".join(s1_words[:25]).rstrip(",;:") + "."
                             elif len(s1_words) < 12:
                                 narr_txt = doc_hook.replace("?", ".")
                         elif len(narr_txt.split()) < 35:
