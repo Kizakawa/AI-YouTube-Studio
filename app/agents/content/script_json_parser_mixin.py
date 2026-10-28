@@ -424,6 +424,7 @@ class ScriptJsonParserMixin:
             return None
 
         if scenes and isinstance(scenes, list):
+            is_long_form_parse = str(raw_data.get("video_format") or video_format or "short").strip().lower() == "long"
             paced_scenes: List[Dict[str, Any]] = []
             for idx_sc, sc in enumerate(scenes):
                 if not isinstance(sc, dict):
@@ -432,10 +433,13 @@ class ScriptJsonParserMixin:
                 w_list = narr_str.split()
                 w_count = len(w_list)
 
-                # Cảnh 1 ưu tiên tách nhịp nhanh nếu >= 11 từ để cú cắt chuyển cảnh đầu tiên rơi vào 1.8s-2.2s
+                # Cảnh 1 ưu tiên tách nhịp nhanh nếu >= 11 từ đối với Shorts; riêng Long-Form 16:9 giữ nguyên đoạn văn hoàn chỉnh của từng cảnh
                 should_split = (
-                    (idx_sc == 0 and w_count >= 11)
-                    or (idx_sc > 0 and w_count >= 22 and len(paced_scenes) + (len(scenes) - idx_sc) < 9)
+                    not is_long_form_parse
+                    and (
+                        (idx_sc == 0 and w_count >= 11)
+                        or (idx_sc > 0 and w_count >= 22 and len(paced_scenes) + (len(scenes) - idx_sc) < 9)
+                    )
                 )
                 target_pref = 6 if idx_sc == 0 else max(8, w_count // 2)
                 split_res = _split_long_narration(narr_str, target_pref) if should_split else None
@@ -472,8 +476,9 @@ class ScriptJsonParserMixin:
                     paced_scenes.append(sc_second)
                 else:
                     min_dur = 1.9 if idx_sc == 0 else 2.5
-                    max_est_dur = 15.0 if str(raw_data.get("video_format") or "short").lower() == "long" else 5.4
-                    sc["estimated_seconds"] = round(max(min_dur, min(max_est_dur, w_count / 2.75)), 1)
+                    max_est_dur = 22.0 if is_long_form_parse else 5.4
+                    wps_div = 2.45 if is_long_form_parse else 2.75
+                    sc["estimated_seconds"] = round(max(min_dur, min(max_est_dur, w_count / wps_div)), 1)
                     paced_scenes.append(sc)
 
             # Đánh lại số thứ tự scene_id chuẩn xác 1..N và làm giàu highlight_words / camera_motion / sfx_cue

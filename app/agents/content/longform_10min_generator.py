@@ -253,6 +253,10 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                         else:
                             sc_item = {}
                         sc_item["scene_id"] = target_id
+                        ch_title_cur = str(ch_cur.get("chapter_title") or f"CHAPTER {ch_cur.get('chapter_id')}").strip()
+                        cur_vr = str(sc_item.get("visual_reasoning") or "").strip()
+                        if ch_title_cur.lower() not in cur_vr.lower():
+                            sc_item["visual_reasoning"] = f"{ch_title_cur} — {cur_vr}" if cur_vr else ch_title_cur
                         narr_txt = str(sc_item.get("narration") or "").strip()
                         if target_id == 1:
                             # Scene 1 Cold-Open Hook: giữ 14–26 từ sắc bén, không câu hỏi '?'

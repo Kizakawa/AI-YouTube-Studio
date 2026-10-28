@@ -563,31 +563,50 @@ def build_youtube_chapters_from_scenes(
         ss = total_s % 60
         return f"{mm}:{ss:02d}"
 
+    _TRAILING_STOP_WORDS = {
+        "the", "a", "an", "that", "which", "who", "whom", "whose", "when", "where", "why", "how",
+        "and", "or", "but", "if", "because", "as", "until", "while", "of", "at", "by", "for", "with",
+        "about", "against", "between", "into", "through", "during", "before", "after", "above", "below",
+        "to", "from", "up", "down", "in", "out", "on", "off", "over", "under", "is", "are", "was", "were",
+        "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "shall", "should",
+        "can", "could", "may", "might", "must", "your", "their", "our", "his", "her", "its", "my",
+    }
+
+    def _strip_dangling_words(words_list: List[str]) -> List[str]:
+        cleaned = list(words_list)
+        while len(cleaned) > 2 and cleaned[-1].lower().strip(".,!?:;—–-'\"") in _TRAILING_STOP_WORDS:
+            cleaned.pop()
+        return cleaned
+
     def _extract_clean_chapter_label(sc: Any, chap_num: int, is_first: bool = False) -> str:
-        badge = str(_get_field(sc, "overlay_badge") or "").strip()
-        if badge and badge.lower() != "null":
-            clean_b = re.sub(r"[\[\]/]+", "", badge).strip()
-            clean_b = re.sub(r"^(?:chapter|capítulo|round|phase)\s*\d+\s*[:\-–—]?\s*", "", clean_b, flags=re.IGNORECASE).strip()
-            if len(clean_b) >= 3:
-                title_b = clean_b.title()
-                return f"{intro_prefix} — {title_b}" if is_first else f"Chapter {chap_num}: {title_b}" if not is_pt else f"Capítulo {chap_num}: {title_b}"
+        for field_name in ("overlay_badge", "visual_reasoning"):
+            raw_val = str(_get_field(sc, field_name) or "").strip()
+            if raw_val and raw_val.lower() != "null":
+                m_ch = re.search(r"(?:chapter|capítulo|round|phase)\s*\d+\s*[:\-–—]\s*([^—–\-\|]+)", raw_val, flags=re.IGNORECASE)
+                if m_ch:
+                    clean_b = m_ch.group(1).strip()
+                    clean_b = re.sub(r"\b(?:visual intent|documentary beat)\b", "", clean_b, flags=re.IGNORECASE).strip(" :—–-")
+                    if len(clean_b) >= 4:
+                        title_b = clean_b.title()
+                        return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else f"Chapter {chap_num}: {title_b}")
 
         narration = str(_get_field(sc, "narration") or "").strip()
         if narration:
             first_clause = re.split(r"[.!?;:—–\-]", narration)[0].strip()
             words = [w for w in re.findall(r"[\w'’-]+", first_clause) if w]
+            words = _strip_dangling_words(words[:6])
             if words:
-                snippet = " ".join(words[:6]).title()
-                return f"{intro_prefix} — {snippet}" if is_first else snippet
+                snippet = " ".join(words).title()
+                return f"{intro_prefix} — {snippet}" if is_first else (f"Capítulo {chap_num}: {snippet}" if is_pt else f"Chapter {chap_num}: {snippet}")
 
         vk = str(_get_field(sc, "visual_keyword") or "").strip()
         if vk:
-            vk_clean = " ".join(vk.split()[:4]).title()
-            return f"{intro_prefix} — {vk_clean}" if is_first else vk_clean
+            vk_clean = " ".join(_strip_dangling_words(vk.split()[:4])).title()
+            return f"{intro_prefix} — {vk_clean}" if is_first else (f"Capítulo {chap_num}: {vk_clean}" if is_pt else f"Chapter {chap_num}: {vk_clean}")
 
         return intro_prefix if is_first else (f"Capítulo {chap_num}" if is_pt else f"Chapter {chap_num}")
 
-    # Ưu tiên các cảnh có gắn sẵn overlay_badge dạng CHAPTER / ROUND, hoặc chia đều 5 chương cách nhau >= 12s
+    # Ưu tiên các cảnh có gắn sẵn overlay_badge dạng CHAPTER / ROUND, hoặc chia đều 10 chương (cho video 10 phút) / 5 chương
     selected_indices: List[int] = [0]
     last_chap_sec = 0.0
 
@@ -607,14 +626,15 @@ def build_youtube_chapters_from_scenes(
     if len(selected_indices) < 4:
         selected_indices = [0]
         last_chap_sec = 0.0
-        target_chapters = 5 if len(scenes) >= 12 else 4
+        target_chapters = 10 if len(scenes) >= 32 else (5 if len(scenes) >= 12 else 4)
+        max_chapters_cap = 10 if len(scenes) >= 32 else 6
         step = max(2, len(scenes) // target_chapters)
         for idx in range(step, len(scenes) - 1, step):
             st_sec = scene_starts[idx][1]
             if st_sec - last_chap_sec >= 11.0 and (cum_sec - st_sec) >= 8.0:
                 selected_indices.append(idx)
                 last_chap_sec = st_sec
-                if len(selected_indices) >= 6:
+                if len(selected_indices) >= max_chapters_cap:
                     break
 
     if len(selected_indices) < 3:

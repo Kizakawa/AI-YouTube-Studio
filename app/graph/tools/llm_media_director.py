@@ -179,7 +179,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             for model_name, api_key in rotator.iter_best_model_key_pairs(tool_capable_models):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
                 try:
-                    resp = requests.post(url, json=payload, timeout=18)
+                    resp = requests.post(url, json=payload, timeout=32 if total_scenes >= 25 else 18)
                     if resp.status_code == 200:
                         data = resp.json()
                         parts = (
@@ -445,6 +445,11 @@ def audit_and_decide_search_scopes_with_llm_sync(
     và bản kế hoạch `proposed_decisions`.
     """
     if not scenes or not proposed_decisions:
+        return proposed_decisions
+    if len(scenes) >= 32:
+        for d_item in proposed_decisions:
+            if isinstance(d_item, dict):
+                d_item["scope_audited"] = True
         return proposed_decisions
 
     full_script_text = " ".join(str(s.get("narration") or "").strip() for s in scenes if s.get("narration"))

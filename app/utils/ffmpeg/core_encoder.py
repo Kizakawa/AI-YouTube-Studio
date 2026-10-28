@@ -10,7 +10,7 @@ from typing import Optional, Dict, List, Union, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
-FFMPEG_TIMEOUT = 300   # 5 phút max cho render
+FFMPEG_TIMEOUT = 900   # 15 phút max cho render Video Dài 10 phút 1080p
 FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
 VIDEO_DURATION_SAFETY_MARGIN = 0.05  # Đệm an toàn chống ngắt cụt audio/video cuối câu (0.05 giây)
 

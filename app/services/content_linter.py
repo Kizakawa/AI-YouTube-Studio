@@ -144,10 +144,10 @@ class ScriptValidationLinter:
         is_long_form = str(getattr(script, "video_format", "short") or "short").strip().lower() == "long"
         if is_long_form:
             min_words = 220
-            max_words = 900
-            target_range_str = "300 to 650 words (2.0-4.5 min Long-Form Documentary across 14-26 complete scenes)"
+            max_words = 2400
+            target_range_str = "1,250 to 1,650 words (8-11 min Long-Form 16:9 Documentary across 36-48 complete scenes)"
             min_scenes = 12
-            max_scenes = 32
+            max_scenes = 60
         else:
             min_words = 82
             max_words = 128
@@ -207,7 +207,7 @@ class ScriptValidationLinter:
             s1_narr = (s1.narration or "").strip()
             s1_words = re.findall(r'\b\w+\b', s1_narr)
             is_long_form = str(getattr(script, "video_format", "short") or "short").strip().lower() == "long"
-            max_s1_words = 22 if is_long_form else 14
+            max_s1_words = 32 if is_long_form else 14
             if len(s1_words) > max_s1_words:
                 issues.append(
                     f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 6 and {max_s1_words} punchy words for an instant thumb-stopper."

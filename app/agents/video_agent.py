@@ -72,9 +72,9 @@ class VideoAgent:
             scene_clips = await asyncio.to_thread(self._prepare_scene_clips, job.scenes, str(work_dir), job)
 
             # ── Step 2: Concat tất cả scenes → 1 video silent với xfade transition ──
-            transition_duration = 0.16
-            tail_buffer = 0.15
             total_scenes = len(job.scenes)
+            transition_duration = 0.0 if total_scenes >= 22 else 0.16
+            tail_buffer = 0.15
 
             has_subtitle = bool(job.subtitle_path and Path(job.subtitle_path).exists())
             sfx_dir = job.sfx_dir or DEFAULT_SFX_DIR
@@ -193,7 +193,7 @@ class VideoAgent:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         total_scenes = len(scenes)
-        transition_duration = 0.16
+        transition_duration = 0.0 if total_scenes >= 22 else 0.16
         tail_buffer = 0.15
 
         def _render_one(idx: int, scene: SceneContract) -> tuple[int, str]:
@@ -274,6 +274,16 @@ class VideoAgent:
                         preserve_continuous_flow=True,
                     )
             elif raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
+                if is_already_rendered and job.resolution_w == 1920:
+                    from app.utils.ffmpeg_helper import get_duration_ms
+                    actual_v_sec = get_duration_ms(scene.media_path) / 1000.0
+                    if actual_v_sec >= duration - 0.05:
+                        logger.info(
+                            f"  Scene {scene.scene_id}: ⚡ 16:9 Ready Clip ({Path(scene.media_path).name}, {actual_v_sec:.1f}s >= {duration:.1f}s) → copy trực tiếp sang Single-Pass Concat"
+                        )
+                        if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
+                            shutil.copy2(scene.media_path, clip_path)
+                        return (scene.scene_id, clip_path)
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
                     f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"

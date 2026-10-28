@@ -480,8 +480,11 @@ class VoiceAgent:
           Tier 5: Google Translate HTTP TTS + Broadcast EQ Mastering (đảm bảo 100% uptime)
         """
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        sem = asyncio.Semaphore(4)
+        sem = asyncio.Semaphore(8 if is_long_form else 4)
         total_scenes = len(scenes)
+        if is_long_form and not rate:
+            # Nhịp phim tài liệu 16:9 chuẩn (145–150 WPM): điềm tĩnh, chiều sâu, đạt đúng ~10 phút với ~1,500 từ
+            rate = "-4%"
         # Xác định giọng đọc đồng nhất trên toàn bộ kịch bản (tránh trường hợp 1 câu ngắn bị nhận diện lệch ngôn ngữ)
         full_script_text = " ".join(getattr(s, "narration", "") or "" for s in scenes)
         base_requested = voice or (self.get_persona_voice(niche_id=niche) if niche else self.default_voice)

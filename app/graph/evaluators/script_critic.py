@@ -211,9 +211,9 @@ class ScriptCritic:
                 f"(Visual Micro-Observation 'Look closely at...', Fatal Mistake 'O último erro...', or Survival Paradox)!"
             )
 
-        # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-14 từ cho Shorts, 4-28 từ cho Long-Form Documentary)
+        # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-14 từ cho Shorts, 4-34 từ cho Long-Form Documentary)
         is_lf_hook = str(s_data.get("video_format") or "short").strip().lower() == "long" or len(scenes) >= 14
-        max_hook_w = 28 if is_lf_hook else 14
+        max_hook_w = 34 if is_lf_hook else 14
         if w_cnt > max_hook_w or w_cnt < 3:
             score = max(1.0, score - 1.2)
             extra_critiques.append(
@@ -350,7 +350,7 @@ class ScriptCritic:
         avg_swipe_pct = calibration.get("avg_swipe_away_pct", 31.0)
         is_long_form = str(script_data.get("video_format") or "short").strip().lower() == "long"
         pacing_criterion_desc = (
-            "2. story_pacing (Target Long-Form 16:9 Documentary: 2.5 - 4.5 min, 340 - 650 words, 16 - 26 scenes across 5 Chapters — NEVER ABRUPT):"
+            "2. story_pacing (Target Long-Form 16:9 Documentary: 8.0 - 11.0 min, 1,200 - 1,700 words, 36 - 48 scenes across 8-10 Chapters — NEVER ABRUPT):"
             if is_long_form
             else "2. story_pacing (Target Shorts 9:16: Smooth, complete 5-Act story of 30 - 40s, 85 - 120 words, 7 - 9 scenes — NEVER ABRUPT):"
         )
@@ -366,7 +366,7 @@ Your task: Semantically evaluate and critique the following script based on REAL
 
 Topic: {topic}
 Proposed Title: {title}
-Format Mode: {'LONG-FORM DOCUMENTARY 16:9 (16-26 scenes, 340-650 words)' if is_long_form else 'SHORTS 9:16 (7-9 scenes, 85-120 words)'}
+Format Mode: {'LONG-FORM DOCUMENTARY 16:9 (36-48 scenes, 1,200-1,700 words, ~10 minutes)' if is_long_form else 'SHORTS 9:16 (7-9 scenes, 85-120 words)'}
 Channel Style: {channel_style}
 Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for hook_strength >= {min_hook_req}/10.
 {entity_instruction}{winners_block}
@@ -526,7 +526,7 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
         # Kiểm tra nhịp điệu & độ đầy đặn của mạch truyện theo định dạng Short vs Long
         is_long_form = str(script_data.get("video_format") or "short").strip().lower() == "long"
         if is_long_form:
-            pace_score = 8.9 if 240 <= total_words <= 950 and 14 <= scene_count <= 34 else 6.8
+            pace_score = 8.9 if 240 <= total_words <= 2400 and 14 <= scene_count <= 60 else 6.8
         else:
             pace_score = 8.8 if 55 <= total_words <= 155 and 5 <= scene_count <= 12 else 6.8
 

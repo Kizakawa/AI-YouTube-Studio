@@ -244,7 +244,7 @@ def _fetch_longform_16x9_broll_clip_sync(
             bvid_lock=bvid_lock,
             media_agent=media_agent,
             is_scifi=is_scifi,
-            scenes_per_chapter=3,
+            scenes_per_chapter=4,
         )
         if pool_res and pool_res.get("media_path"):
             if output_override_path and str(Path(pool_res["media_path"]).resolve()) != str(Path(output_override_path).resolve()):

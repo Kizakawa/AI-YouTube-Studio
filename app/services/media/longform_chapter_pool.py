@@ -349,14 +349,14 @@ def _download_youtube_chapter_master(
         cand_dur = float(cand.get("duration") or 60.0)
         used_range_dl = False
         start_s = 12.0 if cand_dur > 55.0 else (6.0 if cand_dur > 30.0 else 1.5)
-        end_s = min(cand_dur - 2.0, start_s + 38.0)
+        end_s = min(cand_dur - 2.0, start_s + 54.0)
 
         tmp_base = str(Path(master_out_path).with_suffix("")) + "_raw.%(ext)s"
         dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "max_filesize": 18 * 1024 * 1024,
+            "max_filesize": 22 * 1024 * 1024,
             "format": LANDSCAPE_16X9_YTDLP_FORMAT,
             "merge_output_format": "mp4",
             "outtmpl": tmp_base,
@@ -513,6 +513,41 @@ def extract_longform_scene_with_internal_jumpcut(
         if attempt_shift > 0.0 and safe_start <= start_offset_sec + 0.5:
             break
 
+        # Nếu cảnh dài >= 11.0s (Phim tài liệu 10 phút) và file master đủ độ dư (>= req_dur + 3.0s), thực hiện Jump-Cut 3 cú máy (Wide -> Medium -> Close-up):
+        if req_dur >= 11.0 and (safe_start + req_dur + 3.0) <= master_dur and scene_id != 1:
+            part_a = round(req_dur * 0.34, 2)
+            part_b = round(req_dur * 0.33, 2)
+            part_c = round(req_dur - part_a - part_b + 0.15, 2)
+            start_a = safe_start
+            start_b = round(safe_start + part_a + 1.5, 2)
+            start_c = round(start_b + part_b + 1.5, 2)
+            filter_complex = (
+                f"[0:v]trim=start={start_a:.2f}:duration={part_a:.2f},setpts=PTS-STARTPTS,"
+                f"scale=1980:1114:flags=lanczos,crop=1920:1080:30:17,eq=contrast=1.03:saturation=1.05[v0];"
+                f"[0:v]trim=start={start_b:.2f}:duration={part_b:.2f},setpts=PTS-STARTPTS,"
+                f"scale=2060:1158:flags=lanczos,crop=1920:1080:70:39,eq=contrast=1.05:saturation=1.07[v1];"
+                f"[0:v]trim=start={start_c:.2f}:duration={part_c:.2f},setpts=PTS-STARTPTS,"
+                f"scale=2160:1215:flags=lanczos,crop=1920:1080:120:67,eq=contrast=1.06:saturation=1.08,"
+                f"vignette=PI/7[v2];"
+                f"[v0][v1][v2]concat=n=3:v=1:a=0,fps=30,format=yuv420p[vout]"
+            )
+            cmd = [
+                "ffmpeg", "-y", "-v", "error",
+                "-i", master_path,
+                "-filter_complex", filter_complex,
+                "-map", "[vout]",
+                "-t", f"{req_dur:.2f}",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                "-an",
+                output_path,
+            ]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=35, check=False)
+            if Path(output_path).exists() and Path(output_path).stat().st_size > 35_000:
+                if _is_clip_window_clean(output_path, [0.45, max(1.2, req_dur * 0.68)]):
+                    return True
+                Path(output_path).unlink(missing_ok=True)
+                continue
+
         # Nếu cảnh dài >= 5.0s và file master đủ độ dư (>= req_dur + 2.4s), thực hiện Jump-Cut 2 nửa:
         # Riêng Cảnh 1 (scene_id == 1) giữ độ phân giải gốc 1920x1080 -> 2016x1134 (zoom nhẹ 105%) với CRF 17 để giữ 100% độ nét căng ở giây mở màn!
         if req_dur >= 5.0 and (safe_start + req_dur + 2.5) <= master_dur:
@@ -553,7 +588,7 @@ def extract_longform_scene_with_internal_jumpcut(
                 Path(output_path).unlink(missing_ok=True)
                 continue
 
-        # Fallback cắt đơn chuẩn 1920x1080 kèm Vignette & Color Grading nhẹ
+        # Fallback cắt đơn chuẩn 1920x1080 kèm Vignette & Color Grading nhẹ (tắt hflip để không lật ngược đồng hồ/chữ số)
         try:
             trim_video(
                 input_path=master_path,
@@ -564,7 +599,7 @@ def extract_longform_scene_with_internal_jumpcut(
                 fps=30,
                 apply_grading=True,
                 is_hook_scene=(scene_id == 1),
-                fair_use_transform=True,
+                fair_use_transform=False,
                 start_offset_sec=safe_start,
                 preserve_continuous_flow=True,
             )

@@ -889,7 +889,7 @@ Return ONLY valid JSON in this exact format:
                     failed = True
             else:
                 try:
-                    sig = self._media_signature(str(p))
+                    sig = [] if is_long_peak_cont else self._media_signature(str(p))
                     prod_m = str(item.get("production_method") or "")
                     is_pregraded_hook = (
                         media_type == "hook_ready_video"

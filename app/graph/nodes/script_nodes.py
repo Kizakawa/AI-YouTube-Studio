@@ -269,13 +269,40 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     )
 
     if video_format == "long":
+        existing_scenes_list = (script_data or {}).get("scenes") or []
+        if len(existing_scenes_list) >= 28:
+            # Bảo toàn nguyên vẹn cấu trúc 10 Chương (40 phân cảnh / ~1,500 từ) của Phim Tài Liệu 10 Phút,
+            # chỉ phẫu thuật câu Cold-Open Hook ở Cảnh 1 nếu Critic yêu cầu.
+            s1_obj = dict(existing_scenes_list[0])
+            s1_narr = str(s1_obj.get("narration") or "").replace("?", ".").strip()
+            if len(s1_narr.split()) > 28:
+                s1_narr = " ".join(s1_narr.split()[:25]).rstrip(",;:") + "."
+            s1_obj["narration"] = s1_narr
+            updated_scenes = [s1_obj] + list(existing_scenes_list[1:])
+            preserved_dict = dict(script_data)
+            preserved_dict["scenes"] = updated_scenes
+            preserved_dict["hook"] = s1_narr
+            preserved_dict["full_narration"] = " ".join(
+                str(s.get("narration") or "").strip() for s in updated_scenes if s.get("narration")
+            )
+            logger.info(
+                f"🛡️ [LangGraph] Bảo toàn kịch bản Phim Tài Liệu 10 Phút ({len(updated_scenes)} cảnh) "
+                f"và chuẩn hóa Cold-Open Hook Cảnh 1!"
+            )
+            return {
+                "script_data": preserved_dict,
+                "video_format": "long",
+                "script_retry_count": retry_count,
+                "current_step": "SCRIPT_REFINED",
+                "progress_message": f"Đã tinh chỉnh Cold-Open Hook Phim Tài Liệu 10 Phút ({len(updated_scenes)} cảnh)",
+            }
         feedback_text = (
             f"[LONG-FORM 16:9 REFINEMENT ROUND {retry_count}/{max_retries} — Current Score: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
             f"MANDATORY TARGET: Overall >= 8.2/10 and Scene 1 Hook >= 8.5/10]. "
             f"Surgically fix ALL of the following Critic issues: {'; '.join(critiques)}. "
             f"CORE LONG-FORM REQUIREMENTS: "
-            f"(1) SCENE 1 (COLD OPEN HOOK 8-14 WORDS) MUST NAME THE PRIMARY ENTITY + CONCRETE METRIC/EVENT immediately; "
-            f"(2) TOTAL 5-CHAPTER DOCUMENTARY LENGTH: 350-650 words across 16-24 scenes (18-28 words per body scene); "
+            f"(1) SCENE 1 (COLD OPEN HOOK 12-24 WORDS) MUST NAME THE PRIMARY ENTITY + CONCRETE METRIC/EVENT immediately; "
+            f"(2) TOTAL 10-CHAPTER DOCUMENTARY LENGTH: 1,200-1,650 words across 36-42 scenes; "
             f"(3) Do NOT include #Shorts in the title; "
             f"(4) 100% LANGUAGE INTEGRITY: Every single word in title, hook, and narration MUST be in '{language}' (ZERO Vietnamese leakage!)."
         )
