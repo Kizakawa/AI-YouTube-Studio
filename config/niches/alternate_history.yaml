@@ -13,7 +13,19 @@ script_blueprint:
   - 'Split-Second Doomsday Mistake: ''One low-voltage switch was the only thing standing between Carolina and nuclear fire.'''
   - 'Visual Micro-Observation on Archival Mystery: ''Look closely at the hull of this warship built entirely out of frozen ice.'''
   - 'Counterfactual Catastrophe Shield: ''Europe survived only because three divers swam into a flooded radioactive basement.'''
+  - '@IFinity_What 2nd-Person Experiential Timeline Hook (493K in 10 Days Formula): ''If you woke up in 1815 when Mount Tambora erupted, Hour One looks like a normal sunset—until the snow turns red.'''
+  competitor_blueprint:
+    benchmark_channel: "@IFinity_What (734K views in 12 days — 'What If You Could Turn Invisible at Will?' 493K, 'What If You Knew Everything in the World?' 89.9K) & @FossilVideos ('How Long You'd Last in Every Prehistoric Era' 12.08M)"
+    long_form_archetypes:
+    - "Archetype A — 'What If YOU...' 2nd-Person Timeline Escalation ('What If You Lived Through Every [Historical Catastrophe / Megaproject Failure]?', 'What If You Controlled [Historical Superweapon]?'): Escalate chronologically from Minute 1 (The Illusion of Control) -> Hour 24 (The First Systemic Shock) -> Day 7 (Chain-Reaction Collapse) -> Year 1 (The Rewritten World)."
+    - "Archetype B — 'How Long You'd Last in Every [Historical Era / Siege / Disaster]': Put the viewer ('YOU') inside 5 escalating historical eras/disasters with exact survival odds, temperature/megaton metrics, and fatal traps."
+    shorts_archetypes:
+    - "2nd-Person Historical Survival Simulation ('If you stood 10 miles from Lituya Bay in 1958, looking at the mountains was your last mistake.'): Combine immediate 2nd-person danger with verified historical physics."
+    round_or_chapter_progression: "0:00 Minute 1: The Deceptive Calm -> Chapter 1 (Hour 1: The Trigger Event) -> Chapter 2 (Hour 24: The Hidden Trap Activates) -> Chapter 3 (Day 7: The Domino Collapse) -> Chapter 4 (Month 1: The Point of No Return) -> Chapter 5 (The Final Aftermath)"
+    thumbnail_hook_rule: "2-3 words MAX in massive White + Yellow/Red two-tone typography (e.g., 'ZERO SURVIVORS', '1,720 FT WAVE', 'DO NOT LOOK')"
   viral_topic_bank_2026:
+  - "What If You Had To Survive Every Worst Year in Human History? (536 AD to 1815)"
+  - "What If You Were Inside the 1961 Goldsboro B-52 When Two 4-Megaton Nukes Fell?"
   - "1961 Goldsboro B-52 Crash: Two 4-Megaton Nukes vs. One Low-Voltage Switch in North Carolina"
   - "1958 Lituya Bay Mega-Tsunami: 1,720-Foot Wave vs. The Empire State Building"
   - "1986 Chernobyl Suicide Squad: 3 Divers vs. A 5-Megaton Thermal Explosion Under Europe"

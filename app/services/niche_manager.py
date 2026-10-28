@@ -308,12 +308,29 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
     banned_lex = niche_profile.get("banned_lexicon") or blueprint.get("banned_lexicon", [])
     ctas = blueprint.get("cta_templates", [])
     anti_hallucination = blueprint.get("anti_hallucination_rules", [])
+    comp_bp = blueprint.get("competitor_blueprint", {}) or {}
 
     hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 2.5s Pattern Interrupt Hook (5-8 words)"
     forbidden_text = "\n".join(f"      * KHÔNG ĐƯỢC DÙNG: \"{w}\"" for w in forbidden) if forbidden else "      * Tránh lời mở đầu sáo rỗng"
     banned_lex_text = "\n".join(f"      * STRICTLY FORBIDDEN VOCABULARY/CONCEPTS: \"{w}\"" for w in banned_lex) if banned_lex else ""
     ctas_text = "\n".join(f"      - {c}" for c in ctas) if ctas else "      - Câu hỏi mở kích thích tranh luận ở Pinned Comment"
     facts_text = "\n".join(f"      * {rule}" for rule in anti_hallucination) if anti_hallucination else "      * Kiểm chứng tính chính xác"
+
+    comp_bp_block = ""
+    if comp_bp:
+        lf_archs = "\n".join(f"      * {a}" for a in (comp_bp.get("long_form_archetypes") or []))
+        sh_archs = "\n".join(f"      * {a}" for a in (comp_bp.get("shorts_archetypes") or []))
+        prog = comp_bp.get("round_or_chapter_progression", "")
+        thumb_rule = comp_bp.get("thumbnail_hook_rule", "2-3 words MAX in high-contrast White + Yellow/Red")
+        comp_bp_block = f"""
+7. BẢN THIẾT KẾ VIRAL ĐỐI THỦ TRIỆU VIEW (COMPETITOR MILLION-VIEW BLUEPRINT — {comp_bp.get('benchmark_channel', 'Top Competitors')}):
+   - Cấu trúc Long-Form 16:9 (Gauntlet / Every Record Explained / What If YOU...):
+{lf_archs}
+   - Cấu trúc Shorts 9:16:
+{sh_archs}
+   - Tiến trình Chương / Vòng đấu (Chapter / Round Escalation): {prog}
+   - Quy tắc chữ Thumbnail (`thumbnail_text`): {thumb_rule}
+"""
 
     lang_low = str(language or "en").strip().lower()
     non_vi_guard = ""
@@ -350,7 +367,7 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
 {ctas_text}
 
 6. QUY TẮC DẪN CHỨNG & XÁC THỰC (ANTI-HALLUCINATION / RESEARCH RULES):
-{facts_text}
+{facts_text}{comp_bp_block}
 ═══════════════════════════════════════════════════════════════════════
 """
 

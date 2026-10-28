@@ -259,3 +259,45 @@ class ImageAgent:
         except Exception as e:
             logger.debug(f"[ImageAgent] Bỏ qua hậu xử lý watermark: {e}")
 
+    def render_competitor_thumbnail(
+        self,
+        base_image_path: str,
+        output_path: str,
+        thumbnail_text: str = "",
+        topic: str = "",
+        viral_title: str = "",
+        niche: str = "general",
+        aspect_ratio: str = "16:9",
+    ) -> Optional[str]:
+        """
+        Thiết kế Thumbnail Two-Tone tương phản cực cao (2–3 từ khóa giật gân: Word 1 Trắng Tinh #FFFFFF,
+        Word 2–3 Vàng/Đỏ Accent với viền đen dày 10px & bóng đổ sâu) chuẩn @FossilVideos & @IFinity_What.
+        """
+        try:
+            from app.services.thumbnail_service import ThumbnailService
+            th_srv = ThumbnailService(output_dir=str(Path(output_path).parent))
+            hook_txt = th_srv.compact_punchy_hook_text(
+                raw_text=thumbnail_text,
+                topic=topic,
+                viral_title=viral_title,
+                niche_id=niche,
+            )
+            palette = "yellow_danger"
+            if "scifi" in niche:
+                palette = "cyan_scifi"
+            elif "wildlife" in niche:
+                palette = "gold_nature"
+            elif "psychology" in niche:
+                palette = "red_shock"
+            return th_srv.render_thumbnail(
+                base_image_path=base_image_path,
+                text_hook=hook_txt,
+                output_path=output_path,
+                aspect_ratio=aspect_ratio,
+                palette_key=palette,
+            )
+        except Exception as e_th:
+            logger.debug(f"[ImageAgent] render_competitor_thumbnail error: {e_th}")
+            return None
+
+

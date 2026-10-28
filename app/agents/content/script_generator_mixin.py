@@ -485,8 +485,27 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
             )
 
         if is_long_form:
-            duration_spec = "3 TO 4.5 MINUTES CINEMATIC 16:9 WIDESCREEN DOCUMENTARY (16 TO 22 SCENES ACROSS 5 CHAPTERS, 360 TO 560 WORDS TOTAL — SCENE 1 COLD-OPEN HOOK 8-14 WORDS, BODY SCENES 18-26 WORDS EACH)"
-            word_range_en = "360 to 560 words (3 to 4.5 minutes Widescreen 16:9 Documentary across 16 to 22 rich scenes; Scene 1 Cold-Open Hook MUST be 8-14 words; Body scenes MUST be 18-26 words each)"
+            try:
+                from app.agents.content.longform_10min_generator import generate_10min_longform_documentary
+                doc_10min = generate_10min_longform_documentary(
+                    agent=self,
+                    topic=topic,
+                    channel_niche=channel_niche,
+                    language=language,
+                    target_lang_display=target_lang_display,
+                    lang_instruction=lang_instruction,
+                    director_block=director_block,
+                    channel_memory_block=channel_memory_block,
+                    niche_instructions=niche_instructions,
+                )
+                if doc_10min and len(doc_10min.scenes) >= 32:
+                    if doc_10min.primary_entity:
+                        self._last_primary_entity = doc_10min.primary_entity
+                    return doc_10min
+            except Exception as e_10m:
+                logger.warning(f"[ContentAgent] 10-Min LongForm Generator fallback: {e_10m}")
+            duration_spec = "8 TO 10.5 MINUTES CINEMATIC 16:9 WIDESCREEN DOCUMENTARY (36 TO 44 SCENES ACROSS 10 CHAPTERS, 1,350 TO 1,600 WORDS TOTAL — SCENE 1 COLD-OPEN HOOK 12-18 WORDS, BODY SCENES 34-42 WORDS EACH)"
+            word_range_en = "1,350 to 1,600 words (8 to 10.5 minutes Widescreen 16:9 Documentary across 36 to 44 rich scenes; Scene 1 Cold-Open Hook MUST be 12-18 words; Body scenes MUST be 34-42 words each)"
         else:
             duration_spec = "34 TO 42 SECONDS GOLDEN HIGH-APV DURATION (7 TO 8 COMPLETE SCENES, 92 TO 118 WORDS TOTAL — SCENE 1 HOOK 6-10 WORDS USING VISUAL-PSYCHOLOGICAL POINTER IN FIRST 1.8 SECONDS, SMOOTH NARRATIVE FLOW)"
             word_range_en = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 rich, complete scenes; Scene 1 Hook MUST be 6-10 words ~1.6-2.2s)"
@@ -507,7 +526,7 @@ YouTube rewards TWO metrics simultaneously:
 1. Viewed vs. Swiped-Away > 75%: Achieved by separating the role of `title` (explicitly naming high-search entities + extreme metric for `YT_SEARCH`) from `Scene 1 Hook` ({'8–14 words' if is_long_form else '6–10 words, ~1.6–2.2s'} using one of the 4 Psychological-Visual Hook Archetypes that locks the viewer's eyes without repeating the title verbatim).
 2. High Retention + Smooth, Complete Narrative ({'360–560 words across 16–22 widescreen scenes, 18–26 words per body scene, 8–12s per scene' if is_long_form else '92–118 words, 34–42s across 7–8 scenes, 11–16 words per body scene'}):
    - NEVER write an abrupt, choppy, or truncated script ("cụt lủn")! Let the sentences flow naturally into one another with smooth transitions, clear context, and complete explanations.
-   - {'For LONG-FORM 16:9 mode: Structure the 16–22 scenes across 5 gripping Documentary Chapters: Chapter 1 (Scenes 1–3: Cold Open & The Anomaly), Chapter 2 (Scenes 4–7: Historical/Scientific Origin & Real-World Evidence), Chapter 3 (Scenes 8–12: Deep Mechanism & The Hidden Twist), Chapter 4 (Scenes 13–17: High-Stakes Case Study / Apex Confrontation), Chapter 5 (Scenes 18–20: Ultimate Resolution & Thought-Provoking Finale). Put Chapter HUD badges like "[ // CHAPTER 1: THE ANOMALY // ]" in overlay_badge at the start of each chapter!' if is_long_form else 'Natural documentary sentence length per body scene (11 to 16 words per body scene) — prioritize natural storytelling rhythm and emotional depth over rigid word counting!'}
+   - {'For LONG-FORM 16:9 mode: Structure the 16–22 scenes across 5 gripping Documentary Chapters using one of the 3 Competitor Million-View Blueprints:\n     * (A) `@FossilVideos` Gauntlet / Survival Tier-List (Wildlife): Chapter 1 (Scenes 1–3: Cold Open & Contender Stats), Chapter 2 (Scenes 4–7: Round 1 & Round 2 Challengers), Chapter 3 (Scenes 8–12: Round 3 Armored/Venom Threat & Mid-Point Twist), Chapter 4 (Scenes 13–17: Round 4 Pack/Apex Confrontation), Chapter 5 (Scenes 18–20: The Final Boss & Ultimate Verdict).\n     * (B) `@disastersexplained1` "Every X Record/Type Explained" (Mysteries/Ocean): Open Scene 1 with a 2nd-person sensory danger hook ("You notice a calm line on the water... You think you still have time. That is the mistake."), then escalate Chapter 1 -> Chapter 5 from the strangest warning sign to the deadliest unbroken record.\n     * (C) `@IFinity_What` "What If YOU..." 2nd-Person Timeline Escalation (Alternate History & Psychology): Frame directly around "YOU" escalating from Chapter 1 (Minute 1: The Superpower/Control Illusion) -> Chapter 2 (Hour 12: The First Hidden Glitch) -> Chapter 3 (Day 3: Systemic/Neural Overload) -> Chapter 4 (Day 7: Complete Collapse) -> Chapter 5 (The Final Aftermath).\n     * Put clean Chapter HUD badges like "[ // CHAPTER 1: THE SILENT TRAP // ]" or "[ // ROUND 1: THE SPEED TEST // ]" in `overlay_badge` ONLY on the first scene of each chapter (Scenes 1, 4, 8, 13, 18) and `null` on all other scenes!' if is_long_form else 'Natural documentary sentence length per body scene (11 to 16 words per body scene) — prioritize natural storytelling rhythm and emotional depth over rigid word counting!'}
    - Every scene MUST be a 100% grammatically complete sentence. NEVER chop one sentence across two scenes!
 ═══════════════════════════════════════════════════════════
 1. THE MANDATORY 5-ACT DUAL-PEAK STORYTELLING BLUEPRINT (target: {word_range_en}):
@@ -571,7 +590,7 @@ YouTube rewards TWO metrics simultaneously:
        - "Seis leões famintos cercaram esse pequeno animal, mas os leões estão fugindo."
        - "Six starving lions surrounded this tiny animal, and the lions are running away."
    - NEVER start with abstract literary metaphors, textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
-   - thumbnail_text MUST be 2 to 4 words in ALL CAPS with 1 high-contrast emoji (e.g. "PAUSE 4 SECONDS 🧠", "1,500 PSI BITE! 🐆", "FINALLY SAFE 🥺", "2,000M DUEL! 🌊").
+   - thumbnail_text MUST be STRICTLY 2 to 3 ULTRA-PUNCHY WORDS MAX in ALL CAPS with ZERO emojis (competitor `@FossilVideos` & `@IFinity_What` formula: e.g. "TOO EASY?", "TURN INVISIBLE.", "EVERY RECORD", "1,500 PSI!", "ZERO SURVIVORS", "4 SECONDS MAX"). Our Thumbnail Engine renders Word 1 in Pure White and Word 2-3 in High-Contrast Yellow/Red!
 
 3. SEAMLESS INFINITE LOOP ENDING (NO SPOKEN OUTRO CTA):
    - NEVER include "Subscribe", "Like", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in ANY scene's spoken narration!
@@ -625,7 +644,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "climax_scene_id": {8 if is_long_form else 3},
   "hook_search_queries": ["bare noun + action/format (2-4 words)", "bare noun + angle (2-4 words)"],
   "full_narration": "Complete, smooth, well-developed spoken story without stage directions ({'360-560 words across 16-22 scenes (~3.5 min 5-Chapter Documentary)' if is_long_form else '92-118 words, 34-42s High-APV 5-Act story'} with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
-  "thumbnail_text": "2-4 BOLD ALL-CAPS CURIOSITY WORDS IN {target_lang_display} FOR THUMBNAIL",
+  "thumbnail_text": "STRICTLY 2-3 PUNCHY ALL-CAPS WORDS IN {target_lang_display} (e.g. 'TOO EASY?', 'TURN INVISIBLE.', 'EVERY RECORD', '1,500 PSI!')",
   "scenes": [
     {{
       "scene_id": 1,

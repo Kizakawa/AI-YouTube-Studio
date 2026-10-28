@@ -8,7 +8,7 @@ import base64
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -485,7 +485,147 @@ class SeoTagsMixin:
                     continue
             filtered_lines.append(ln)
 
-        cleaned = "\n\n".join(filtered_lines).strip()
+        cleaned_blocks: List[str] = []
+        chapter_buffer: List[str] = []
+        for ln in filtered_lines:
+            is_chap_line = bool(
+                re.match(r"^\d{1,2}:\d{2}\s+", ln)
+                or ln.lower().startswith(("⏱️ chapters", "⏱️ capítulos", "chapters:", "capítulos:"))
+            )
+            if is_chap_line:
+                chapter_buffer.append(ln)
+            else:
+                if chapter_buffer:
+                    cleaned_blocks.append("\n".join(chapter_buffer))
+                    chapter_buffer = []
+                cleaned_blocks.append(ln)
+        if chapter_buffer:
+            cleaned_blocks.append("\n".join(chapter_buffer))
+
+        cleaned = "\n\n".join(cleaned_blocks).strip()
         if not cleaned and base_title:
             cleaned = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', str(base_title).strip()).strip()
         return cleaned
+
+    def build_youtube_chapters_from_scenes(
+        self,
+        scenes: List[Any],
+        language: str = "en",
+    ) -> str:
+        """Ủy quyền sang hàm module-level `build_youtube_chapters_from_scenes`."""
+        return build_youtube_chapters_from_scenes(scenes=scenes, language=language)
+
+
+def build_youtube_chapters_from_scenes(
+    scenes: List[Any],
+    language: str = "en",
+) -> str:
+    """
+    Tự động tính toán và sinh khối YouTube Chapters chuẩn thuật toán (`0:00 Intro`, `0:42 ...`)
+    từ danh sách phân cảnh (`scenes`) dựa trên `audio_duration_ms` thực tế của từng cảnh.
+    - Học từ `@disastersexplained1` (`Ud7TKMKQrHo`) và `@FossilVideos` (`5QExdZCvdgE`):
+      1. Bắt buộc bắt đầu bằng `0:00`.
+      2. Tối thiểu 3 chương, mỗi chương cách nhau >= 10 giây.
+      3. Giúp YouTube kích hoạt thanh chia chương tương tác (Interactive Chapter Scrubbing) và SEO Google Search Key Moments.
+    """
+    if not scenes or len(scenes) < 4:
+        return ""
+
+    def _get_field(sc: Any, key: str, default: Any = None) -> Any:
+        if isinstance(sc, dict):
+            return sc.get(key, default)
+        return getattr(sc, key, default)
+
+    # Tính thời điểm bắt đầu tích lũy (cumulative start seconds) của từng phân cảnh
+    scene_starts: List[Tuple[int, float, Any]] = []
+    cum_sec = 0.0
+    for idx, sc in enumerate(scenes):
+        scene_starts.append((idx, cum_sec, sc))
+        dur_ms = _get_field(sc, "audio_duration_ms") or _get_field(sc, "duration_ms")
+        if dur_ms and float(dur_ms) > 0:
+            dur_s = float(dur_ms) / 1000.0
+        else:
+            dur_s = max(float(_get_field(sc, "estimated_seconds") or 4.5), 2.0)
+        cum_sec += dur_s
+
+    # Chỉ bật Chapters khi tổng thời lượng >= 50s (hoặc kịch bản có >= 10 cảnh)
+    if cum_sec < 50.0 and len(scenes) < 10:
+        return ""
+
+    is_pt = str(language or "").strip().lower().startswith("pt")
+    is_vi = str(language or "").strip().lower().startswith("vi")
+    header_label = "⏱️ Capítulos:" if is_pt else ("⏱️ Phân đoạn video:" if is_vi else "⏱️ Chapters:")
+    intro_prefix = "Introdução" if is_pt else ("Mở đầu" if is_vi else "Intro")
+
+    def _fmt_mm_ss(sec_val: float) -> str:
+        total_s = max(0, int(round(sec_val)))
+        mm = total_s // 60
+        ss = total_s % 60
+        return f"{mm}:{ss:02d}"
+
+    def _extract_clean_chapter_label(sc: Any, chap_num: int, is_first: bool = False) -> str:
+        badge = str(_get_field(sc, "overlay_badge") or "").strip()
+        if badge and badge.lower() != "null":
+            clean_b = re.sub(r"[\[\]/]+", "", badge).strip()
+            clean_b = re.sub(r"^(?:chapter|capítulo|round|phase)\s*\d+\s*[:\-–—]?\s*", "", clean_b, flags=re.IGNORECASE).strip()
+            if len(clean_b) >= 3:
+                title_b = clean_b.title()
+                return f"{intro_prefix} — {title_b}" if is_first else f"Chapter {chap_num}: {title_b}" if not is_pt else f"Capítulo {chap_num}: {title_b}"
+
+        narration = str(_get_field(sc, "narration") or "").strip()
+        if narration:
+            first_clause = re.split(r"[.!?;:—–\-]", narration)[0].strip()
+            words = [w for w in re.findall(r"[\w'’-]+", first_clause) if w]
+            if words:
+                snippet = " ".join(words[:6]).title()
+                return f"{intro_prefix} — {snippet}" if is_first else snippet
+
+        vk = str(_get_field(sc, "visual_keyword") or "").strip()
+        if vk:
+            vk_clean = " ".join(vk.split()[:4]).title()
+            return f"{intro_prefix} — {vk_clean}" if is_first else vk_clean
+
+        return intro_prefix if is_first else (f"Capítulo {chap_num}" if is_pt else f"Chapter {chap_num}")
+
+    # Ưu tiên các cảnh có gắn sẵn overlay_badge dạng CHAPTER / ROUND, hoặc chia đều 5 chương cách nhau >= 12s
+    selected_indices: List[int] = [0]
+    last_chap_sec = 0.0
+
+    badge_candidates: List[int] = []
+    for idx, st_sec, sc in scene_starts[1:]:
+        b_raw = str(_get_field(sc, "overlay_badge") or "").strip()
+        if b_raw and b_raw.lower() != "null" and any(k in b_raw.lower() for k in ("chapter", "capítulo", "round", "phase", "twist", "boss", "record")):
+            badge_candidates.append(idx)
+
+    if len(badge_candidates) >= 3:
+        for b_idx in badge_candidates:
+            st_sec = scene_starts[b_idx][1]
+            if st_sec - last_chap_sec >= 11.0 and (cum_sec - st_sec) >= 8.0:
+                selected_indices.append(b_idx)
+                last_chap_sec = st_sec
+
+    if len(selected_indices) < 4:
+        selected_indices = [0]
+        last_chap_sec = 0.0
+        target_chapters = 5 if len(scenes) >= 12 else 4
+        step = max(2, len(scenes) // target_chapters)
+        for idx in range(step, len(scenes) - 1, step):
+            st_sec = scene_starts[idx][1]
+            if st_sec - last_chap_sec >= 11.0 and (cum_sec - st_sec) >= 8.0:
+                selected_indices.append(idx)
+                last_chap_sec = st_sec
+                if len(selected_indices) >= 6:
+                    break
+
+    if len(selected_indices) < 3:
+        return ""
+
+    chapter_lines = [header_label]
+    for c_num, s_idx in enumerate(selected_indices, start=1):
+        _, st_sec, sc = scene_starts[s_idx]
+        ts_str = "0:00" if s_idx == 0 else _fmt_mm_ss(st_sec)
+        label = _extract_clean_chapter_label(sc, chap_num=c_num, is_first=(s_idx == 0))
+        chapter_lines.append(f"{ts_str} {label}")
+
+    return "\n".join(chapter_lines)
+

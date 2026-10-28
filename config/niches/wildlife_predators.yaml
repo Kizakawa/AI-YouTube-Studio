@@ -15,14 +15,27 @@ script_blueprint:
   - 'The Fatal Mistake / Hunter Becomes Hunted (FiveZero Safaris 18.7M Formula): ''This caiman''s last mistake was climbing onto this riverbank without looking up.'''
   - 'Illusion Breaker / Role Reversal (ViralHog 1.59M Formula): ''Six starving lions surrounded this small badger, and the lions are backing away.'''
   - 'Portuguese Extreme Confrontation Pointer (Richard Rasmussen 5.31M Formula): ''O último erro desse jacaré foi subir nesse barranco sem olhar para cima.'''
+  - '@FossilVideos Gauntlet Survival Challenge (12.08M & 1.99M Formula): ''Drop a polar bear into the African savanna, and Round One is over in ten seconds.'''
+  competitor_blueprint:
+    benchmark_channel: "@FossilVideos (20.4M views across 14 videos — 'How Long You'd Last in Every Prehistoric Era' 12.08M, 'Could a Polar Bear Beat Every Ice Age Predator?' 1.99M)"
+    long_form_archetypes:
+    - "Archetype A — The Apex Gauntlet ('Could a [Predator] Beat Every Predator in [Biome/Continent]?'): Pit one iconic apex predator against 5 escalating opponents from Round 1 (Warm-Up Challenger) to Round 5 (The Ultimate Final Boss), analyzing weight, bite force PSI, armor, agility, and stamina in each round."
+    - "Archetype B — Survival Duration Tier-List ('How Long You'd Last Against Every [Jungle/Savanna/River] Predator'): Rank survival time from 10 minutes down to 0.2 seconds across 5 deadly wildlife encounters with concrete biomechanical metrics."
+    shorts_archetypes:
+    - "Gauntlet Boss Round Extraction: Focus on the single most shocking asymmetric matchup from the Gauntlet (e.g. 'Jaguar vs 8 Giant River Otters', 'Honey Badger vs 6 Lions') with a 2-way counter-attack twist at Scene 4."
+    round_or_chapter_progression: "0:00 Cold Open & Contender Stats -> Chapter 1 (Round 1: The Speed Challenger) -> Chapter 2 (Round 2: The Venom/Ambush Specialist) -> Chapter 3 (Round 3: The Armored Tank) -> Chapter 4 (Round 4: The Pack Threat) -> Chapter 5 (Final Boss & Ultimate Verdict)"
+    thumbnail_hook_rule: "2-3 words MAX in massive White + Yellow/Red two-tone typography (e.g., 'TOO EASY?', 'SOLO ELITE?', 'ZERO CHANCE', '1,500 PSI!')"
   viral_topic_bank_2026:
+  - 'Could a Jaguar Beat Every Predator in the African Savanna? (5-Round Gauntlet)'
+  - 'How Long You Would Last Against Every Deadly Amazon River Predator'
+  - 'Could a Siberian Tiger Beat Every Apex Predator in North America?'
+  - 'Poderia uma Onça-Pintada Vencer Todos os Predadores da Savana Africana?'
   - 'Electric Eel vs Caiman: How An 860-Volt Biological Taser Stops A River Predator'
   - 'African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop An Ambush'
   - 'Cassowary: Why Nothing In The Jungle Messes With This 130-Pound Dinosaur Bird'
   - 'Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds'
   - Why A Pack Of Giant River Otters Can Drive A Jaguar Out Of Its Territory
   - 'Wolverine vs Grizzly Bear: Why 35 Pounds Of Fury Forces An 800lb Giant To Back Off'
-  - 'Orca Pod vs Great White Shark: The Tonic Immobility Surgical Ambush'
   narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Đòn Tâm Lý Thị Giác (Chỉ điểm chi tiết ngụy trang / Sai lầm chí mạng / Đảo chiều kẻ săn mồi, KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 (Act 2) - Tung thông số vũ khí sinh học thứ nhất (PSI, km/h, Volt, mg độc tố) -> Cảnh 4-5 (Act 3 - Mid-Video 15s Twist) - Kẻ bị săn tung cơ chế phản đòn bất ngờ kèm thông số thứ 2 -> Cảnh 6-7 (Act 4 Payoff) - Đòn kết liễu sinh học xác thực -> Cảnh 8 (Act 5) - Cầu nối Vòng lặp Vô tận (Infinite Loop Bridge) nối mượt về Cảnh 1 (Zero Spoken Subscribe CTA)"
   forbidden_words:
   - Chào mừng các bạn đến với thế giới động vật

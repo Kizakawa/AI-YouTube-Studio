@@ -202,12 +202,54 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             logger.info(f"[RenderNode] Đã bảo lưu video thành phẩm an toàn vào: {permanent_output}")
         final_output = permanent_output
 
+    # Tự động chèn YouTube Chapters (0:00 Intro...) vào script_data.description nếu là Long-Form 16:9
+    # và tự động render Thumbnail 2–3 từ Two-Tone chuẩn @FossilVideos / @IFinity_What
+    updated_script_data = dict(state.get("script_data") or {})
+    if is_long_form and enriched_scenes:
+        try:
+            from app.agents.publisher.seo_tags_mixin import build_youtube_chapters_from_scenes
+            chap_str = build_youtube_chapters_from_scenes(
+                scenes=enriched_scenes,
+                language=str(state.get("language") or "en"),
+            )
+            if chap_str:
+                cur_desc = str(updated_script_data.get("description") or "").strip()
+                if "0:00" not in cur_desc:
+                    updated_script_data["description"] = f"{cur_desc}\n\n{chap_str}".strip() if cur_desc else chap_str
+                updated_script_data["youtube_chapters"] = chap_str
+                logger.info(f"⏱️ [RenderNode] Đã tự động tạo YouTube Chapters cho Job #{job_id}:\n{chap_str}")
+        except Exception as e_ch_rn:
+            logger.debug(f"[RenderNode] YouTube Chapters generation skip: {e_ch_rn}")
+
+    thumbnail_path_out = ""
+    if Path(final_output).exists():
+        try:
+            from app.services.thumbnail_service import ThumbnailService
+            th_srv = ThumbnailService(output_dir=str(outputs_dir))
+            th_res = th_srv.generate_viral_thumbnail(
+                job_id=job_id,
+                topic=str(state.get("topic") or title),
+                viral_title=title,
+                video_path=final_output,
+                niche_id=str(niche),
+                custom_text=str(updated_script_data.get("thumbnail_text") or ""),
+            )
+            best_th = th_res.get("16x9") if is_long_form else (th_res.get("9x16") or th_res.get("16x9"))
+            if best_th and Path(best_th).exists():
+                sidecar_thumb = Path(final_output).with_suffix(".thumb.jpg")
+                shutil.copy2(best_th, str(sidecar_thumb))
+                thumbnail_path_out = str(sidecar_thumb)
+        except Exception as e_th_rn:
+            logger.debug(f"[RenderNode] Auto thumbnail render warning: {e_th_rn}")
+
     return {
         "rendered_video_path": final_output,
+        "thumbnail_path": thumbnail_path_out,
+        "script_data": updated_script_data,
         "video_format": "long" if is_long_form else "short",
         "current_step": "RENDERED",
         "progress_percent": 90,
-        "progress_message": f"Đã render hoàn tất video ({'1920x1080 16:9' if is_long_form else '1080x1920 9:16'}, Ken Burns, Subtitles)",
+        "progress_message": f"Đã render hoàn tất video ({'1920x1080 16:9 + Chapters' if is_long_form else '1080x1920 9:16'}, Ken Burns, Subtitles, Thumbnail)",
     }
 
 

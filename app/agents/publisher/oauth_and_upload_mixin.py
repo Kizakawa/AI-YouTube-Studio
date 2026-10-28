@@ -530,6 +530,27 @@ class OAuthAndUploadMixin:
                 else poll_line
             )
 
+        # Tự động chèn khối YouTube Chapters (0:00 Intro...) cho Video Dài 16:9 (chuẩn @disastersexplained1 & @FossilVideos)
+        if is_long_form_video and not re.search(r"(?m)^0:00\s+", desc_without_trailing_hashes or ""):
+            try:
+                from app.agents.publisher.seo_tags_mixin import build_youtube_chapters_from_scenes
+                s_obj = json.loads(script) if isinstance(script, str) and script.strip().startswith("{") else (script if isinstance(script, dict) else {})
+                scenes_for_ch = (s_obj.get("scenes") if isinstance(s_obj, dict) else None) or kwargs.get("scenes") or []
+                if scenes_for_ch:
+                    chap_block = build_youtube_chapters_from_scenes(
+                        scenes=scenes_for_ch,
+                        language="pt-BR" if is_pt_br else (default_language or cfg_lang or "en"),
+                    )
+                    if chap_block:
+                        desc_without_trailing_hashes = (
+                            f"{desc_without_trailing_hashes}\n\n{chap_block}".strip()
+                            if desc_without_trailing_hashes
+                            else chap_block
+                        )
+                        logger.info(f"⏱️ [PublisherAgent] Đã tự động gắn YouTube Chapters (0:00...) vào Description cho '{clean_title}'.")
+            except Exception as e_chap:
+                logger.debug(f"[PublisherAgent] Auto-chapters skip: {e_chap}")
+
         # Đảm bảo description luôn có khối Hashtags thông minh (Ngách + Chủ đề + Shorts)
         desc_hashtag_line = smart_bundle["description_hashtags"]
         desc_clean = f"{desc_without_trailing_hashes}\n\n{desc_hashtag_line}".strip() if desc_without_trailing_hashes else desc_hashtag_line
@@ -803,11 +824,31 @@ class OAuthAndUploadMixin:
             shorts_url = f"https://www.youtube.com/shorts/{video_id}"
             logger.info(f"Đã upload Shorts thành công lên YouTube: {shorts_url} ({youtube_url})")
 
-            # ── 1. Tự động trích xuất và tải lên thumbnail đỉnh cao (Shock Frame) ──
+            # ── 1. Tự động thiết kế và tải lên Thumbnail chuẩn 2–3 từ Two-Tone (@FossilVideos / @IFinity_What Style) ──
             uploaded_thumb = False
             target_thumb = thumbnail_path
             if not target_thumb or not os.path.exists(target_thumb):
                 auto_thumb = Path(video_path).with_suffix(".thumb.jpg")
+                if not auto_thumb.exists():
+                    try:
+                        from app.services.thumbnail_service import ThumbnailService
+                        s_obj_th = json.loads(script) if isinstance(script, str) and script.strip().startswith("{") else (script if isinstance(script, dict) else {})
+                        thumb_hook_txt = (s_obj_th.get("thumbnail_text") if isinstance(s_obj_th, dict) else None) or ""
+                        th_srv = ThumbnailService(output_dir=str(Path(video_path).parent))
+                        th_res = th_srv.generate_viral_thumbnail(
+                            job_id=int(kwargs.get("job_id") or 0),
+                            topic=topic or clean_title,
+                            viral_title=clean_title,
+                            video_path=video_path,
+                            niche_id=niche_id,
+                            custom_text=thumb_hook_txt,
+                        )
+                        best_th = th_res.get("16x9") if is_long_form_video else (th_res.get("9x16") or th_res.get("16x9"))
+                        if best_th and os.path.exists(best_th):
+                            import shutil as _shutil
+                            _shutil.copy2(best_th, str(auto_thumb))
+                    except Exception as th_srv_err:
+                        logger.debug(f"ThumbnailService fallback sang extract_shock_thumbnail: {th_srv_err}")
                 if not auto_thumb.exists():
                     try:
                         from app.utils.ffmpeg_helper import extract_shock_thumbnail

@@ -15,7 +15,21 @@ script_blueprint:
   - 'The Fatal Mistake / Boundary Violation: ''Stepping onto this crystal-clear African lake shore turns birds into stone.'''
   - 'Diver Forbidden Rule Hook: ''If you ever see square waves forming at the beach, get out immediately.'''
   - 'Body vs Extreme Earth Physics (Zack D. Films Formula): ''Watch what happens to a steel hull the second it crosses this depth line.'''
+  - '@disastersexplained1 2nd-Person Sensory Danger Cold Open (1.54M Formula): ''You notice a pale line forming on the ocean surface. Calm, almost harmless. You think you still have time. That is the mistake.'''
+  competitor_blueprint:
+    benchmark_channel: "@disastersexplained1 (8.93M views — 'Every Tornado Shape Explained' 1.54M, 'Every Tornado Record Explained' Ud7TKMKQrHo) & @FossilVideos ('Would Orcas Dominate Every Prehistoric Ocean?' 3.73M)"
+    long_form_archetypes:
+    - "Archetype A — Every X Record Explained ('Every [Deep Ocean / Tsunami / Abyssal Trench / Deadly Lake / Hydrophone] Record Explained'): Break down the most extreme verified scientific records from the strangest warning sign to the deadliest historical catastrophe."
+    - "Archetype B — Every Type/Zone Explained ('Every [Ocean Depth Zone / Rogue Wave Type / Underwater Anomaly] Explained'): Escalate chapter-by-chapter from the sunlit surface (0m) down to the crushing abyssal floor (4,000m-6,000m) with concrete PSI, °C, and dB metrics."
+    shorts_archetypes:
+    - "2nd-Person Sensory Deception Hook + Extreme Record Reveal: Open with what the viewer sees/hears right before disaster strikes ('You notice a calm square pattern on the waves... That's the mistake.'), then reveal the hidden physical force."
+    round_or_chapter_progression: "0:00 2nd-Person Sensory Danger Intro -> Chapter 1 (The Deceptive Warning Sign) -> Chapter 2 (The Speed/Pressure Record) -> Chapter 3 (The Deadliest Historical Event) -> Chapter 4 (The Scientific Anomaly Nobody Expected) -> Chapter 5 (The Unbroken Abyssal Record)"
+    thumbnail_hook_rule: "2-3 words MAX in massive White + Red/Yellow two-tone typography (e.g., 'EVERY RECORD', 'DEADLIEST DEPTH', 'DO NOT SWIM', '2,000M DUEL')"
   viral_topic_bank_2026:
+  - 'Every Deep Ocean Depth Record Explained (From 40m Diver Limit to the Abyssal Floor)'
+  - 'Every Deadly Ocean Wave Type Explained (Square Waves, Rogue Waves & Mega-Tsunamis)'
+  - 'Every Unexplained Deep Sea Sound Record Explained (From Upsweep to Julia)'
+  - 'Todos os Recordes Mais Mortais do Oceano Profundo Explicados'
   - 'Colossal Squid vs Sperm Whale: Deadly Duel At 2,000m In The Abyssal Ocean'
   - The Deadly Underwater Brine Lake That Paralyzes Sharks In Seconds
   - The Boiling River In The Amazon That Reaches 93°C Without A Volcano

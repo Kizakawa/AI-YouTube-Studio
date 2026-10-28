@@ -26,17 +26,17 @@ WINDOWS_FONTS = [
     "C:/Windows/Fonts/seguisb.ttf",    # Segoe UI Semibold
 ]
 
-# Bảng màu tương phản cao bắt mắt nhất trên YouTube
+# Bảng màu Two-Tone tương phản cao chuẩn @FossilVideos ("TOO EASY?"), @IFinity_What ("TURN INVISIBLE.") & @disastersexplained1
 THUMBNAIL_PALETTES = {
-    "yellow_danger": {"text": (255, 230, 0), "stroke": (0, 0, 0), "accent": (255, 50, 50)},
-    "cyan_scifi": {"text": (0, 240, 255), "stroke": (5, 5, 20), "accent": (255, 230, 0)},
-    "red_shock": {"text": (255, 255, 255), "stroke": (0, 0, 0), "accent": (255, 40, 40)},
-    "gold_nature": {"text": (255, 185, 0), "stroke": (10, 10, 10), "accent": (255, 255, 255)},
+    "yellow_danger": {"text": (255, 255, 255), "stroke": (0, 0, 0), "accent": (255, 230, 0)},
+    "cyan_scifi": {"text": (255, 255, 255), "stroke": (5, 5, 20), "accent": (0, 240, 255)},
+    "red_shock": {"text": (255, 255, 255), "stroke": (0, 0, 0), "accent": (255, 42, 42)},
+    "gold_nature": {"text": (255, 255, 255), "stroke": (8, 8, 8), "accent": (255, 210, 0)},
 }
 
 
 class ThumbnailService:
-    """Service tạo ảnh bìa tối ưu CTR theo quy tắc 1 giây."""
+    """Service tạo ảnh bìa tối ưu CTR theo quy tắc 1 giây (2-3 từ Two-Tone chuẩn @FossilVideos & @IFinity_What)."""
 
     def __init__(self, output_dir: Optional[str] = None):
         self.output_dir = Path(output_dir or "storage/thumbnails")
@@ -49,40 +49,111 @@ class ThumbnailService:
                 return f
         return None
 
+    def compact_punchy_hook_text(
+        self,
+        raw_text: str,
+        topic: str = "",
+        viral_title: str = "",
+        niche_id: str = "general",
+    ) -> str:
+        """
+        Chuẩn hóa text trên Thumbnail về ĐÚNG 2–3 từ khóa giật gân nhất (ALL CAPS, không emoji),
+        giữ lại con số vật lý cực hạn (1,500 PSI, 2,000M, -9.4 DB, 93°C) hoặc câu hỏi/mệnh lệnh ngắn
+        chuẩn @FossilVideos ('TOO EASY?'), @IFinity_What ('TURN INVISIBLE.'), @disastersexplained1 ('EVERY RECORD').
+        """
+        cleaned = re.sub(r"#\S+", " ", str(raw_text or "")).strip()
+        cleaned = re.sub(r"[^\w\s%$!?.,°:-]", "", cleaned).strip()
+        words = [w for w in cleaned.upper().split() if w]
+        if 2 <= len(words) <= 3:
+            return " ".join(words)
+
+        # Nếu câu quá dài (> 3 từ), ưu tiên giữ cụm số đo vật lý (ví dụ '1,500 PSI', '2,000M', '93°C') hoặc động từ/danh từ cốt lõi
+        if len(words) > 3:
+            raw_up = " ".join(words)
+            if raw_up.startswith("WHAT IF YOU"):
+                after_wiy = re.sub(r"^WHAT\s+IF\s+YOU\s+(?:COULD\s+|NEVER\s+|HAD\s+TO\s+|WERE\s+)?", "", raw_up).strip()
+                wiy_tokens = [w for w in after_wiy.split() if w.rstrip("!?.,:") not in {"THE", "A", "AN", "AT", "IN", "ON", "TO", "FOR", "WILL", "RIGHT", "NOW"}]
+                if len(wiy_tokens) >= 2:
+                    return f"{wiy_tokens[0]} {wiy_tokens[1].rstrip('!?.,:')}."
+
+            stop_fillers = {
+                "THE", "A", "AN", "IN", "ON", "AT", "OF", "TO", "FOR", "WITH", "FROM", "BY", "THIS", "THAT", "HOW", "WHY",
+                "WHAT", "IF", "YOU", "COULD", "WOULD", "O", "OS", "AS", "DE", "DO", "DA", "DOS", "DAS", "NO", "NA", "EM", "UM", "UMA",
+            }
+            # Tìm xem có con số + đơn vị đi kèm không (chỉ lấy con số + đơn vị ngay sau nó, bỏ giới từ thừa)
+            for idx_w in range(len(words) - 1):
+                if any(ch.isdigit() for ch in words[idx_w]):
+                    unit_w = words[idx_w + 1].rstrip("!?.,:")
+                    if unit_w not in stop_fillers:
+                        return f"{words[idx_w]} {unit_w}!"
+            core_words = [w.rstrip("!?.,:") for w in words if w.rstrip("!?.,:") not in stop_fillers]
+            if len(core_words) >= 2:
+                return " ".join(core_words[:3])
+            return " ".join(words[:3])
+
+        return self.derive_curiosity_text(topic=topic, viral_title=viral_title, niche_id=niche_id)
+
     def derive_curiosity_text(self, topic: str, viral_title: str = "", niche_id: str = "general") -> str:
         """
-        Rút trích 2-4 từ giật gân, gây tò mò tột độ cho Thumbnail (không dài dòng).
-        Ví dụ: 'SỰ THẬT TÀN KHỐC!', 'ĐỪNG LÀM ĐIỀU NÀY!', '0.01% BIẾT ĐIỀU NÀY', 'CÚ SỐC THỊ GIÁC'.
+        Rút trích 2-3 từ giật gân, gây tò mò tột độ cho Thumbnail theo đúng ngôn ngữ của tiêu đề (EN / pt-BR / VI).
         """
-        full_text = f"{viral_title} {topic}".lower()
+        combined = f"{viral_title} {topic}".strip()
+        full_text = combined.lower()
+        is_vi = bool(re.search(r"[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]", full_text))
+        is_pt = not is_vi and bool(re.search(r"\b(onça|jacaré|lula|cachalote|oceano|mordida|recorde|predador|você|mundo|fossa)\b|[ãõç]", full_text))
 
-        # Quy tắc theo từng ngách
-        if any(w in full_text for w in ["báo", "sư tử", "hổ", "chim", "săn mồi", "động vật", "wildlife", "predator"]):
-            if "tốc độ" in full_text or "báo" in full_text:
-                return "TỐC ĐỘ KINH HOÀNG!"
-            if "chim" in full_text or "nuôi con" in full_text:
-                return "SỰ THẬT TÀN KHỐC!"
-            return "CÚ SĂN MỒI NGHẸT THỞ!"
+        # 1. Nếu tiêu đề có con số + đơn vị cực hạn (ví dụ 1,500 PSI, 2,000m, 93°C, -9.4 dB), ưu tiên trích xuất làm tâm điểm
+        metric_m = re.search(r"\b(\d[\d.,]*\s*(?:psi|km/h|mph|db|dba|°c|m|ft|volts|v|hours|seconds|days|megaton))\b", full_text, flags=re.IGNORECASE)
+        if metric_m:
+            met_str = metric_m.group(1).upper().strip()
+            if len(met_str.split()) == 1:
+                suffix = "FATAL!" if not is_vi else "TỬ THẦN!"
+                return f"{met_str} {suffix}"
+            return f"{met_str}!"
 
-        if any(w in full_text for w in ["vũ trụ", "hố đen", "viễn tưởng", "space", "alien", "scifi", "ngân hà"]):
-            if "hố đen" in full_text:
-                return "ĐIỀU KINH HOÀNG NHẤT!"
-            return "VƯỢT TRẢI NGHIỆM THƯỜNG!"
+        # 2. Quy tắc chuẩn @FossilVideos / @disastersexplained1 / @IFinity_What theo ngôn ngữ & ngách
+        if "every " in full_text and "record" in full_text:
+            return "EVERY RECORD!"
+        if "every " in full_text and ("type" in full_text or "shape" in full_text or "zone" in full_text):
+            return "EVERY TYPE!"
+        if "could a " in full_text or "beat every" in full_text or "dominate every" in full_text:
+            return "TOO EASY?"
+        if "what if you" in full_text:
+            after_you = re.split(r"what if you\s+(?:could\s+|never\s+|had\s+to\s+)?", full_text, maxsplit=1)[-1]
+            w_you = [w.upper() for w in re.findall(r"[a-zA-Z]{3,}", after_you) if w.lower() not in {"the", "in", "at", "for", "with", "into", "from"}][:2]
+            if len(w_you) >= 2:
+                return f"{w_you[0]} {w_you[1]}."
 
-        if any(w in full_text for w in ["tâm lý", "thao túng", "nắm thóp", "điểm yếu", "khắc kỷ", "tranh luận"]):
-            if "nắm thóp" in full_text or "điểm yếu" in full_text:
-                return "ĐỪNG ĐỂ BỊ NẮM THÓP!"
-            return "0.01% NGƯỜI BIẾT!"
+        if is_vi:
+            if any(w in full_text for w in ["báo", "sư tử", "hổ", "săn mồi", "động vật", "wildlife", "predator"]):
+                return "QUÁ DỄ DÀNG?"
+            if any(w in full_text for w in ["tâm lý", "thao túng", "nắm thóp", "thẩm vấn"]):
+                return "ĐỪNG CHỚP MẮT!"
+            if any(w in full_text for w in ["giải cứu", "chó", "mèo", "rescue"]):
+                return "ĐƯỢC CỨU SỐNG!"
+            return "SỰ THẬT SỐC!"
 
-        if any(w in full_text for w in ["giải cứu", "chó", "mèo", "bỏ rơi", "rescue"]):
-            return "PHÉP MÀU KỲ DIỆU!"
+        if is_pt:
+            if any(w in full_text for w in ["onça", "jacaré", "sucuri", "predador", "animal", "wildlife"]):
+                return "FÁCIL DEMAIS?"
+            if any(w in full_text for w in ["oceano", "lula", "cachalote", "fossa", "mar", "mistério"]):
+                return "RECORDE MORTAL!"
+            return "ERRO FATAL!"
 
-        # Fallback từ tiêu đề ngắn (giữ nguyên ký hiệu %, $, - gắn liền với con số như 0%, 3-Second)
+        if any(w in full_text for w in ["wildlife", "predator", "jaguar", "bear", "tiger", "lion", "eagle", "badger", "caiman"]):
+            return "TOO EASY?"
+        if any(w in full_text for w in ["ocean", "deep sea", "squid", "whale", "trench", "wave", "tornado", "volcano", "mystery"]):
+            return "DEADLIEST RECORD"
+        if any(w in full_text for w in ["psychology", "fbi", "interrogation", "lie", "brain", "chamber", "sleep"]):
+            return "DO NOT BLINK"
+        if any(w in full_text for w in ["rescue", "puppy", "dog", "kitten", "stray", "shelter"]):
+            return "FINALLY SAFE"
+
         cleaned_t = re.sub(r"#\S+", " ", viral_title or topic)
-        words = re.sub(r"[^\w\s%$-]", " ", cleaned_t).split()
-        if len(words) >= 3:
-            return " ".join(words[:4] if len(words[0]) <= 3 else words[:3]).upper().rstrip("!?.") + "!"
-        return "SỰ THẬT BẤT NGỜ!"
+        words = [w for w in re.sub(r"[^\w\s%$-]", " ", cleaned_t).split() if len(w) >= 3]
+        if len(words) >= 2:
+            return " ".join(words[:3]).upper().rstrip("!?.") + "!"
+        return "FATAL MISTAKE!"
 
     def extract_video_frame(self, video_path: str, timestamp_sec: float = 1.5, output_img_path: str = "") -> Optional[str]:
         """Trích xuất 1 khung hình sắc nét nhất từ video MP4 đã render bằng FFmpeg."""
@@ -129,39 +200,41 @@ class ThumbnailService:
             # Resize & Crop chuẩn tỷ lệ
             im = self._crop_to_aspect(im, target_w, target_h)
 
-            # Tăng độ tương phản nhẹ và độ bão hòa màu để ảnh hút mắt hơn (+15% saturation, +10% contrast)
+            # Tăng độ tương phản nhẹ và độ bão hòa màu để ảnh hút mắt hơn (+18% saturation, +14% contrast)
             enh_col = ImageEnhance.Color(im)
             im = enh_col.enhance(1.18)
             enh_con = ImageEnhance.Contrast(im)
-            im = enh_con.enhance(1.12)
+            im = enh_con.enhance(1.14)
 
-            draw = ImageDraw.Draw(im)
-            # Loại bỏ emoji khỏi text_hook để tránh lỗi hiển thị ô vuông (tofu glyph) trên các font TTF
-            clean_text_hook = re.sub(r'[^\w\s\?!.,:;\'"-]+', '', text_hook).strip()
-            if not clean_text_hook:
-                clean_text_hook = text_hook.strip()
-
-            # Tự động chia dòng nếu text dài
+            # Chuẩn hóa text_hook về ĐÚNG 2–3 từ giật gân (không emoji, ALL CAPS) chuẩn @FossilVideos & @IFinity_What
+            clean_text_hook = self.compact_punchy_hook_text(text_hook)
             words = clean_text_hook.upper().split()
-            lines = []
-            if len(words) <= 3:
-                lines = [" ".join(words)]
-            elif len(words) == 4:
-                lines = [" ".join(words[:2]), " ".join(words[2:])]
-            elif len(words) <= 6:
-                lines = [" ".join(words[:3]), " ".join(words[3:])]
-            else:
-                lines = [" ".join(words[:2]), " ".join(words[2:4]), " ".join(words[4:])]
+            if not words:
+                words = ["TOO", "EASY?"]
 
-            # Dynamic font auto-fit: Đảm bảo 100% dòng chữ nằm gọn trong 82% chiều rộng khung hình (chống tràn viền)
-            max_allowed_w = int(target_w * 0.82)
-            init_font_size = 85 if aspect_ratio == "16:9" else 95
+            if len(words) <= 2:
+                lines = [" ".join(words)]
+            elif len(words) == 3:
+                # Nếu tổng số ký tự ngắn (<= 14 chars như "TOO EASY NOW?"), để 1 dòng; nếu dài hơn, tách 2 dòng cân đối
+                joined_3 = " ".join(words)
+                if len(joined_3) <= 14 and aspect_ratio == "16:9":
+                    lines = [joined_3]
+                else:
+                    lines = [" ".join(words[:2]), words[2]]
+            else:
+                lines = [" ".join(words[:2]), " ".join(words[2:4])]
+
+            # Dynamic font auto-fit: Chữ siêu to (128px cho 16:9, 118px cho 9:16) nằm gọn trong 86% chiều rộng
+            draw = ImageDraw.Draw(im)
+            max_allowed_w = int(target_w * 0.86)
+            init_font_size = 128 if aspect_ratio == "16:9" else 118
+            stroke_w = 10
 
             font = None
             line_widths = []
             line_heights = []
 
-            for f_size in range(init_font_size, 38, -3):
+            for f_size in range(init_font_size, 44, -4):
                 if self.font_path:
                     try:
                         cand_font = ImageFont.truetype(self.font_path, f_size)
@@ -174,7 +247,7 @@ class ThumbnailService:
                 temp_heights = []
                 too_wide = False
                 for line in lines:
-                    bbox = draw.textbbox((0, 0), line, font=cand_font, stroke_width=8)
+                    bbox = draw.textbbox((0, 0), line, font=cand_font, stroke_width=stroke_w)
                     w = bbox[2] - bbox[0]
                     h = bbox[3] - bbox[1]
                     temp_widths.append(w)
@@ -195,66 +268,72 @@ class ThumbnailService:
                 line_heights = temp_heights
 
             pal = THUMBNAIL_PALETTES.get(palette_key, THUMBNAIL_PALETTES["yellow_danger"])
-            text_color = pal["text"]
-            stroke_color = pal["stroke"]
-            accent_color = pal.get("accent", (255, 50, 50))
+            text_color = pal["text"]        # Pure White (255, 255, 255)
+            stroke_color = pal["stroke"]    # Pitch Black (0, 0, 0)
+            accent_color = pal.get("accent", (255, 230, 0))  # High-Voltage Yellow or Crimson Red
 
-            total_text_h = sum(line_heights) + (len(lines) - 1) * 15
-            start_y = int(target_h * 0.18) if aspect_ratio == "16:9" else int(target_h * 0.22)
+            start_y = int(target_h * 0.08) if aspect_ratio == "16:9" else int(target_h * 0.14)
 
-            # Vẽ dải gradient tối hoặc banner đen mờ phía sau text để bảo đảm 100% chữ đọc rõ trong 1 giây
-            banner_overlay = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-            b_draw = ImageDraw.Draw(banner_overlay)
-            pad_y = 25
-            for idx, line in enumerate(lines):
-                lw = line_widths[idx]
-                lh = line_heights[idx]
-                cur_y = start_y + idx * (lh + 20)
-                cur_x = int((target_w - lw) / 2)
+            # Phủ dải Vignette Gradient mượt ở phần trên ảnh (không dùng hộp vuông thô che mặt chủ thể!)
+            grad_overlay = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+            g_draw = ImageDraw.Draw(grad_overlay)
+            grad_end_y = min(target_h, start_y + sum(line_heights) + len(lines) * 28 + 70)
+            for y_pos in range(0, grad_end_y):
+                progress = y_pos / max(1.0, float(grad_end_y))
+                alpha = int(185 * ((1.0 - progress) ** 1.35))
+                if alpha > 0:
+                    g_draw.line([(0, y_pos), (target_w, y_pos)], fill=(0, 0, 0, alpha))
 
-                # Vẽ dải badge nền đen bo tròn tương phản cao phía sau từng dòng chữ
-                box_x1 = max(cur_x - 30, 20)
-                box_y1 = cur_y - 12
-                box_x2 = min(cur_x + lw + 30, target_w - 20)
-                box_y2 = cur_y + lh + 14
-                b_draw.rounded_rectangle(
-                    [box_x1, box_y1, box_x2, box_y2],
-                    radius=16,
-                    fill=(0, 0, 0, 210)  # Đen mờ 82% tương phản cực mạnh
-                )
-
-            # Hòa trộn dải banner đen mờ vào ảnh
-            im = Image.alpha_composite(im, banner_overlay)
+            im = Image.alpha_composite(im, grad_overlay)
             draw = ImageDraw.Draw(im)
 
-            # Vẽ chữ to có viền đen dày và hiệu ứng bóng đổ
+            # Vẽ chữ Two-Tone từng từ (Word 1: Trắng Tinh #FFFFFF, Từ Cuối / Con Số: Vàng/Đỏ Accent)
+            space_bbox = draw.textbbox((0, 0), " ", font=font, stroke_width=0)
+            space_w = max(14, (space_bbox[2] - space_bbox[0]))
+
             for idx, line in enumerate(lines):
-                lw = line_widths[idx]
                 lh = line_heights[idx]
-                cur_y = start_y + idx * (lh + 20)
-                cur_x = int((target_w - lw) / 2)
+                cur_y = start_y + idx * (lh + 18)
+                line_words = line.split()
 
-                # Đổi màu dòng cuối sang màu Accent (Đỏ hoặc Vàng) để tạo điểm nhấn thị giác
-                curr_fill = accent_color if (idx == len(lines) - 1 and len(lines) > 1) else text_color
+                # Tính tổng chiều rộng từng từ trên dòng để căn giữa hoàn hảo
+                word_Advance_list = []
+                for w_tok in line_words:
+                    wb = draw.textbbox((0, 0), w_tok, font=font, stroke_width=0)
+                    word_Advance_list.append(wb[2] - wb[0])
+                total_line_w = sum(word_Advance_list) + max(0, len(line_words) - 1) * space_w
+                cur_x = int((target_w - total_line_w) / 2)
 
-                # Vẽ bóng đổ (Drop shadow)
-                draw.text(
-                    (cur_x + 6, cur_y + 6),
-                    line,
-                    font=font,
-                    fill=(0, 0, 0, 255),
-                    stroke_width=6,
-                    stroke_fill=(0, 0, 0)
-                )
-                # Vẽ chữ chính với viền đen dày 8px
-                draw.text(
-                    (cur_x, cur_y),
-                    line,
-                    font=font,
-                    fill=curr_fill,
-                    stroke_width=8,
-                    stroke_fill=stroke_color
-                )
+                for w_idx, w_tok in enumerate(line_words):
+                    # Quy tắc Two-Tone chuẩn @FossilVideos / @IFinity_What:
+                    # - Nếu có 1 dòng: từ cuối (hoặc từ chứa số) mang màu Accent, từ đầu màu Trắng.
+                    # - Nếu có >= 2 dòng: dòng cuối (hoặc từ chứa số) mang màu Accent, dòng đầu màu Trắng.
+                    has_digit = any(ch.isdigit() for ch in w_tok)
+                    if len(lines) == 1:
+                        is_accent = (w_idx == len(line_words) - 1 and len(line_words) > 1) or has_digit
+                    else:
+                        is_accent = (idx == len(lines) - 1) or has_digit
+                    w_fill = accent_color if is_accent else text_color
+
+                    # 1. Bóng đổ sâu (Deep Drop Shadow)
+                    draw.text(
+                        (cur_x + 7, cur_y + 8),
+                        w_tok,
+                        font=font,
+                        fill=(0, 0, 0, 255),
+                        stroke_width=stroke_w,
+                        stroke_fill=(0, 0, 0),
+                    )
+                    # 2. Chữ chính với viền đen dày 10px
+                    draw.text(
+                        (cur_x, cur_y),
+                        w_tok,
+                        font=font,
+                        fill=w_fill,
+                        stroke_width=stroke_w,
+                        stroke_fill=stroke_color,
+                    )
+                    cur_x += word_Advance_list[w_idx] + space_w
 
             # Lưu ảnh kết quả chất lượng cao (JPEG 95%)
             rgb_im = im.convert("RGB")
@@ -297,8 +376,12 @@ class ThumbnailService:
         Quy trình trọn gói tự động tạo 2 phiên bản Thumbnail (16:9 và 9:16) cho 1 VideoJob.
         Trả về: {'thumb_16x9': path, 'thumb_9x16': path, 'text_hook': str}
         """
-        clean_custom = re.sub(r"[^\w\s%$!?.:-]", "", str(custom_text or "")).strip()
-        text_hook = clean_custom.upper() if len(clean_custom) >= 4 else self.derive_curiosity_text(topic=topic, viral_title=viral_title, niche_id=niche_id)
+        text_hook = self.compact_punchy_hook_text(
+            raw_text=str(custom_text or ""),
+            topic=topic,
+            viral_title=viral_title,
+            niche_id=niche_id,
+        )
 
         # Lựa chọn ảnh gốc: Ưu tiên ảnh gốc sạch (Clean Image) chất lượng cao không dính subtitle/header!
         chosen_base = None
@@ -356,7 +439,12 @@ class ThumbnailService:
         Phương thức đồng bộ đa năng tạo Thumbnail 16:9 và 9:16.
         Hỗ trợ custom text hoặc tự động suy luận hook 1 giây từ tiêu đề.
         """
-        text_hook = custom_text or self.derive_curiosity_text(topic=title, viral_title=title, niche_id=niche_id)
+        text_hook = self.compact_punchy_hook_text(
+            raw_text=str(custom_text or ""),
+            topic=title,
+            viral_title=title,
+            niche_id=niche_id,
+        )
 
         chosen_base = None
         if background_image_path and os.path.exists(str(background_image_path)):

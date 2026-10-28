@@ -204,10 +204,17 @@ DO NOT center any candidate around these fatigued terms!
     if is_long_form:
         format_directive = """
 ═══════════════════════════════════════════════════════════
-🎬 LONG-FORM 16:9 WIDESCREEN DOCUMENTARY MODE (5 CHAPTERS / 3.5–4.5 MINUTES):
-You are generating 16:9 Widescreen Long-Form Documentary concepts (NOT vertical Shorts!):
-1. Each concept MUST use a 5-Chapter Countdown or 5-Case Deep-Dive structure expanding on the channel's highest-performing entities (e.g., "5 Animais Que Riem do Veneno da Mamba-Negra (O #1 É Quase Imortal!) 🐍🔥", "5 Anomalias Submarinas Que o Sonar da Marinha Não Consegue Explicar 🌊🔊", "5 Técnicas Psicológicas do FBI Que Desmascaram Qualquer Mentiroso 🧠🕵️").
-2. DO NOT include "#Shorts" in the title! Keep titles 45–80 characters with named high-search entities and extreme physical metrics.
+🎬 LONG-FORM 16:9 WIDESCREEN DOCUMENTARY MODE (5 CHAPTERS / 3.5–4.5 MINUTES — COMPETITOR MILLION-VIEW BLUEPRINTS):
+You are generating 16:9 Widescreen Long-Form Documentary concepts (NOT vertical Shorts!) modeled on the 3 fastest-growing 2026 channels:
+1. `@FossilVideos` Gauntlet & Survival Blueprint (for Wildlife / Predators — 20.4M views across 14 videos):
+   - "Could a [Apex Predator] Beat Every Predator in [Biome/Continent]?" (5-Round Escalating Gauntlet)
+   - "How Long You'd Last Against Every Deadly [Jungle/Savanna/River] Predator"
+2. `@disastersexplained1` "Every X Record / Type Explained" Blueprint (for Ocean / Earth Mysteries — 8.93M views):
+   - "Every [Deep Ocean Depth / Deadly Wave / Underwater Sound / Abyssal Trench] Record Explained"
+   - Opens with a 2nd-person sensory danger cold open ("You notice a calm line on the water... You think you still have time. That's the mistake.").
+3. `@IFinity_What` "What If YOU..." 2nd-Person Timeline Escalation Blueprint (for Alternate History & Psychology — 734K views in 12 days):
+   - "What If You [Experienced Extreme Brain/Historical Paradox]?" escalating from Minute 1 (The Superpower Illusion) -> Hour 24 (The Hidden Glitch) -> Day 7 (Total Collapse).
+4. DO NOT include "#Shorts" in the title! Keep titles 42–75 characters naming exact high-search entities + concrete physical metrics.
 """
 
     prompt = f"""You are the Master Creative Director and Viral Algorithm Strategist for YouTube {'Long-Form 16:9 Documentary' if is_long_form else 'Shorts'} channel '{channel_name}'.
