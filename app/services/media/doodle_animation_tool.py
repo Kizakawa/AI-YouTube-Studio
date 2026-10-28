@@ -19,6 +19,7 @@ import logging
 import math
 import re
 import subprocess
+import threading
 import wave
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
+_doodle_render_sem = threading.BoundedSemaphore(2)
 
 # ── BẢNG MÀU & THÔNG SỐ CHUẨN 2D DOODLE STUDIO (30 FPS) ──────────────────────
 DEFAULT_FPS = 30
@@ -302,8 +304,21 @@ class DoodleSceneConfig:
         self.character_tag = tag_upper
         self.accent_rgb = TAG_COLOR_RGB.get(tag_upper, TAG_COLOR_RGB["@MODERNYOU"])
         raw_p = (self.prop_type or "").strip().lower()
-        valid_props = ("alarm", "block", "spear_nature", "split", "puppet_strings", "brain_battery", "money_scale")
-        if raw_p not in valid_props:
+        valid_props = (
+            "alarm",
+            "block",
+            "spear_nature",
+            "split",
+            "puppet_strings",
+            "brain_battery",
+            "money_scale",
+            "mask",
+            "magnifying_glass",
+            "climax",
+        )
+        if raw_p in valid_props:
+            self.prop_type = raw_p
+        else:
             ctx_p = f"{raw_p} {self.narration}".lower()
             if any(k in ctx_p for k in ("puppet", "manipulat", "control", "string", "toxic")):
                 self.prop_type = "puppet_strings"
@@ -764,6 +779,22 @@ def render_doodle_frame(
         _draw_sketch_circle(draw, pivot_x + 150, pivot_y + tilt + 58, 62, t_sec, scene_seed + 74, fill=ALERT_RED, width=6)
         draw.text((pivot_x + 150, pivot_y + tilt + 58), "DEBT", fill=(255, 255, 255), font=font_badge, anchor="mm")
 
+    elif sc.prop_type == "mask":
+        _draw_doodle_character(draw, cx - 150, cy + 20, 1.05, sc.accent_rgb, "smirk", t_sec, scene_seed)
+        mask_x = cx + 145 + math.sin(t_sec * 3.0) * 18.0
+        mask_y = cy - 95
+        _draw_sketch_circle(draw, mask_x, mask_y, 78, t_sec, scene_seed + 91, fill=(255, 255, 255), width=7)
+        draw.arc([mask_x - 36, mask_y + 2, mask_x + 36, mask_y + 42], 15, 165, fill=GREEN_CALM, width=6)
+        draw.text((mask_x, mask_y - 108), "FAKE PERSONA", fill=ALERT_RED, font=font_badge, anchor="mm")
+
+    elif sc.prop_type == "magnifying_glass":
+        _draw_doodle_character(draw, cx - 140, cy + 20, 1.05, sc.accent_rgb, "shocked", t_sec, scene_seed)
+        lens_x = cx + 120 + math.cos(t_sec * 2.5) * 22.0
+        lens_y = cy - 85 + math.sin(t_sec * 2.5) * 14.0
+        _draw_sketch_circle(draw, lens_x, lens_y, 74, t_sec, scene_seed + 95, fill=GOLD_ACCENT, width=8)
+        _draw_sketch_line(draw, (lens_x + 52, lens_y + 52), (lens_x + 125, lens_y + 125), t_sec, scene_seed + 96, width=12)
+        draw.text((lens_x, lens_y), "LIE?", fill=INK_BLACK, font=font_h1, anchor="mm")
+
     else:
         _draw_doodle_character(draw, cx, cy + 20, 1.15, sc.accent_rgb, "calm", t_sec, scene_seed)
         bulb_y = cy - 335 + math.sin(t_sec * 4.5) * 14.0
@@ -1025,18 +1056,10 @@ class DoodleAnimationTool:
 
         out_p = Path(output_path).resolve()
         out_p.parent.mkdir(parents=True, exist_ok=True)
+        tmp_out = out_p.with_suffix(".tmp.mp4")
 
         total_frames = max(30, int(round(dur_s * fps)))
         width, height = int(width or 1080), int(height or 1920)
-
-        # Render song song toàn bộ total_frames khung hình độc lập ở chuẩn 30 FPS
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            rendered_frames = list(
-                pool.map(
-                    lambda idx: render_doodle_frame(sc, idx, total_frames, width=width, height=height, fps=fps).tobytes(),
-                    range(total_frames),
-                )
-            )
 
         cmd = [
             "ffmpeg", "-y",
@@ -1058,33 +1081,60 @@ class DoodleAnimationTool:
                 "-filter_complex", "[1:a]volume=1.35[vo];[2:a]volume=0.30[sfx];[vo][sfx]amix=inputs=2:duration=first[aout]",
                 "-map", "0:v:0", "-map", "[aout]",
                 "-c:a", "aac", "-b:a", "160k",
+                "-t", f"{dur_s:.2f}",
             ])
         elif has_audio:
             cmd.extend([
                 "-i", str(audio_path),
                 "-map", "0:v:0", "-map", "1:a:0",
                 "-c:a", "aac", "-b:a", "160k",
+                "-t", f"{dur_s:.2f}",
             ])
 
         cmd.extend([
-            "-t", f"{dur_s:.2f}",
             "-r", str(fps),
             "-c:v", "libx264",
-            "-preset", "veryfast",
+            "-preset", "ultrafast" if dur_s >= 10.0 else "veryfast",
             "-crf", "19",
             "-pix_fmt", "yuv420p",
-            str(out_p),
+            str(tmp_out),
         ])
 
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        assert proc.stdin is not None
-        for frame_bytes in rendered_frames:
-            try:
-                proc.stdin.write(frame_bytes)
-            except BrokenPipeError:
-                break
-        proc.stdin.close()
-        proc.wait(timeout=60)
+        try:
+            with _doodle_render_sem:
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                assert proc.stdin is not None
+                with ThreadPoolExecutor(max_workers=6) as pool:
+                    chunk_size = 30
+                    for start_f in range(0, total_frames, chunk_size):
+                        end_f = min(total_frames, start_f + chunk_size)
+                        chunk_bytes = list(
+                            pool.map(
+                                lambda idx: render_doodle_frame(sc, idx, total_frames, width=width, height=height, fps=fps).tobytes(),
+                                range(start_f, end_f),
+                            )
+                        )
+                        pipe_closed = False
+                        for frame_bytes in chunk_bytes:
+                            try:
+                                proc.stdin.write(frame_bytes)
+                            except (BrokenPipeError, OSError):
+                                pipe_closed = True
+                                break
+                        if pipe_closed:
+                            break
+                try:
+                    proc.stdin.close()
+                except (BrokenPipeError, OSError):
+                    pass
+                proc.wait(timeout=90)
+            if tmp_out.exists() and tmp_out.stat().st_size > 4000:
+                tmp_out.replace(out_p)
+            else:
+                tmp_out.unlink(missing_ok=True)
+        except Exception as e_doodle:
+            logger.warning(f"[DoodleAnimationTool] Cảnh {scene_id} render warning: {e_doodle}")
+            tmp_out.unlink(missing_ok=True)
 
         if out_p.exists() and out_p.stat().st_size > 4000:
             logger.info(

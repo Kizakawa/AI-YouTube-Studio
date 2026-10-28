@@ -68,9 +68,15 @@ def _search_youtube_16x9_documentary_candidates(
     q_first = [p.strip() for p in str(query or "").split("|||") if p.strip()]
     base_phrase = q_first[0] if q_first else (query or primary_entity or topic)
     clean_q = _clean_yt_search_phrase(base_phrase, max_words=6) or _clean_yt_search_phrase(primary_entity or topic, max_words=5) or topic
+    alt_phrase = q_first[1] if len(q_first) > 1 else (primary_entity or topic)
+    clean_alt = _clean_yt_search_phrase(alt_phrase, max_words=5)
     search_queries = [
-        f"{clean_q} cinematic 4k footage",
+        f"{clean_q} cinematic scene no talking",
     ]
+    if clean_alt and clean_alt.lower() != clean_q.lower():
+        search_queries.append(f"{clean_alt} dramatic b roll footage")
+    else:
+        search_queries.append(f"{clean_q} stock footage 4k")
     flat_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -126,7 +132,10 @@ def _search_youtube_16x9_documentary_candidates(
                         "khan academy", "after skool", "practical psychology", "whiteboard",
                         "cartoon", "animated", "animation", "lecture", "podcast", "interview",
                         "reaction", "vlog", "webinar", "therapist", "counselor", "coach",
-                        "dr. ", "storytime", "my experience", "slides",
+                        "dr. ", "storytime", "my experience", "slides", "explained",
+                        "how to", "tips", "secrets", "guide", "tutorial", "analysis",
+                        "breakdown", "expert", "body language", "spotted", "signs",
+                        "ways to", "steps", "presentation", "course", "lesson", "reacts",
                     )
                 ):
                     continue
@@ -265,13 +274,16 @@ Return ONLY valid JSON:
 def _is_clip_window_clean(video_path: str, sample_offsets: List[float]) -> bool:
     """
     Kiểm tra nhanh các khung hình tại `sample_offsets` (giây) của clip bằng cổng CV tổng quát:
+    - Chặn file hỏng / thiếu moov atom (`get_duration_ms < 1000`).
     - Chặn khung hình tối đen / đơn sắc (`VisualCritic._is_solid_color_or_black`).
-    - Lưu ý: Kiểm duyệt ngữ nghĩa/chữ/pillarbox/watermark được thực hiện chính xác bằng Multimodal Gemini Vision
-      (`_verify_16x9_master_with_gemini_vision`), tránh dùng bộ đếm chuyển tiếp trắng-đen tĩnh dễ bắt nhầm bọt sóng/cá voi sát thủ.
     """
     import tempfile
     from app.graph.evaluators.visual_critic import VisualCritic
 
+    if not Path(video_path).exists() or get_duration_ms(video_path) < 1000:
+        return False
+
+    extracted_ok = 0
     for off_s in sample_offsets:
         tmp_jpg = tempfile.mktemp(suffix=".jpg")
         try:
@@ -291,8 +303,20 @@ def _is_clip_window_clean(video_path: str, sample_offsets: List[float]) -> bool:
             p_jpg = Path(tmp_jpg)
             if not p_jpg.exists() or p_jpg.stat().st_size < 1_500:
                 continue
+            extracted_ok += 1
             if VisualCritic._is_solid_color_or_black(str(p_jpg)):
                 return False
+            try:
+                import numpy as np
+                from PIL import Image
+                with Image.open(p_jpg) as im_chk:
+                    gray = np.asarray(im_chk.convert("L"), dtype=np.float32)
+                    dark_ratio = float(np.mean(gray < 20.0))
+                    white_ratio = float(np.mean(gray > 230.0))
+                    if dark_ratio > 0.62 or white_ratio > 0.35:
+                        return False
+            except Exception:
+                pass
         except Exception:
             pass
         finally:
@@ -300,7 +324,7 @@ def _is_clip_window_clean(video_path: str, sample_offsets: List[float]) -> bool:
                 Path(tmp_jpg).unlink(missing_ok=True)
             except Exception:
                 pass
-    return True
+    return extracted_ok > 0
 
 
 def _download_youtube_chapter_master(
@@ -422,38 +446,10 @@ def _download_youtube_chapter_master(
             if not _is_clip_window_clean(master_out_path, [1.0, max(2.0, m_dur * 0.45)]):
                 Path(master_out_path).unlink(missing_ok=True)
                 continue
-            vis_ok, trim_extra_s = _verify_16x9_master_with_gemini_vision(
-                master_path=master_out_path,
-                topic=topic,
-                primary_entity=primary_entity,
-                query=query,
-                video_title=str(cand.get("title") or vid_id),
-            )
-            if not vis_ok:
-                Path(master_out_path).unlink(missing_ok=True)
-                continue
-            if trim_extra_s >= 2.0 and (m_dur - trim_extra_s) >= 12.0:
-                trimmed_master = str(Path(master_out_path).with_suffix("")) + "_trimmed.mp4"
-                subprocess.run(
-                    [
-                        "ffmpeg", "-y", "-v", "error",
-                        "-ss", f"{trim_extra_s:.2f}",
-                        "-i", master_out_path,
-                        "-c", "copy",
-                        trimmed_master,
-                    ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=15,
-                    check=False,
-                )
-                if Path(trimmed_master).exists() and Path(trimmed_master).stat().st_size > 50_000:
-                    Path(trimmed_master).replace(master_out_path)
-                    m_dur = get_duration_ms(master_out_path) / 1000.0
             gate = VisualCritic().inspect_clip_before_concat(
                 master_out_path,
                 min_short_edge=720,
-                min_sharpness=4.8,
+                min_sharpness=4.2,
                 check_watermark=True,
                 allow_snow=True,
                 auto_sanitize=True,
@@ -516,22 +512,27 @@ def extract_longform_scene_with_internal_jumpcut(
                 f"vignette=PI/7[v2];"
                 f"[v0][v1][v2]concat=n=3:v=1:a=0,fps=30,format=yuv420p[vout]"
             )
+            tmp_out = f"{output_path}.tmp3.mp4"
             cmd = [
                 "ffmpeg", "-y", "-v", "error",
                 "-i", master_path,
                 "-filter_complex", filter_complex,
                 "-map", "[vout]",
                 "-t", f"{req_dur:.2f}",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
                 "-an",
-                output_path,
+                tmp_out,
             ]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=35, check=False)
-            if Path(output_path).exists() and Path(output_path).stat().st_size > 35_000:
-                if _is_clip_window_clean(output_path, [0.45, max(1.2, req_dur * 0.68)]):
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
+            except Exception:
+                Path(tmp_out).unlink(missing_ok=True)
+            if Path(tmp_out).exists() and Path(tmp_out).stat().st_size > 35_000 and get_duration_ms(tmp_out) >= 1500:
+                if _is_clip_window_clean(tmp_out, [0.45, max(1.2, req_dur * 0.68)]):
+                    Path(tmp_out).replace(output_path)
                     return True
-                Path(output_path).unlink(missing_ok=True)
-                continue
+            Path(tmp_out).unlink(missing_ok=True)
+            continue
 
         # Nếu cảnh dài >= 5.0s và file master đủ độ dư (>= req_dur + 2.4s), thực hiện Jump-Cut 2 nửa:
         # Riêng Cảnh 1 (scene_id == 1) giữ độ phân giải gốc 1920x1080 -> 2016x1134 (zoom nhẹ 105%) với CRF 17 để giữ 100% độ nét căng ở giây mở màn!
@@ -556,29 +557,35 @@ def extract_longform_scene_with_internal_jumpcut(
                 f"vignette=PI/7[v1];"
                 f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
             )
+            tmp_out2 = f"{output_path}.tmp2.mp4"
             cmd = [
                 "ffmpeg", "-y", "-v", "error",
                 "-i", master_path,
                 "-filter_complex", filter_complex,
                 "-map", "[vout]",
                 "-t", f"{req_dur:.2f}",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", crf_val,
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", crf_val,
                 "-an",
-                output_path,
+                tmp_out2,
             ]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, check=False)
-            if Path(output_path).exists() and Path(output_path).stat().st_size > 35_000:
-                if _is_clip_window_clean(output_path, [0.45, max(1.2, req_dur * 0.68)]):
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40, check=False)
+            except Exception:
+                Path(tmp_out2).unlink(missing_ok=True)
+            if Path(tmp_out2).exists() and Path(tmp_out2).stat().st_size > 35_000 and get_duration_ms(tmp_out2) >= 1500:
+                if _is_clip_window_clean(tmp_out2, [0.45, max(1.2, req_dur * 0.68)]):
+                    Path(tmp_out2).replace(output_path)
                     return True
-                Path(output_path).unlink(missing_ok=True)
-                continue
+            Path(tmp_out2).unlink(missing_ok=True)
+            continue
 
         # Fallback cắt đơn chuẩn 1920x1080 kèm Vignette & Color Grading nhẹ (tắt hflip để không lật ngược đồng hồ/chữ số)
         try:
+            tmp_out1 = f"{output_path}.tmp1.mp4"
             trim_video(
                 input_path=master_path,
                 duration_seconds=req_dur,
-                output_path=output_path,
+                output_path=tmp_out1,
                 width=1920,
                 height=1080,
                 fps=30,
@@ -588,10 +595,11 @@ def extract_longform_scene_with_internal_jumpcut(
                 start_offset_sec=safe_start,
                 preserve_continuous_flow=True,
             )
-            if Path(output_path).exists() and Path(output_path).stat().st_size > 30_000:
-                if _is_clip_window_clean(output_path, [0.45, max(1.2, req_dur * 0.68)]):
+            if Path(tmp_out1).exists() and Path(tmp_out1).stat().st_size > 30_000 and get_duration_ms(tmp_out1) >= 1500:
+                if _is_clip_window_clean(tmp_out1, [0.45, max(1.2, req_dur * 0.68)]):
+                    Path(tmp_out1).replace(output_path)
                     return True
-                Path(output_path).unlink(missing_ok=True)
+            Path(tmp_out1).unlink(missing_ok=True)
         except Exception:
             pass
 
@@ -624,14 +632,16 @@ def fetch_or_slice_longform_chapter_clip_sync(
       phân đoạn của mình (cách nhau bởi bước nhảy Jump-Cut `+3.5s` và có Jump-Cut nội bộ giữa cảnh) chỉ trong `0.3s`!
     """
     out_path = str(media_dir / f"scene_{scene_id:03d}_16x9.mp4")
-    if Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
-        return {
-            "media_path": out_path,
-            "media_type": "video",
-            "production_method": "LONGFORM_16X9_CACHED",
-            "source_url": out_path,
-            "rationale": f"16:9 Cached Documentary Clip ({Path(out_path).name})",
-        }
+    if Path(out_path).exists():
+        if Path(out_path).stat().st_size > 40_000 and get_duration_ms(out_path) >= 1000:
+            return {
+                "media_path": out_path,
+                "media_type": "video",
+                "production_method": "LONGFORM_16X9_CACHED",
+                "source_url": out_path,
+                "rationale": f"16:9 Cached Documentary Clip ({Path(out_path).name})",
+            }
+        Path(out_path).unlink(missing_ok=True)
 
     chapter_idx = max(1, ((int(scene_id) - 1) // max(1, scenes_per_chapter)) + 1)
     slot_in_chapter = (int(scene_id) - 1) % max(1, scenes_per_chapter)
@@ -671,57 +681,59 @@ def fetch_or_slice_longform_chapter_clip_sync(
                     f"🎬 [LongForm ChapterPool] Đã tải Master Chương #{chapter_idx} từ YouTube 16:9 "
                     f"({yt_master.get('duration_sec', 0):.1f}s) dùng chung cho 3 cảnh!"
                 )
-            elif is_scifi:
-                # Ưu tiên 2 (riêng chủ đề 3D CGI / Sci-Fi / Monster): Tải Master 16:9 từ Bilibili Safe-Crop
-                try:
-                    from app.services.media.bilibili_fetcher import (
-                        download_and_crop_bilibili_broll_clip,
-                        search_bilibili_videos,
-                        translate_query_to_chinese,
-                    )
-                    from app.agents.media_agent import clean_scene_search_query
-                    base_q = clean_scene_search_query(query or primary_entity or topic, max_words=6) or topic
-                    zh_query = translate_query_to_chinese(
-                        query=base_q,
-                        primary_entity=primary_entity or topic,
-                        is_3d_or_scifi=is_scifi,
-                    )
-                    bili_cands = search_bilibili_videos(zh_query, max_results=4, min_dur_s=35.0, max_dur_s=360.0)
-                    for cand in bili_cands[:1]:
-                        bvid = str(cand.get("bvid") or cand.get("id") or "").strip()
-                        if not bvid:
-                            continue
-                        with bvid_lock:
-                            if bvid in used_bvids:
-                                continue
-                            used_bvids.add(bvid)
-                        b_info = download_and_crop_bilibili_broll_clip(
-                            url_or_id=bvid,
-                            output_path=master_file,
-                            target_duration_sec=42.0,
-                            aspect_ratio="16:9",
-                            preserve_continuous_master=True,
+            else:
+                # Ưu tiên 2: Tải Master 16:9 từ Bilibili Safe-Crop CHỈ KHI chủ đề thuộc thiên nhiên/động vật (tránh slide chữ tiếng Trung ở ngách Tâm lý/Chiến lược)
+                is_wildlife_ch = any(
+                    w in f"{topic} {primary_entity}".lower()
+                    for w in ("wildlife", "animal", "predator", "ocean", "shark", "whale", "tiger", "lion", "bear", "crocodile", "eagle", "snake", "nature")
+                )
+                if is_wildlife_ch:
+                    try:
+                        from app.services.media.bilibili_fetcher import (
+                            download_and_crop_bilibili_broll_clip,
+                            search_bilibili_videos,
+                            translate_query_to_chinese,
                         )
-                        if b_info and Path(master_file).exists() and Path(master_file).stat().st_size > 60_000:
-                            vis_ok, _ = _verify_16x9_master_with_gemini_vision(
-                                master_path=master_file,
-                                topic=topic,
-                                primary_entity=primary_entity,
-                                query=query,
-                                video_title=str(b_info.get("title") or bvid),
-                            )
-                            if not vis_ok:
-                                Path(master_file).unlink(missing_ok=True)
+                        from app.agents.media_agent import clean_scene_search_query
+                        base_q = clean_scene_search_query(query or primary_entity or topic, max_words=6) or topic
+                        zh_query = translate_query_to_chinese(
+                            query=base_q,
+                            primary_entity=primary_entity or topic,
+                            is_3d_or_scifi=is_scifi,
+                        )
+                        bili_cands = search_bilibili_videos(zh_query, max_results=4, min_dur_s=35.0, max_dur_s=360.0)
+                        for cand in bili_cands[:1]:
+                            bvid = str(cand.get("bvid") or cand.get("id") or "").strip()
+                            if not bvid:
                                 continue
-                            master_source_label = f"Bilibili 16:9 Chapter #{chapter_idx} ({bvid})"
-                            master_url = f"https://www.bilibili.com/video/{bvid}"
-                            meta_file.write_text(f"{master_source_label}|||{master_url}", encoding="utf-8")
-                            logger.info(
-                                f"🎬 [LongForm ChapterPool] Đã tải Master Chương #{chapter_idx} từ Bilibili 16:9 ({bvid}) dùng chung cho 3 cảnh!"
+                            with bvid_lock:
+                                if bvid in used_bvids:
+                                    continue
+                                used_bvids.add(bvid)
+                            b_info = download_and_crop_bilibili_broll_clip(
+                                url_or_id=bvid,
+                                output_path=master_file,
+                                target_duration_sec=42.0,
+                                aspect_ratio="16:9",
+                                preserve_continuous_master=True,
                             )
-                            break
-                except Exception as e_bili:
-                    logger.debug(f"[LongForm ChapterPool] Bilibili master skip: {e_bili}")
+                            if (
+                                b_info
+                                and Path(master_file).exists()
+                                and Path(master_file).stat().st_size > 60_000
+                                and _is_clip_window_clean(master_file, [1.5, 12.0, 24.0])
+                            ):
+                                master_source_label = f"Bilibili 16:9 Chapter #{chapter_idx} ({bvid})"
+                                master_url = f"https://www.bilibili.com/video/{bvid}"
+                                meta_file.write_text(f"{master_source_label}|||{master_url}", encoding="utf-8")
+                                logger.info(
+                                    f"🎬 [LongForm ChapterPool] Đã tải Master Chương #{chapter_idx} từ Bilibili 16:9 ({bvid})!"
+                                )
+                                break
+                            else:
+                                Path(master_file).unlink(missing_ok=True)
+                    except Exception as e_bili:
+                        logger.debug(f"[LongForm ChapterPool] Bilibili master skip: {e_bili}")
             if not (Path(master_file).exists() and Path(master_file).stat().st_size > 60_000):
                 try:
                     failed_marker.write_text("failed", encoding="utf-8")
@@ -748,7 +760,7 @@ def fetch_or_slice_longform_chapter_clip_sync(
             master_path=master_file,
             output_path=out_path,
             start_offset_sec=offset_s,
-            target_duration_sec=max(4.5, target_duration_sec + 0.5),
+            target_duration_sec=max(2.5, float(target_duration_sec)),
             scene_id=scene_id,
         ):
             logger.info(

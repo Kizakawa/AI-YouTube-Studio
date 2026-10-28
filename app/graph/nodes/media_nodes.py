@@ -166,22 +166,29 @@ def _fetch_longform_16x9_broll_clip_sync(
     1. Dự phòng: Bilibili 16:9 Safe-Crop HD đơn lẻ.
     2. Dự phòng: Pexels / Pixabay 16:9 Landscape HD Video.
     """
+    from app.utils.ffmpeg_helper import get_duration_ms
     out_path = output_override_path or str(media_dir / f"scene_{scene_id:03d}_16x9.mp4")
-    if not output_override_path and Path(out_path).exists() and Path(out_path).stat().st_size > 40_000:
-        return {
-            "media_path": out_path,
-            "media_type": "video",
-            "production_method": "BILIBILI_16X9_CACHED",
-            "source_url": out_path,
-            "rationale": f"16:9 Cached Documentary Clip ({Path(out_path).name})",
-        }
+    if not output_override_path and Path(out_path).exists():
+        if Path(out_path).stat().st_size > 40_000 and get_duration_ms(out_path) >= 1200:
+            return {
+                "media_path": out_path,
+                "media_type": "video",
+                "production_method": "CHAPTER_POOL_16X9_CACHED",
+                "source_url": out_path,
+                "rationale": f"16:9 Cached Documentary Clip ({Path(out_path).name})",
+            }
+        else:
+            Path(out_path).unlink(missing_ok=True)
 
     slot_in_4 = (int(scene_id) - 1) % 4
     chapter_num = ((int(scene_id) - 1) // 4) + 1
 
     def _try_stock_16x9_landscape(prefer_pixabay: bool = False) -> Optional[Dict[str, Any]]:
         try:
-            from app.services.media.longform_chapter_pool import extract_longform_scene_with_internal_jumpcut
+            from app.services.media.longform_chapter_pool import (
+                extract_longform_scene_with_internal_jumpcut,
+                _is_clip_window_clean,
+            )
             q_parts = [p.strip() for p in str(query or "").split("|||") if p.strip()]
             if not q_parts:
                 q_parts = [query or primary_entity or topic]
@@ -204,47 +211,55 @@ def _fetch_longform_16x9_broll_clip_sync(
             ]
             rot_idx = (int(scene_id) * 3) % len(fallback_facets)
             q_parts.extend(fallback_facets[rot_idx : rot_idx + 3] + fallback_facets[:2])
-            best_vid = media_agent._stock.search_landscape_16x9_video_clip(
-                queries=q_parts,
-                used_urls=used_urls,
-                topic=topic,
-                narration=narration,
-                prefer_pixabay=prefer_pixabay,
-            )
-            if best_vid and best_vid.get("url"):
-                cand_u = str(best_vid["url"])
-                src_tag = str(best_vid.get("source") or "pexels_16x9_video").lower()
-                prod_lbl = "PIXABAY_16X9_LANDSCAPE_HD" if "pixabay" in src_tag else "PEXELS_16X9_LANDSCAPE_HD"
-                raw_stock = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw.mp4")
-                dl_ok = media_agent.download_file(cand_u, raw_stock)
-                if dl_ok and Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 40_000:
-                    cut_ok = extract_longform_scene_with_internal_jumpcut(
-                        master_path=raw_stock,
-                        output_path=out_path,
-                        start_offset_sec=0.0,
-                        target_duration_sec=max(4.5, target_duration_sec + 0.5),
-                        scene_id=scene_id,
+            for try_idx in range(2):
+                with bvid_lock:
+                    best_vid = media_agent._stock.search_landscape_16x9_video_clip(
+                        queries=q_parts[try_idx:] + q_parts[:try_idx],
+                        used_urls=used_urls,
+                        topic=topic,
+                        narration=narration,
+                        prefer_pixabay=(prefer_pixabay ^ (try_idx == 1)),
                     )
-                    if not cut_ok:
-                        Path(raw_stock).replace(out_path)
-                    else:
-                        Path(raw_stock).unlink(missing_ok=True)
-                    if Path(out_path).exists() and Path(out_path).stat().st_size > 35_000:
-                        if scene_id == 1:
-                            try:
-                                from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-                                _ensure_hook_clip_sharpness_and_luma(out_path, min_sharpness=12.3)
-                            except Exception:
-                                pass
-                        logger.info(f"Scene {scene_id}: 🎥 [Long-Form {prod_lbl}] Đã tải & cắt Landscape B-Roll -> {Path(out_path).name}")
-                        return {
-                            "media_path": out_path,
-                            "media_type": "video",
-                            "production_method": prod_lbl,
-                            "source_url": cand_u,
-                            "rationale": f"{prod_lbl} ({str(best_vid.get('title') or query)[:45]})",
-                        }
-                Path(raw_stock).unlink(missing_ok=True)
+                if best_vid and best_vid.get("url"):
+                    cand_u = str(best_vid["url"])
+                    src_tag = str(best_vid.get("source") or "pexels_16x9_video").lower()
+                    prod_lbl = "PIXABAY_16X9_LANDSCAPE_HD" if "pixabay" in src_tag else "PEXELS_16X9_LANDSCAPE_HD"
+                    raw_stock = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw.mp4")
+                    dl_ok = media_agent.download_file(cand_u, raw_stock)
+                    if dl_ok and Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 40_000 and get_duration_ms(raw_stock) >= 1500:
+                        cut_ok = extract_longform_scene_with_internal_jumpcut(
+                            master_path=raw_stock,
+                            output_path=out_path,
+                            start_offset_sec=0.0,
+                            target_duration_sec=max(2.5, float(target_duration_sec)),
+                            scene_id=scene_id,
+                        )
+                        if not cut_ok and get_duration_ms(raw_stock) >= 2500:
+                            Path(raw_stock).replace(out_path)
+                        else:
+                            Path(raw_stock).unlink(missing_ok=True)
+                        if (
+                            Path(out_path).exists()
+                            and Path(out_path).stat().st_size > 35_000
+                            and get_duration_ms(out_path) >= 1200
+                            and _is_clip_window_clean(out_path, [0.8, 2.2])
+                        ):
+                            if scene_id == 1:
+                                try:
+                                    from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                                    _ensure_hook_clip_sharpness_and_luma(out_path, min_sharpness=12.3)
+                                except Exception:
+                                    pass
+                            logger.info(f"Scene {scene_id}: 🎥 [Long-Form {prod_lbl}] Đã tải & cắt Landscape B-Roll -> {Path(out_path).name}")
+                            return {
+                                "media_path": out_path,
+                                "media_type": "video",
+                                "production_method": prod_lbl,
+                                "source_url": cand_u,
+                                "rationale": f"{prod_lbl} ({str(best_vid.get('title') or query)[:45]})",
+                            }
+                        Path(out_path).unlink(missing_ok=True)
+                    Path(raw_stock).unlink(missing_ok=True)
         except Exception as e_stock_16x9:
             logger.debug(f"Scene {scene_id}: Long-form Stock 16:9 lookup skip: {e_stock_16x9}")
         return None
@@ -467,14 +482,25 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # TẦNG -1 (REUSE CACHE): NẾU ĐÃ CÓ FILE MEDIA HỢP LỆ TỪ STORYBOARD HOẶC LẦN CHẠY TRƯỚC
         # ══════════════════════════════════════════════════════════════════════
         if state.get("media_retry_count", 0) == 0 and state.get("content_retry_count", 0) == 0:
+            from app.utils.ffmpeg_helper import get_duration_ms as _get_dur_cache
             pre_m = getattr(scene, "media_path", None)
             if pre_m and Path(pre_m).exists() and Path(pre_m).stat().st_size > 3000:
-                media_path = str(Path(pre_m).resolve())
-                media_type = "video" if media_path.lower().endswith((".mp4", ".mov", ".webm")) else "image"
-                vision_curated = True
-                prod_method = chosen_strategy = "CACHED_MEDIA"
-                logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media có sẵn: {Path(media_path).name}")
-            else:
+                is_vid_pre = str(pre_m).lower().endswith((".mp4", ".mov", ".webm"))
+                if not is_vid_pre or _get_dur_cache(str(pre_m)) >= 1200:
+                    media_path = str(Path(pre_m).resolve())
+                    media_type = "video" if is_vid_pre else "image"
+                    vision_curated = True
+                    prod_method = chosen_strategy = (
+                        "DOODLE_2D_EXPLAINER_VIDEO"
+                        if "doodle" in Path(media_path).name.lower()
+                        else "CHAPTER_POOL_16X9_JUMPCUT_HD"
+                        if "_16x9" in Path(media_path).name.lower()
+                        else "CACHED_MEDIA"
+                    )
+                    logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media có sẵn: {Path(media_path).name}")
+                else:
+                    Path(pre_m).unlink(missing_ok=True)
+            if not media_path:
                 cached_files = sorted(
                     media_dir.glob(f"scene_{scene.scene_id:03d}_*"),
                     key=lambda p: (0 if "_cut" not in p.name else 1, p.name),
@@ -483,11 +509,21 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 for cf in cached_files:
                     if cf.is_file() and cf.stat().st_size > 3000 and cf.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".mp4"):
                         if cf.suffix.lower() == ".mp4" and not media_path:
-                            media_path = str(cf.resolve())
-                            media_type = "video"
-                            vision_curated = True
-                            prod_method = chosen_strategy = "CACHED_MEDIA"
-                            logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Video đã tải trong cache: {cf.name}")
+                            if _get_dur_cache(str(cf)) >= 1200:
+                                media_path = str(cf.resolve())
+                                media_type = "video"
+                                vision_curated = True
+                                prod_method = chosen_strategy = (
+                                    "DOODLE_2D_EXPLAINER_VIDEO"
+                                    if "doodle" in cf.name.lower()
+                                    else "CHAPTER_POOL_16X9_JUMPCUT_HD"
+                                    if "_16x9" in cf.name.lower()
+                                    else "CACHED_MEDIA"
+                                )
+                                logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Video đã tải trong cache: {cf.name}")
+                            else:
+                                logger.warning(f"Scene {scene.scene_id}: 🗑️ Xóa file video cache lỗi/thiếu moov atom: {cf.name}")
+                                cf.unlink(missing_ok=True)
                             break
                         elif cf.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
                             valid_cached_imgs.append(str(cf.resolve()))
@@ -688,7 +724,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     DoodleAnimationTool.render_scene_clip,
                     narration=scene.narration,
                     output_path=out_doodle,
-                    duration_seconds=dur + 0.25,
+                    duration_seconds=dur if is_long_form else (dur + 0.25),
                     scene_id=scene.scene_id,
                     total_scenes=total_scenes,
                     character_tag=c_tag,

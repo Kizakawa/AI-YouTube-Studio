@@ -209,14 +209,15 @@ YOUR ASSIGNED CHAPTERS TO WRITE RIGHT NOW (8 SCENES TOTAL: SCENES {start_sid} TO
    - Premise: {ch_b['chapter_premise']}
    - Chapter 16:9 Visual Motif: "{ch_b['chapter_master_query']}"
 
-MANDATORY PACING & WORD COUNT FOR A TRUE 10-MINUTE DOCUMENTARY (~14–16 SECONDS PER SCENE):
-- {'For Scene 1 (scene_id=1): Start with the Cold-Open Hook ("' + doc_hook + '") followed by 1 gripping follow-up sentence (total 24–32 words for Scene 1).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 2 to 3 complete, rich, gripping documentary sentences totaling 35 to 44 WORDS PER SCENE (~14–16 seconds of spoken narration per scene).'}
-- For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 35 to 44 words of deep, vivid storytelling (real-world dialogue examples, neurological/physical metrics, forensic observations, or surgical counter-moves). NEVER write short 12-word Shorts sentences!
+MANDATORY PACING & WORD COUNT FOR A TRUE 10-MINUTE DOCUMENTARY (~14.5–16.0 SECONDS PER SCENE AT +10% DYNAMIC VOICE SPEED):
+- {'For Scene 1 (scene_id=1): Start with the Cold-Open Hook ("' + doc_hook + '") followed by 1 gripping follow-up sentence (total 24–30 words for Scene 1).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 2 to 3 complete, rich, gripping documentary sentences totaling 38 to 46 WORDS PER SCENE (~14.5–16.0 seconds of spoken narration per scene).'}
+- For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 38 to 46 words of deep, vivid storytelling (real-world dialogue examples, neurological/physical metrics, forensic observations, or surgical counter-moves). NEVER write short 12-word Shorts sentences!
 - ZERO SPOKEN OUTRO CTA: Never say "Subscribe", "Like", or "Leave a comment" in the narration.
-- Self-Contained Visual Queries:
-  * For Scene {start_sid} (start of Chapter {ch_a['chapter_id']}), anchor `visual_keyword` and `stock_query` to "{ch_a['chapter_master_query']}".
-  * For Scene {start_sid+4} (start of Chapter {ch_b['chapter_id']}), anchor `visual_keyword` and `stock_query` to "{ch_b['chapter_master_query']}".
-  * For all other scenes in each chapter, write concrete 3–5 word English physical action queries matching that chapter's setting.
+- Self-Contained & Diverse Multi-Source Visual Queries (CRITICAL — NEVER REPEAT THE SAME QUERY WITHIN A CHAPTER):
+  * For Scene {start_sid} (Slot 1 of Chapter {ch_a['chapter_id']}) and Scene {start_sid+4} (Slot 1 of Chapter {ch_b['chapter_id']}), anchor `visual_keyword` and `stock_query` to the Chapter Master Motif ("{ch_a['chapter_master_query']}" / "{ch_b['chapter_master_query']}").
+  * For Scene {start_sid+1} and Scene {start_sid+5} (Slot 2 of each Chapter), write a DIFFERENT 3–4 word close-up physical / neurological / micro-expression query (e.g. close-up eyes, hands, brain scan, heartbeat, body language) that does NOT repeat Slot 1's words!
+  * For Scene {start_sid+2} and Scene {start_sid+6} (Slot 3 of each Chapter), write a symbolic / conceptual 3–4 word query for our 2D Doodle Explainer animation.
+  * For Scene {start_sid+3} and Scene {start_sid+7} (Slot 4 of each Chapter), write a DIFFERENT 3–5 word wide environmental or counter-move action query (e.g. walking night city, chess move, calm negotiation, horizon) completely distinct from Slots 1 & 2!
 
 Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`scene_id` {start_sid} through {end_sid}):
 {{
@@ -224,7 +225,7 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
     {{
       "scene_id": {start_sid},
       "visual_reasoning": "Chapter {ch_a['chapter_id']} visual intent",
-      "narration": "2 to 3 complete documentary sentences in {target_lang_display} totaling 35 to 44 words...",
+      "narration": "2 to 3 complete documentary sentences in {target_lang_display} totaling 38 to 46 words...",
       "visual_keyword": "{ch_a['chapter_master_query']}",
       "visual_prompt": "Cinematic 16:9 widescreen shot of {ch_a['chapter_master_query']}",
       "stock_query": "{' '.join(str(ch_a['chapter_master_query']).split()[:3])}",
@@ -233,10 +234,16 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
       "sfx_cue": "impact_boom",
       "highlight_words": ["WORD1", "WORD2"],
       "overlay_badge": null,
-      "estimated_seconds": 14.5
+      "estimated_seconds": 15.0
     }}
   ]
 }}"""
+        slot_angle_suffixes = [
+            "",
+            "close up face eyes expression",
+            "psychological mechanism diagram",
+            "cinematic wide environment motion",
+        ]
         for attempt_b in range(2):
             try:
                 raw_b = agent._call_api(batch_prompt, json_mode=True, timeout=40, max_total_seconds=65)
@@ -248,6 +255,7 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                     for idx_local in range(8):
                         target_id = start_sid + idx_local
                         ch_cur = ch_a if idx_local < 4 else ch_b
+                        slot_in_ch = idx_local % 4
                         if idx_local < len(b_scenes) and isinstance(b_scenes[idx_local], dict):
                             sc_item = dict(b_scenes[idx_local])
                         else:
@@ -271,17 +279,22 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                                 narr_txt = " ".join(s1_words[:25]).rstrip(",;:") + "."
                             elif len(s1_words) < 12:
                                 narr_txt = doc_hook.replace("?", ".")
-                        elif len(narr_txt.split()) < 35:
+                        elif len(narr_txt.split()) < 38:
                             extra_premise = str(ch_cur.get("chapter_premise") or "").strip().rstrip(".")
                             narr_txt = (
-                                f"{narr_txt} In forensic behavioral analysis, {extra_premise[:110].lower()}, "
+                                f"{narr_txt} In forensic behavioral analysis, {extra_premise[:115].lower()}, "
                                 f"exposing the underlying psychological leverage before the other person can recalibrate their script."
                             ).strip()
                         sc_item["narration"] = narr_txt
-                        if idx_local in (0, 4) or not sc_item.get("visual_keyword"):
-                            sc_item["visual_keyword"] = str(ch_cur.get("chapter_master_query") or "tense business meeting")
-                        if idx_local in (0, 4) or not sc_item.get("stock_query"):
-                            sc_item["stock_query"] = " ".join(str(ch_cur.get("chapter_master_query") or "business meeting").split()[:3])
+                        master_q_cur = str(ch_cur.get("chapter_master_query") or "tense business meeting").strip()
+                        cur_vk = str(sc_item.get("visual_keyword") or "").strip()
+                        cur_sq = str(sc_item.get("stock_query") or "").strip()
+                        if slot_in_ch == 0 or not cur_vk:
+                            sc_item["visual_keyword"] = master_q_cur if slot_in_ch == 0 else f"{master_q_cur} {slot_angle_suffixes[slot_in_ch]}".strip()
+                        elif cur_vk.lower() == master_q_cur.lower() and slot_in_ch in (1, 3):
+                            sc_item["visual_keyword"] = f"{cur_vk} {slot_angle_suffixes[slot_in_ch]}".strip()
+                        if slot_in_ch == 0 or not cur_sq:
+                            sc_item["stock_query"] = " ".join(sc_item["visual_keyword"].split()[:4])
                         if not sc_item.get("visual_prompt"):
                             sc_item["visual_prompt"] = f"Cinematic 16:9 widescreen documentary shot of {sc_item['visual_keyword']}"
                         sc_item["media_type"] = "video"
@@ -290,7 +303,7 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                             sc_item["overlay_badge"] = f"[ // {ch_lbl.upper()} // ]"
                         else:
                             sc_item["overlay_badge"] = None
-                        sc_item["estimated_seconds"] = round(max(11.0, len(narr_txt.split()) / 2.45), 1)
+                        sc_item["estimated_seconds"] = round(max(11.0, len(narr_txt.split()) / 2.62), 1)
                         normalized_b.append(sc_item)
                     return normalized_b
             except Exception as e_b:

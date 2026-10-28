@@ -65,6 +65,8 @@ CHANNELS_CONFIG = {
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict English only."
         ),
         "topics": [
+            "Portuguese Man O' War vs Loggerhead Sea Turtle: How a 400-Pound Armored Reptile Devours 165-Foot Venomous Tentacles",
+            "400°C Black Smoker Hydrothermal Vent vs Giant Tube Worms: How Deep-Sea Creatures Survive Boiling Acid at 8,000 Feet Without Sunlight",
             "Blue-Ringed Octopus vs Giant Moray Eel: How a 5-Inch Ocean Creature Carries Tetrodotoxin Venom 1,200 Times Deadlier Than Cyanide",
             "Naica Cave of the Crystals vs 136°F Steam at 1,000 Feet Deep: Why Human Lungs Drown Inside Mexico Giant Crystal Chamber",
             "Sharks vs Kavachi Underwater Volcano: Why Hammerheads Hunt Inside a 212°F Acidic Ocean Crater",
@@ -107,9 +109,10 @@ CHANNELS_CONFIG = {
             "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology style). Strict English only."
         ),
         "topics": [
+            "1961 Yale Milgram Experiment vs 450-Volt Authority Switch: Why 65% of Ordinary People Obeyed the Final Lethal Command",
+            "FBI Foot-Freeze Interrogation Test vs Trained Liars: Why Guilty Suspects Control Their Face But Betray Deception Below the Desk",
             "Water Cup Barrier Test vs Guilty Suspects: Why Detectives Place a Paper Cup 6 Inches From Your Hand to Expose Deception",
             "Las Vegas Casino Labyrinth vs Human Brain: How Zero Clocks and Curved Carpets Trigger a 400% Dopamine Trap",
-            "1961 Yale Milgram Experiment vs 450-Volt Authority Switch: Why 65% of Ordinary People Obeyed the Final Lethal Command",
             "The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a Suspect",
             "Inside the -9.4 Decibel Chamber: Why No Human Brain Can Survive 45 Minutes of Total Silence",
             "Why Guilty Suspects Repeat Your Exact Question Before Answering in Police Interrogations",
@@ -151,14 +154,14 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, adrenaline-pumping, National Geographic documentary style. Strict English only."
         ),
         "topics": [
+            "Hippopotamus vs Nile Crocodile: How a 4,000-Pound River Titan Uses an 1,820 PSI Tusk Bite to Dominate 16-Foot Reptiles",
+            "Spotted Hyena Clan vs African Leopard: How an 1,100 PSI Bone-Crushing Jaw Steals Kills From a 150-Pound Stealth Cat",
             "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive and 440 PSI Talons",
             "Siberian Tiger vs 1,000-Pound Brown Bear: How a 660-Pound Big Cat Uses a 1,050 PSI Cervical Bite in the Frozen Taiga",
             "Electric Eel vs Caiman: How an 860-Volt Biological Taser Stops a River Predator",
             "African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop a 150-Pound Ambush",
             "Cassowary: Why Nothing in the Jungle Messes With This 130-Pound Dinosaur Bird's 5-Inch Dagger Kick",
             "Cape Buffalo vs Lion Pride: Why the 2,000-Pound Black Death Hunts Its Own Predators",
-            "Spotted Hyena vs Leopard: The 1,100 PSI Bone-Crushing Jaws That Shatter Femurs",
-            "Golden Eagle vs Mountain Goat: How a 15-Pound Raptor Pulls 150-Pound Prey Off Vertical Cliffs",
             "Mongoose vs Black Mamba: The 0.03-Second Reflex and Venom-Proof Receptors That Beat Africa's Deadliest Snake",
             "Tasmanian Devil: How a 26-Pound Beast Delivers the Strongest Bite Per Pound of Any Living Mammal",
             "Goliath Tigerfish: The 70-Pound Congo River Predator With 32 Interlocking Razor Teeth",
@@ -191,18 +194,18 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin documentary style. Strict English only."
         ),
         "topics": [
+            "1986 Chernobyl Divers vs 20-Megaton Steam Explosion: How 3 Volunteers Drained 20,000 Tons of Radioactive Water to Save Europe",
+            "1588 Spanish Armada 130 Warships vs English Fire Ships: How 8 Burning Hulks at Midnight Shattered the World's Richest Empire",
             "1281 Kamikaze Mega-Typhoon vs Kublai Khan 4,400 Warships: How a 2-Day Hurricane Sank 140,000 Troops and Saved Samurai Japan",
             "1815 Mount Tambora Super-Eruption vs The Year Without a Summer: How a VEI-7 Volcano Froze Crops in June 1816",
             "How 1 Unlocked Gate in 1453 Ended the 1,100-Year Byzantine Empire at Constantinople",
             "What If the 1983 Stanislav Petrov Satellite Glitch Launched 10,000 Nuclear Warheads?",
-            "What If the Mongol Typhoon of 1281 Never Stopped Kublai Khan's 4,400 Warships?",
             "What If Operation Unthinkable Happened in 1945: Churchill's Secret Plan to Invade the USSR",
             "How One Wrong Turn By A Driver In 1914 Erased Four Empires Forever",
             "The Man Who Refused To Launch A Nuclear Strike In 1962 Inside Submarine B-59",
             "How A 15-Minute Rainstorm At Waterloo Ended Napoleon's Empire",
             "What If The Titanic Never Hit The Iceberg? The Dark Truth Nobody Tells You",
             "What If The Roman Empire Discovered Steam Engines 1,800 Years Early?",
-            "How One Unlocked Gate In 1453 Ended The 1,000-Year Byzantine Empire",
             "What If The Library Of Alexandria Was Never Burned Down?",
             "How A Single Jammed Rifle In 1914 Changed The Entire 20th Century",
         ],
@@ -231,6 +234,9 @@ CHANNELS_CONFIG = {
             "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Dragão-de-Komodo de 130 Quilos vs Búfalo-Asiático de 500 Quilos: Como Glândulas de Veneno Anticoagulante Derrubam um Gigante",
+            "Casuar de 60 Quilos vs Predadores da Selva: Como um Chute de 1.500 PSI e Garra-Adaga de 12 Centímetros Dominam a Floresta",
+            "Águia-Real vs Cabra-da-Montanha de 70 Quilos: Como um Mergulho a 240 km/h e Garras de 440 PSI Dominam Penhascos Verticais",
             "Porco-Espinho-Africano vs Leopardo: Como 30.000 Espinhos Farpados de Queratina Param um Felino de 70 Quilos na Savana",
             "Carcaju de 16 Quilos vs Urso-Pardo de 350 Quilos: Como o Demônio da Neve Usa Mandíbulas Quebradoras de Ossos no Ártico",
             "Mamba-Negra vs Mangusto: O Reflexo de 15 Milissegundos Que Humilha a Cobra Mais Letal da África",
@@ -240,7 +246,6 @@ CHANNELS_CONFIG = {
             "Onça-Pintada vs Bando de Queixadas: Por Que 100 Porcos Selvagens Fazem o Maior Felino Subir nas Árvores",
             "Guepardo vs Avestruz: O Chute de 2.000 PSI Que Pode Matar o Felino Mais Rápido da Terra",
             "Lobo-Cinzento vs Alce Gigante: A Estratégia de Caça na Neve Profunda Onde Um Coice É Fatal",
-            "Águia-Real vs Cabra-da-Montanha: A Emboscada Aérea a 240 km/h nos Penhascos Mais Íngremes",
             "Hipopótamo vs Alcateia de Leões: Por Que 6 Leões Famintos Recuam Diante Deste Gigante nos Rios Africanos",
         ],
         "default_tags": [
@@ -268,32 +273,22 @@ CHANNELS_CONFIG = {
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Polvo-de-Anéis-Azuis de 12 Centímetros vs Moreia-Gigante: Como a Tetrodotoxina 1.200 Vezes Mais Letal Que Cianeto Paralisa em Segundos",
+            "Chaminés Hidrotermais Negras a 400°C vs Vermes-Tubulares Gigantes: Como Criaturas Abissais Sobrevivem Sem Sol a 2.500 Metros no Mar",
             "Caravela-Portuguesa vs Tartaruga-de-Couro: Como uma Gigante de 700 Quilos Devora Tentáculos Venenosos de 50 Metros no Mar",
             "Dedo Gélido da Morte (Brinicle) a -2°C vs Fundo do Mar da Antártida: O Tornado de Gelo Submarino Que Congela Tudo",
             # [1-1 VISUAL CONTRAST INTERLEAVED QUEUE — Đan xen Dị thường Địa chất/Nhiệt độ/Hóa học <-> Đại chiến Sinh vật Đa dạng Họ]
-            "Chaminés Hidrotermais Negras a 400°C: Os Vermes Gigantes Que Vivem Sem Sol no Fundo do Oceano",
             "Enguia-Pelicano vs Lula-Vampiro: Como Monstros a 2.500 Metros Caçam Sem Oxigênio na Zona da Meia-Noite",
             "Fossa de Porto Rico a 8.376 Metros: A Anomalia Gravitacional no Fundo do Oceano Atlântico",
-            "Polvo-de-Anéis-Azuis vs Moreia-Gigante: O Veneno Sem Antídoto Que Paralisa em 120 Segundos",
             "Lago Nyos: A Nuvem Invisível de 1,6 Milhão de Toneladas de CO2 Que Sufocou um Vale Inteiro",
             "Peixe-Dragão Negro a 2.000 Metros: O Predador Invisível Que Produz Luz Infravermelha no Abismo",
             "O Cemitério de Baleias a 4.000 Metros: Como um Único Esqueleto Alimenta Monstros Cegos Por 50 Anos",
-            "Caravela-Portuguesa vs Tartaruga-de-Couro: Como Tentáculos Venenosos de 50 Metros São Devorados no Mar",
             "Por Que Submarinos Militares Apagam Todas as Luzes Ao Cruzar 3.000 Metros na Zona Abissal",
             "Vespa-do-Mar: A Água-Viva Invisível Cujo Veneno Para o Coração Humano em 2 Minutos",
             "Tubarão-da-Groenlândia vs Lula-Gigante: O Predador Cego de 400 Anos nas Profundezas do Ártico",
             "Vulcão Submarino Kavachi: A Cratera em Ebulição a 100°C no Fundo do Oceano Pacífico",
             "Orca vs Tubarão-Branco de 2 Toneladas: O Golpe Cirúrgico Que Faz o Maior Predador Fugir do Oceano",
             "Tubarão-Duende vs Peixe-Diabo Negro: A Mandíbula Que Dispara em 0,02 Segundo a 3.000 Metros no Mar",
-            "Vulcão Submarino Kavachi: A Cratera em Ebulição no Oceano Onde Tubarões Caçam em Água Ácida",
-            "Orca vs Tubarão-Branco de 2 Toneladas: O Golpe Cirúrgico Que Faz o Maior Predador Fugir do Oceano",
-            "Tubarão-Duende vs Peixe-Diabo Negro: A Mandíbula Que Dispara em 0,02 Segundo a 3.000 Metros no Mar",
-            "Enguia-Pelicano e Lula-Vampiro: Como Monstros a 2.500 Metros Caçam Sem Oxigênio na Zona da Meia-Noite",
-            "Fossa de Porto Rico a 8.376 Metros: A Anomalia Gravitacional no Fundo do Oceano Atlântico",
-            "Chaminés Hidrotermais Negras a 400°C: Os Vermes Gigantes Que Vivem Sem Sol no Fundo do Oceano",
-            "Peixe-Dragão Negro a 2.000 Metros: O Predador Invisível Que Produz Luz Vermelha Infra-Vermelha no Abismo",
-            "Por Que Submarinos Militares Apagam Todas as Luzes Ao Cruzar 3.000 Metros na Zona Abissal",
-            "O Cemitério de Baleias a 4.000 Metros: Como um Único Esqueleto Alimenta Monstros Cegos Por 50 Anos",
         ],
         "default_tags": [
             "shorts", "misterios", "oceano", "curiosidades", "bizarro",

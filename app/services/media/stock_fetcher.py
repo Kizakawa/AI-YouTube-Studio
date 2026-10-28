@@ -950,20 +950,25 @@ class StockFetcher:
                 search_q_list.append(q_short)
 
         def _try_pixabay_for_q(q_try: str) -> Optional[Dict[str, Any]]:
-            px_vids = self.search_pixabay_videos(q_try, per_page=8)
+            px_vids = self.search_pixabay_videos(q_try, per_page=10)
             for pv in (px_vids or []):
                 p_url = str(pv.get("url") or "")
+                px_id_key = f"pixabay_vid_{pv.get('id') or p_url}"
                 pw = int(pv.get("width") or 0)
                 ph = int(pv.get("height") or 0)
                 p_title = str(pv.get("title") or "")
                 if is_incongruent_stock_image(p_title, topic=f"{topic} {q_try}".strip(), narration=narration):
                     continue
-                if p_url and pw > ph and ph >= 720 and not is_media_already_used(p_url, used):
+                if p_url and pw > ph and ph >= 720 and px_id_key not in used and not is_media_already_used(p_url, used):
                     record_used_media(p_url, query=q_try, source="pixabay_16x9_video")
                     ids = extract_media_identity(p_url)
+                    used.update(ids)
+                    used.add(p_url)
+                    used.add(px_id_key)
                     if used_urls is not None:
                         used_urls.update(ids)
                         used_urls.add(p_url)
+                        used_urls.add(px_id_key)
                     return {
                         "url": p_url,
                         "title": pv.get("title", f"Pixabay 16:9 HD: {q_try}"),
@@ -976,8 +981,11 @@ class StockFetcher:
             return None
 
         def _try_pexels_for_q(q_try: str) -> Optional[Dict[str, Any]]:
-            vids = self.search_videos(q_try, per_page=10, orientation="landscape")
+            vids = self.search_videos(q_try, per_page=12, orientation="landscape")
             for v in (vids or []):
+                v_id_key = f"pexels_vid_{v.get('id') or v.get('url')}"
+                if v_id_key in used:
+                    continue
                 v_desc = str(v.get("url") or v.get("title") or "")
                 if is_incongruent_stock_image(v_desc, topic=f"{topic} {q_try}".strip(), narration=narration):
                     continue
@@ -1007,23 +1015,27 @@ class StockFetcher:
                     ),
                     reverse=True,
                 )
-                for best in landscape_files:
-                    link = str(best.get("link") or "")
-                    if link and not is_media_already_used(link, used):
-                        record_used_media(link, query=q_try, source="pexels_16x9_video")
-                        ids = extract_media_identity(link)
-                        if used_urls is not None:
-                            used_urls.update(ids)
-                            used_urls.add(link)
-                        return {
-                            "url": link,
-                            "title": f"Pexels 16:9 HD: {v.get('url', q_try)}",
-                            "width": int(best.get("width") or 1920),
-                            "height": int(best.get("height") or 1080),
-                            "duration": float(v.get("duration") or 10.0),
-                            "media_type": "video",
-                            "source": "pexels_16x9_video",
-                        }
+                best = landscape_files[0]
+                link = str(best.get("link") or "")
+                if link and not is_media_already_used(link, used):
+                    record_used_media(link, query=q_try, source="pexels_16x9_video")
+                    ids = extract_media_identity(link)
+                    used.update(ids)
+                    used.add(link)
+                    used.add(v_id_key)
+                    if used_urls is not None:
+                        used_urls.update(ids)
+                        used_urls.add(link)
+                        used_urls.add(v_id_key)
+                    return {
+                        "url": link,
+                        "title": f"Pexels 16:9 HD: {v.get('url', q_try)}",
+                        "width": int(best.get("width") or 1920),
+                        "height": int(best.get("height") or 1080),
+                        "duration": float(v.get("duration") or 10.0),
+                        "media_type": "video",
+                        "source": "pexels_16x9_video",
+                    }
             return None
 
         for idx_q, q_try in enumerate(search_q_list[:6]):

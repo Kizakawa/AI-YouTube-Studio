@@ -483,8 +483,8 @@ class VoiceAgent:
         sem = asyncio.Semaphore(8 if is_long_form else 4)
         total_scenes = len(scenes)
         if is_long_form and not rate:
-            # Nhịp phim tài liệu 16:9 chuẩn (145–150 WPM): điềm tĩnh, chiều sâu, đạt đúng ~10 phút với ~1,500 từ
-            rate = "-4%"
+            # Nhịp phim tài liệu 16:9 tăng +10% tốc độ (từ -4% lên +6%, ~156–164 WPM): dứt khoát, cuốn hút, đạt chuẩn ~10 phút với ~1,600 từ
+            rate = "+6%"
         # Xác định giọng đọc đồng nhất trên toàn bộ kịch bản (tránh trường hợp 1 câu ngắn bị nhận diện lệch ngôn ngữ)
         full_script_text = " ".join(getattr(s, "narration", "") or "" for s in scenes)
         base_requested = voice or (self.get_persona_voice(niche_id=niche) if niche else self.default_voice)
@@ -585,7 +585,7 @@ class VoiceAgent:
                 used_http_fallback = False
                 scene_engine_used = self.last_used_engine
                 last_err = None
-                kokoro_scene_speed = 1.20 if is_hook_scene else (1.12 if is_second_scene else 1.04)
+                kokoro_scene_speed = 1.22 if is_hook_scene else (1.14 if is_second_scene else (1.12 if is_long_form else 1.04))
 
                 # ── TIER 1A-KOKORO: Nếu bật ENABLE_KOKORO_TTS=true và có model local -> Ưu tiên Kokoro-82M Neural ──
                 if not success and not global_safe_voice.startswith("vi-"):
@@ -1081,7 +1081,7 @@ class VoiceAgent:
             tempo_prefix = "atempo=1.05,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-40dB,"
             tail_pad = "0.02"
         else:
-            tempo_prefix = ""
+            tempo_prefix = "atempo=1.02,"
             tail_pad = "0.02"
 
         af_chain = (
@@ -1109,7 +1109,7 @@ class VoiceAgent:
             if is_http_fallback or is_hook_scene or is_second_scene:
                 min_valid_dur = max(250, int(orig_dur * 0.58) - 450)
             else:
-                min_valid_dur = max(300, orig_dur - 1350)
+                min_valid_dur = max(300, min(orig_dur - 1350, int(orig_dur * 0.80) - 500))
             if Path(tmp_out).exists() and Path(tmp_out).stat().st_size > 1024 and new_dur >= min_valid_dur:
                 Path(tmp_out).replace(p)
             else:

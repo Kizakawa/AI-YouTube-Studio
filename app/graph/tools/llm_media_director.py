@@ -126,112 +126,118 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     decisions_by_scene: Dict[int, Dict[str, Any]] = {}
 
-    try:
-        import requests
-        from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
+    if not (is_long_form_dir and total_scenes >= 28):
+        try:
+            import requests
+            from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 
-        keys = settings.get_gemini_keys_pool()
-        rotator = KeyRotator(keys) if keys else None
-        if rotator and rotator.has_keys:
-            func_declarations = []
-            for t_obj in MEDIA_DIRECTOR_TOOLS:
-                schema = t_obj.args_schema.model_json_schema() if getattr(t_obj, "args_schema", None) else {}
-                props = {}
-                for k_prop, v_prop in (schema.get("properties") or {}).items():
-                    p_type = (v_prop.get("type") or "string").upper()
-                    if p_type == "NUMBER":
-                        p_type = "NUMBER"
-                    elif p_type == "INTEGER":
-                        p_type = "INTEGER"
-                    else:
-                        p_type = "STRING"
-                    props[k_prop] = {
-                        "type": p_type,
-                        "description": v_prop.get("description") or k_prop,
-                    }
-                req_fields = list(schema.get("required") or ["scene_id"])
-                if t_obj.name == "clone_youtube_short_peak_clip":
-                    for extra_req in ("overall_script_query", "fallback_broad_query"):
-                        if extra_req in props and extra_req not in req_fields:
-                            req_fields.append(extra_req)
-                elif t_obj.name == "search_pexels_pixabay_stock_video":
-                    for extra_req in ("secondary_stock_query", "overall_script_query"):
-                        if extra_req in props and extra_req not in req_fields:
-                            req_fields.append(extra_req)
-                func_declarations.append({
-                    "name": t_obj.name,
-                    "description": t_obj.description,
-                    "parameters": {
-                        "type": "OBJECT",
-                        "properties": props,
-                        "required": req_fields,
-                    },
-                })
+            keys = settings.get_gemini_keys_pool()
+            rotator = KeyRotator(keys) if keys else None
+            if rotator and rotator.has_keys:
+                func_declarations = []
+                for t_obj in MEDIA_DIRECTOR_TOOLS:
+                    schema = t_obj.args_schema.model_json_schema() if getattr(t_obj, "args_schema", None) else {}
+                    props = {}
+                    for k_prop, v_prop in (schema.get("properties") or {}).items():
+                        p_type = (v_prop.get("type") or "string").upper()
+                        if p_type == "NUMBER":
+                            p_type = "NUMBER"
+                        elif p_type == "INTEGER":
+                            p_type = "INTEGER"
+                        else:
+                            p_type = "STRING"
+                        props[k_prop] = {
+                            "type": p_type,
+                            "description": v_prop.get("description") or k_prop,
+                        }
+                    req_fields = list(schema.get("required") or ["scene_id"])
+                    if t_obj.name == "clone_youtube_short_peak_clip":
+                        for extra_req in ("overall_script_query", "fallback_broad_query"):
+                            if extra_req in props and extra_req not in req_fields:
+                                req_fields.append(extra_req)
+                    elif t_obj.name == "search_pexels_pixabay_stock_video":
+                        for extra_req in ("secondary_stock_query", "overall_script_query"):
+                            if extra_req in props and extra_req not in req_fields:
+                                req_fields.append(extra_req)
+                    func_declarations.append({
+                        "name": t_obj.name,
+                        "description": t_obj.description,
+                        "parameters": {
+                            "type": "OBJECT",
+                            "properties": props,
+                            "required": req_fields,
+                        },
+                    })
 
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "tools": [{"function_declarations": func_declarations}],
-                "tool_config": {"function_calling_config": {"mode": "ANY"}},
-                "generationConfig": {"temperature": 0.2},
-            }
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "tools": [{"function_declarations": func_declarations}],
+                    "tool_config": {"function_calling_config": {"mode": "ANY"}},
+                    "generationConfig": {"temperature": 0.2},
+                }
 
-            tool_capable_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
-            for model_name, api_key in rotator.iter_best_model_key_pairs(tool_capable_models):
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                try:
-                    resp = requests.post(url, json=payload, timeout=32 if total_scenes >= 25 else 18)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        parts = (
-                            data.get("candidates", [{}])[0]
-                            .get("content", {})
-                            .get("parts", [])
-                        )
-                        for p in parts:
-                            fc = p.get("functionCall")
-                            if fc and isinstance(fc, dict):
-                                t_name = fc.get("name", "")
-                                t_args = dict(fc.get("args") or {})
-                                for str_k in (
-                                    "creature_name",
-                                    "scale_anchor_object",
-                                    "subject_entity",
-                                    "action_or_concept_query",
-                                    "human_action_query",
-                                    "overall_script_query",
-                                    "youtube_search_query",
-                                    "fallback_broad_query",
-                                    "primary_stock_query",
-                                    "secondary_stock_query",
-                                    "smart_image_query",
-                                    "character_tag",
-                                    "prop_type",
-                                    "scene_concept_summary",
-                                ):
-                                    if str_k in t_args:
-                                        t_args[str_k] = _sanitize_tool_arg(t_args.get(str_k), fallback="")
-                                sid = int(t_args.get("scene_id") or 0)
-                                if sid > 0:
-                                    t_args["tool_name"] = t_name
-                                    decisions_by_scene[sid] = t_args
-                        if decisions_by_scene:
-                            scope_summary = ", ".join(
-                                f"S{sid}:{d.get('tool_name')}[{d.get('search_scope', 'SCENE_SPECIFIC')}]"
-                                for sid, d in sorted(decisions_by_scene.items())
+                tool_capable_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
+                for model_name, api_key in rotator.iter_best_model_key_pairs(tool_capable_models):
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                    try:
+                        resp = requests.post(url, json=payload, timeout=32 if total_scenes >= 25 else 18)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            parts = (
+                                data.get("candidates", [{}])[0]
+                                .get("content", {})
+                                .get("parts", [])
                             )
-                            logger.info(
-                                f"🧠 [LLM Tool Director] Đã chọn Tool & Scope cho {len(decisions_by_scene)}/{total_scenes} cảnh "
-                                f"qua `{model_name}` ({scope_summary})"
-                            )
-                            break
-                    elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
-                        rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
-                except Exception as req_err:
-                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(req_err))
-                    logger.debug(f"[LLM Tool Director] {model_name} error: {req_err}")
-                    continue
-    except Exception as ex:
-        logger.warning(f"[LLM Tool Director] bind_tools fallback sang heuristic thông minh: {ex}")
+                            for p in parts:
+                                fc = p.get("functionCall")
+                                if fc and isinstance(fc, dict):
+                                    t_name = fc.get("name", "")
+                                    t_args = dict(fc.get("args") or {})
+                                    for str_k in (
+                                        "creature_name",
+                                        "scale_anchor_object",
+                                        "subject_entity",
+                                        "action_or_concept_query",
+                                        "human_action_query",
+                                        "overall_script_query",
+                                        "youtube_search_query",
+                                        "fallback_broad_query",
+                                        "primary_stock_query",
+                                        "secondary_stock_query",
+                                        "smart_image_query",
+                                        "character_tag",
+                                        "prop_type",
+                                        "scene_concept_summary",
+                                    ):
+                                        if str_k in t_args:
+                                            t_args[str_k] = _sanitize_tool_arg(t_args.get(str_k), fallback="")
+                                    sid = int(t_args.get("scene_id") or 0)
+                                    if sid > 0:
+                                        t_args["tool_name"] = t_name
+                                        decisions_by_scene[sid] = t_args
+                            if decisions_by_scene:
+                                scope_summary = ", ".join(
+                                    f"S{sid}:{d.get('tool_name')}[{d.get('search_scope', 'SCENE_SPECIFIC')}]"
+                                    for sid, d in sorted(decisions_by_scene.items())
+                                )
+                                logger.info(
+                                    f"🧠 [LLM Tool Director] Đã chọn Tool & Scope cho {len(decisions_by_scene)}/{total_scenes} cảnh "
+                                    f"qua `{model_name}` ({scope_summary})"
+                                )
+                                break
+                        elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
+                            rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
+                    except Exception as req_err:
+                        rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(req_err))
+                        logger.debug(f"[LLM Tool Director] {model_name} error: {req_err}")
+                        continue
+        except Exception as ex:
+            logger.warning(f"[LLM Tool Director] bind_tools fallback sang heuristic thông minh: {ex}")
+    else:
+        logger.info(
+            f"⚡ [LLM Tool Director Fast-Pass] Kịch bản Phim Tài Liệu 10 Chương ({total_scenes} cảnh) đã có truy vấn đa nguồn "
+            f"độc lập cho từng cảnh -> Kích hoạt điều phối Đa Nguồn 16:9 tức thì!"
+        )
 
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
@@ -385,13 +391,19 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "scope_audited": False,
             })
 
-    # Kênh Tâm lý học / Triết học: Cân bằng tỷ lệ vàng giữa Video B-Roll người thật 16:9 (>= 75%) và Hoạt họa 2D Doodle Explainer (~24%: Scene 3, 7, 11, 15)
+    # Kênh Tâm lý học / Triết học: Cân bằng tỷ lệ vàng giữa Video B-Roll người thật 16:9 (>= 75%) và Hoạt họa 2D Doodle Explainer (~24%: Scene 3, 7, 11, 15...)
     if str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy") and total_scenes >= 5:
         doodle_cycle = [
             ("@MANIPULATOR", "puppet_strings"),
             ("@MODERNYOU", "split"),
             ("@PLEASER", "brain_battery"),
             ("@ANCESTOR", "spear_nature"),
+            ("@FARMER", "alarm"),
+            ("@MANIPULATOR", "mask"),
+            ("@MODERNYOU", "block"),
+            ("@PLEASER", "magnifying_glass"),
+            ("@ANCESTOR", "money_scale"),
+            ("@FARMER", "climax"),
         ]
         target_doodle_sids = (
             {s_id for s_id in range(3, total_scenes, 4) if s_id not in (1, total_scenes)}
@@ -401,8 +413,10 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         if is_long_form_dir:
             for idx_d, d_it in enumerate(final_plan):
                 s_id_cur = int(d_it.get("scene_id") or (idx_d + 1))
+                if total_scenes >= 28:
+                    d_it["scope_audited"] = True
                 if s_id_cur in target_doodle_sids:
-                    c_tag, p_type = doodle_cycle[(s_id_cur // 4) % len(doodle_cycle)]
+                    c_tag, p_type = doodle_cycle[((s_id_cur - 3) // 4) % len(doodle_cycle)]
                     d_it["tool_name"] = "render_doodle_2d_explainer_scene"
                     d_it["character_tag"] = c_tag
                     d_it["prop_type"] = p_type

@@ -228,6 +228,20 @@ class VideoAgent:
                 scene = scene.model_copy(update={"media_path": placeholder, "media_type": "image"})
 
             raw_type = (scene.media_type or "image").lower()
+            if (
+                Path(clip_path).exists()
+                and Path(clip_path).stat().st_size > 25_000
+                and scene.media_path
+                and Path(scene.media_path).exists()
+                and Path(clip_path).stat().st_mtime >= Path(scene.media_path).stat().st_mtime
+            ):
+                from app.utils.ffmpeg_helper import get_duration_ms as _get_c_dur
+                c_sec = _get_c_dur(clip_path) / 1000.0
+                if abs(c_sec - duration) <= 0.12:
+                    logger.info(
+                        f"  Scene {scene.scene_id}: ⚡ Tái sử dụng clip đã render ({Path(clip_path).name}, {c_sec:.2f}s)"
+                    )
+                    return (scene.scene_id, clip_path)
             is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
             clip_niche = getattr(job, "niche", None)
             is_scifi_clip = getattr(job, "is_scifi", False) or ("scifi" in str(clip_niche or "").lower()) or ("scifi" in (getattr(scene, "visual_keyword", "") or "").lower())
@@ -277,32 +291,81 @@ class VideoAgent:
                 if is_already_rendered and job.resolution_w == 1920:
                     from app.utils.ffmpeg_helper import get_duration_ms
                     actual_v_sec = get_duration_ms(scene.media_path) / 1000.0
-                    if actual_v_sec >= duration - 0.05:
+                    if abs(actual_v_sec - duration) <= 0.08:
                         logger.info(
-                            f"  Scene {scene.scene_id}: ⚡ 16:9 Ready Clip ({Path(scene.media_path).name}, {actual_v_sec:.1f}s >= {duration:.1f}s) → copy trực tiếp sang Single-Pass Concat"
+                            f"  Scene {scene.scene_id}: ⚡ 16:9 Ready Clip ({Path(scene.media_path).name}, {actual_v_sec:.2f}s == {duration:.2f}s) → copy trực tiếp sang Single-Pass Concat"
                         )
                         if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
                             shutil.copy2(scene.media_path, clip_path)
                         return (scene.scene_id, clip_path)
+                    elif actual_v_sec > duration + 0.08:
+                        import subprocess as _sp_trim
+                        logger.info(
+                            f"  Scene {scene.scene_id}: ⚡ 16:9 Exact Duration Sync ({Path(scene.media_path).name}, {actual_v_sec:.2f}s → {duration:.2f}s)"
+                        )
+                        _sp_trim.run(
+                            [
+                                "ffmpeg", "-y", "-v", "error",
+                                "-i", str(scene.media_path),
+                                "-t", f"{duration:.3f}",
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                                "-pix_fmt", "yuv420p", "-r", str(job.fps), "-an",
+                                str(clip_path),
+                            ],
+                            stdout=_sp_trim.DEVNULL,
+                            stderr=_sp_trim.DEVNULL,
+                            timeout=30,
+                            check=False,
+                        )
+                        if Path(clip_path).exists() and Path(clip_path).stat().st_size > 20_000:
+                            return (scene.scene_id, clip_path)
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
                     f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
                     f"{' [Already Graded]' if is_already_rendered else f' [{clip_niche} Grading]' if clip_niche else ''}"
                 )
-                trim_video(
-                    input_path=scene.media_path,
-                    duration_seconds=duration,
-                    output_path=clip_path,
-                    width=job.resolution_w,
-                    height=job.resolution_h,
-                    fps=job.fps,
-                    is_scifi=is_scifi_clip,
-                    niche=clip_niche,
-                    apply_grading=(not is_already_rendered),
-                    is_hook_scene=is_hook,
-                    fair_use_transform=False,
-                    preserve_continuous_flow=True,
-                )
+                try:
+                    trim_video(
+                        input_path=scene.media_path,
+                        duration_seconds=duration,
+                        output_path=clip_path,
+                        width=job.resolution_w,
+                        height=job.resolution_h,
+                        fps=job.fps,
+                        is_scifi=is_scifi_clip,
+                        niche=clip_niche,
+                        apply_grading=(not is_already_rendered),
+                        is_hook_scene=is_hook,
+                        fair_use_transform=False,
+                        preserve_continuous_flow=True,
+                    )
+                except Exception as e_trim:
+                    from app.utils.ffmpeg_helper import get_duration_ms
+                    logger.warning(f"  Scene {scene.scene_id}: ⚠️ Clip gốc bị lỗi ({e_trim}), tự động phục hồi từ kho video sạch trong job...")
+                    media_dir_fallback = Path(work_dir) / "media"
+                    donor_vid = None
+                    for cand_mp4 in sorted(media_dir_fallback.glob("scene_*_16x9.mp4")) + sorted(media_dir_fallback.glob("*.mp4")):
+                        if cand_mp4.is_file() and str(cand_mp4) != str(scene.media_path) and get_duration_ms(str(cand_mp4)) >= 3000:
+                            donor_vid = str(cand_mp4)
+                            break
+                    if donor_vid:
+                        trim_video(
+                            input_path=donor_vid,
+                            duration_seconds=duration,
+                            output_path=clip_path,
+                            width=job.resolution_w,
+                            height=job.resolution_h,
+                            fps=job.fps,
+                            start_offset_sec=1.5,
+                            is_scifi=is_scifi_clip,
+                            niche=clip_niche,
+                            apply_grading=False,
+                            is_hook_scene=is_hook,
+                            fair_use_transform=True,
+                            preserve_continuous_flow=True,
+                        )
+                    else:
+                        raise
             elif getattr(scene, "pose_images", None) and len(getattr(scene, "pose_images", [])) >= 2:
                 pose_list = list(getattr(scene, "pose_images", None) or [scene.media_path])
                 # Tự động tính số lượng ảnh tối đa khớp với thời lượng câu đọc (tối thiểu 2.0s/ảnh, tối đa 2 ảnh/cảnh để Ken Burns mượt mà, không nháy hình)

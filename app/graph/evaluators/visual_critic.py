@@ -896,58 +896,67 @@ Return ONLY valid JSON in this exact format:
                     failed = True
             else:
                 try:
-                    sig = [] if is_long_peak_cont else self._media_signature(str(p))
-                    prod_m = str(item.get("production_method") or "")
-                    is_pregraded_hook = (
-                        media_type == "hook_ready_video"
-                        or is_doodle_clip
-                        or is_longform_chapter_clip
-                        or prod_m in (
-                            "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK",
-                            "CLIMAX_PEAK_SHORT_SPLICE",
-                            "MONSTER_3D_CGI_VIDEO_PEAK",
-                            "CLIMAX_STOCK_VIDEO_REAL_MOTION",
-                            "TOOL_DOODLE_2D_EXPLAINER",
-                            "REFINED_CLEAN_MOTION_RESCUE",
-                            "FINAL_GATE_CLEAN_VIDEO_RESCUE",
-                        )
-                        or p.name.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4", "_16x9.mp4"))
-                    )
-                    if is_doodle_clip:
-                        aes_score = 9.4
-                    elif scene_id == 1:
-                        from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-                        ok_s1_sh, s1_sh_val = _ensure_hook_clip_sharpness_and_luma(str(p), min_sharpness=12.0)
-                        if not ok_s1_sh:
-                            aes_score = max(3.8, round(s1_sh_val * 0.5, 1))
-                            issues.append(
-                                f"Khung hình mở đầu (Cảnh 1) chưa đạt chuẩn độ sắc nét (sharpness={s1_sh_val:.2f} < 12.0)"
+                    from app.utils.ffmpeg_helper import get_duration_ms as _vc_get_dur
+                    if _vc_get_dur(str(p)) < 800:
+                        valid_bitmap = False
+                        aes_score = 1.0
+                        issues.append("Video clip bị lỗi hỏng / thiếu moov atom (duration < 0.8s)")
+                        failed = True
+                        sig = []
+                    else:
+                        sig = [] if is_long_peak_cont else self._media_signature(str(p))
+                        prod_m = str(item.get("production_method") or "")
+                        is_pregraded_hook = (
+                            media_type == "hook_ready_video"
+                            or is_doodle_clip
+                            or is_longform_chapter_clip
+                            or prod_m in (
+                                "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK",
+                                "CLIMAX_PEAK_SHORT_SPLICE",
+                                "MONSTER_3D_CGI_VIDEO_PEAK",
+                                "CLIMAX_STOCK_VIDEO_REAL_MOTION",
+                                "TOOL_DOODLE_2D_EXPLAINER",
+                                "REFINED_CLEAN_MOTION_RESCUE",
+                                "FINAL_GATE_CLEAN_VIDEO_RESCUE",
                             )
-                            failed = True
+                            or p.name.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4", "_16x9.mp4"))
+                        )
+                        if is_doodle_clip:
+                            aes_score = 9.4
+                        elif scene_id == 1:
+                            from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                            req_s1_sh = 8.0 if (is_longform_chapter_clip or p.name.lower().endswith("_16x9.mp4")) else 12.0
+                            ok_s1_sh, s1_sh_val = _ensure_hook_clip_sharpness_and_luma(str(p), min_sharpness=req_s1_sh)
+                            if not ok_s1_sh:
+                                aes_score = max(3.8, round(s1_sh_val * 0.5, 1))
+                                issues.append(
+                                    f"Khung hình mở đầu (Cảnh 1) chưa đạt chuẩn độ sắc nét (sharpness={s1_sh_val:.2f} < {req_s1_sh})"
+                                )
+                                failed = True
+                            elif is_pregraded_hook:
+                                aes_score = 9.2
+                            else:
+                                clip_gate = self.inspect_clip_before_concat(
+                                    str(p),
+                                    min_short_edge=720,
+                                    min_sharpness=req_s1_sh,
+                                    check_watermark=True,
+                                )
+                                aes_score = float(clip_gate.get("score", 8.0))
+                                if not clip_gate.get("passed", True):
+                                    issues.extend(clip_gate.get("issues") or ["Clip Cảnh 1 không đạt cổng kiểm duyệt chất lượng/watermark"])
+                                    failed = True
                         elif is_pregraded_hook:
+                            # Clip thân đã vượt qua kiểm duyệt gốc & Gemini Vision trước khi phủ LUT màu tối (niche grading)
                             aes_score = 9.2
                         else:
                             clip_gate = self.inspect_clip_before_concat(
                                 str(p),
                                 min_short_edge=720,
-                                min_sharpness=12.0,
+                                min_sharpness=5.8,
                                 check_watermark=True,
                             )
                             aes_score = float(clip_gate.get("score", 8.0))
-                            if not clip_gate.get("passed", True):
-                                issues.extend(clip_gate.get("issues") or ["Clip Cảnh 1 không đạt cổng kiểm duyệt chất lượng/watermark"])
-                                failed = True
-                    elif is_pregraded_hook:
-                        # Clip thân đã vượt qua kiểm duyệt gốc & Gemini Vision trước khi phủ LUT màu tối (niche grading)
-                        aes_score = 9.2
-                    else:
-                        clip_gate = self.inspect_clip_before_concat(
-                            str(p),
-                            min_short_edge=720,
-                            min_sharpness=5.8,
-                            check_watermark=True,
-                        )
-                        aes_score = float(clip_gate.get("score", 8.0))
                         if not clip_gate.get("passed", True):
                             issues.extend(clip_gate.get("issues") or ["Clip không đạt cổng kiểm duyệt chất lượng/watermark"])
                             failed = True
