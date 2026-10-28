@@ -477,9 +477,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         # ══════════════════════════════════════════════════════════════════════
         # NHÁNH ĐẶC QUYỀN VIDEO DÀI 16:9 (LONG-FORM WIDESCREEN DOCUMENTARY):
-        # Kết hợp Chapter-Pool 16:9 Multi-Segment Jump-Cut + Hỗ trợ @tool Doodle 2D 16:9 / Ảnh Tư Liệu 8K
+        # Kết hợp Chapter-Pool 16:9 Multi-Segment Jump-Cut + Hỗ trợ @tool Doodle 2D 16:9
         # ══════════════════════════════════════════════════════════════════════
-        if not media_path and is_long_form and tool_name not in ("render_doodle_2d_explainer_scene", "search_google_cinematic_image"):
+        if not media_path and is_long_form and tool_name != "render_doodle_2d_explainer_scene":
             lf_parts = [
                 p for p in (
                     sq,
@@ -526,7 +526,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # (`summon_epic_monster_cinematic_media` | `fetch_clean_cinematic_portrait_or_broll` | `render_doodle_2d_explainer_scene` | `clone_youtube_short_peak_clip` | `search_pexels_pixabay_stock_video` | `search_google_cinematic_image`)
         # ══════════════════════════════════════════════════════════════════════
         allowed_tools = (
-            ("render_doodle_2d_explainer_scene", "search_google_cinematic_image")
+            ("render_doodle_2d_explainer_scene",)
             if is_long_form
             else (
                 "clone_youtube_short_peak_clip",
