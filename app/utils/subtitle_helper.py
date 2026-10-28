@@ -88,8 +88,8 @@ YCbCr Matrix: None
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,6.0,3.2,2,40,40,{margin_v},1
-Style: HookHeadlineBanner,{fontname},56,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,1.8,0,3,3.6,0.0,8,30,30,235,1
-Style: PatternInterruptBadge,{fontname},58,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,1.8,0,3,3.4,0.0,8,30,30,230,1
+Style: HookHeadlineBanner,{fontname},52,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,1.8,0,1,4.0,2.0,8,30,30,235,1
+Style: PatternInterruptBadge,{fontname},52,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,1.8,0,1,4.0,2.0,8,30,30,230,1
 Style: CTABadge,{fontname},48,&H0000FFFF,&H00FFFFFF,&H00000000,&HC8080808,-1,0,0,0,100,100,1.2,0,1,4.4,2.4,8,30,30,225,1
 Style: WatermarkStyle,Arial,38,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.2,1.4,8,30,30,90,1
 
@@ -751,8 +751,8 @@ class SubtitleHelper:
             else:
                 current_offset_ms += scene_duration_ms
 
-        # ── Kích hoạt Hook Headline Banner ở Frame 0.0s - 2.8s (Đã khử sạch Emoji lỗi ô vuông □) ──
-        if scenes:
+        # ── Đã tắt thanh phù hiệu màu vàng ở đỉnh màn hình ([ // ... // ]) để giữ khung hình điện ảnh sạch 100% ──
+        if False and scenes:
             raw_niche = (niche_id or "").lower()
             full_txt = " ".join([s.narration for s in scenes]).lower()
             # Phân biệt chuẩn xác Tiếng Việt (vi), Tiếng Bồ Đào Nha Brazil (pt-BR) và Tiếng Anh (en):
@@ -882,8 +882,8 @@ class SubtitleHelper:
                     f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,140,\\fscx108\\fscy108)\\t(140,260,\\fscx100\\fscy100)}}{stamp_title}"
                 )
 
-        # ── Kích hoạt Visual CTA Banner (Like + Comment + Subscribe) ở phân cảnh cuối ──
-        if show_cta_badge and scenes and current_offset_ms > 3000:
+        # ── Kích hoạt Visual CTA Banner (Like + Comment + Subscribe) ở phân cảnh cuối (chỉ áp dụng cho Shorts) ──
+        if show_cta_badge and (not is_long_form) and scenes and current_offset_ms > 3000:
             last_scene = scenes[-1]
             last_dur = last_scene.audio_duration_ms or int(last_scene.estimated_seconds * 1000)
             cta_dur = max(min(last_dur, 4200), 3200)

@@ -32,12 +32,11 @@ _chapter_locks: Dict[str, threading.Lock] = {}
 _yt_longform_dl_sem = threading.BoundedSemaphore(3)
 
 LANDSCAPE_16X9_YTDLP_FORMAT = (
-    "bestvideo[protocol=https][aspect_ratio>1][height>=720][height<=1080][filesize<24M][ext=mp4]/"
-    "bestvideo[aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
+    "best[protocol=https][aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
+    "bestvideo[protocol=https][aspect_ratio>1][height>=720][height<=1080][filesize<18M][ext=mp4]/"
+    "bestvideo[aspect_ratio>1][height>=720][height<=1080][filesize<18M][ext=mp4]/"
     "best[aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
-    "bestvideo[protocol=https][height>=720][height<=1080][ext=mp4]/"
-    "bestvideo[height>=720][height<=1080][ext=mp4]/"
-    "bestvideo[height>=720][height<=1080]/"
+    "bestvideo[protocol=https][height>=720][height<=1080][filesize<18M][ext=mp4]/"
     "best[height>=480][ext=mp4]/bestvideo/best"
 )
 
@@ -66,10 +65,12 @@ def _search_youtube_16x9_documentary_candidates(
         _clean_yt_search_phrase,
     )
 
-    clean_q = _clean_yt_search_phrase(query or primary_entity or topic, max_words=6) or topic
+    q_first = [p.strip() for p in str(query or "").split("|||") if p.strip()]
+    base_phrase = q_first[0] if q_first else (query or primary_entity or topic)
+    clean_q = _clean_yt_search_phrase(base_phrase, max_words=6) or _clean_yt_search_phrase(primary_entity or topic, max_words=5) or topic
     search_queries = [
+        f"{clean_q} 4k cinematic b roll footage",
         f"{clean_q} 4k documentary footage",
-        clean_q,
     ]
     flat_opts = {
         "quiet": True,
@@ -139,7 +140,7 @@ def _search_youtube_16x9_documentary_candidates(
                 score = (
                     (hits * 55.0)
                     + (90.0 if not is_short_url else 0.0)
-                    + (45.0 if 35.0 <= dur <= 360.0 else 15.0)
+                    + (95.0 if 24.0 <= dur <= 125.0 else (45.0 if 125.0 < dur <= 260.0 else 15.0))
                     + min(views / 20000.0, 60.0)
                 )
                 candidates.append({
@@ -336,7 +337,7 @@ def _download_youtube_chapter_master(
     import yt_dlp
     from app.graph.evaluators.visual_critic import VisualCritic
 
-    for cand in candidates[:2]:
+    for cand in candidates[:1]:
         vid_id = cand["id"]
         vid_url = cand["url"]
         with url_lock:
@@ -348,22 +349,22 @@ def _download_youtube_chapter_master(
         cand_dur = float(cand.get("duration") or 60.0)
         used_range_dl = False
         start_s = 12.0 if cand_dur > 55.0 else (6.0 if cand_dur > 30.0 else 1.5)
-        end_s = min(cand_dur - 2.0, start_s + 44.0)
+        end_s = min(cand_dur - 2.0, start_s + 38.0)
 
         tmp_base = str(Path(master_out_path).with_suffix("")) + "_raw.%(ext)s"
         dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "max_filesize": 26 * 1024 * 1024,
+            "max_filesize": 18 * 1024 * 1024,
             "format": LANDSCAPE_16X9_YTDLP_FORMAT,
             "merge_output_format": "mp4",
             "outtmpl": tmp_base,
-            "socket_timeout": 12,
+            "socket_timeout": 10,
             "retries": 1,
             "nopart": True,
         })
-        if cand_dur > 48.0:
+        if cand_dur > 110.0:
             try:
                 from yt_dlp.utils import download_range_func
                 dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s)])
@@ -519,7 +520,6 @@ def extract_longform_scene_with_internal_jumpcut(
             half_b = round(req_dur - half_a + 0.12, 2)
             start_a = safe_start
             start_b = round(safe_start + half_a + 2.5, 2)
-            flip_filter = ",hflip" if (scene_id % 3 == 2) else ""
             if scene_id == 1:
                 scale_a, crop_a = "1920:1080", "1920:1080:0:0"
                 scale_b, crop_b = "2016:1134", "1920:1080:48:27"
@@ -531,7 +531,7 @@ def extract_longform_scene_with_internal_jumpcut(
             filter_complex = (
                 f"[0:v]trim=start={start_a:.2f}:duration={half_a:.2f},setpts=PTS-STARTPTS,"
                 f"scale={scale_a}:flags=lanczos,crop={crop_a},eq=contrast=1.04:saturation=1.06[v0];"
-                f"[0:v]trim=start={start_b:.2f}:duration={half_b:.2f},setpts=PTS-STARTPTS{flip_filter},"
+                f"[0:v]trim=start={start_b:.2f}:duration={half_b:.2f},setpts=PTS-STARTPTS,"
                 f"scale={scale_b}:flags=lanczos,crop={crop_b},eq=contrast=1.06:saturation=1.08,"
                 f"vignette=PI/7[v1];"
                 f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
@@ -651,8 +651,8 @@ def fetch_or_slice_longform_chapter_clip_sync(
                     f"🎬 [LongForm ChapterPool] Đã tải Master Chương #{chapter_idx} từ YouTube 16:9 "
                     f"({yt_master.get('duration_sec', 0):.1f}s) dùng chung cho 3 cảnh!"
                 )
-            else:
-                # Ưu tiên 2: Tải 1 video Master 16:9 dài ~40s từ Bilibili Safe-Crop cho cả Chương
+            elif is_scifi:
+                # Ưu tiên 2 (riêng chủ đề 3D CGI / Sci-Fi / Monster): Tải Master 16:9 từ Bilibili Safe-Crop
                 try:
                     from app.services.media.bilibili_fetcher import (
                         download_and_crop_bilibili_broll_clip,
@@ -666,8 +666,8 @@ def fetch_or_slice_longform_chapter_clip_sync(
                         primary_entity=primary_entity or topic,
                         is_3d_or_scifi=is_scifi,
                     )
-                    bili_cands = search_bilibili_videos(zh_query, max_results=6, min_dur_s=35.0, max_dur_s=600.0)
-                    for cand in bili_cands[:2]:
+                    bili_cands = search_bilibili_videos(zh_query, max_results=4, min_dur_s=35.0, max_dur_s=360.0)
+                    for cand in bili_cands[:1]:
                         bvid = str(cand.get("bvid") or cand.get("id") or "").strip()
                         if not bvid:
                             continue
@@ -702,11 +702,11 @@ def fetch_or_slice_longform_chapter_clip_sync(
                             break
                 except Exception as e_bili:
                     logger.debug(f"[LongForm ChapterPool] Bilibili master skip: {e_bili}")
-                if not (Path(master_file).exists() and Path(master_file).stat().st_size > 60_000):
-                    try:
-                        failed_marker.write_text("failed", encoding="utf-8")
-                    except Exception:
-                        pass
+            if not (Path(master_file).exists() and Path(master_file).stat().st_size > 60_000):
+                try:
+                    failed_marker.write_text("failed", encoding="utf-8")
+                except Exception:
+                    pass
 
     if meta_file.exists():
         try:

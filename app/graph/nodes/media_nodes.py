@@ -226,22 +226,8 @@ def _fetch_longform_16x9_broll_clip_sync(
             logger.debug(f"Scene {scene_id}: Long-form Stock 16:9 lookup skip: {e_stock_16x9}")
         return None
 
-    # Với chủ đề Con người / Tâm lý học / Y khoa / Công sở (nơi YouTube dễ trả về Vlog ngồi nói chuyện hoặc hoạt hình TED-Ed),
-    # ưu tiên Pexels/Pixabay 16:9 Landscape HD (kèm Internal Jump-Cut & Documentary Zoom) siêu sạch & tải 1.5s trước!
-    ctx_16x9 = f"{topic} {primary_entity} {query}".lower()
-    prefer_clean_stock_first = (not is_scifi) and any(
-        k in ctx_16x9
-        for k in (
-            "psychology", "narcissist", "manipulat", "brain", "dopamine", "cortisol",
-            "amygdala", "meeting", "interrogation", "polygraph", "eye contact",
-            "nervous", "office", "portrait", "stoic", "temporal lobe", "cortex",
-        )
-    )
-    if prefer_clean_stock_first:
-        stock_first_res = _try_stock_16x9_landscape()
-        if stock_first_res:
-            return stock_first_res
-
+    # Ưu tiên số 1: Bộ máy Chapter-Pool & Multi-Segment Local Cut (YouTube 16:9 HD Documentary -> Bilibili 16:9 Safe-Crop)
+    # Tải 1 video nguồn 16:9 cho mỗi Cụm Chương (3 cảnh/Chương) rồi cắt trực tiếp trên ổ cứng kèm Internal Jump-Cut!
     try:
         from app.services.media.longform_chapter_pool import fetch_or_slice_longform_chapter_clip_sync
         pool_res = fetch_or_slice_longform_chapter_clip_sync(
@@ -269,10 +255,9 @@ def _fetch_longform_16x9_broll_clip_sync(
     except Exception as e_pool_16x9:
         logger.debug(f"Scene {scene_id}: Long-form ChapterPool 16:9 skip: {e_pool_16x9}")
 
-    if not prefer_clean_stock_first:
-        stock_fb_res = _try_stock_16x9_landscape()
-        if stock_fb_res:
-            return stock_fb_res
+    stock_fb_res = _try_stock_16x9_landscape()
+    if stock_fb_res:
+        return stock_fb_res
 
     return None
 
