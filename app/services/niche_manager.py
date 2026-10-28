@@ -448,6 +448,26 @@ def build_llm_production_overview_prompt(
         kws = ", ".join(f'"{k}"' for k in list(visual.get("stock_video_keywords") or [])[:10])
         lines.append(f"- Proven Anchor Queries (YAML): {kws}")
 
+    script_bp = profile.get("script_blueprint", {}) or {}
+    comp_bp = script_bp.get("competitor_blueprint") or profile.get("competitor_blueprint") or {}
+    if isinstance(comp_bp, dict) and comp_bp:
+        bench_ch = str(comp_bp.get("benchmark_channel") or "").strip()
+        round_prog = str(comp_bp.get("round_or_chapter_progression") or "").strip()
+        thumb_rule = str(comp_bp.get("thumbnail_2_3_word_rule") or "").strip()
+        lines.append("\n🏆 YAML COMPETITOR VIRAL BLUEPRINT FOR LLM DIRECTOR (`competitor_blueprint`):")
+        if bench_ch:
+            lines.append(f"  * Benchmark Channels: {bench_ch}")
+        if round_prog:
+            lines.append(f"  * Round / Chapter Progression Rule: {round_prog}")
+            lines.append(
+                "  * Director Scene-Level Rule: When directing a Gauntlet / Every-Record / What-If script, "
+                "read each scene's narration & overlay_badge carefully — dynamically switch `subject_entity` "
+                "and `video_search_query` to match that specific Round's challenger / record tier, or lock "
+                "`@MODERNYOU` in `render_doodle_2d_explainer_scene` for 2nd-person 'What If YOU' chapters."
+            )
+        if thumb_rule:
+            lines.append(f"  * Thumbnail 2-3 Word Rule: {thumb_rule}")
+
     archetypes = bp.get("visual_archetypes_and_tool_routing") or []
     if isinstance(archetypes, list) and archetypes:
         lines.append("\n🛠️ YAML VISUAL ARCHETYPES & `@tool` ROUTING MATRIX (LLM MUST DECIDE PER SCENE):")

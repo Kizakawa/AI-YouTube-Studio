@@ -267,6 +267,7 @@ class ScriptGeneratorMixin:
         target_lang_display: str,
         channel_memory_block: str,
         director_notes: Optional[str] = None,
+        niche_instructions: str = "",
     ) -> str:
         """
         STAGE 1 (Deep Showrunner Research & 3-Angle Viral Tournament LLM Pass):
@@ -275,10 +276,11 @@ class ScriptGeneratorMixin:
         chọn ra Blueprint thắng cuộc phân tách rạch ròi giữa `winning_title` (YT_SEARCH) và `scene_1_hook_0s` (4 Đòn Tâm Lý Thị Giác).
         """
         notes_ctx = f'\nCreator Direction: "{director_notes.strip()}"' if (director_notes and len(director_notes.strip()) > 3) else ""
+        niche_ctx = f"\n{niche_instructions[:2200]}\n" if niche_instructions else ""
         blueprint_prompt = f"""You are an Elite YouTube Shorts Showrunner, Documentary Fact Researcher, and Viral Retention Architect for niche '{channel_niche}'.
 Input Topic: "{topic}"
 Target Spoken Language: {language} ({target_lang_display}){notes_ctx}
-
+{niche_ctx}
 {channel_memory_block[:2500]}
 
 YOUR MISSION (DEEP PRE-SCRIPT RESEARCH & 3-ANGLE TOURNAMENT):
@@ -482,6 +484,7 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
                 target_lang_display=target_lang_display,
                 channel_memory_block=channel_memory_block,
                 director_notes=director_notes,
+                niche_instructions=niche_instructions,
             )
 
         if is_long_form:
