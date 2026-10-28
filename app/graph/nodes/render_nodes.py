@@ -93,7 +93,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             ):
                 try:
                     from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-                    _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=13.2 if render_retry_count > 0 else 12.6)
+                    _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=12.4 if render_retry_count > 0 else 12.0)
                 except Exception as e_s1_pre:
                     logger.debug(f"[RenderNode] Pre-render hook sharpness check skip: {e_s1_pre}")
 

@@ -59,15 +59,25 @@ class VisualCritic:
     @staticmethod
     def _measure_sharpness(image_path: str) -> float:
         """
-        Đo độ sắc nét biên cạnh (edge sharpness energy) của ảnh bằng bộ lọc FIND_EDGES trên chuẩn hóa 256x256.
-        Giá trị càng cao ảnh càng sắc nét (thường >= 10.0 là nét căng, < 6.0 là bị mờ nhòe/vỡ hạt).
+        Đo độ sắc nét biên cạnh (edge sharpness energy) của ảnh bằng bộ lọc FIND_EDGES trên chuẩn hóa 256x256,
+        kết hợp đo độ sắc nét vùng chủ thể lấy nét (Top-35% Active Tile Subject-ROI) để các cảnh quay điện ảnh
+        xóa phông (shallow depth-of-field / bokeh) hoặc nền tối (low-key noir) không bị chấm oan là mờ nhòe
+        chỉ vì nền phía sau phẳng mịn.
         """
         try:
             from PIL import ImageFilter, ImageStat
             with Image.open(image_path) as img:
                 gray = img.convert("L").resize((256, 256), Image.Resampling.BILINEAR)
                 edges = gray.filter(ImageFilter.FIND_EDGES)
-                return float(ImageStat.Stat(edges).mean[0])
+                whole_mean = float(ImageStat.Stat(edges).mean[0])
+                tile_means: List[float] = []
+                for ty in range(0, 256, 32):
+                    for tx in range(0, 256, 32):
+                        tile = edges.crop((tx, ty, tx + 32, ty + 32))
+                        tile_means.append(float(ImageStat.Stat(tile).mean[0]))
+                tile_means.sort(reverse=True)
+                top_subject_mean = sum(tile_means[:22]) / 22.0 if tile_means else whole_mean
+                return round(max(whole_mean, top_subject_mean * 0.62), 2)
         except Exception:
             return 10.0
 

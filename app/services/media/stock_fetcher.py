@@ -949,7 +949,15 @@ class StockFetcher:
                 if is_incongruent_stock_image(v_desc, topic=f"{topic} {q_try}".strip(), narration=narration):
                     continue
                 v_files = v.get("video_files") or []
-                landscape_files = [
+                landscape_1080p = [
+                    vf for vf in v_files
+                    if int(vf.get("width") or 0) >= 1920
+                    and int(vf.get("height") or 0) >= 1080
+                    and int(vf.get("height") or 0) <= 2160
+                    and int(vf.get("width") or 0) > int(vf.get("height") or 0)
+                    and (str(vf.get("link", "")).endswith(".mp4") or "mp4" in str(vf.get("file_type", "")))
+                ]
+                landscape_files = landscape_1080p or [
                     vf for vf in v_files
                     if int(vf.get("width") or 0) > int(vf.get("height") or 0)
                     and int(vf.get("height") or 0) >= 720
@@ -960,7 +968,9 @@ class StockFetcher:
                     continue
                 landscape_files.sort(
                     key=lambda vf: (
-                        3000 if abs(int(vf.get("height") or 0) - 1080) <= 20 else 2000,
+                        4000 if abs(int(vf.get("height") or 0) - 1080) <= 20 and int(vf.get("width") or 0) >= 1920 else (
+                            3000 if int(vf.get("height") or 0) >= 1080 else 1500
+                        ),
                         int(vf.get("width") or 0),
                     ),
                     reverse=True,

@@ -512,19 +512,28 @@ def extract_longform_scene_with_internal_jumpcut(
         if attempt_shift > 0.0 and safe_start <= start_offset_sec + 0.5:
             break
 
-        # Nếu cảnh dài >= 5.0s và file master đủ độ dư (>= req_dur + 2.4s), thực hiện Jump-Cut 2 nửa (Nửa 1: Wide 106%, Nửa 2: nhảy +2.5s + Zoom 115%)
+        # Nếu cảnh dài >= 5.0s và file master đủ độ dư (>= req_dur + 2.4s), thực hiện Jump-Cut 2 nửa:
+        # Riêng Cảnh 1 (scene_id == 1) giữ độ phân giải gốc 1920x1080 -> 2016x1134 (zoom nhẹ 105%) với CRF 17 để giữ 100% độ nét căng ở giây mở màn!
         if req_dur >= 5.0 and (safe_start + req_dur + 2.5) <= master_dur:
             half_a = round(req_dur * 0.52, 2)
             half_b = round(req_dur - half_a + 0.12, 2)
             start_a = safe_start
             start_b = round(safe_start + half_a + 2.5, 2)
             flip_filter = ",hflip" if (scene_id % 3 == 2) else ""
+            if scene_id == 1:
+                scale_a, crop_a = "1920:1080", "1920:1080:0:0"
+                scale_b, crop_b = "2016:1134", "1920:1080:48:27"
+                crf_val = "17"
+            else:
+                scale_a, crop_a = "2035:1145", "1920:1080:57:32"
+                scale_b, crop_b = "2150:1210", "1920:1080:115:65"
+                crf_val = "18"
             filter_complex = (
                 f"[0:v]trim=start={start_a:.2f}:duration={half_a:.2f},setpts=PTS-STARTPTS,"
-                f"scale=2035:1145,crop=1920:1080:57:32,eq=contrast=1.06:saturation=1.08[v0];"
+                f"scale={scale_a}:flags=lanczos,crop={crop_a},eq=contrast=1.04:saturation=1.06[v0];"
                 f"[0:v]trim=start={start_b:.2f}:duration={half_b:.2f},setpts=PTS-STARTPTS{flip_filter},"
-                f"scale=2208:1242,crop=1920:1080:144:81,eq=contrast=1.08:saturation=1.10,"
-                f"vignette=PI/6[v1];"
+                f"scale={scale_b}:flags=lanczos,crop={crop_b},eq=contrast=1.06:saturation=1.08,"
+                f"vignette=PI/7[v1];"
                 f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
             )
             cmd = [
@@ -533,7 +542,7 @@ def extract_longform_scene_with_internal_jumpcut(
                 "-filter_complex", filter_complex,
                 "-map", "[vout]",
                 "-t", f"{req_dur:.2f}",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", crf_val,
                 "-an",
                 output_path,
             ]
