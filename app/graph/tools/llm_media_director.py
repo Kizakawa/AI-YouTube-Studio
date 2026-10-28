@@ -62,11 +62,21 @@ def plan_media_tools_with_llm_sync(
         include_all_niches_map=True,
     )
 
-    prompt = f"""You are an Elite Viral YouTube Shorts Visual Director & Holistic Script Reasoning Brain with 6 specialized media production tools.
+    is_long_form_dir = total_scenes >= 14
+    longform_chapter_note = (
+        "\n- LONG-FORM 16:9 WIDESCREEN DOCUMENTARY MODE ACTIVE (16–24 SCENES ACROSS 5 CHAPTERS):\n"
+        "  * Scenes are grouped into Chapter Clusters (3 consecutive scenes per Chapter Master video: Scenes 1-3 = Ch.1, 4-6 = Ch.2, 7-9 = Ch.3, etc.).\n"
+        "  * For the first scene of each Chapter Cluster (Scenes 1, 4, 7, 10, 13, 16, 19), write a crisp 3–5 word 16:9 documentary search query (`youtube_search_query` / `action_or_concept_query` / `human_action_query`) that captures the entire Chapter's visual theme so our Chapter-Pool engine downloads ONE rich 16:9 master video and slices multiple non-contiguous angles locally!\n"
+        "  * Interleave ~75%–85% real 16:9 documentary video tools (`clone_youtube_short_peak_clip`, `summon_epic_monster_cinematic_media`, `fetch_clean_cinematic_portrait_or_broll`) with ~15%–25% analytical visual metaphors (`render_doodle_2d_explainer_scene` at 1920x1080 for psychology/mechanisms, or `search_google_cinematic_image` for archival maps/diagrams on middle scenes).\n"
+        if is_long_form_dir
+        else ""
+    )
+
+    prompt = f"""You are an Elite Viral YouTube {'16:9 Documentary & ' if is_long_form_dir else ''}Shorts Visual Director & Holistic Script Reasoning Brain with 6 specialized media production tools.
 Topic: "{topic}"
 Primary Subject/Entity: "{primary_entity or topic}"
 Channel Niche: "{channel_niche}"
-Total Scenes: {total_scenes}
+Total Scenes: {total_scenes}{longform_chapter_note}
 
 {niche_yaml_blueprint}
 
@@ -99,7 +109,12 @@ STEP 2 — SELECT THE OPTIMAL `@tool` & CONTEXT-ANCHORED SEARCH QUERY FOR EACH S
         (NEVER call `search_google_cinematic_image` for psychology because open-web Google Images return text quote cards and book covers!).
    - FOR REAL-WORLD WILDLIFE, NATURE, ANIMAL RESCUE, SCIENCE, OR ALTERNATE HISTORY TOPICS:
      -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for all body scenes AND the Final Scene `scene_id={total_scenes}`), only calling `search_google_cinematic_image` on a middle scene when a specific historical map, document, or static artifact has no motion video equivalent (and NEVER on Scene 1, Scene 2, Scene {max(1, total_scenes - 1)}, or Scene {total_scenes}).
-     -> PEAK VIDEO QUERY PRIMING (CRITICAL): When writing `youtube_search_query` for `clone_youtube_short_peak_clip`, NEVER write passive noun-only queries (e.g., FORBIDDEN: `"black caiman river"`, `"honey badger savanna"`). ALWAYS include the **resolved protagonist + explosive physical action, climax verb, or dramatic phenomenon** (e.g., `"black caiman hunting amazon"`, `"honey badger fearless lion encounter"`, `"boiling river amazon steam"`, `"sperm whale deep dive underwater"`) so our Peak Scanner extracts the most intense action moment!
+     -> SEARCH-ENGINE-NATIVE QUERY ENGINEERING (CRITICAL — PREVENT DUMB SEARCHES):
+        * `subject_entity` (Scene-Accurate): Set `subject_entity` to the exact entity physically acting in that specific scene, OR in a 2-entity duel (`Entity A vs Entity B`), set `"Entity A or Entity B"` (e.g., `"Leopard or African Crested Porcupine"`) so our Vision Auditor accepts valid footage of either contender!
+        * `youtube_search_query` (3–5 words, Real YouTube Titles): Write the exact 3–5 word phrase real YouTube Shorts creators use in video titles (e.g., `"leopard attacking porcupine"`, `"porcupine rattling quills closeup"`, `"leopard injured by porcupine quills"`, `"porcupine defending against leopard"`). NEVER write narrative story phrases that nobody titles a video with (FORBIDDEN: `"porcupine walking away savanna"`, `"porcupine quill embedded in animal skin macro"`).
+        * `fallback_broad_query` / `primary_stock_query` / `secondary_stock_query` (2–3 words, Pexels/Pixabay Index Format): Write the 2–3 word **canonical common species/subject noun + habitat/action** that Pexels/Pixabay actually index (e.g., `"porcupine wildlife"`, `"porcupine quills closeup"`, `"leopard hunting savanna"`).
+          - FORBIDDEN #1 (NO GENERIC TEXTURES): When a sentence zooms into a body part or microscopic mechanism (`"these needles"`, `"microscopic barbs"`, `"1500 PSI bite"`), NEVER write `"microscopic texture nature"` or `"sharp needle texture macro"` (which returns sewing needles, incense sticks, and leaves on Pexels!). Always anchor to the real animal (`"porcupine quills closeup"`).
+          - FORBIDDEN #2 (NEVER DROP THE HEAD NOUN): Always keep the core noun (`"porcupine"`, `"leopard"`, `"octopus"`), never regional adjectives alone (`"African Crested"`).
 
 2. DECIDE `search_scope` FOR EACH INDIVIDUAL SCENE (`"SCENE_SPECIFIC"` vs `"SCRIPT_OVERALL"`):
    - `"SCENE_SPECIFIC"`: The split sentence (once pronouns are resolved) describes a clear, standalone visual action of the subject.
@@ -132,13 +147,22 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                         "type": p_type,
                         "description": v_prop.get("description") or k_prop,
                     }
+                req_fields = list(schema.get("required") or ["scene_id"])
+                if t_obj.name == "clone_youtube_short_peak_clip":
+                    for extra_req in ("overall_script_query", "fallback_broad_query"):
+                        if extra_req in props and extra_req not in req_fields:
+                            req_fields.append(extra_req)
+                elif t_obj.name == "search_pexels_pixabay_stock_video":
+                    for extra_req in ("secondary_stock_query", "overall_script_query"):
+                        if extra_req in props and extra_req not in req_fields:
+                            req_fields.append(extra_req)
                 func_declarations.append({
                     "name": t_obj.name,
                     "description": t_obj.description,
                     "parameters": {
                         "type": "OBJECT",
                         "properties": props,
-                        "required": schema.get("required") or ["scene_id"],
+                        "required": req_fields,
                     },
                 })
 
@@ -174,6 +198,9 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                                     "human_action_query",
                                     "overall_script_query",
                                     "youtube_search_query",
+                                    "fallback_broad_query",
+                                    "primary_stock_query",
+                                    "secondary_stock_query",
                                     "smart_image_query",
                                     "character_tag",
                                     "prop_type",
@@ -274,9 +301,16 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             elif t_chosen == "clone_youtube_short_peak_clip":
                 video_peak_count += 1
                 d.setdefault("clip_role", "HOOK" if sid == 1 else "PEAK")
-                d.setdefault("fallback_broad_query", default_overall_q)
+                d.setdefault("fallback_broad_query", s.get("stock_query") or default_overall_q)
+            elif t_chosen == "search_pexels_pixabay_stock_video":
+                p_sq = d.get("primary_stock_query") or s.get("stock_query") or s.get("visual_keyword") or default_overall_q
+                s_sq = d.get("secondary_stock_query") or s.get("stock_query") or default_overall_q
+                d["primary_stock_query"] = p_sq
+                d["secondary_stock_query"] = s_sq
+                d["youtube_search_query"] = p_sq
+                d["fallback_broad_query"] = s_sq
 
-            d["scope_audited"] = True
+            d["scope_audited"] = False
             final_plan.append(d)
             continue
 
@@ -303,7 +337,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "overall_script_query": llm_monster_ref.get("overall_script_query") or default_overall_q,
                 "target_duration_sec": dur,
                 "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
-                "scope_audited": True,
+                "scope_audited": False,
             })
         elif llm_portrait_ref is not None:
             m_pref_inh = "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT" if (sid % 2 == 1) else "VIDEO_BROLL"
@@ -317,7 +351,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "overall_script_query": llm_portrait_ref.get("overall_script_query") or default_overall_q,
                 "target_duration_sec": dur,
                 "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
-                "scope_audited": True,
+                "scope_audited": False,
             })
         elif sid in peak_indices and video_peak_count < max_video_peak_scenes:
             video_peak_count += 1
@@ -328,11 +362,11 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "search_scope": scope,
                 "youtube_search_query": clean_kw,
                 "overall_script_query": default_overall_q,
-                "fallback_broad_query": default_overall_q,
+                "fallback_broad_query": s.get("stock_query") or default_overall_q,
                 "clip_role": "HOOK" if sid == 1 else "PEAK",
                 "target_duration_sec": dur,
                 "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
-                "scope_audited": True,
+                "scope_audited": False,
             })
         else:
             final_plan.append({
@@ -342,11 +376,11 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "search_scope": scope,
                 "youtube_search_query": clean_kw,
                 "overall_script_query": default_overall_q,
-                "fallback_broad_query": default_overall_q,
+                "fallback_broad_query": s.get("stock_query") or default_overall_q,
                 "clip_role": "PEAK",
                 "target_duration_sec": dur,
                 "camera_motion": motion_cycle[idx % len(motion_cycle)],
-                "scope_audited": True,
+                "scope_audited": False,
             })
 
     # Kênh Tâm lý học / Triết học: Nếu toàn bộ phân cảnh chỉ gọi portrait/broll mà chưa có Doodle 2D Explainer
@@ -367,17 +401,6 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                         d_it["scene_concept_summary"] = d_it.get("human_action_query") or d_it.get("youtube_search_query") or default_overall_q
                         break
 
-    try:
-        from app.services.video_memory_rag import get_video_memory_rag
-        final_plan = get_video_memory_rag().diversify_intra_video_scene_queries(
-            job_id=0,
-            scenes_strategy=final_plan,
-            topic=topic,
-            primary_entity=primary_entity or topic,
-            scenes_raw=scenes,
-        )
-    except Exception:
-        pass
     return final_plan
 
 
@@ -404,21 +427,25 @@ def audit_and_decide_search_scopes_with_llm_sync(
         d = dec_map.get(sid, {})
         q_cur = (
             d.get("youtube_search_query")
+            or d.get("primary_stock_query")
             or d.get("smart_image_query")
             or d.get("action_or_concept_query")
             or d.get("human_action_query")
             or ""
         )
+        fb_cur = d.get("fallback_broad_query") or d.get("secondary_stock_query") or ""
         review_items.append({
             "scene_id": sid,
             "split_sentence": s.get("narration", ""),
             "proposed_tool": d.get("tool_name", "search_google_cinematic_image"),
             "proposed_scope": d.get("search_scope", "SCENE_SPECIFIC"),
+            "proposed_subject_entity": d.get("subject_entity", ""),
             "proposed_query": q_cur,
+            "proposed_fallback_stock_query": fb_cur,
             "overall_script_query": d.get("overall_script_query", ""),
         })
 
-    audit_prompt = f"""You are the Chief LLM Search Scope Judge & Holistic Script Context Auditor in a LangGraph video pipeline.
+    audit_prompt = f"""You are the Chief LLM Search Scope Judge & Search-Engine Query Auditor in a LangGraph video pipeline.
 Topic: "{topic}"
 Primary Subject: "{primary_entity or topic}"
 
@@ -428,29 +455,35 @@ FULL SCRIPT STORY:
 PROPOSED SCENE DECISIONS TO AUDIT:
 {json.dumps(review_items, ensure_ascii=False, indent=2)}
 
-YOUR 2-STEP COGNITIVE AUDIT PROTOCOL:
-STEP 1 — PRONOUN RESOLUTION & SUBTEXT DECODING ACROSS THE FULL SCRIPT:
-- Read the FULL SCRIPT STORY first. When a `split_sentence` uses pronouns ("It", "He", "They", "This", "Nó", "Ele") or omits the main subject, mentally substitute the true protagonist ("{primary_entity or topic}") and its real environment from the full script.
-- When a `split_sentence` uses a metaphor, simile, or abstract statistic (e.g., "built like a hydraulic press", "faster than a blink", "like a silent cage"), decode what is physically happening to the protagonist rather than searching literal metaphor words.
+YOUR 3-STEP COGNITIVE AUDIT PROTOCOL (ELIMINATE ALL DUMB/UNSEARCHABLE QUERIES):
+STEP 1 — PRONOUN RESOLUTION & ANATOMY/METAPHOR DECODING ACROSS THE FULL SCRIPT:
+- Read the FULL SCRIPT STORY first. When a `split_sentence` uses pronouns ("It", "The cat", "These needles", "This trap", "They") or omits the subject, substitute the true entity physically acting in that sentence.
+- When a `split_sentence` describes a microscopic body part, weapon, or metaphor (e.g., "microscopic one-way barbs", "these needles", "like biological harpoons", "1,500 PSI hydraulic press"), NEVER allow generic material/texture queries like `"microscopic texture nature"` or `"sharp needle texture macro"` (which return sewing needles, incense sticks, and leaves on Pexels!). Always rewrite to the actual animal/subject + visible anatomical feature (e.g. `"porcupine quills closeup"`, `"leopard roaring fangs"`).
 
-STEP 2 — APPROVE OR REWRITE `approved_scope` AND `approved_query` FOR EACH SCENE (1 to {len(scenes)}):
-1. If `split_sentence` (after pronoun resolution) describes a clear, concrete, visualizable action or state of the main subject:
-   - Set `"approved_scope": "SCENE_SPECIFIC"`
-   - Ensure `"approved_query"` explicitly includes the resolved subject + concrete physical action/setting (3–5 English words), never a dangling pronoun or literal metaphor prop.
-2. If `split_sentence` is purely transitional, abstract, rhetorical, or focuses on a minor inanimate comparison that would hijack search results away from the story:
-   - Set `"approved_scope": "SCRIPT_OVERALL"`
-   - Rewrite `"approved_query"` so it searches for a fresh, visually compelling angle of the MAIN SCRIPT PROTAGONIST ("{primary_entity or topic}") in its true environment.
+STEP 2 — AUDIT & REWRITE `approved_query` (FOR YOUTUBE SHORTS) AND `approved_fallback_stock_query` (FOR PEXELS/PIXABAY):
+1. `approved_query` (3–5 English words, Real YouTube Shorts Title Format):
+   - Must read like a real viral YouTube Shorts title (e.g., `"leopard attacking porcupine"`, `"porcupine rattling quills closeup"`, `"leopard injured by porcupine quills"`, `"porcupine defending against leopard"`).
+   - REWRITE immediately if `proposed_query` is a narrative storytelling phrase that nobody titles a video with (e.g., REWRITE `"African crested porcupine walking away savanna"` -> `"crested porcupine quills defense"`; REWRITE `"porcupine quill embedded in animal skin macro"` -> `"porcupine quills in leopard"`).
+2. `approved_fallback_stock_query` (2–3 English words, Pexels/Pixabay Canonical Index Format):
+   - Must be the **common 1–2 word canonical species/subject noun + habitat/action** that Pexels/Pixabay actually index (e.g., `"porcupine wildlife"`, `"porcupine quills closeup"`, `"leopard hunting savanna"`).
+   - NEVER drop the head noun (never output `"African Crested"` without `"Porcupine"`) and NEVER output generic textures (`"microscopic texture"`, `"needle texture"`).
+3. `approved_subject_entity` (Scene-Accurate Subject Filter for Vision Auditor):
+   - In a 2-entity duel (`Entity A vs Entity B`), set `approved_subject_entity` to the exact entity shown in that scene OR `"Entity A or Entity B"` (e.g., `"Leopard or African Crested Porcupine"`) so our Vision Auditor accepts valid footage of either contender!
+4. `INTRA-VIDEO QUERY UNIQUENESS` (Mandatory Across All Scenes 1..N):
+   - Across all scenes in the video, NEVER assign the exact same `approved_query` string to two different scenes. Differentiate each scene's `approved_query` by its specific action, anatomical detail, or camera angle so every scene fetches a distinct video clip.
 
 Return ONLY a valid JSON object in this exact format:
 {{
-  "overall_script_query": "3-5 word core story search query",
-  "subject_entity": "2-4 word main subject",
+  "overall_script_query": "3-5 word core story search query (e.g. 'leopard vs porcupine wildlife')",
+  "subject_entity": "main subject(s) of the story (e.g. 'African Crested Porcupine or Leopard')",
   "scenes_audit": [
     {{
       "scene_id": 1,
       "approved_scope": "SCENE_SPECIFIC",
-      "approved_query": "stray golden retriever shivering in rain",
-      "reason": "Resolved subject and concrete physical action from script context"
+      "approved_subject_entity": "Leopard or African Crested Porcupine",
+      "approved_query": "leopard attacking porcupine savanna",
+      "approved_fallback_stock_query": "leopard hunting savanna",
+      "reason": "Search-engine-native YouTube title query and Pexels canonical fallback"
     }}
   ]
 }}"""
@@ -496,17 +529,28 @@ Return ONLY a valid JSON object in this exact format:
                                         item = dict(d)
                                         if top_overall_q:
                                             item["overall_script_query"] = top_overall_q
-                                        if top_subj and not item.get("creature_name"):
+                                        if top_subj and not item.get("creature_name") and not item.get("subject_entity"):
                                             item["subject_entity"] = top_subj
                                         if sid in audit_by_sid:
                                             au = audit_by_sid[sid]
                                             app_scope = str(au.get("approved_scope") or item.get("search_scope") or "SCENE_SPECIFIC").upper()
                                             app_query = str(au.get("approved_query") or "").strip()
+                                            app_fb_query = str(au.get("approved_fallback_stock_query") or "").strip()
+                                            app_subj_ent = str(au.get("approved_subject_entity") or "").strip()
                                             item["search_scope"] = app_scope if app_scope in ("SCENE_SPECIFIC", "SCRIPT_OVERALL") else "SCENE_SPECIFIC"
                                             item["scope_audit_reason"] = str(au.get("reason") or "")
+                                            if app_subj_ent and not item.get("creature_name"):
+                                                item["subject_entity"] = app_subj_ent
+                                            if app_fb_query:
+                                                item["fallback_broad_query"] = app_fb_query
+                                                if item.get("tool_name") == "search_pexels_pixabay_stock_video":
+                                                    item["secondary_stock_query"] = app_fb_query
                                             if app_query:
                                                 t_n = item.get("tool_name")
                                                 if t_n == "clone_youtube_short_peak_clip":
+                                                    item["youtube_search_query"] = app_query
+                                                elif t_n == "search_pexels_pixabay_stock_video":
+                                                    item["primary_stock_query"] = app_query
                                                     item["youtube_search_query"] = app_query
                                                 elif t_n == "summon_epic_monster_cinematic_media":
                                                     item["action_or_concept_query"] = app_query
@@ -517,24 +561,12 @@ Return ONLY a valid JSON object in this exact format:
                                         item["scope_audited"] = True
                                         audited_list.append(item)
 
-                                    try:
-                                        from app.services.video_memory_rag import get_video_memory_rag
-                                        audited_list = get_video_memory_rag().diversify_intra_video_scene_queries(
-                                            job_id=0,
-                                            scenes_strategy=audited_list,
-                                            topic=topic,
-                                            primary_entity=primary_entity or topic,
-                                            scenes_raw=scenes,
-                                        )
-                                    except Exception:
-                                        pass
-
                                     verdict_log = ", ".join(
                                         f"S{x.get('scene_id')}:{x.get('tool_name')}[{x.get('search_scope')}]"
                                         for x in audited_list
                                     )
                                     logger.info(
-                                        f"⚖️ [LLM Scope Judge Node + MiniRAG] Đã thẩm định & đa dạng hóa xong {len(audited_list)} cảnh "
+                                        f"⚖️ [LLM Scope Judge Node] Đã thẩm định xong {len(audited_list)} cảnh "
                                         f"qua `{model_name}` -> {verdict_log}"
                                     )
                                     return audited_list

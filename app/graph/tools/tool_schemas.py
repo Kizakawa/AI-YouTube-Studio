@@ -77,19 +77,16 @@ def clone_youtube_short_peak_clip(
     Công cụ này tìm kiếm video YouTube Shorts thực tế trên mạng, dò đoạn PEAK (Most Replayed / hành động cao trào),
     kiểm duyệt bằng Gemini Vision và cắt đoạn chuẩn 9:16.
 
-    QUY TẮC QUAN TRỌNG NHẤT — CHỌN `search_scope` (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`):
-    1. `search_scope = "SCENE_SPECIFIC"`:
-       - Dùng khi câu thoại của phân cảnh này tách riêng ra VẪN CÓ NGHĨA THỊ GIÁC RÕ RÀNG, ĐỘC LẬP
-         (VD: "A drenched stray dog shivering in the rain", "A mother dog carrying a tiny kitten").
-       - Khi đó `youtube_search_query` đi search trực tiếp hành động của câu văn nhỏ này!
-    2. `search_scope = "SCRIPT_OVERALL"`:
-       - Dùng khi câu thoại của phân cảnh này nếu tách lẻ ra sẽ BỊ VÔ NGHĨA, CỤT NGỦN, TRỪU TƯỢNG, CÂU DẪN CHUYỂN Ý,
-         hoặc chỉ nhắc tới đồ vật vụn vặt dễ làm lệch kết quả search (VD: "For three days nobody knew why...",
-         "When they looked inside the old leather boot...", "Behaviorists call this maternal imprinting...").
-       - Khi đó TUYỆT ĐỐI KHÔNG search theo từ ngữ vụn của câu nhỏ, mà đặt `youtube_search_query` xoay quanh
-         TỔNG THỂ NỘI DUNG KỊCH BẢN (`overall_script_query`)!
-    3. `overall_script_query`: Câu truy vấn (3-5 từ tiếng Anh) mô tả cốt truyện tổng thể của cả kịch bản
-       (VD: "stray dog protecting abandoned kitten", "golden retriever rescuing kitten rain").
+    QUY TẮC BẮT BUỘC CHO 4 THAM SỐ TRUY VẤN (`subject_entity`, `youtube_search_query`, `fallback_broad_query`, `overall_script_query`):
+    1. `subject_entity`: Tên chủ thể thực tế xuất hiện trong khung hình của phân cảnh này.
+       - Nếu kịch bản là cuộc đối đầu 2 thực thể (`Entity A vs Entity B`), hãy ghi đúng thực thể đang hành động ở câu đó hoặc ghi cả hai (`"Leopard or African Crested Porcupine"`) để giám khảo Vision không từ chối nhầm cảnh quay hợp lệ của đối thủ!
+    2. `youtube_search_query` (3–5 từ tiếng Anh): Viết ĐÚNG CÁCH các kênh YouTube Shorts đặt tiêu đề video thực tế (VD: `"leopard vs porcupine"`, `"porcupine rattling quills closeup"`, `"leopard injured by porcupine quills"`).
+       - CẤM TUYỆT ĐỐI viết các cụm từ kể chuyện văn học không ai dùng đặt tên video (CẤM: `"porcupine walking away savanna"`, `"quill embedded in animal skin macro"`).
+    3. `fallback_broad_query` (2–3 từ tiếng Anh, BẮT BUỘC): Truy vấn dự phòng chuẩn chỉ mục Pexels/Pixabay gồm **Danh từ loài/chủ thể phổ biến + môi trường/hành động** (VD: `"porcupine wildlife"`, `"leopard hunting savanna"`).
+       - CẤM cắt cụt mất danh từ chính (CẤM: `"African Crested"` thiếu chữ `"Porcupine"`) và CẤM dùng từ mô tả vật liệu/bề mặt chung chung (CẤM: `"microscopic texture"`, `"sharp needle texture"`).
+    4. `search_scope` (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`) & `overall_script_query`:
+       - Chọn `"SCENE_SPECIFIC"` khi câu thoại (sau khi đã thay đại từ "It/The cat/These needles" bằng tên thực thể thật) mô tả hành động/chi tiết thị giác rõ ràng.
+       - Chọn `"SCRIPT_OVERALL"` khi câu thoại là câu chuyển ý, ẩn dụ hoặc số liệu trừu tượng -> tìm kiếm xoay quanh `overall_script_query` (3–5 từ cốt lõi của toàn kịch bản, VD: `"leopard vs porcupine wildlife"`).
     """
     return {
         "tool_name": "clone_youtube_short_peak_clip",
@@ -278,11 +275,11 @@ def search_pexels_pixabay_stock_video(
     """
     CÔNG CỤ GỌI API KHO VIDEO BẢN QUYỀN SẠCH (PEXELS HD & PIXABAY HD) KÈM KIỂM DUYỆT LINK & ẢNH PREVIEW BỞI LLM.
     CƠ CHẾ HOẠT ĐỘNG 2 BƯỚC CỦA TOOL:
-    - Bước 1 (LLM Gọi API): Gửi `primary_stock_query` và `secondary_stock_query` (cụm 2–4 từ tiếng Anh mô tả danh từ chủ thể vật lý + môi trường/hành động đơn giản, VD: "hippopotamus river wildlife", "african lion savanna") tới API Pexels & Pixabay để lấy danh sách link ứng viên (`returned_url`, `slug_or_tags`) và ảnh chụp preview (`thumbnail`).
-      * Lưu ý đặc tả API: Pexels/Pixabay chỉ lập chỉ mục theo danh từ vật lý cụ thể (2-4 từ), KHÔNG hiểu các từ cảm xúc/trừu tượng ("retreating", "frustrated", "impassive").
+    - Bước 1 (LLM Gọi API): Gửi `primary_stock_query` và `secondary_stock_query` (cụm 2–3 từ tiếng Anh gồm **Danh từ loài/chủ thể gốc + hành động/môi trường**, VD: `"porcupine quills closeup"`, `"leopard hunting savanna"`, `"hippopotamus river wildlife"`) tới API Pexels & Pixabay.
+      * CẤM TUYỆT ĐỐI: Khi câu thoại mô tả bộ phận cơ thể ở góc cận/vi mô (`"these needles"`, `"microscopic barbs"`, `"skull-crushing bite"`, `"venom"`), TUYỆT ĐỐI KHÔNG viết truy vấn bề mặt/đồ vật vô hồn như `"microscopic texture nature"` hay `"sharp needle texture macro"` (sẽ làm Pexels trả về kim khâu, que diêm, lá cây!). Bắt buộc phải gắn tên con vật/chủ thể thật (`"porcupine quills closeup"`, `"porcupine wildlife"`).
     - Bước 2 (LLM Kiểm Tra Lại Link & Ảnh Preview Trả Về):
-      * Ngay khi nhận danh sách link từ API, LLM Auditor (`curate_candidate_videos`) sẽ đọc từng đường link `returned_url` kết hợp NHÌN TRỰC TIẾP ảnh `thumbnail` của từng video (kể cả khi link đặt tên chung chung).
-      * Đối chiếu với `expected_visual_content` (nội dung bắt buộc phải thấy trong hình) và `forbidden_false_positives` (các kết quả nhầm lẫn cần loại bỏ ngay như mèo nhà, thú cưng phòng khách, lồng sắt sở thú) trước khi tải file MP4!
+      * Ngay khi nhận danh sách link từ API, LLM Auditor (`curate_candidate_videos`) sẽ đọc từng đường link `returned_url` kết hợp NHÌN TRỰC TIẾP ảnh `thumbnail` của từng video.
+      * Đối chiếu với `expected_visual_content` và `forbidden_false_positives` trước khi tải file MP4!
     """
     return {
         "tool_name": "search_pexels_pixabay_stock_video",

@@ -363,8 +363,8 @@ HARD RETENTION & FULL-BODIED STORYTELLING RULES:
    - Act 3: Thorough explanation of the hidden neurological/psychological/biomechanical mechanism + Mid-Video Twist.
    - Act 4: Complete climax or concrete word-for-word Counter-Move that viewers will Save & Share.
    - Act 5: Satisfying conclusion + Seamless Loop Bridge back to Scene 1 (ZERO spoken Subscribe CTA).
-3. CONTEXT-ANCHORED, SELF-CONTAINED `visual_keyword` & `stock_query` (ZERO PRONOUNS OR METAPHOR PROPS):
-   - Resolve all pronouns ("It", "He", "They") in every scene's `visual_keyword` (2-5 English words) and `stock_query` (2-4 English words) back to the actual protagonist/subject + concrete physical action, and translate any spoken metaphor into the real physical scene of the story.
+3. CONTEXT-ANCHORED, SEARCH-ENGINE-NATIVE `visual_keyword` & `stock_query` (ZERO PRONOUNS, ZERO GENERIC TEXTURES, ZERO METAPHOR PROPS):
+   - Resolve all pronouns ("It", "He", "They") in every scene's `visual_keyword` (3-5 English words formatted like real YouTube Shorts titles, e.g. `"leopard attacking porcupine"`, `"porcupine quills closeup"`, NEVER unsearchable narrative phrases like `"porcupine walking away"`) and `stock_query` (2-3 English words using common canonical noun + habitat for Pexels/Pixabay, e.g. `"porcupine wildlife"`, `"leopard hunting"`, NEVER generic textures like `"sharp needle texture"` or `"microscopic texture"`).
 4. Return ONLY valid JSON:
 {{
   "video_format": "{vf}",

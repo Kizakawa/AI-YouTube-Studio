@@ -17,27 +17,29 @@ logger = logging.getLogger(__name__)
 
 
 def node_research_and_entity(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node 1: Phân tích chủ đề và nhận diện thực thể/nhân vật chính cho toàn bộ video."""
+    """Node 1: Khởi tạo trạng thái nghiên cứu (ủy quyền phân giải `primary_entity` 100% cho LLM ở `node_generate_script`)."""
     topic = state.get("topic", "")
     title = state.get("title", "")
-    
-    ent_name, ent_type = detect_video_primary_entity(
-        topic=topic,
-        title=title,
-        narration="",
-        tags=[]
-    )
-    
+    existing_script = state.get("script_data") or {}
+
     import os
     search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
+    ent_name = existing_script.get("primary_entity") or state.get("primary_entity")
+    ent_type = ""
     entity_media_pool = []
-    if ent_name and not search_first:
-        logger.info(f"🌟 [LangGraph] Nhận diện thực thể chính: '{ent_name}' ({ent_type}). Kích hoạt Documentary Mode!")
-        media_agent = MediaAgent()
-        entity_media_pool = media_agent.fetch_entity_media_pool(ent_name, ent_type, count=15)
-        logger.info(f"📸 [LangGraph] Đã thu thập sẵn {len(entity_media_pool)} ảnh tư liệu cho '{ent_name}'")
-    elif ent_name:
-        logger.info(f"⚡ [LangGraph] Nhận diện thực thể chính: '{ent_name}' ({ent_type}) — ưu tiên Gemini Search trực tiếp theo từng cảnh (bỏ qua tải trước kho Wiki chậm)")
+
+    if not search_first and not ent_name:
+        ent_name, ent_type = detect_video_primary_entity(
+            topic=topic,
+            title=title,
+            narration="",
+            tags=[],
+        )
+        if ent_name:
+            logger.info(f"🌟 [LangGraph] Nhận diện thực thể chính: '{ent_name}' ({ent_type}). Kích hoạt Documentary Mode!")
+            media_agent = MediaAgent()
+            entity_media_pool = media_agent.fetch_entity_media_pool(ent_name, ent_type, count=15)
+            logger.info(f"📸 [LangGraph] Đã thu thập sẵn {len(entity_media_pool)} ảnh tư liệu cho '{ent_name}'")
 
     return {
         "primary_entity": ent_name,
@@ -45,7 +47,7 @@ def node_research_and_entity(state: VideoWorkflowState) -> Dict[str, Any]:
         "entity_media_pool": entity_media_pool,
         "current_step": "RESEARCH",
         "progress_percent": 10,
-        "progress_message": f"Đã nhận diện: {ent_name or 'Chủ đề chung'} ({len(entity_media_pool)} tư liệu)",
+        "progress_message": f"Khởi tạo phân tích ngữ cảnh LLM cho chủ đề: {(ent_name or topic)[:60]}",
         "script_retry_count": 0,
         "audio_retry_count": 0,
         "media_retry_count": 0,
@@ -60,12 +62,15 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         title = existing_script.get("title", "")
         scene_count = len(existing_script.get("scenes", []))
         logger.info(f"📜 [LangGraph] Sử dụng kịch bản sẵn có từ DB: '{title}' ({scene_count} cảnh)")
-        return {
+        out_loaded: Dict[str, Any] = {
             "script_data": existing_script,
             "current_step": "SCRIPT_LOADED",
             "progress_percent": 20,
             "progress_message": f"Đã nạp kịch bản: {title} ({scene_count} cảnh)",
         }
+        if existing_script.get("primary_entity"):
+            out_loaded["primary_entity"] = existing_script.get("primary_entity")
+        return out_loaded
 
     topic = state.get("topic", "")
     channel_style = state.get("channel_style", "general")

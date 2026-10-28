@@ -184,11 +184,8 @@ def _try_licensed_stock_video_fallback(
                 if (effective_scope == "SCENE_SPECIFIC" and search_phrases)
                 else (subject_entity or topic)
             )
-            core_subj_3w = _clean_yt_search_phrase(subject_entity or topic, max_words=3, strip_distractor_props=True)
-            core_subj_2w = _clean_yt_search_phrase(subject_entity or topic, max_words=2, strip_distractor_props=True)
-            core_subj_1w = _clean_yt_search_phrase(subject_entity or topic, max_words=1, strip_distractor_props=True)
             stock_query_candidates: List[str] = []
-            for cand_sq in [*search_phrases[:2], core_subj_3w, core_subj_2w, core_subj_1w]:
+            for cand_sq in [*search_phrases, overall_script_query, subject_entity]:
                 c_clean = (cand_sq or "").strip()
                 if c_clean and c_clean.lower() not in [x.lower() for x in stock_query_candidates]:
                     stock_query_candidates.append(c_clean)

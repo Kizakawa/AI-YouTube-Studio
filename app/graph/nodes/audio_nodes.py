@@ -74,7 +74,7 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
             return {
                 "topic_classification": "HYBRID_TOOL_CALLING",
                 "director_vision": "YouTube Shorts Peak Clone (Hook + 2-3 Peak Clips) kết hợp Google Top Search Images",
-                "scenes_strategy": tool_decisions, "scope_audited": True,
+                "scenes_strategy": tool_decisions, "scope_audited": False,
             }
         except Exception as e_plan:
             logger.warning(f"[ParallelPlanner] Lỗi lập kế hoạch Tool song song: {e_plan}")

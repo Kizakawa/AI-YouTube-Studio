@@ -751,44 +751,41 @@ class VideoMemoryRAG:
                 if t_name == "summon_epic_monster_cinematic_media"
                 else "youtube_search_query"
                 if t_name == "clone_youtube_short_peak_clip"
+                else "primary_stock_query"
+                if t_name == "search_pexels_pixabay_stock_video"
                 else "smart_image_query"
             )
             cur_q = str(
                 item.get(q_key)
                 or item.get("action_or_concept_query")
                 or item.get("youtube_search_query")
+                or item.get("primary_stock_query")
                 or item.get("smart_image_query")
                 or ""
             ).strip()
             if not cur_q:
                 continue
 
-            max_sim = max((self.compute_text_similarity(cur_q, prev_q) for prev_q in seen_queries), default=0.0)
-            if max_sim >= 0.55 and not item.get("_rag_diversified"):
-                # Trích xuất các từ hành động/miêu tả độc nhất từ lời dẫn của chính phân cảnh này
-                narr_text = narration_map.get(sid) or str(item.get("narration") or "")
-                narr_unigrams = [
-                    t for t in _tokenize_rag(narr_text)
-                    if "_" not in t and len(t) >= 4 and t not in subj_tokens and t not in cur_q.lower()
-                ]
-                facet = angle_facets[idx % len(angle_facets)]
-                extra_terms = " ".join(narr_unigrams[:2]) if narr_unigrams else facet
-                anchor_prefix = " ".join(list(subj_clean.split())[:2]) if subj_clean else ""
-                # Đặt anchor_prefix + extra_terms (từ khóa hành động riêng của cảnh) lên trước để không bị cắt mất khi giới hạn 6 từ
-                diversified_q = f"{anchor_prefix} {extra_terms} {cur_q}".strip()
-                words_dedup: List[str] = []
-                for w in diversified_q.split():
-                    if w.lower() not in [x.lower() for x in words_dedup]:
-                        words_dedup.append(w)
-                new_q = " ".join(words_dedup[:6])
+            # Nếu truy vấn đã được LLM Scope Judge thẩm định (scope_audited=True), tôn trọng 100% câu truy vấn của LLM
+            # (chỉ can thiệp nếu 2 cảnh có câu truy vấn giống hệt nhau 100%).
+            is_exact_dup = any(cur_q.lower() == prev_q.lower() for prev_q in seen_queries)
+            if item.get("scope_audited") and not is_exact_dup:
+                seen_queries.append(cur_q)
+                continue
+
+            max_sim = 1.0 if is_exact_dup else max((self.compute_text_similarity(cur_q, prev_q) for prev_q in seen_queries), default=0.0)
+            if (is_exact_dup or (not item.get("scope_audited") and max_sim >= 0.85)) and not item.get("_rag_diversified"):
+                clean_modifiers = ["closeup", "slow motion", "wide shot", "action", "habitat", "detail", "encounter", "motion"]
+                mod = clean_modifiers[idx % len(clean_modifiers)]
+                new_q = f"{cur_q} {mod}".strip() if mod not in cur_q.lower() else cur_q
                 item[q_key] = new_q
-                if item.get("youtube_search_query"):
+                if item.get("youtube_search_query") and q_key != "smart_image_query":
                     item["youtube_search_query"] = new_q
                 item["search_scope"] = "SCENE_SPECIFIC"
                 item["_rag_diversified"] = True
                 logger.info(
-                    f"🧠 [MiniRAG Intra-Video Diversifier] Cảnh #{sid}: Phát hiện truy vấn trùng lặp nội bộ (sim={max_sim:.2f}) "
-                    f"-> Đa dạng hóa thành '{new_q}'"
+                    f"🧠 [MiniRAG Intra-Video Diversifier] Cảnh #{sid}: Phát hiện truy vấn trùng lặp 100% "
+                    f"-> Thêm góc máy '{new_q}'"
                 )
                 cur_q = new_q
 

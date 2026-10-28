@@ -763,14 +763,15 @@ class StockFetcher:
         if visual_analysis and visual_analysis.get("search_queries"):
             for sq in visual_analysis["search_queries"]:
                 _push(sq)
-        for b in ladder["broadened"]:
-            _push(b)
-        if len(words) >= 2:
-            _push(" ".join(words[:2]))
-        if not ladder["broadened"] and not establishing and not _establishing_pass:
-            for w in words:
-                if not is_vague_single_word(w) and len(w) >= 4:
-                    _push(w)
+        elif not has_preplanned_queries:
+            for b in ladder["broadened"]:
+                _push(b)
+            if len(words) >= 2:
+                _push(" ".join(words[-2:]))
+            if not ladder["broadened"] and not establishing and not _establishing_pass:
+                for w in words:
+                    if not is_vague_single_word(w) and len(w) >= 4:
+                        _push(w)
         _push(query)
 
         def _try_establishing_pass(reason: str) -> Optional[Dict]:
