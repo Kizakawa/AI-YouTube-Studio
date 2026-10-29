@@ -178,6 +178,61 @@ class ThumbnailService:
             logger.debug(f"Frame extraction error: {e}")
         return None
 
+    def _select_sharpest_clean_broll_frame(self, video_path: str, job_id: int) -> Optional[str]:
+        """
+        Quét các file B-Roll gốc sạch (chưa đóng phụ đề hay badge '[ // CHAPTER 1 // ]') trong `media/scene_XXX_16x9.mp4`
+        và chấm điểm Độ sắc nét (Laplacian Variance) + Độ tương phản để chọn ra khung hình 16:9 bắt mắt nhất làm nền Thumbnail.
+        """
+        if not video_path or not os.path.exists(video_path):
+            return None
+        try:
+            import cv2
+            v_dir = Path(video_path).parent
+            media_dir = v_dir / "media"
+            candidate_clips = []
+            if media_dir.exists():
+                for pat in ("scene_001_16x9.mp4", "scene_002_16x9.mp4", "scene_004_16x9.mp4", "scene_005_16x9.mp4", "scene_001*.mp4"):
+                    for p_clip in sorted(media_dir.glob(pat)):
+                        if p_clip.exists() and p_clip.stat().st_size > 40_000 and str(p_clip) not in candidate_clips:
+                            candidate_clips.append(str(p_clip))
+            if not candidate_clips:
+                return None
+
+            best_score = -1.0
+            best_frame_bgr = None
+            for clip_p in candidate_clips[:4]:
+                cap = cv2.VideoCapture(clip_p)
+                if not cap.isOpened():
+                    continue
+                fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+                total_f = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                for ratio in (0.22, 0.45, 0.68):
+                    target_f = max(1, min(total_f - 2, int(total_f * ratio))) if total_f > 10 else int(fps * 1.2)
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, target_f)
+                    ret, frame = cap.read()
+                    if not ret or frame is None:
+                        continue
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    mean_luma = float(gray.mean())
+                    if mean_luma < 28.0 or mean_luma > 235.0:
+                        continue
+                    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+                    contrast = float(gray.std())
+                    score = sharpness * 0.65 + contrast * 1.35
+                    if score > best_score:
+                        best_score = score
+                        best_frame_bgr = frame.copy()
+                cap.release()
+
+            if best_frame_bgr is not None:
+                out_clean = str(self.output_dir / f"clean_broll_thumb_base_{job_id}.jpg")
+                cv2.imwrite(out_clean, best_frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 96])
+                if os.path.exists(out_clean) and os.path.getsize(out_clean) > 5000:
+                    return out_clean
+        except Exception as e_best:
+            logger.debug(f"Clean B-roll thumbnail frame selection skip: {e_best}")
+        return None
+
     def render_thumbnail(
         self,
         base_image_path: str,
@@ -387,14 +442,15 @@ class ThumbnailService:
         if base_image_path and os.path.exists(str(base_image_path)):
             chosen_base = str(base_image_path)
         elif video_path and os.path.exists(video_path):
-            # Kiểm tra xem có ảnh _theme_frame gốc trong thư mục temp không
-            v_dir = Path(video_path).parent
-            theme_frames = sorted(v_dir.glob("_theme_frame_*.jpg"))
-            if theme_frames and theme_frames[0].exists():
-                chosen_base = str(theme_frames[0])
-            else:
-                # Nếu buộc phải trích xuất từ video, lấy frame tại 0.04s (trước khi bất kỳ phụ đề hay banner nào xuất hiện)
-                chosen_base = self.extract_video_frame(video_path, timestamp_sec=0.04)
+            # Ưu tiên số 1: Quét chọn khung hình B-Roll gốc sắc nét & tương phản cao nhất (chưa dính phụ đề/badge)
+            chosen_base = self._select_sharpest_clean_broll_frame(video_path, job_id)
+            if not chosen_base:
+                v_dir = Path(video_path).parent
+                theme_frames = sorted(v_dir.glob("_theme_frame_*.jpg"))
+                if theme_frames and theme_frames[0].exists():
+                    chosen_base = str(theme_frames[0])
+                else:
+                    chosen_base = self.extract_video_frame(video_path, timestamp_sec=0.04)
 
         if not chosen_base or not os.path.exists(chosen_base):
             # Nếu không có ảnh, tạo nền gradient tối sang trọng
@@ -449,12 +505,14 @@ class ThumbnailService:
         if background_image_path and os.path.exists(str(background_image_path)):
             chosen_base = str(background_image_path)
         elif video_path and os.path.exists(video_path):
-            v_dir = Path(video_path).parent
-            theme_frames = sorted(v_dir.glob("_theme_frame_*.jpg"))
-            if theme_frames and theme_frames[0].exists():
-                chosen_base = str(theme_frames[0])
-            else:
-                chosen_base = self.extract_video_frame(video_path, timestamp_sec=frame_timestamp_s if frame_timestamp_s < 0.2 else 0.04)
+            chosen_base = self._select_sharpest_clean_broll_frame(video_path, job_id)
+            if not chosen_base:
+                v_dir = Path(video_path).parent
+                theme_frames = sorted(v_dir.glob("_theme_frame_*.jpg"))
+                if theme_frames and theme_frames[0].exists():
+                    chosen_base = str(theme_frames[0])
+                else:
+                    chosen_base = self.extract_video_frame(video_path, timestamp_sec=frame_timestamp_s if frame_timestamp_s < 0.2 else 0.04)
 
         if not chosen_base or not os.path.exists(chosen_base):
             bg = Image.new("RGB", (1280, 720), color=(15, 18, 28))
