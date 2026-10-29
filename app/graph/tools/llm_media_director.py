@@ -127,7 +127,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     decisions_by_scene: Dict[int, Dict[str, Any]] = {}
 
-    if not (is_long_form_dir and total_scenes >= 28):
+    if not (is_long_form_dir and total_scenes >= 14):
         try:
             import requests
             from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
@@ -426,7 +426,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         if is_long_form_dir:
             for idx_d, d_it in enumerate(final_plan):
                 s_id_cur = int(d_it.get("scene_id") or (idx_d + 1))
-                if total_scenes >= 28:
+                if total_scenes >= 14:
                     d_it["scope_audited"] = True
                 if s_id_cur in target_doodle_sids:
                     c_tag, p_type = doodle_cycle[((s_id_cur - 3) // 4) % len(doodle_cycle)]

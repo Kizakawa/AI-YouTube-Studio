@@ -135,39 +135,60 @@ def send_telegram_video_broadcast(
     if not chat_ids:
         return False
 
-    # Kiểm tra kích thước file; giữ nguyên bản gốc Full HD 1080p 30fps cho mọi file <= 45.0MB (Telegram giới hạn 50MB).
-    # Nếu > 45.0MB (video dài 10 phút), tự động tính toán bitrate mục tiêu theo thời lượng thực tế để file nén luôn <= 44MB gửi mượt vào Telegram!
+    # Kiểm tra kích thước file; nếu > 18.0MB, tự động nén bản Xem Nhanh Telegram (~14–16MB) để upload chỉ mất 12–18 giây không bao giờ bị timeout mạng!
     upload_path = video_path
     temp_compressed = None
     try:
         size_mb = Path(video_path).stat().st_size / (1024 * 1024)
-        if size_mb > 45.0:
+        if size_mb > 18.0:
             import subprocess
             from app.utils.ffmpeg_helper import get_duration_ms
             dur_s = max(30.0, get_duration_ms(video_path) / 1000.0)
-            audio_kbps = 96 if dur_s > 300 else 128
-            max_v_kbps = max(320, min(2200, int((28.0 * 8192) / dur_s) - audio_kbps))
-            target_w, target_h = (1280, 720) if dur_s > 180 else (1920, 1080)
-            crf_val = "26" if dur_s > 180 else "23"
+            audio_kbps = 96 if dur_s > 240 else 128
+            max_v_kbps = max(240, min(1600, int((15.0 * 8192) / dur_s) - audio_kbps))
+            target_w, target_h = (1280, 720) if dur_s > 120 else (1920, 1080)
+            crf_val = "28" if dur_s > 120 else "24"
             temp_dir = Path(settings.TEMP_DIR)
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_compressed = str(temp_dir / f"tg_preview_{Path(video_path).stem}.mp4")
             cmd = [
                 "ffmpeg", "-y", "-i", video_path,
                 "-vf", f"scale='if(gt(iw,ih),{target_w},{target_h})':'if(gt(iw,ih),{target_h},{target_w})':force_original_aspect_ratio=decrease,fps=30",
-                "-c:v", "libx264", "-crf", crf_val, "-maxrate", f"{max_v_kbps}k", "-bufsize", f"{max_v_kbps * 2}k", "-preset", "veryfast",
+                "-c:v", "libx264", "-crf", crf_val, "-maxrate", f"{max_v_kbps}k", "-bufsize", f"{max_v_kbps * 2}k", "-preset", "ultrafast",
                 "-c:a", "aac", "-b:a", f"{audio_kbps}k", "-movflags", "+faststart",
                 temp_compressed
             ]
             logger.info(
-                f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB ({dur_s:.0f}s > 45MB) -> đang nén thông minh ({target_w}x{target_h}, maxrate={max_v_kbps}k) gửi Telegram..."
+                f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB ({dur_s:.0f}s > 18MB) -> đang nén siêu tốc ({target_w}x{target_h}, maxrate={max_v_kbps}k) gửi Telegram..."
             )
-            res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=240)
+            res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
             if res_comp.returncode == 0 and Path(temp_compressed).exists():
                 upload_path = temp_compressed
                 logger.info(f"[TelegramVideoAlert] Đã tạo bản nén gửi Telegram thành công: {Path(upload_path).stat().st_size / (1024*1024):.1f}MB")
     except Exception as ex_comp:
         logger.warning(f"[TelegramVideoAlert] Lỗi khi nén video: {ex_comp}")
+
+    # Cắt caption an toàn theo từng dòng nguyên vẹn (tránh cắt giữa thẻ <b>...</b> gây lỗi HTTP 400 sau khi upload hết cả file video!)
+    safe_caption = caption or ""
+    use_html = True
+    if len(safe_caption) > 960:
+        kept_lines = []
+        cur_len = 0
+        for ln in safe_caption.splitlines():
+            if cur_len + len(ln) + 1 <= 960:
+                kept_lines.append(ln)
+                cur_len += len(ln) + 1
+            else:
+                break
+        safe_caption = "\n".join(kept_lines)
+        if not safe_caption:
+            safe_caption = re.sub(r"<[^>]*>?", "", caption)[:950]
+            use_html = False
+    for tag_chk in ("b", "i", "code", "a"):
+        if safe_caption.count(f"<{tag_chk}>") != safe_caption.count(f"</{tag_chk}>"):
+            safe_caption = re.sub(r"<[^>]*>?", "", safe_caption)[:950]
+            use_html = False
+            break
 
     url = f"https://api.telegram.org/bot{token}/sendVideo"
     cached_file_id = None
@@ -178,10 +199,11 @@ def send_telegram_video_broadcast(
             try:
                 data = {
                     "chat_id": cid,
-                    "caption": caption[:1000] if caption else "",
-                    "parse_mode": "HTML",
+                    "caption": safe_caption,
                     "supports_streaming": True
                 }
+                if use_html:
+                    data["parse_mode"] = "HTML"
                 if inline_keyboard:
                     data["reply_markup"] = json.dumps({"inline_keyboard": inline_keyboard})
 
@@ -204,11 +226,10 @@ def send_telegram_video_broadcast(
                             break
                         elif r.status_code != 200:
                             logger.warning(f"[TelegramVideoAlert] sendVideo HTML lỗi ({r.status_code}): {r.text[:200]} -> Thử lại plain text")
-                            # Thử lại không parse_mode và lọc bỏ thẻ HTML bị cắt dở
                             data.pop("parse_mode", None)
                             data["caption"] = re.sub(r"<[^>]*>?", "", caption)[:950] if caption else ""
                             with open(upload_path, "rb") as vf2:
-                                r2 = http_requests.post(url, data=data, files={"video": vf2}, timeout=120)
+                                r2 = http_requests.post(url, data=data, files={"video": vf2}, timeout=240)
                                 if r2.status_code == 200:
                                     sent_any = True
                                     res_json2 = r2.json()
