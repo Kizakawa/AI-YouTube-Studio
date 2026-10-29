@@ -160,20 +160,26 @@ Return ONLY valid JSON:
     except Exception as e_out:
         logger.warning(f"[LongForm10Min] Stage-1 Outline warning ({e_out}), using structured fallback blueprint.")
 
-    chapters_list = outline_data.get("chapters") or []
-    if not isinstance(chapters_list, list) or len(chapters_list) < 10:
-        merged_ch = []
-        for idx_c in range(10):
-            if idx_c < len(chapters_list) and isinstance(chapters_list[idx_c], dict):
-                item_c = dict(DEFAULT_10_CHAPTER_BLUEPRINT[idx_c])
-                item_c.update({k: v for k, v in chapters_list[idx_c].items() if v})
-                item_c["chapter_id"] = idx_c + 1
-                merged_ch.append(item_c)
-            else:
-                merged_ch.append(dict(DEFAULT_10_CHAPTER_BLUEPRINT[idx_c]))
-        chapters_list = merged_ch
-    else:
-        chapters_list = chapters_list[:10]
+    raw_chapters = outline_data.get("chapters") or []
+    merged_ch: List[Dict[str, Any]] = []
+    for idx_c in range(10):
+        base_c = dict(DEFAULT_10_CHAPTER_BLUEPRINT[idx_c])
+        if isinstance(raw_chapters, list) and idx_c < len(raw_chapters) and isinstance(raw_chapters[idx_c], dict):
+            rc = raw_chapters[idx_c]
+            for k_c, v_c in rc.items():
+                if v_c:
+                    base_c[k_c] = v_c
+            if not rc.get("chapter_master_query"):
+                alt_mq = rc.get("master_query") or rc.get("visual_query") or rc.get("search_query")
+                if alt_mq:
+                    base_c["chapter_master_query"] = str(alt_mq)
+            if not rc.get("chapter_title") and rc.get("title"):
+                base_c["chapter_title"] = str(rc.get("title"))
+            if not rc.get("chapter_premise") and (rc.get("premise") or rc.get("summary")):
+                base_c["chapter_premise"] = str(rc.get("premise") or rc.get("summary"))
+        base_c["chapter_id"] = idx_c + 1
+        merged_ch.append(base_c)
+    chapters_list = merged_ch
 
     doc_title = str(outline_data.get("title") or f"{topic}: The Complete 10-Minute Forensic Breakdown 🧠").strip()
     doc_entity = str(outline_data.get("primary_entity") or topic).strip()
@@ -192,8 +198,16 @@ Return ONLY valid JSON:
         ch_b = chapters_list[batch_idx * 2 + 1]
         start_sid = batch_idx * 8 + 1
         end_sid = start_sid + 7
+        ch_a_id = ch_a.get("chapter_id", batch_idx * 2 + 1)
+        ch_b_id = ch_b.get("chapter_id", batch_idx * 2 + 2)
+        ch_a_title = ch_a.get("chapter_title", f"CHAPTER {ch_a_id}")
+        ch_b_title = ch_b.get("chapter_title", f"CHAPTER {ch_b_id}")
+        ch_a_prem = ch_a.get("chapter_premise", topic)
+        ch_b_prem = ch_b.get("chapter_premise", topic)
+        ch_a_mq = ch_a.get("chapter_master_query", "tense interrogation dark room")
+        ch_b_mq = ch_b.get("chapter_master_query", "close up human eye contact")
 
-        batch_prompt = f"""You are writing Scenes {start_sid} to {end_sid} (Chapters {ch_a['chapter_id']} and {ch_b['chapter_id']}) of a 10-Minute Widescreen 16:9 YouTube Documentary in {target_lang_display}.
+        batch_prompt = f"""You are writing Scenes {start_sid} to {end_sid} (Chapters {ch_a_id} and {ch_b_id}) of a 10-Minute Widescreen 16:9 YouTube Documentary in {target_lang_display}.
 Documentary Title: "{doc_title}"
 Topic: "{topic}"
 {lang_instruction}
@@ -202,19 +216,19 @@ FULL 10-CHAPTER DOCUMENTARY ROADMAP (FOR CONTEXT — DO NOT REPEAT OTHER CHAPTER
 {chapter_summary_text}
 
 YOUR ASSIGNED CHAPTERS TO WRITE RIGHT NOW (8 SCENES TOTAL: SCENES {start_sid} TO {end_sid}):
-1. Chapter {ch_a['chapter_id']} ({ch_a['chapter_title']}) — Scenes {start_sid}, {start_sid+1}, {start_sid+2}, {start_sid+3}:
-   - Premise: {ch_a['chapter_premise']}
-   - Chapter 16:9 Visual Motif: "{ch_a['chapter_master_query']}"
-2. Chapter {ch_b['chapter_id']} ({ch_b['chapter_title']}) — Scenes {start_sid+4}, {start_sid+5}, {start_sid+6}, {start_sid+7}:
-   - Premise: {ch_b['chapter_premise']}
-   - Chapter 16:9 Visual Motif: "{ch_b['chapter_master_query']}"
+1. Chapter {ch_a_id} ({ch_a_title}) — Scenes {start_sid}, {start_sid+1}, {start_sid+2}, {start_sid+3}:
+   - Premise: {ch_a_prem}
+   - Chapter 16:9 Visual Motif: "{ch_a_mq}"
+2. Chapter {ch_b_id} ({ch_b_title}) — Scenes {start_sid+4}, {start_sid+5}, {start_sid+6}, {start_sid+7}:
+   - Premise: {ch_b_prem}
+   - Chapter 16:9 Visual Motif: "{ch_b_mq}"
 
 MANDATORY PACING & WORD COUNT FOR A TRUE 10-MINUTE DOCUMENTARY (~14.5–16.0 SECONDS PER SCENE AT +10% DYNAMIC VOICE SPEED):
 - {'For Scene 1 (scene_id=1): Start with the Cold-Open Hook ("' + doc_hook + '") followed by 1 gripping follow-up sentence (total 24–30 words for Scene 1).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 2 to 3 complete, rich, gripping documentary sentences totaling 38 to 46 WORDS PER SCENE (~14.5–16.0 seconds of spoken narration per scene).'}
 - For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 38 to 46 words of deep, vivid storytelling (real-world dialogue examples, neurological/physical metrics, forensic observations, or surgical counter-moves). NEVER write short 12-word Shorts sentences!
 - ZERO SPOKEN OUTRO CTA: Never say "Subscribe", "Like", or "Leave a comment" in the narration.
 - Self-Contained & Diverse Multi-Source Visual Queries (CRITICAL — NEVER REPEAT THE SAME QUERY WITHIN A CHAPTER):
-  * For Scene {start_sid} (Slot 1 of Chapter {ch_a['chapter_id']}) and Scene {start_sid+4} (Slot 1 of Chapter {ch_b['chapter_id']}), anchor `visual_keyword` and `stock_query` to the Chapter Master Motif ("{ch_a['chapter_master_query']}" / "{ch_b['chapter_master_query']}").
+  * For Scene {start_sid} (Slot 1 of Chapter {ch_a_id}) and Scene {start_sid+4} (Slot 1 of Chapter {ch_b_id}), anchor `visual_keyword` and `stock_query` to the Chapter Master Motif ("{ch_a_mq}" / "{ch_b_mq}").
   * For Scene {start_sid+1} and Scene {start_sid+5} (Slot 2 of each Chapter), write a DIFFERENT 3–4 word close-up physical / neurological / micro-expression query (e.g. close-up eyes, hands, brain scan, heartbeat, body language) that does NOT repeat Slot 1's words!
   * For Scene {start_sid+2} and Scene {start_sid+6} (Slot 3 of each Chapter), write a symbolic / conceptual 3–4 word query for our 2D Doodle Explainer animation.
   * For Scene {start_sid+3} and Scene {start_sid+7} (Slot 4 of each Chapter), write a DIFFERENT 3–5 word wide environmental or counter-move action query (e.g. walking night city, chess move, calm negotiation, horizon) completely distinct from Slots 1 & 2!
@@ -224,11 +238,11 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
   "scenes": [
     {{
       "scene_id": {start_sid},
-      "visual_reasoning": "Chapter {ch_a['chapter_id']} visual intent",
+      "visual_reasoning": "Chapter {ch_a_id} visual intent",
       "narration": "2 to 3 complete documentary sentences in {target_lang_display} totaling 38 to 46 words...",
-      "visual_keyword": "{ch_a['chapter_master_query']}",
-      "visual_prompt": "Cinematic 16:9 widescreen shot of {ch_a['chapter_master_query']}",
-      "stock_query": "{' '.join(str(ch_a['chapter_master_query']).split()[:3])}",
+      "visual_keyword": "{ch_a_mq}",
+      "visual_prompt": "Cinematic 16:9 widescreen shot of {ch_a_mq}",
+      "stock_query": "{' '.join(str(ch_a_mq).split()[:3])}",
       "media_type": "video",
       "camera_motion": "zoom_in_fast",
       "sfx_cue": "impact_boom",

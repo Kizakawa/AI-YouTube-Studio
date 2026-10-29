@@ -73,7 +73,7 @@ class VideoAgent:
 
             # ── Step 2: Concat tất cả scenes → 1 video silent với xfade transition ──
             total_scenes = len(job.scenes)
-            transition_duration = 0.0 if total_scenes >= 22 else 0.16
+            transition_duration = 0.0 if (total_scenes >= 12 or job.resolution_w == 1920) else 0.16
             tail_buffer = 0.15
 
             has_subtitle = bool(job.subtitle_path and Path(job.subtitle_path).exists())
@@ -193,7 +193,7 @@ class VideoAgent:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         total_scenes = len(scenes)
-        transition_duration = 0.0 if total_scenes >= 22 else 0.16
+        transition_duration = 0.0 if (total_scenes >= 12 or job.resolution_w == 1920) else 0.16
         tail_buffer = 0.15
 
         def _render_one(idx: int, scene: SceneContract) -> tuple[int, str]:

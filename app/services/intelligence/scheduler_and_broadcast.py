@@ -136,28 +136,36 @@ def send_telegram_video_broadcast(
         return False
 
     # Kiểm tra kích thước file; giữ nguyên bản gốc Full HD 1080p 30fps cho mọi file <= 45.0MB (Telegram giới hạn 50MB).
-    # Nếu > 45.0MB (video dài nhiều phút), giữ nguyên độ phân giải Full HD 1080p với CRF 21 (maxrate 3600k) thay vì hạ xuống 720p!
+    # Nếu > 45.0MB (video dài 10 phút), tự động tính toán bitrate mục tiêu theo thời lượng thực tế để file nén luôn <= 44MB gửi mượt vào Telegram!
     upload_path = video_path
     temp_compressed = None
     try:
         size_mb = Path(video_path).stat().st_size / (1024 * 1024)
         if size_mb > 45.0:
             import subprocess
+            from app.utils.ffmpeg_helper import get_duration_ms
+            dur_s = max(30.0, get_duration_ms(video_path) / 1000.0)
+            audio_kbps = 96 if dur_s > 300 else 128
+            max_v_kbps = max(320, min(2200, int((28.0 * 8192) / dur_s) - audio_kbps))
+            target_w, target_h = (1280, 720) if dur_s > 180 else (1920, 1080)
+            crf_val = "26" if dur_s > 180 else "23"
             temp_dir = Path(settings.TEMP_DIR)
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_compressed = str(temp_dir / f"tg_preview_{Path(video_path).stem}.mp4")
             cmd = [
                 "ffmpeg", "-y", "-i", video_path,
-                "-vf", "scale='if(gt(iw,ih),1920,1080)':'if(gt(iw,ih),1080,1920)':force_original_aspect_ratio=decrease,fps=30",
-                "-c:v", "libx264", "-crf", "21", "-maxrate", "3600k", "-bufsize", "7200k", "-preset", "veryfast",
-                "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
+                "-vf", f"scale='if(gt(iw,ih),{target_w},{target_h})':'if(gt(iw,ih),{target_h},{target_w})':force_original_aspect_ratio=decrease,fps=30",
+                "-c:v", "libx264", "-crf", crf_val, "-maxrate", f"{max_v_kbps}k", "-bufsize", f"{max_v_kbps * 2}k", "-preset", "veryfast",
+                "-c:a", "aac", "-b:a", f"{audio_kbps}k", "-movflags", "+faststart",
                 temp_compressed
             ]
-            logger.info(f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB (> 45MB) -> đang tạo bản nén Full HD 1080p 30fps gửi Telegram...")
-            res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+            logger.info(
+                f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB ({dur_s:.0f}s > 45MB) -> đang nén thông minh ({target_w}x{target_h}, maxrate={max_v_kbps}k) gửi Telegram..."
+            )
+            res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=240)
             if res_comp.returncode == 0 and Path(temp_compressed).exists():
                 upload_path = temp_compressed
-                logger.info(f"[TelegramVideoAlert] Đã tạo bản Full HD 1080p gửi Telegram thành công: {Path(upload_path).stat().st_size / (1024*1024):.1f}MB")
+                logger.info(f"[TelegramVideoAlert] Đã tạo bản nén gửi Telegram thành công: {Path(upload_path).stat().st_size / (1024*1024):.1f}MB")
     except Exception as ex_comp:
         logger.warning(f"[TelegramVideoAlert] Lỗi khi nén video: {ex_comp}")
 
@@ -186,7 +194,7 @@ def send_telegram_video_broadcast(
                         break
                 else:
                     with open(upload_path, "rb") as vf:
-                        r = http_requests.post(url, data=data, files={"video": vf}, timeout=120)
+                        r = http_requests.post(url, data=data, files={"video": vf}, timeout=240)
                         if r.status_code == 200:
                             sent_any = True
                             res_json = r.json()
