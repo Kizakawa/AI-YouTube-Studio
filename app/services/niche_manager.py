@@ -818,7 +818,7 @@ NICHE_EXCLUSIVE_SIGNATURES: Dict[str, Tuple[List[str], str]] = {
             "ocean deadliest", "ocean's deadliest", "abyssal", "quái vật biển", "đáy đại dương",
             "fossa das marianas", "fundo do oceano", "fundo do mar", "triângulo das bermudas",
             "oceano escondido", "ponto nemo", "buraco negro que engole navios",
-            "tubarão", "baleia", "cachalote", "lula-colossal", "lula gigante", "abismo marinho",
+            "tubarão-branco", "cachalote", "lula-colossal", "lula gigante", "abismo marinho",
             "zona hadal", "submarino", "oceano pacífico", "oceano atlântico", "great white shark",
             "sperm whale", "greenland shark", "tubarão-da-groenlândia",
         ],
@@ -957,10 +957,25 @@ def validate_channel_niche_alignment(
             }
 
     # 2. Kiểm tra xem tiêu đề/chủ đề có mang dấu hiệu đặc trưng độc quyền của ngách khác không
-    own_keywords, _ = NICHE_EXCLUSIVE_SIGNATURES.get(channel_niche, ([], ""))
+    generic_channel_tags = {
+        "shorts", "ytshorts", "us shorts", "usa", "united states", "american",
+        "brasil", "curiosidades", "curiosidades do mundo", "fatos desconhecidos",
+        "ciência", "science", "facts", "documentary",
+    }
+    own_keywords_set = set(NICHE_EXCLUSIVE_SIGNATURES.get(channel_niche, ([], ""))[0])
+    try:
+        from config.settings import settings
+        ch_cfg = settings.get_channel_by_id(channel_id) or {}
+        for ckw in ch_cfg.get("channel_keywords", []) or []:
+            ckw_clean = str(ckw or "").strip().lower()
+            if len(ckw_clean) >= 4 and ckw_clean not in generic_channel_tags:
+                own_keywords_set.add(ckw_clean)
+    except Exception:
+        pass
+
     has_own_signature = any(
         re.search(rf"(?<![\w]){re.escape(kw)}(?![\w])", combined_full)
-        for kw in own_keywords
+        for kw in own_keywords_set
     )
 
     if not has_own_signature:
