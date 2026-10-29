@@ -2690,6 +2690,12 @@ function renderChannelsHub(channels, accounts) {
         kpiVideos.textContent = totalV;
     }
 
+    const kpiScheduled = document.getElementById('kpi-scheduled-videos');
+    if (kpiScheduled) {
+        const totalSched = channels.reduce((sum, c) => sum + (c.scheduled_count || (c.upcoming_schedule ? c.upcoming_schedule.length : 0)), 0);
+        kpiScheduled.textContent = totalSched;
+    }
+
     if (!channels || channels.length === 0) {
         container.innerHTML = `
             <div style="grid-column: 1 / -1; text-align:center; padding:40px; color:var(--text-muted); background:rgba(255,255,255,0.02); border-radius:12px; border:1px dashed rgba(255,255,255,0.1);">
@@ -2714,6 +2720,12 @@ function renderChannelsHub(channels, accounts) {
 
         const visualLabel = ch.visual_mode === 'auto' ? '🤖 AI Auto' : (ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels HD');
         const pubHour = ch.schedule?.publish_hour_utc ?? 12;
+        const pubMin = String(ch.schedule?.publish_minute_utc ?? 0).padStart(2, '0');
+        const goldenLabel = ch.golden_slots_vn || `${pubHour}:${pubMin} UTC`;
+        const upcomingList = Array.isArray(ch.upcoming_schedule) ? ch.upcoming_schedule : [];
+        const schedCount = ch.scheduled_count ?? upcomingList.length;
+        const renderedCount = ch.rendered_count || 0;
+        const nextGolden = ch.next_golden_slot?.display_vn || '';
         const encChId = encodeURIComponent(ch.id || '');
         const encChName = encodeURIComponent(ch.name || ch.id || '');
         const encAccId = encodeURIComponent(ch.google_account || 'account_1');
@@ -2760,19 +2772,54 @@ function renderChannelsHub(channels, accounts) {
                     })()}
                     <span class="hub-chip">🎙️ <strong>Giọng:</strong> ${esc(ch.preferred_voice || 'Default')}</span>
                     <span class="hub-chip">🖼️ <strong>Visual:</strong> ${visualLabel}</span>
-                    <span class="hub-chip">⏰ <strong>Đăng:</strong> ${pubHour}:00 UTC</span>
+                    <span class="hub-chip" style="border-color:rgba(56,189,248,0.35); background:rgba(56,189,248,0.08); color:#38bdf8;" title="2 Khung Giờ Vàng tự động tối ưu theo thị trường kênh">⏰ <strong>Giờ vàng:</strong> ${esc(goldenLabel)}</span>
                 </div>
 
                 <!-- Stats row -->
                 <div class="channel-hub-stats-row">
-                    <div>
-                        <span>📊 Tổng video: <strong>${ch.video_count || 0}</strong></span>
-                        &nbsp;·&nbsp;
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                        <span>📊 Tổng: <strong>${ch.video_count || 0}</strong></span>
+                        <span>·</span>
                         <span style="color:var(--accent-green)">🚀 Đã đăng: <strong>${ch.published_count || 0}</strong></span>
+                        <span>·</span>
+                        <span style="color:${schedCount > 0 ? 'var(--accent-amber)' : 'var(--text-muted)'}">📅 Hẹn lịch: <strong>${schedCount}</strong></span>
+                        ${renderedCount > 0 ? `<span>·</span><span style="color:#a78bfa">🎬 Chờ đăng: <strong>${renderedCount}</strong></span>` : ''}
                     </div>
                     <div style="font-size:11.5px; color:var(--text-muted);">
                         ☁️ ${esc(ch.drive_quota || '2 TB Google One')}
                     </div>
+                </div>
+
+                <!-- Upcoming Golden Hour Schedule Box -->
+                <div style="margin: 10px 0 12px 0; padding: 10px 12px; border-radius: 9px; background: rgba(15, 23, 42, 0.55); border: 1px solid ${upcomingList.length > 0 ? 'rgba(245, 158, 11, 0.35)' : 'rgba(255, 255, 255, 0.06)'};">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
+                        <span style="font-size:11.5px; font-weight:700; color:${upcomingList.length > 0 ? '#fbbf24' : 'var(--text-secondary)'};">
+                            📅 Lịch Hẹn Công Chiếu (${upcomingList.length})
+                        </span>
+                        ${nextGolden ? `<span style="font-size:10.5px; color:var(--text-muted);" title="Khe giờ vàng trống kế tiếp">🎯 Kế tiếp: <strong style="color:#38bdf8;">${esc(nextGolden)}</strong></span>` : ''}
+                    </div>
+                    ${upcomingList.length > 0 ? `
+                        <div style="display:flex; flex-direction:column; gap:6px;">
+                            ${upcomingList.map(u => `
+                                <div style="padding:6px 8px; border-radius:6px; background:rgba(255,255,255,0.03); border-left:3px solid #f59e0b; font-size:11.5px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                                        <span style="font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(u.title || '')}">
+                                            🎬 #${u.job_id}: ${esc((u.title || '').length > 44 ? (u.title || '').substring(0, 44) + '...' : (u.title || ''))}
+                                        </span>
+                                        ${u.youtube_url ? `<a href="${esc(u.youtube_url)}" target="_blank" rel="noopener" style="color:#38bdf8; text-decoration:none; font-size:11px; flex-shrink:0; font-weight:600;">🔗 YouTube ↗</a>` : ''}
+                                    </div>
+                                    <div style="margin-top:3px; color:#fcd34d; font-size:11px;">
+                                        ⏰ <strong>${esc(u.scheduled_vn || '')}</strong>
+                                        ${u.scheduled_us ? `<span style="color:var(--text-muted); margin-left:4px;">(${esc(u.scheduled_us.split('—')[0].trim())})</span>` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div style="font-size:11.5px; color:var(--text-muted); font-style:italic;">
+                            Chưa có video nào đang chờ công chiếu trên kênh này.
+                        </div>
+                    `}
                 </div>
 
                 <!-- Actions -->
@@ -3104,14 +3151,28 @@ function renderAccounts(accounts) {
                                                     ⚠️ Chưa cấp quyền YouTube
                                                 </span>
                                             `)}
+                                            ${(ch.scheduled_count || 0) > 0 ? `
+                                                <span class="badge badge-amber" style="font-size:11px; background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.35); display:inline-flex; align-items:center; gap:4px;">
+                                                    📅 ${ch.scheduled_count} lịch hẹn công chiếu
+                                                </span>
+                                            ` : ''}
                                         </div>
                                         <div class="channel-row-meta" style="font-size:12px; color:var(--text-secondary); display:flex; gap:12px; flex-wrap:wrap;">
                                             <span>🎯 <strong>Chủ đề:</strong> ${ch.niche ? esc(ch.niche) : '<em style="color:var(--text-muted)">✨ Tự do (Đa chủ đề)</em>'}</span>
                                             <span>🌐 <strong>Ngôn ngữ:</strong> ${esc(ch.language || 'en').toUpperCase()}</span>
                                             <span>🎙️ <strong>Giọng:</strong> ${esc(ch.preferred_voice || 'Default')}</span>
                                             <span>🖼️ <strong>Visual:</strong> ${ch.visual_mode === 'auto' ? '🤖 AI Tự chọn' : (ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels')}</span>
-                                            <span>⏰ <strong>Đăng:</strong> ${ch.schedule?.publish_hour_utc ?? 12}:00 UTC</span>
+                                            <span>⏰ <strong>Giờ vàng:</strong> ${esc(ch.golden_slots_vn || `${ch.schedule?.publish_hour_utc ?? 12}:${String(ch.schedule?.publish_minute_utc ?? 0).padStart(2, '0')} UTC`)}</span>
                                         </div>
+                                        ${Array.isArray(ch.upcoming_schedule) && ch.upcoming_schedule.length > 0 ? `
+                                            <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;">
+                                                ${ch.upcoming_schedule.map(u => `
+                                                    <a href="${esc(u.youtube_url || '#')}" target="_blank" rel="noopener" style="text-decoration:none; font-size:11px; padding:3px 8px; border-radius:6px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); color:#fcd34d;">
+                                                        📅 #${u.job_id}: <strong>${esc(u.scheduled_vn || '')}</strong> ↗
+                                                    </a>
+                                                `).join('')}
+                                            </div>
+                                        ` : ''}
                                     </div>
                                     <div class="channel-row-actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                                         ${!isAuth ? `

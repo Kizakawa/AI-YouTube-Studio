@@ -542,6 +542,7 @@ async def get_overview_stats() -> Dict[str, Any]:
         script_ready = db.query(VideoJob).filter(VideoJob.status == "SCRIPT_READY").count()
         rendering = db.query(VideoJob).filter(VideoJob.status == "RENDERING").count()
         rendered = db.query(VideoJob).filter(VideoJob.status == "RENDERED").count()
+        scheduled = db.query(VideoJob).filter(VideoJob.status == "SCHEDULED").count()
         published = db.query(VideoJob).filter(VideoJob.status == "PUBLISHED").count()
         failed = db.query(VideoJob).filter(VideoJob.status == "FAILED").count()
         total_users = db.query(User).count()
@@ -583,6 +584,7 @@ async def get_overview_stats() -> Dict[str, Any]:
         "script_ready": script_ready,
         "rendering": rendering,
         "rendered": rendered,
+        "scheduled": scheduled,
         "published": published,
         "failed": failed,
         "total_members": total_users,
@@ -726,8 +728,40 @@ def _check_channel_token_health(ch_id: str, token_file: Path) -> Dict[str, Any]:
         _channel_token_health_cache[ch_id] = res
         return res
 
+def _format_channel_golden_slots_vn(channel_id: str) -> str:
+    """Tính chuỗi hiển thị 2 Khung Giờ Vàng hàng ngày (Giờ VN) đã cộng độ lệch pha riêng của kênh."""
+    try:
+        from app.services.smart_scheduler import (
+            get_active_slots_pool,
+            get_channel_stagger_minutes,
+        )
+        pool = get_active_slots_pool(str(channel_id or ""))
+        stagger = get_channel_stagger_minutes(str(channel_id or ""))
+        vn_times = []
+        for s in pool:
+            total_utc_mins = (int(s["hour"]) * 60 + int(s["minute"]) + stagger) % 1440
+            vn_mins = (total_utc_mins + 7 * 60) % 1440
+            vn_times.append(f"{vn_mins // 60:02d}:{vn_mins % 60:02d}")
+        if vn_times:
+            return " & ".join(vn_times) + " (Giờ VN)"
+    except Exception:
+        pass
+    return "Khung Giờ Vàng Tự Động"
+
+
 @app.get("/api/channels")
 def get_channels_matrix() -> List[Dict[str, Any]]:
+    from app.services.smart_scheduler import (
+        resolve_channel_family,
+        sync_scheduled_jobs_status,
+        get_channel_upcoming_schedule,
+        get_next_available_golden_slot,
+    )
+    try:
+        sync_scheduled_jobs_status()
+    except Exception:
+        pass
+
     cfg = _read_channels_yaml()
     channels = cfg.get("channels", [])
     raw_accounts = cfg.get("google_accounts", [])
@@ -737,9 +771,16 @@ def get_channels_matrix() -> List[Dict[str, Any]]:
     with get_db() as db:
         for ch in channels:
             ch_id = ch.get("id")
-            video_count = db.query(VideoJob).filter(VideoJob.target_channel_id == ch_id).count()
+            fam_ids = resolve_channel_family(str(ch_id or ""))
+            video_count = db.query(VideoJob).filter(VideoJob.target_channel_id.in_(fam_ids)).count()
             published_count = db.query(VideoJob).filter(
-                VideoJob.target_channel_id == ch_id, VideoJob.status == "PUBLISHED"
+                VideoJob.target_channel_id.in_(fam_ids), VideoJob.status == "PUBLISHED"
+            ).count()
+            scheduled_count = db.query(VideoJob).filter(
+                VideoJob.target_channel_id.in_(fam_ids), VideoJob.status == "SCHEDULED"
+            ).count()
+            rendered_count = db.query(VideoJob).filter(
+                VideoJob.target_channel_id.in_(fam_ids), VideoJob.status == "RENDERED"
             ).count()
 
             # Lấy thông tin tài khoản Google mẹ
@@ -761,6 +802,8 @@ def get_channels_matrix() -> List[Dict[str, Any]]:
 
             brand_channels = parent_acc.get("brand_channels", [])
             is_first_ch = len(brand_channels) > 0 and brand_channels[0].get("id") == ch_id
+            brand_match = next((b for b in brand_channels if b.get("id") == ch_id), {})
+            effective_schedule = ch.get("schedule") or brand_match.get("schedule") or {}
 
             token_status = _check_account_tokens(acc_id)
             has_client_secret = token_status["has_client_secret"]
@@ -786,6 +829,19 @@ def get_channels_matrix() -> List[Dict[str, Any]]:
                 is_connected = False
                 status_label = "🟡 Cần cấp quyền riêng"
 
+            upcoming_list = []
+            next_slot_obj = None
+            try:
+                upcoming_list = get_channel_upcoming_schedule(str(ch_id), limit=6, _skip_sync=True)
+                _, nxt_iso, nxt_vn, nxt_us = get_next_available_golden_slot(str(ch_id), _skip_sync=True)
+                next_slot_obj = {
+                    "iso": nxt_iso,
+                    "display_vn": nxt_vn,
+                    "display_us": nxt_us,
+                }
+            except Exception as sched_err:
+                logger.debug(f"[ChannelsMatrix] Schedule enrichment skip for {ch_id}: {sched_err}")
+
             result.append({
                 "id": ch_id,
                 "name": ch.get("name"),
@@ -804,9 +860,14 @@ def get_channels_matrix() -> List[Dict[str, Any]]:
                 "has_client_secret": has_client_secret,
                 "visual_mode": ch.get("visual_mode", "auto"),
                 "preferred_voice": ch.get("preferred_voice", "en-US-ChristopherNeural"),
-                "schedule": ch.get("schedule", {}),
+                "schedule": effective_schedule,
+                "golden_slots_vn": _format_channel_golden_slots_vn(str(ch_id)),
                 "video_count": video_count,
                 "published_count": published_count,
+                "scheduled_count": scheduled_count,
+                "rendered_count": rendered_count,
+                "upcoming_schedule": upcoming_list,
+                "next_golden_slot": next_slot_obj,
                 "drive_quota": parent_acc.get("drive_storage", "2 TB Google One"),
                 "youtube_quota_daily": parent_acc.get("youtube_quota_daily", 10000),
             })
@@ -3276,6 +3337,34 @@ async def oauth_callback(
             status_code=500
         )
 
+def _sync_flat_channels_from_accounts(data: Dict[str, Any]) -> None:
+    """Đồng bộ trường schedule và google_account từ google_accounts[*].brand_channels xuống danh sách phẳng channels."""
+    if not isinstance(data, dict):
+        return
+    accounts = data.get("google_accounts")
+    flat_channels = data.get("channels")
+    if not isinstance(accounts, list) or not isinstance(flat_channels, list):
+        return
+    brand_map: Dict[str, Tuple[str, Dict[str, Any]]] = {}
+    for acc in accounts:
+        if not isinstance(acc, dict):
+            continue
+        acc_id = acc.get("id", "")
+        for bch in acc.get("brand_channels", []) or []:
+            if isinstance(bch, dict) and bch.get("id"):
+                brand_map[str(bch["id"])] = (acc_id, bch)
+    for fc in flat_channels:
+        if not isinstance(fc, dict):
+            continue
+        cid = str(fc.get("id") or "")
+        if cid in brand_map:
+            acc_id, bch = brand_map[cid]
+            if acc_id:
+                fc["google_account"] = acc_id
+            if bch.get("schedule"):
+                fc["schedule"] = dict(bch["schedule"])
+
+
 def _read_channels_yaml() -> Dict[str, Any]:
     yaml_path = settings.CHANNELS_CONFIG_FILE
     example_path = yaml_path.with_name("channels.example.yaml")
@@ -3304,7 +3393,10 @@ def _read_channels_yaml() -> Dict[str, Any]:
                                 data = ex_data
                     except Exception:
                         pass
-            return data if isinstance(data, dict) else {}
+            if isinstance(data, dict):
+                _sync_flat_channels_from_accounts(data)
+                return data
+            return {}
     except Exception as e:
         logger.error(f"Lỗi đọc channels.yaml: {e}")
         return {"google_accounts": [], "channels": []}
@@ -3312,6 +3404,7 @@ def _read_channels_yaml() -> Dict[str, Any]:
 def _write_channels_yaml(data: Dict[str, Any]) -> bool:
     yaml_path = settings.CHANNELS_CONFIG_FILE
     try:
+        _sync_flat_channels_from_accounts(data)
         with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False, indent=2)
         settings._cached_channels = None
@@ -3428,6 +3521,15 @@ async def get_accounts_and_channels() -> Dict[str, Any]:
             bch_copy["youtube_connected"] = is_conn
             bch_copy["token_expired"] = token_expired
             bch_copy["token_channel_title"] = ch_title
+            bch_copy["golden_slots_vn"] = _format_channel_golden_slots_vn(str(bch_id))
+            try:
+                from app.services.smart_scheduler import get_channel_upcoming_schedule
+                up_list = get_channel_upcoming_schedule(str(bch_id), limit=5, _skip_sync=True)
+                bch_copy["upcoming_schedule"] = up_list
+                bch_copy["scheduled_count"] = len(up_list)
+            except Exception:
+                bch_copy["upcoming_schedule"] = []
+                bch_copy["scheduled_count"] = 0
             enriched_bchannels.append(bch_copy)
 
         enriched_accounts.append({
@@ -4211,6 +4313,7 @@ async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCre
             fc["preferred_voice"] = channel.get("preferred_voice", fc.get("preferred_voice", "en-US-ChristopherNeural"))
             fc["visual_mode"] = channel["visual_mode"]
             fc["google_account"] = target_account_id
+            fc["schedule"] = dict(channel.get("schedule") or {})
             settings._heal_channel_dict(fc)
 
     _write_channels_yaml(cfg)
