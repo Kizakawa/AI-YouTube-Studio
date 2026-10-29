@@ -76,13 +76,13 @@ visual_aesthetics:
 subtitles:
   font_family: Outfit, Nunito, sans-serif
   font_weight: '900'
-  font_size: 40
+  font_size: 56
   primary_color: '#FFFFFF'
   highlight_color: '#FF8DA1'
   accent_color: '#FFD166'
   outline_color: '#2B1A1D'
   outline_width: 3
-  margin_bottom: 600
+  margin_bottom: 420
 audio:
   preferred_voice_en: en-US-AvaMultilingualNeural
   preferred_voice_vi: vi-VN-HoaiMyNeural

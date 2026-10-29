@@ -60,13 +60,13 @@ visual_aesthetics:
 subtitles:
   font_family: Playfair Display, Georgia, serif
   font_weight: '700'
-  font_size: 38
+  font_size: 56
   primary_color: '#F8F9FA'
   highlight_color: '#E2E8F0'
   accent_color: '#CBD5E1'
   outline_color: '#0F172A'
   outline_width: 3
-  margin_bottom: 600
+  margin_bottom: 420
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural

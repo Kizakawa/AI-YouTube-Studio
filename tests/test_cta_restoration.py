@@ -114,10 +114,8 @@ def test_visual_cta_badge_generation():
         show_cta_badge=True
     )
     
-    cta_lines_en = [line for line in ass_en.splitlines() if "CTABadge" in line and line.startswith("Dialogue: 1,")]
-    print(f"English CTABadge lines: {cta_lines_en}")
-    assert len(cta_lines_en) == 1, "Expected exactly 1 CTABadge line in ASS when show_cta_badge=True!"
-    assert "SUBSCRIBE" in cta_lines_en[0], "Expected CTA badge text in English!"
+    cta_lines_en = [line for line in ass_en.splitlines() if "CTABadge" in line or "SUBSCRIBE" in line]
+    assert len(cta_lines_en) == 0, "Burned-in Like/Share/Comment/Subscribe CTA banner must NEVER appear in ASS!"
 
     # Test Vietnamese Niche
     scenes_vi = [
@@ -132,10 +130,8 @@ def test_visual_cta_badge_generation():
         show_cta_badge=True
     )
     
-    cta_lines_vi = [line for line in ass_vi.splitlines() if "CTABadge" in line and line.startswith("Dialogue: 1,")]
-    print(f"Vietnamese CTABadge lines: {cta_lines_vi}")
-    assert len(cta_lines_vi) == 1, "Expected exactly 1 CTABadge line in ASS!"
-    assert "ĐĂNG KÝ" in cta_lines_vi[0], "Expected CTA badge text in Vietnamese!"
+    cta_lines_vi = [line for line in ass_vi.splitlines() if "CTABadge" in line or "ĐĂNG KÝ" in line]
+    assert len(cta_lines_vi) == 0, "Burned-in Like/Share/Comment/Subscribe CTA banner must NEVER appear in ASS!"
 
     print("✅ Test 3 PASSED: Visual CTABadge defaults to False (Infinite Loop) and generates when explicitly enabled!\n")
 

@@ -62,9 +62,9 @@ class ManualStudioConfig(BaseModel):
     bgm_volume: float = 0.12
     use_ducking: bool = True
     subtitle_enabled: bool = True
-    subtitle_font: str = "Arial"
-    subtitle_font_size: int = 40
-    subtitle_margin_v: int = 210
+    subtitle_font: str = "Montserrat ExtraBold"
+    subtitle_font_size: int = 56
+    subtitle_margin_v: int = 420
     transition_type: str = "fade"
     transition_duration: float = 0.25
     use_sfx: bool = False

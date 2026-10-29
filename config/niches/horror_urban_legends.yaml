@@ -58,13 +58,13 @@ visual_aesthetics:
 subtitles:
   font_family: Creepster, Montserrat, Impact, sans-serif
   font_weight: '900'
-  font_size: 40
+  font_size: 56
   primary_color: '#FFF5F5'
   highlight_color: '#FF0033'
   accent_color: '#990000'
   outline_color: '#1A0000'
   outline_width: 4
-  margin_bottom: 600
+  margin_bottom: 420
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural

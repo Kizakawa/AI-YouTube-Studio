@@ -527,7 +527,7 @@ class MashupShortRendererMixin:
                     niche_sub = get_niche_subtitle_style(niche_profile)
                     fontname = niche_sub.get("fontname", "Arial Black")
 
-                    mashup_margin_v = 200 if layout_mode == "strip_sandwich_square" else 580
+                    mashup_margin_v = 380 if layout_mode == "strip_sandwich_square" else 420
                     SubtitleHelper.save_mashup_ass_file(
                         clips=clips,
                         output_path=str(ass_path),

@@ -154,7 +154,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                 subtitle_path,
                 niche_id=niche,
                 hook_title=hook_banner_text,
-                show_cta_badge=True,
+                show_cta_badge=False,
                 is_long_form=is_long_form,
             )
     except Exception as e_sub:

@@ -370,7 +370,7 @@ class SingleShortRendererMixin:
             ass_path = SUBS_DIR / ass_filename
             ass_file_path = str(ass_path)
 
-            eff_margin_v = 200 if layout_mode == "strip_sandwich_square" else 580
+            eff_margin_v = 380 if layout_mode == "strip_sandwich_square" else 420
 
             if is_voiceover_mode:
                 # Khi lồng giọng đọc AI/Tự sinh: Phụ đề BẮT BUỘC phải khớp 100% với lời thuyết minh mới,
@@ -406,7 +406,7 @@ class SingleShortRendererMixin:
                     margin_v=eff_margin_v,
                     niche_id=niche_id,
                     credit_text=effective_credit,
-                    show_cta_badge=True,
+                    show_cta_badge=False,
                 )
             elif subtitle_text.strip():
                 clean_sub = SubtitleHelper.sanitize_subtitle_text(subtitle_text)
@@ -426,7 +426,7 @@ class SingleShortRendererMixin:
                     margin_v=eff_margin_v,
                     niche_id=niche_id,
                     credit_text=effective_credit,
-                    show_cta_badge=True,
+                    show_cta_badge=False,
                 )
             else:
                 # Nếu không có transcript, sinh phụ đề hook dẫn chuyện theo tiêu đề video

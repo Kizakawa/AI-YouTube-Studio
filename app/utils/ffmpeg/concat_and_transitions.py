@@ -206,7 +206,7 @@ def concat_videos_with_xfade(
         srt_escaped = str(subtitle_path).replace("\\", "/").replace(":", "\\:").replace("'", "")
         is_ass = str(subtitle_path).lower().endswith(".ass")
         sub_label = "vsub"
-        fonts_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
+        fonts_dir = Path(__file__).resolve().parent.parent.parent.parent / "assets" / "fonts"
         fontsdir_opt = ""
         if fonts_dir.exists() and any(fonts_dir.glob("*.[to]tf")):
             fdir_esc = str(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "")
@@ -215,9 +215,9 @@ def concat_videos_with_xfade(
             filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}'{fontsdir_opt},format=yuv420p[{sub_label}]")
         else:
             style = (
-                "PlayResX=1080,PlayResY=1920,Fontname=Montserrat ExtraBold,FontSize=40,"
-                "PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,Outline=2.5,"
-                "Shadow=1.5,Bold=1,Alignment=2,MarginV=600"
+                "PlayResX=1080,PlayResY=1920,Fontname=Montserrat ExtraBold,FontSize=56,"
+                "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=3.6,"
+                "Shadow=1.8,Bold=1,Alignment=2,MarginL=115,MarginR=115,MarginV=420"
             )
             filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}'{fontsdir_opt}:force_style='{style}',format=yuv420p[{sub_label}]")
         current_label = sub_label

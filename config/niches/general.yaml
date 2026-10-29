@@ -52,13 +52,13 @@ visual_aesthetics:
 subtitles:
   font_family: Montserrat, sans-serif
   font_weight: '900'
-  font_size: 40
+  font_size: 56
   primary_color: '#FFFFFF'
   highlight_color: '#FFE600'
   accent_color: '#FF3366'
   outline_color: '#000000'
   outline_width: 3
-  margin_bottom: 600
+  margin_bottom: 420
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural

@@ -24,8 +24,8 @@ class TestSystemWideUpgrade(unittest.TestCase):
         for niche in niches:
             nid = niche.get("id")
             sub_style = get_niche_subtitle_style(niche)
-            # MarginV an toàn trên khung 1920 (576 - 672px)
-            self.assertTrue(576 <= sub_style["margin_v"] <= 672, f"Niche {nid} margin_v {sub_style['margin_v']} out of safe zone!")
+            # MarginV Safe Zone chuẩn Shorts trên khung 1920 (380 - 480px, mặc định 420px)
+            self.assertTrue(380 <= sub_style["margin_v"] <= 480, f"Niche {nid} margin_v {sub_style['margin_v']} out of safe zone!")
             
             # Toàn bộ ngách đều tắt affiliate cho Shorts (đảm bảo không dính link rác, tập trung tương tác)
             monet = niche.get("monetization", {})

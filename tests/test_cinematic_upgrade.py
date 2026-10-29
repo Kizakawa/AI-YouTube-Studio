@@ -46,15 +46,15 @@ def test_all():
     assert "unsharp=" in res_grain["vf_filter"], "Color grading unsharp filter missing!"
     print("Color Grading in FFmpeg PASSED!")
 
-    print("\n--- Test 6: Level 4 Pattern Interrupt Badges ---")
+    print("\n--- Test 6: Safe-Zone Clean Subtitles & Zero Burned-in CTA ---")
     scs_badge = [
         SceneContract(scene_id=1, narration="ĐỪNG BAO GIỜ tin vào điều này.", visual_keyword="test", estimated_seconds=3, audio_path="a1.mp3", audio_duration_ms=3000),
         SceneContract(scene_id=2, narration="Đây là bằng chứng xác thực số 1.", visual_keyword="test2", estimated_seconds=3, audio_path="a2.mp3", audio_duration_ms=3000)
     ]
-    ass_badge = SubtitleHelper.build_ass_content(scs_badge, niche_id="psychology")
-    assert "TÂM LÝ ĐEN TỐI" in ass_badge, "Hook Investigative Badge missing!"
-    assert "PatternInterruptBadge" in ass_badge, "PatternInterruptBadge style missing!"
-    print("Pattern Interrupt Investigative Badges PASSED!")
+    ass_badge = SubtitleHelper.build_ass_content(scs_badge, niche_id="psychology", show_cta_badge=True)
+    assert "CTABadge" not in ass_badge and "ĐĂNG KÝ" not in ass_badge, "Burned-in CTA must be completely removed!"
+    assert ",2,115,115,420,1" in ass_badge, "Safe-zone MarginV=420 and MarginL/R=115 missing!"
+    print("Safe-Zone Clean Subtitles & Zero Burned-in CTA PASSED!")
 
     print("\n--- Test 7: Level 4 Multi-Layer Micro-SFX Extraction ---")
     scs_sfx = [

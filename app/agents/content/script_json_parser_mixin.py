@@ -940,17 +940,6 @@ class ScriptJsonParserMixin:
             ).strip()
             raw_data["pinned_comment"] = cur_pin
 
-        if scenes and isinstance(scenes, list) and len(scenes) >= 3 and isinstance(scenes[-1], dict):
-            if not scenes[-1].get("overlay_badge"):
-                scenes[-1]["overlay_badge"] = (
-                    "[ // VOTE 1 OU 2 & INSCREVA-SE // ]"
-                    if is_pt_lang else (
-                        "[ // BÌNH CHỌN & ĐĂNG KÝ KÊNH // ]"
-                        if is_vn else
-                        "[ // VOTE 1 OR 2 & SUBSCRIBE // ]"
-                    )
-                )
-
         # ── 4. NICHE-AWARE CLEAN SHORTS DESCRIPTION (CHỐNG RÒ RỈ METADATA CHÉO NGÁCH & CHỐNG SPAM BREAKDOWN) ──
         raw_desc = str(raw_data.get("description") or "").strip()
         is_psych_niche = (

@@ -95,8 +95,8 @@ visual_aesthetics:
   - underwater cave diver flashlight darkness
 subtitles:
   font_family: Montserrat, Arial Black, sans-serif
-  font_size: 42
-  margin_bottom: 600
+  font_size: 56
+  margin_bottom: 420
   primary_color: '#ffffff'
   highlight_color: '#38bdf8'
   outline_color: '#020617'

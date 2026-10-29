@@ -150,7 +150,7 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
             subtitle_path,
             niche_id=channel_style,
             hook_title=hook_banner_text,
-            show_cta_badge=True,
+            show_cta_badge=False,
             is_long_form=is_long_form,
         ),
     )

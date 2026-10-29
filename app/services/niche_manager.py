@@ -553,27 +553,28 @@ def hex_to_ass_color(hex_str: str, alpha: int = 0) -> str:
 def get_niche_subtitle_style(niche_profile: Dict[str, Any]) -> Dict[str, Any]:
     """
     Trả về bộ mã màu và font chữ đã chuyển đổi cho ASS Subtitles từ hồ sơ ngách.
-    Chuẩn hóa MarginV: 560 - 860px trên khung 1080x1920 (mặc định 720px vùng tâm điểm mắt người xem chuẩn @MasteringMindControl).
+    Chuẩn hóa Safe Zone YouTube Shorts trên khung 1080x1920:
+      - MarginV: 380 - 480px (mặc định 420px: nằm gọn dưới chủ thể trung tâm và hoàn toàn phía trên vùng tiêu đề/@handle của YouTube Shorts).
+      - Fontsize: 52 - 62px (mặc định 56px: thanh thoát, rõ nét, không choán khung hình).
     """
     sub_cfg = niche_profile.get("subtitles", {})
-    primary_hex = sub_cfg.get("primary_color", "#9E9E9E")
+    primary_hex = sub_cfg.get("primary_color", "#E4E4E4")
     highlight_hex = sub_cfg.get("highlight_color", "#FFFFFF")
     outline_hex = sub_cfg.get("outline_color", "#000000")
-    raw_font = sub_cfg.get("font_family") or "Arial Black, Montserrat, sans-serif"
-    font_family = raw_font.split(",")[0].strip() or "Arial Black"
-    raw_fs = int(sub_cfg.get("font_size", 78))
-    font_size = raw_fs if raw_fs >= 74 else 78
-    
-    raw_margin = int(sub_cfg.get("margin_bottom", 720))
-    # Chuẩn hóa an toàn trong khoảng 560 - 860 px (mặc định 720px vùng trung tâm dưới cằm chủ thể, hoàn toàn tránh UI Shorts)
-    margin_v = raw_margin if 560 <= raw_margin <= 860 else 720
+    raw_font = sub_cfg.get("font_family") or "Montserrat ExtraBold, sans-serif"
+    font_family = raw_font.split(",")[0].strip() or "Montserrat ExtraBold"
+    raw_fs = int(sub_cfg.get("font_size", 56))
+    font_size = raw_fs if 52 <= raw_fs <= 62 else 56
+
+    raw_margin = int(sub_cfg.get("margin_bottom", 420))
+    margin_v = raw_margin if 380 <= raw_margin <= 480 else 420
 
     return {
         "fontname": font_family,
         "fontsize": font_size,
         "margin_v": margin_v,
         "primary_ass": hex_to_ass_color(primary_hex, alpha=0),
-        "secondary_ass": hex_to_ass_color(highlight_hex, alpha=0), # Karaoke word-level highlight
+        "secondary_ass": hex_to_ass_color(highlight_hex, alpha=0),
         "outline_ass": hex_to_ass_color(outline_hex, alpha=0),
         "primary_hex": primary_hex,
         "highlight_hex": highlight_hex,

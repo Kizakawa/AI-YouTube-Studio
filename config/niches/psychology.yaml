@@ -182,13 +182,13 @@ llm_production_blueprint:
 subtitles:
   font_family: Arial Black, Montserrat, sans-serif
   font_weight: '900'
-  font_size: 46
+  font_size: 56
   primary_color: '#9E9E9E'
   highlight_color: '#FFFFFF'
   accent_color: '#FF2A2A'
   outline_color: '#000000'
   outline_width: 4
-  margin_bottom: 600
+  margin_bottom: 420
 audio:
   preferred_voice_en: en-US-AndrewNeural
   preferred_voice_vi: vi-VN-NamMinhNeural

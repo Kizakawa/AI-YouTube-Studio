@@ -25,13 +25,13 @@ def burn_subtitles(
     video_path: str,
     srt_path: str,
     output_path: str,
-    font_name: str = "Arial",
-    font_size: int = 40,
-    font_color: str = "&H0000FFFF",  # Vàng tươi chuẩn phong cách Shorts viral
+    font_name: str = "Montserrat ExtraBold",
+    font_size: int = 56,
+    font_color: str = "&H00FFFFFF",  # Chữ trắng sắc nét chuẩn Shorts Safe Zone
     outline_color: str = "&H00000000", # Viền đen tuyền
-    outline_width: float = 2.5,
-    shadow: float = 1.5,
-    margin_v: int = 600,              # Chuẩn hóa 600px (vùng an toàn 576-672px, không bị che bởi Shorts UI)
+    outline_width: float = 3.6,
+    shadow: float = 1.8,
+    margin_v: int = 420,              # Chuẩn hóa 420px (Safe Zone Shorts: dưới chủ thể, trên UI tiêu đề/@handle)
     bold: bool = True,
 ) -> str:
     """
@@ -40,7 +40,7 @@ def burn_subtitles(
     đặt ở vùng an toàn (MarginV: 576-672px, mặc định 600px) để không bị đè bởi Shorts UI.
     Đã bổ sung PlayResX=1080 & PlayResY=1920 để khóa chặt độ phân giải canvas.
     """
-    safe_margin = int(margin_v) if 576 <= int(margin_v) <= 672 else 600
+    safe_margin = int(margin_v) if 360 <= int(margin_v) <= 500 else 420
     safe_font_name = "".join(c for c in str(font_name or "Arial") if c.isalnum() or c in (" ", "-", "_")).strip() or "Arial"
     safe_font_color = "".join(c for c in str(font_color or "&H0000FFFF") if c.isalnum() or c == "&") or "&H0000FFFF"
     safe_outline_color = "".join(c for c in str(outline_color or "&H00000000") if c.isalnum() or c == "&") or "&H00000000"
@@ -55,12 +55,14 @@ def burn_subtitles(
         f"Shadow={float(shadow)},"
         f"Bold={'1' if bold else '0'},"
         f"Alignment=2,"      # Bottom center
+        f"MarginL=115,"
+        f"MarginR=115,"
         f"MarginV={safe_margin}" # Chuẩn hóa vùng an toàn Shorts UI
     )
     # Escape path cho Windows (ffmpeg subtitles filter cần forward slashes và escape colon/quote)
     srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:").replace("'", "")
     is_ass = srt_path.lower().endswith(".ass")
-    fonts_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
+    fonts_dir = Path(__file__).resolve().parent.parent.parent.parent / "assets" / "fonts"
     fontsdir_opt = ""
     if fonts_dir.exists() and any(fonts_dir.glob("*.[to]tf")):
         fdir_esc = str(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "")

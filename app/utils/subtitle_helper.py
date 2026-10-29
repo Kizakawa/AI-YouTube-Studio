@@ -12,7 +12,7 @@ Cả hai format đều tính toán timestamp lũy kế (cumulative timeline) ch�
 """
 import re
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from datetime import timedelta
 
 from app.schemas.contracts import SceneContract
@@ -20,15 +20,16 @@ from app.schemas.contracts import SceneContract
 
 # ── Màu sắc ASS (ABGR hex, bắt đầu bằng &H) ──────────────────────────────
 # ASS format: &HAABBGGRR (alpha, blue, green, red)
-ASS_WHITE       = "&H00FFFFFF"   # Trắng tinh khiết — màu chữ đã đọc/đang đọc chuẩn @MasteringMindControl
-ASS_DIM_SILVER  = "&H009E9E9E"   # Bạc xám trầm (#9E9E9E) — màu chữ sắp đọc (tạo hiệu ứng sáng dần từng từ)
-ASS_YELLOW      = "&H0000FFFF"   # Vàng tươi rực #FFFF00 — từ khóa nhấn mạnh / Payoff
+ASS_WHITE       = "&H00FFFFFF"   # Trắng tinh khiết — màu chữ chính sắc nét, dễ đọc trên mọi nền
+ASS_SOFT_WHITE  = "&H00E4E4E4"   # Trắng ngọc dịu (#E4E4E4) — màu chữ sắp đọc trong cùng câu (không bị nửa xanh nửa trắng)
+ASS_DIM_SILVER  = "&H00E4E4E4"   # Alias tương thích ngược
+ASS_YELLOW      = "&H0000E5FF"   # Vàng Gold ấm (#FFE500) — nhấn từ khóa / số liệu trọng tâm (tối đa 1 từ/cụm)
 ASS_RED         = "&H000000FF"   # Đỏ rực — từ khóa nguy hiểm
-ASS_NEON_GREEN  = "&H0033FF33"   # Xanh lá Neon (#33FF33) — chuẩn Submagic/Crayo cho Con Số / Thống Kê
-ASS_CRIMSON     = "&H002222FF"   # Đỏ Crimson rực (#FF2222) — cho Từ Khóa Nguy Hiểm / Xung Đột / Cảnh Báo
-ASS_CYAN        = "&H00FFFF00"   # Xanh Cyan Điện (#00FFFF) — cho Từ Khóa Bí Mật / Sự Thật / Giải Mã
-ASS_BLACK       = "&H00000000"   # Đen — viền chữ (tương phản cao trên mọi nền)
-ASS_SHADOW      = "&HA8000000"   # Đen 66% trong suốt — shadow sâu điện ảnh
+ASS_NEON_GREEN  = "&H0033FF33"   # Xanh lá Neon (#33FF33) — dự phòng
+ASS_CRIMSON     = "&H002222FF"   # Đỏ Crimson (#FF2222) — nhấn từ khóa cảnh báo / xung đột mạnh
+ASS_CYAN        = "&H00FFFF00"   # Xanh Cyan (#00FFFF) — dự phòng
+ASS_BLACK       = "&H00000000"   # Đen — viền chữ tương phản cao
+ASS_SHADOW      = "&H96000000"   # Đen ~59% trong suốt — bóng đổ thanh thoát, không bết nền
 
 # ── Phân tầng ngữ nghĩa 3 màu chuẩn @MasteringMindControl / Submagic (Semantic Pop) ──
 DANGER_POWER_WORDS = {
@@ -83,15 +84,14 @@ ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
 ScaledBorderAndShadow: yes
+WrapStyle: 2
 YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,6.0,3.2,2,40,40,{margin_v},1
-Style: HookHeadlineBanner,{fontname},52,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,1.8,0,1,4.0,2.0,8,30,30,235,1
-Style: PatternInterruptBadge,{fontname},52,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,1.8,0,1,4.0,2.0,8,30,30,230,1
-Style: CTABadge,{fontname},48,&H0000FFFF,&H00FFFFFF,&H00000000,&HC8080808,-1,0,0,0,100,100,1.2,0,1,4.4,2.4,8,30,30,225,1
-Style: WatermarkStyle,Arial,38,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.2,1.4,8,30,30,90,1
+Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,0.8,0,1,3.8,1.8,2,115,115,{margin_v},1
+Style: PatternInterruptBadge,{fontname},46,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,1.4,0,1,3.4,1.6,8,80,80,190,1
+Style: WatermarkStyle,Arial,34,&H38FFFFFF,&H38FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.0,1.2,8,60,60,90,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -100,30 +100,53 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 # ── Fonts ưu tiên (Ưu tiên Montserrat ExtraBold nhúng sẵn trong assets/fonts, fallback Segoe UI / Arial) ──
 PREFERRED_FONTS = ["Montserrat ExtraBold", "Montserrat Black", "Montserrat", "Arial Black", "Segoe UI", "Arial", "Roboto"]
 
+# Map tên font hệ thống Windows thực tế có sẵn (tránh truyền Google Web Fonts chưa cài như Cinzel/Outfit khiến libass rớt về Arial mảnh)
+_WINDOWS_INSTALLED_FONT_FILES = {
+    "arial black": "ariblk.ttf",
+    "arial": "arialbd.ttf",
+    "segoe ui": "segoeuib.ttf",
+    "impact": "impact.ttf",
+    "verdana": "verdanab.ttf",
+    "tahoma": "tahomabd.ttf",
+    "georgia": "georgiab.ttf",
+}
+
 
 class SubtitleHelper:
-    """Helper xử lý và tạo phụ đề video — ASS (karaoke) + SRT (legacy)."""
+    """Helper xử lý và tạo phụ đề video — ASS (clean safe-zone) + SRT (legacy)."""
 
     # ── Utilities ─────────────────────────────────────────────────────────
 
     @staticmethod
     def _resolve_effective_font(requested_font: Optional[str] = None) -> str:
         """
-        Tự động chọn font chữ dày, sắc nét chuẩn Shorts Viral (Montserrat ExtraBold / Black)
-        từ kho assets/fonts đã nhúng sẵn, hoặc fallback thông minh sang font hệ thống có thật.
+        Tự động chọn font chữ dày, sắc nét chuẩn Shorts (Montserrat ExtraBold / Black)
+        từ kho assets/fonts đã nhúng sẵn, hoặc giữ font hệ thống nếu thực sự tồn tại trên máy.
+        Chặn lỗi truyền web-font chưa cài (Cinzel, Outfit, Orbitron, Poppins...) làm libass fallback về Arial mảnh.
         """
-        req = (requested_font or "").strip()
+        req = (requested_font or "").split(",")[0].strip()
+        req_low = req.lower()
         fonts_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
-        has_bundled_montserrat = (fonts_dir / "Montserrat-ExtraBold.ttf").exists() or (fonts_dir / "Montserrat-Black.ttf").exists()
+        has_extra_bold = (fonts_dir / "Montserrat-ExtraBold.ttf").exists()
+        has_black = (fonts_dir / "Montserrat-Black.ttf").exists()
+        bundled_default = "Montserrat ExtraBold" if has_extra_bold else ("Montserrat Black" if has_black else "")
 
-        if has_bundled_montserrat:
-            if not req or req.lower() in ("montserrat", "montserrat, sans-serif", "sans-serif"):
-                return "Montserrat ExtraBold" if (fonts_dir / "Montserrat-ExtraBold.ttf").exists() else "Montserrat Black"
+        if req_low in ("montserrat extrabold", "montserrat extra bold") and has_extra_bold:
+            return "Montserrat ExtraBold"
+        if req_low == "montserrat black" and has_black:
+            return "Montserrat Black"
+        if req_low in ("", "montserrat", "sans-serif") and bundled_default:
+            return bundled_default
+
+        win_fonts = Path("C:/Windows/Fonts")
+        mapped_ttf = _WINDOWS_INSTALLED_FONT_FILES.get(req_low)
+        if mapped_ttf and win_fonts.exists() and (win_fonts / mapped_ttf).exists():
             return req
 
-        # Nếu không có thư mục assets/fonts, kiểm tra Windows Fonts tránh trường hợp thiếu ariblk.ttf
-        win_fonts = Path("C:/Windows/Fonts")
-        if req.lower() == "arial black" and win_fonts.exists() and not (win_fonts / "ariblk.ttf").exists():
+        if bundled_default:
+            return bundled_default
+
+        if req_low == "arial black" and win_fonts.exists() and not (win_fonts / "ariblk.ttf").exists():
             return "Segoe UI" if (win_fonts / "segoeuib.ttf").exists() else "Arial"
         return req or "Arial"
 
@@ -228,89 +251,234 @@ class SubtitleHelper:
 
         return aligned if aligned else word_timings
 
-    # Các từ nối / mạo từ / giới từ gắn chặt với cụm danh từ hoặc động từ phía sau (VideoLingo NLP Semantic Chunking):
-    # Không để các từ này đứng trơ trọi ở cuối một dòng phụ đề khi không có dấu ngắt câu.
+    # Các từ nối / mạo từ / giới từ / đại từ chỉ định gắn chặt với cụm danh từ hoặc động từ phía sau:
+    # Không bao giờ để các từ này đứng trơ trọi ở cuối một dòng hoặc cuối một thẻ phụ đề.
     _PROCLITIC_ATTACH_NEXT_WORDS = frozenset({
         # English
         "A", "AN", "THE", "OF", "IN", "ON", "AT", "TO", "FOR", "WITH", "BY", "FROM", "INTO",
-        "UNTIL", "UNDER", "OVER", "AND", "OR", "BUT", "IF", "THAN", "THAT", "THIS", "THESE",
-        "THOSE", "MY", "YOUR", "HIS", "HER", "ITS", "OUR", "THEIR", "IS", "ARE", "WAS", "WERE",
-        "HAS", "HAVE", "HAD", "WILL", "CAN", "COULD", "WOULD", "SHOULD", "NO", "NOT",
+        "UNTIL", "UNDER", "OVER", "THROUGH", "WITHOUT", "WITHIN", "AGAINST", "BETWEEN", "AMONG",
+        "ACROSS", "AROUND", "BEHIND", "BEYOND", "DURING", "BEFORE", "AFTER", "TOWARD", "TOWARDS",
+        "UPON", "BENEATH", "BESIDE", "AND", "OR", "BUT", "IF", "AS", "THAN", "THAT", "THIS",
+        "THESE", "THOSE", "EACH", "EVERY", "SOME", "ANY", "SUCH", "ANOTHER", "BECAUSE", "WHILE",
+        "WHEN", "WHERE", "WHOSE", "WHICH", "WHAT", "MY", "YOUR", "HIS", "HER", "ITS", "OUR",
+        "THEIR", "IS", "ARE", "WAS", "WERE", "BE", "BEEN", "HAS", "HAVE", "HAD", "WILL", "CAN",
+        "COULD", "WOULD", "SHOULD", "MAY", "MIGHT", "MUST", "NO", "NOT",
         # Portuguese (pt-BR)
-        "O", "OS", "AS", "UM", "UMA", "UNS", "UMAS", "DE", "DO", "DA", "DOS", "DAS", "EM",
-        "NO", "NA", "NOS", "NAS", "POR", "PELO", "PELA", "PARA", "COM", "SEM", "SOB", "QUE",
-        "SE", "OU", "E", "MAS", "MEU", "MINHA", "SEU", "SUA", "FOI", "ERA", "NÃO", "MAIS",
+        "O", "A", "OS", "AS", "UM", "UMA", "UNS", "UMAS", "DE", "DO", "DA", "DOS", "DAS",
+        "DESTE", "DESTA", "DESTES", "DESTAS", "DISTO", "DESSE", "DESSA", "DESSES", "DESSAS", "DISSO",
+        "DAQUELE", "DAQUELA", "DAQUELES", "DAQUELAS", "EM", "NO", "NA", "NOS", "NAS",
+        "NESTE", "NESTA", "NESTES", "NESTAS", "NESSE", "NESSA", "NESSES", "NESSAS", "NUM", "NUMA",
+        "AO", "AOS", "À", "ÀS", "POR", "PELO", "PELA", "PELOS", "PELAS", "PARA", "COM", "SEM",
+        "SOB", "SOBRE", "ENTRE", "CONTRA", "ATÉ", "APÓS", "DESDE", "DURANTE", "PERANTE",
+        "ESSE", "ESSA", "ESTE", "ESTA", "AQUELE", "AQUELA", "CADA", "TODO", "TODA", "TODOS", "TODAS",
+        "QUE", "SE", "OU", "E", "MAS", "MEU", "MINHA", "MEUS", "MINHAS", "SEU", "SUA", "SEUS", "SUAS",
+        "FOI", "ERA", "SÃO", "ESTÁ", "ESTÃO", "NÃO", "MAIS", "MUITO", "TÃO",
         # Vietnamese
-        "CỦA", "TRONG", "TRÊN", "DƯỚI", "VỚI", "CHO", "TỪ", "MỘT", "NHỮNG", "CÁC", "LÀ", "VÀ", "ĐỂ",
+        "CỦA", "TRONG", "TRÊN", "DƯỚI", "VỚI", "CHO", "TỪ", "MỘT", "NHỮNG", "CÁC", "LÀ", "VÀ",
+        "ĐỂ", "NHƯ", "BỞI", "TẠI", "VỀ", "MỌI", "MỖI",
+    })
+
+    _ABBREVIATIONS = frozenset({
+        "DR.", "MR.", "MRS.", "MS.", "VS.", "ST.", "PROF.", "GEN.", "NO.", "SR.", "JR.", "U.S.", "E.G.", "I.E.",
+    })
+
+    _NUMBER_LEAD_WORDS = frozenset({
+        "TEN", "TWENTY", "THIRTY", "FORTY", "FIFTY", "SIXTY", "SEVENTY", "EIGHTY", "NINETY", "HUNDRED",
+        "DEZ", "VINTE", "TRINTA", "QUARENTA", "CINQUENTA", "CEM", "DUZENTOS", "TREZENTOS", "QUINHENTOS",
+        "MƯỜI", "TRĂM",
+    })
+
+    _NUMBER_SCALE_WORDS = frozenset({
+        "HUNDRED", "THOUSAND", "MILLION", "BILLION", "TRILLION",
+        "MIL", "MILHÃO", "MILHÕES", "BILHÃO", "BILHÕES",
+        "TRĂM", "NGHÌN", "NGÀN", "TRIỆU", "TỶ",
     })
 
     @classmethod
-    def _is_dangling_proclitic(cls, token: str) -> bool:
+    def _is_dangling_proclitic(cls, token: str, next_token: str = "") -> bool:
         raw = str(token or "").strip()
-        if not raw or raw.endswith((".", "!", "?", ":", ";", ",", "—", "-")):
+        if not raw or raw.endswith((".", "!", "?", ":", ";", ",", "—", "…")):
             return False
+        if raw.endswith("-"):
+            return True
+        # Từ chỉ kích thước gạch nối như "16-FOOT", "4,000-POUND" luôn gắn chặt với danh từ ngay sau
+        if re.search(r"\d", raw) and "-" in raw:
+            return True
         clean = re.sub(r"[^\w\d]", "", raw.upper())
-        return clean in cls._PROCLITIC_ATTACH_NEXT_WORDS
+        if clean in cls._PROCLITIC_ATTACH_NEXT_WORDS:
+            return True
+        if next_token:
+            next_clean = re.sub(r"[^\w\d]", "", str(next_token).upper())
+            if clean in cls._NUMBER_LEAD_WORDS and next_clean in cls._NUMBER_SCALE_WORDS:
+                return True
+            # Số lượng từ (vd: '70', '1,500', '2.000') đi ngay trước danh từ/đơn vị ('quilos', 'PSI', 'meters') luôn gắn liền thành 1 cụm
+            if re.fullmatch(r"\d+(?:[.,]\d+)*", raw) and next_clean and next_clean not in cls._PROCLITIC_ATTACH_NEXT_WORDS:
+                return True
+        return False
 
     @classmethod
-    def split_text_to_chunks(cls, text: str, max_words: int = 3, max_chars: int = 20) -> List[str]:
+    def _ends_clause(cls, token: str) -> bool:
+        raw = str(token or "").strip()
+        if not raw:
+            return False
+        up = raw.upper()
+        if up in cls._ABBREVIATIONS:
+            return False
+        if up.endswith(".") and len(re.sub(r"[^\w]", "", up)) == 1:
+            return False
+        return raw.endswith((".", "!", "?", ":", ";", ",", "—", "…"))
+
+    @classmethod
+    def _chunk_word_items(
+        cls,
+        items: List[Dict[str, Any]],
+        max_words: int = 4,
+        max_chars: int = 22,
+    ) -> List[List[Dict[str, Any]]]:
         """
-        Chia một đoạn văn bản thành các cụm từ siêu ngắn gọn (2-3 từ, tối đa 20 ký tự),
-        kết hợp thuật toán Semantic NLP Chunking (chuẩn VideoLingo / Submagic / Hormozi):
-        - Nhịp nhảy chữ nhanh bám sát mắt người xem, ngăn đọc trước giọng đọc.
-        - Không bao giờ để mạo từ / giới từ / liên từ ('THE', 'OF', 'IN', 'A', 'TO'...) bị treo lẻ loi ở cuối dòng.
+        Chia danh sách token (có hoặc không có mốc thời gian) thành các cụm ngữ nghĩa tự nhiên:
+        - Luôn ngắt SAU dấu câu kết mệnh đề ('.', '!', '?', ':', ';', ',', '—'), TUYỆT ĐỐI không ngắt trước dấu chấm
+          làm rơi từ cuối câu thành thẻ 1 từ lẻ loi ('PREDATOR.', 'TOXINAS.', 'WATERS.').
+        - Không bao giờ để mạo từ / giới từ / đại từ chỉ định ('THE', 'OF', 'IN', 'A', 'DESTE', 'PARA'...) bị treo cuối thẻ.
+        - Tự động cân bằng lại cụm cuối mệnh đề để tránh thẻ 1 từ chớp nháy khó đọc.
+        """
+        if not items:
+            return []
+
+        # Bước 1: Tách theo ranh giới mệnh đề tự nhiên (dấu phẩy / chấm câu)
+        clauses: List[List[Dict[str, Any]]] = []
+        cur_clause: List[Dict[str, Any]] = []
+        for it in items:
+            w = str(it.get("word", "")).strip()
+            if not w:
+                continue
+            cur_clause.append(it)
+            if cls._ends_clause(w):
+                clauses.append(cur_clause)
+                cur_clause = []
+        if cur_clause:
+            clauses.append(cur_clause)
+
+        final_chunks: List[List[Dict[str, Any]]] = []
+
+        for clause in clauses:
+            if not clause:
+                continue
+            clause_text = " ".join(str(x["word"]) for x in clause)
+            if len(clause) <= max_words and len(clause_text) <= max_chars + 2:
+                final_chunks.append(clause)
+                continue
+
+            c_chunks: List[List[Dict[str, Any]]] = []
+            cur: List[Dict[str, Any]] = []
+            cur_len = 0
+
+            for idx, it in enumerate(clause):
+                w = str(it["word"])
+                next_w = str(clause[idx + 1]["word"]) if idx + 1 < len(clause) else ""
+                cand_len = cur_len + len(w) + (1 if cur else 0)
+
+                # Nếu từ hiện tại là từ nối/mạo từ mở đầu cụm mới và thêm từ kế tiếp sẽ vượt ngưỡng -> ngắt TRƯỚC từ nối
+                would_strand_proclitic = (
+                    len(cur) >= 2
+                    and bool(next_w)
+                    and cls._is_dangling_proclitic(w, next_w)
+                    and (len(cur) + 1 >= max_words or (cand_len + 1 + len(next_w)) > max_chars + 1)
+                )
+                # Giữ từ nối cuối cùng của cur gắn với danh từ/động từ hiện tại nếu không quá dài
+                prev_is_proclitic = bool(cur) and cls._is_dangling_proclitic(str(cur[-1]["word"]), w)
+                exceeds_limit = (len(cur) >= max_words or cand_len > max_chars) and not (
+                    prev_is_proclitic and len(cur) == 1 and cand_len <= max_chars + 8
+                )
+
+                if cur and (would_strand_proclitic or exceeds_limit):
+                    c_chunks.append(cur)
+                    cur = [it]
+                    cur_len = len(w)
+                else:
+                    cur.append(it)
+                    cur_len = cand_len
+
+            if cur:
+                c_chunks.append(cur)
+
+            # Bước 2: Đẩy từ nối/mạo từ bị treo ở cuối chunk sang đầu chunk kế tiếp trong cùng mệnh đề
+            for i in range(len(c_chunks) - 1):
+                while len(c_chunks[i]) >= 2 and cls._is_dangling_proclitic(
+                    str(c_chunks[i][-1]["word"]),
+                    str(c_chunks[i + 1][0]["word"]) if c_chunks[i + 1] else "",
+                ):
+                    moved = c_chunks[i].pop()
+                    c_chunks[i + 1].insert(0, moved)
+
+            # Bước 3: Chống thẻ 1 từ mồ côi ở bất kỳ vị trí nào trong mệnh đề (vd: ["VANISHED", "INTO", "DEEP"] + ["WATERS."])
+            idx_m = len(c_chunks) - 1
+            while idx_m >= 1:
+                if len(c_chunks[idx_m]) == 1:
+                    prev_c = c_chunks[idx_m - 1]
+                    curr_c = c_chunks[idx_m]
+                    merged_txt = " ".join(str(x["word"]) for x in (prev_c + curr_c))
+                    if len(prev_c) + len(curr_c) <= max_words and len(merged_txt) <= max_chars + 4:
+                        prev_c.extend(curr_c)
+                        c_chunks.pop(idx_m)
+                    elif len(prev_c) >= 2:
+                        # Thử tách cụm danh từ/giới từ cuối của prev_c sang curr_c để cả hai đều cân đối
+                        peel_count = 1
+                        while (
+                            peel_count < len(prev_c)
+                            and cls._is_dangling_proclitic(
+                                str(prev_c[len(prev_c) - 1 - peel_count]["word"]),
+                                str(prev_c[len(prev_c) - peel_count]["word"]),
+                            )
+                        ):
+                            peel_count += 1
+                        rem_prev = len(prev_c) - peel_count
+                        if rem_prev >= 2 or (rem_prev == 1 and idx_m >= 2):
+                            moved_tail = prev_c[rem_prev:]
+                            del prev_c[rem_prev:]
+                            c_chunks[idx_m] = moved_tail + curr_c
+                        elif len(prev_c) + len(curr_c) <= max_words + 1 and len(merged_txt) <= max_chars + 12:
+                            prev_c.extend(curr_c)
+                            c_chunks.pop(idx_m)
+                idx_m -= 1
+
+            # Nếu chunk đầu mệnh đề chỉ còn 1 từ nối ngắn, gộp sang chunk kế tiếp
+            if len(c_chunks) >= 2 and len(c_chunks[0]) == 1 and cls._is_dangling_proclitic(
+                str(c_chunks[0][0]["word"]),
+                str(c_chunks[1][0]["word"]) if c_chunks[1] else "",
+            ):
+                c_chunks[1].insert(0, c_chunks[0][0])
+                c_chunks.pop(0)
+
+            final_chunks.extend([c for c in c_chunks if c])
+
+        return final_chunks
+
+    @classmethod
+    def split_text_to_chunks(cls, text: str, max_words: int = 4, max_chars: int = 22) -> List[str]:
+        """
+        Chia văn bản thành các cụm từ ngữ nghĩa tự nhiên, dễ đọc (2-4 từ, tối đa ~22 ký tự cho Shorts):
+        - Ngắt đúng ranh giới dấu câu, không bỏ rơi từ cuối câu thành thẻ 1 từ.
+        - Không bao giờ để mạo từ / giới từ / liên từ ('THE', 'OF', 'IN', 'A', 'DESTE', 'PARA'...) treo cuối dòng.
         """
         text = cls.sanitize_subtitle_text(text)
-        # Normalize whitespace: collapse \n, \t, multiple spaces thành space đơn
-        import re as _re
-        text = _re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r"\s+", " ", text).strip()
         if not text:
             return []
 
         words = text.split()
-        if len(words) <= max_words and len(text) <= max_chars:
+        if len(words) <= max_words and len(text) <= max_chars + 2:
             return [text]
 
-        word_lists: List[List[str]] = []
-        current_chunk: List[str] = []
-
-        for idx, word in enumerate(words):
-            candidate = " ".join(current_chunk + [word])
-            # Nếu đã có >= 1 từ và từ hiện tại là mạo từ/giới từ mở đầu cụm mới mà thêm từ sau nữa sẽ tràn dòng -> ngắt trước mạo từ
-            next_word = words[idx + 1] if idx + 1 < len(words) else ""
-            would_leave_dangling = (
-                bool(current_chunk)
-                and bool(next_word)
-                and cls._is_dangling_proclitic(word)
-                and (len(current_chunk) + 1 >= max_words or len(candidate + " " + next_word) > max_chars)
-            )
-            if ((len(current_chunk) >= max_words or len(candidate) > max_chars) and current_chunk) or would_leave_dangling:
-                word_lists.append(current_chunk)
-                current_chunk = [word]
-            else:
-                current_chunk.append(word)
-                if word.endswith((".", "!", "?", ":", ";", ",", "—")) and len(current_chunk) >= 2:
-                    word_lists.append(current_chunk)
-                    current_chunk = []
-
-        if current_chunk:
-            word_lists.append(current_chunk)
-
-        # Hậu kiểm: nếu 1 chunk >= 2 từ vẫn kết thúc bằng từ treo (proclitic), chuyển từ đó sang đầu chunk kế tiếp
-        for i in range(len(word_lists) - 1):
-            if len(word_lists[i]) >= 2 and cls._is_dangling_proclitic(word_lists[i][-1]) and len(word_lists[i + 1]) <= max_words:
-                moved = word_lists[i].pop()
-                word_lists[i + 1].insert(0, moved)
-
-        return [" ".join(w_list) for w_list in word_lists if w_list]
+        items = [{"word": w} for w in words]
+        chunked = cls._chunk_word_items(items, max_words=max_words, max_chars=max_chars)
+        return [" ".join(it["word"] for it in grp) for grp in chunked if grp]
 
     @staticmethod
     def sanitize_subtitle_text(text: str) -> str:
         """
-        Khử toàn bộ chuỗi rác template, placeholder, stage tags ([LOOP], [HOOK]), âm thanh tự sinh YouTube:
-        - Loại bỏ [Music], [Âm nhạc], [Applause], [Tiếng cười], [LOOP], [HOOK], [ACT 1], v.v.
-        - Loại bỏ placeholder dạng {hook_quote}, {default_...}, v.v.
-        - Loại bỏ từ khóa dummy: lorem ipsum, placeholder, scene X
+        Khử toàn bộ chuỗi rác template, placeholder, stage tags ([LOOP], [HOOK]), âm thanh tự sinh YouTube,
+        và loại bỏ các câu kêu gọi Like / Share / Comment / Subscribe rác nếu bị lọt vào phụ đề:
         """
         if not text:
             return ""
@@ -331,6 +499,22 @@ class SubtitleHelper:
         t = re.sub(r'\{[^{}]*\}', '', t)
         # Loại bỏ các từ khóa dummy/rác
         t = re.sub(r'\b(?:placeholder|dummy text|lorem ipsum|scene \d+)\b', '', t, flags=re.IGNORECASE)
+        # Loại bỏ câu kêu gọi Like / Share / Comment / Subscribe công nghiệp (EN / PT-BR / VI) mà không làm mất dấu chấm câu trước đó
+        t = re.sub(
+            r'(?:^|(?<=[.!?])\s+)'
+            r'(?:don\'?t\s+forget\s+to\s+|please\s+|make\s+sure\s+to\s+|remember\s+to\s+|hit\s+|smash\s+(?:that\s+)?|leave\s+a\s+|drop\s+a\s+'
+            r'|não\s+(?:se\s+)?esqueça\s+de\s+|deixe\s+(?:o\s+|seu\s+)?|deixa\s+o\s+'
+            r'|(?:đừng\s+quên|nhớ|hãy)\s+(?:(?:bấm|nhấn|ấn|để\s+lại)\s+)?|(?:bấm|nhấn|ấn)\s+)?'
+            r'(?:like,?\s*share(?:,?\s*(?:and|&))?\s*(?:comment|subscribe)?|like,?\s*comment(?:,?\s*(?:and|&))?\s*subscribe'
+            r'|like\s+(?:and|&)\s+(?:subscribe|comment)|subscribe\s+(?:and\s+hit|for\s+more|to\s+(?:our|the|this)\s+channel)'
+            r'|(?:curta|curtir),?\s*(?:compartilhe|compartilhar|comente|comentar)(?:,?\s*e\s+(?:se\s+)?inscrev\w+)?'
+            r'|(?:curta|curtir|like)\s+e\s+(?:se\s+)?inscrev\w+|inscreva-se\s+no\s+canal'
+            r'|(?:like|thích)\s*(?:,\s*|\s+và\s+|\s+)(?:share|chia\s+sẻ|comment|bình\s+luận|subscribe|đăng\s+ký)'
+            r'|đăng\s+ký\s+kênh)[^.!?]*[.!?]?',
+            ' ',
+            t,
+            flags=re.IGNORECASE,
+        )
         # Chuẩn hóa khoảng trắng
         t = re.sub(r'\s+', ' ', t).strip()
         return t
@@ -349,6 +533,70 @@ class SubtitleHelper:
         return re.sub(r'\s+', ' ', cleaned).strip()
 
     @classmethod
+    def _choose_balanced_line_split(cls, words: List[str], max_single_line_chars: int = 22) -> int:
+        """
+        Chỉ ngắt thành 2 dòng khi cụm từ dài hơn ngưỡng 1 dòng (22 ký tự cho Shorts, 42 cho Long-form).
+        Các cụm ngắn 2-3 từ ('WATCH GIANT JAWS', 'IN SECONDS.', '1,820 PSI BITE FORCE') giữ gọn trên 1 dòng ngang,
+        không ép chồng 2 tầng làm che chủ thể hoặc tách rời giới từ ('DEEP \\N IN').
+        """
+        n = len(words)
+        full_text = " ".join(words)
+        if n <= 1 or len(full_text) <= max_single_line_chars:
+            return -1
+
+        best_idx = -1
+        best_cost = 10**9
+        for idx in range(n - 1):
+            next_w = words[idx + 1] if idx + 1 < n else ""
+            proclitic_penalty = 500 if cls._is_dangling_proclitic(words[idx], next_w) else 0
+            line1_len = len(" ".join(words[: idx + 1]))
+            line2_len = len(" ".join(words[idx + 1 :]))
+            cost = abs(line1_len - line2_len) + max(line1_len, line2_len) * 0.25 + proclitic_penalty
+            if cost < best_cost:
+                best_cost = cost
+                best_idx = idx
+        return best_idx
+
+    @classmethod
+    def _select_single_accent_word_idx(
+        cls,
+        words: List[str],
+        scene_highlights: Optional[set] = None,
+    ) -> Tuple[int, str]:
+        """
+        Chọn TỐI ĐA 1 từ trọng tâm thực sự (con số định lượng hoặc từ khóa mạnh, KHÔNG BAO GIỜ chọn giới từ/mạo từ)
+        trên mỗi thẻ phụ đề để nhấn màu gọn gàng, sang trọng — chấm dứt tình trạng 4 màu loè loẹt trên cùng 1 câu.
+        Trả về (word_index, accent_kind) với accent_kind thuộc {'danger', 'gold', 'none'}.
+        """
+        custom_set = scene_highlights or set()
+        best_idx = -1
+        best_priority = 0
+        best_kind = "none"
+
+        for idx, word in enumerate(words):
+            clean_word = re.sub(r"[^\w\d]", "", word.upper())
+            if clean_word in cls._PROCLITIC_ATTACH_NEXT_WORDS:
+                continue
+            if len(clean_word) < 2 and not re.search(r"\d", clean_word):
+                continue
+
+            if re.search(r"\d", word):
+                prio, kind = 4, "gold"
+            elif clean_word in DANGER_POWER_WORDS:
+                prio, kind = 3, "danger"
+            elif clean_word in custom_set or clean_word in PAYOFF_POWER_WORDS:
+                prio, kind = 2, "gold"
+            else:
+                continue
+
+            if prio > best_priority:
+                best_priority = prio
+                best_idx = idx
+                best_kind = kind
+
+        return best_idx, best_kind
+
+    @classmethod
     def _build_karaoke_text(
         cls,
         words: List[str],
@@ -356,92 +604,38 @@ class SubtitleHelper:
         default_highlight: str = "&H00FFFFFF",
         power_color: str = "&H000000FF",
         scene_highlights: Optional[set] = None,
+        is_long_form: bool = False,
+        use_smooth_wipe: bool = False,
     ) -> str:
         """
-        @MasteringMindControl 2-Line Stacked Kinetic Impact Typography + 3-Color Semantic Highlighting:
-        - Tự động xếp chồng 2 dòng (Line 1 dẫn nhịp -> Line 2 \\N phóng đại từ khóa trọng tâm 122%-126%)
-          như phong cách @MasteringMindControl ("THAT'S WHY \\N SILENCE", "FIRST, \\N THEY CRITICIZE").
-        - Hiệu ứng sáng dần từng từ (Silver-Grey -> Crisp Pure White) kết hợp 3 tầng màu ngữ nghĩa:
-          * Tầng 1 (Số liệu / Thống kê): Xanh lá Neon (&H0033FF33&) + Pop 124%
-          * Tầng 2 (Nguy hiểm / Thao túng / Xung đột): Đỏ Crimson (&H002222FF&) + Pop 124%
-          * Tầng 3 (Bí mật / Hiệu ứng Tâm lý / Giải mã): Xanh Cyan / Vàng Gold + Pop 122%
+        Tạo phụ đề sạch, hiện đại, dễ đọc chuẩn Documentary / Viral Shorts:
+        - Mặc định dùng `\\k` (nhảy sáng nguyên vẹn cả từ theo đúng nhịp đọc) thay vì `\\kf` quét nửa chữ
+          (ngăn hoàn toàn lỗi 1 từ bị chia nửa xanh nửa trắng kiểu 'MANDÍBU' + 'LAS').
+        - Chữ nền Trắng tinh khiết (#FFFFFF), tối đa 1 từ khóa/con số mỗi thẻ được nhấn Vàng Gold (#FFE500)
+          hoặc Đỏ Crimson (#FF2222) với độ phóng nhẹ 105% tinh tế, thẳng hàng.
+        - Ưu tiên 1 dòng ngang gọn gàng ở vùng Safe Zone dưới; chỉ ngắt 2 dòng cân đối khi cụm dài > 22 ký tự.
         """
-        norm_power = power_color if power_color.endswith("&") else f"{power_color}&"
-        norm_highlight = default_highlight if default_highlight.endswith("&") else f"{default_highlight}&"
-        norm_green = f"{ASS_NEON_GREEN}&"
+        norm_base = f"{ASS_WHITE}&"
+        norm_gold = f"{ASS_YELLOW}&"
         norm_crimson = f"{ASS_CRIMSON}&"
-        norm_cyan = f"{ASS_CYAN}&"
-        custom_set = scene_highlights or set()
+        k_tag = "kf" if use_smooth_wipe else "k"
 
-        n_words = len(words)
-        split_after_idx = -1
-        focal_idx = n_words - 1
-        lead_transition_words = {"FIRST", "SECOND", "THIRD", "THEN", "SAY", "STOP", "WAIT", "LOOK", "NEVER", "NOW"}
-
-        if n_words == 2:
-            split_after_idx = 0
-            w0_clean = re.sub(r'[^\w\d]', '', words[0].upper())
-            if words[0].endswith((",", ":", "—", "!")) or w0_clean in lead_transition_words:
-                focal_idx = 0
-            else:
-                focal_idx = 1
-        elif n_words == 3:
-            w0_clean = re.sub(r'[^\w\d]', '', words[0].upper())
-            if words[0].endswith((",", ":", "—", "!")) or w0_clean in lead_transition_words:
-                split_after_idx = 0  # vd: "FIRST, \N THEY CRITICIZE"
-                focal_idx = 0
-            else:
-                split_after_idx = 1  # vd: "THAT'S WHY \N SILENCE"
-                focal_idx = 2
-        elif n_words >= 4:
-            split_after_idx = (n_words // 2) - 1
-            focal_idx = n_words - 1
+        accent_idx, accent_kind = cls._select_single_accent_word_idx(words, scene_highlights=scene_highlights)
+        max_line_chars = 42 if is_long_form else 22
+        split_after_idx = cls._choose_balanced_line_split(words, max_single_line_chars=max_line_chars)
 
         parts = []
-        cum_ms = 0
         for i, (word, dur_cs) in enumerate(zip(words, word_durations_cs)):
-            dur_ms = max(dur_cs * 10, 50)
-            clean_word = re.sub(r'[^\w\d]', '', word.upper())
-            has_shock_number = bool(re.search(r'\d', word))
-            is_danger = clean_word in DANGER_POWER_WORDS
-            is_payoff = (clean_word in PAYOFF_POWER_WORDS) or (clean_word in custom_set)
-            is_focal = (i == focal_idx and n_words >= 2)
-
-            t_start = cum_ms
-            t_peak = cum_ms + min(75, max(35, dur_ms // 3))
-            t_settle = cum_ms + min(180, max(80, (dur_ms * 2) // 3))
-
-            if has_shock_number:
+            safe_cs = max(int(dur_cs), 3)
+            if i == accent_idx and accent_kind != "none":
+                chosen_color = norm_crimson if accent_kind == "danger" else norm_gold
                 token_str = (
-                    f"{{\\kf{dur_cs}\\1c{norm_green}\\fscx124\\fscy124\\b1"
-                    f"\\t({t_start},{t_peak},\\fscx130\\fscy130)\\t({t_peak},{t_settle},\\fscx124\\fscy124)}}{word}"
-                    f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
-                )
-            elif is_danger:
-                token_str = (
-                    f"{{\\kf{dur_cs}\\1c{norm_crimson}\\fscx124\\fscy124\\b1"
-                    f"\\t({t_start},{t_peak},\\fscx130\\fscy130)\\t({t_peak},{t_settle},\\fscx124\\fscy124)}}{word}"
-                    f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
-                )
-            elif is_payoff:
-                chosen_payoff_color = norm_power if "2080FF" in norm_power else norm_cyan
-                token_str = (
-                    f"{{\\kf{dur_cs}\\1c{chosen_payoff_color}\\fscx122\\fscy122\\b1"
-                    f"\\t({t_start},{t_peak},\\fscx128\\fscy128)\\t({t_peak},{t_settle},\\fscx122\\fscy122)}}{word}"
-                    f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
-                )
-            elif is_focal:
-                # Từ trọng tâm ở dòng 2 (hoặc từ mở nhịp dòng 1) được phóng đại 122% chuẩn @MasteringMindControl
-                token_str = (
-                    f"{{\\kf{dur_cs}\\1c{norm_highlight}\\fscx122\\fscy122\\b1"
-                    f"\\t({t_start},{t_peak},\\fscx128\\fscy128)\\t({t_peak},{t_settle},\\fscx122\\fscy122)}}{word}"
-                    f"{{\\fscx100\\fscy100}}"
+                    f"{{\\{k_tag}{safe_cs}\\1c{chosen_color}\\fscx105\\fscy105}}{word}"
+                    f"{{\\1c{norm_base}\\fscx100\\fscy100}}"
                 )
             else:
-                token_str = f"{{\\kf{dur_cs}}}{word}"
-
+                token_str = f"{{\\{k_tag}{safe_cs}\\1c{norm_base}}}{word}"
             parts.append(token_str)
-            cum_ms += dur_ms
 
         if 0 <= split_after_idx < len(parts) - 1:
             line1 = " ".join(parts[: split_after_idx + 1])
@@ -450,100 +644,50 @@ class SubtitleHelper:
         return " ".join(parts)
 
     @classmethod
-    def _build_visual_cta_banner_text(cls, raw_niche: str, is_vi: bool, is_pt: bool) -> str:
-        """
-        Tạo nội dung dòng chữ kêu gọi hành động (Visual CTA Banner 2 dòng) ở cuối mỗi video:
-        - Kêu gọi đồng thời cả 3 hành động: LIKE + COMMENT + SUBSCRIBE bằng thị giác (thay vì đọc trong lời thoại,
-          giúp giữ nguyên 100% Seamless Infinite Loop của giọng đọc mà vẫn đẩy mạnh tương tác).
-        - Phối 3 màu nổi bật (Vàng Gold + Xanh Neon + Đỏ Crimson) ở dòng 1 và câu hỏi kích thích bình luận ở dòng 2.
-        """
-        niche_l = (raw_niche or "").lower()
-        if is_vi:
-            line1 = r"{\1c&H0000FFFF&}[ ★ BẤM THÍCH  {\1c&H0033FF33&}•  BÌNH LUẬN 1 HOẶC 2  {\1c&H002222FF&}•  ĐĂNG KÝ ★ ]"
-            if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ TỪNG GẶP NGƯỜI NHƯ VẬY? GÕ (1) CÓ HOẶC (2) CHƯA ▼"
-            elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ KÈO NÀY AI THẮNG? BÌNH CHỌN (1) HOẶC (2) BÊN DƯỚI ▼"
-            elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) SINH VẬT BÍ ẨN HAY (2) DỊ THƯỜNG? GÕ 1 HOẶC 2 ▼"
-            elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) GIỮ LỊCH SỬ HAY (2) THAY ĐỔI? GÕ 1 HOẶC 2 ▼"
-            elif any(k in niche_l for k in ("rescue", "animal", "pet")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ CHẤM ĐIỂM TỪ 1-10 CHO BÉ Ở PHẦN BÌNH LUẬN NHÉ ▼"
-            else:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ BẠN ĐÃ BIẾT ĐIỀU NÀY CHƯA? GÕ (1) RỒI HOẶC (2) CHƯA ▼"
-        elif is_pt:
-            line1 = r"{\1c&H0000FFFF&}[ ★ CURTA  {\1c&H0033FF33&}•  VOTE 1 OU 2  {\1c&H002222FF&}•  INSCREVA-SE ★ ]"
-            if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ JÁ PASSOU POR ISSO? COMENTE (1) SIM OU (2) NÃO ▼"
-            elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ QUEM VENCE ESSE DUELO? VOTE (1) OU (2) ABAIXO ▼"
-            elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) CRIATURA OCULTA OU (2) ANOMALIA? VOTE 1 OU 2 ▼"
-            elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) MANTER OU (2) MUDAR A HISTÓRIA? VOTE 1 OU 2 ▼"
-            elif any(k in niche_l for k in ("rescue", "animal", "pet")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ DÊ UMA NOTA DE 1 A 10 NOS COMENTÁRIOS ABAIXO ▼"
-            else:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ VOCÊ SABIA DISSO? COMENTE (1) SIM OU (2) NÃO ▼"
-        else:
-            line1 = r"{\1c&H0000FFFF&}[ ★ LIKE  {\1c&H0033FF33&}•  VOTE 1 OR 2  {\1c&H002222FF&}•  SUBSCRIBE ★ ]"
-            if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ EVER MET SOMEONE LIKE THIS? COMMENT (1) YES OR (2) NO ▼"
-            elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ WHO WINS THIS 1V1? VOTE (1) OR (2) IN COMMENTS ▼"
-            elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) UNDISCOVERED SPECIES OR (2) ANOMALY? VOTE 1 OR 2 ▼"
-            elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) KEEP TIMELINE OR (2) REWRITE HISTORY? VOTE 1 OR 2 ▼"
-            elif any(k in niche_l for k in ("rescue", "animal", "pet")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ RATE THIS TRANSFORMATION 1-10 IN THE COMMENTS ▼"
-            else:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ DID YOU KNOW THIS? COMMENT (1) YES OR (2) NO BELOW ▼"
-        return f"{line1}\\N{line2}"
-
-    @classmethod
     def build_ass_content(
         cls,
         scenes: List[SceneContract],
         fontname: str = "Montserrat ExtraBold",
-        fontsize: int = 78,
-        margin_v: int = 720,
+        fontsize: int = 56,
+        margin_v: int = 420,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
         hook_title: Optional[str] = None,
         is_long_form: bool = False,
     ) -> str:
         """
-        Tạo nội dung file .ass chuẩn với 2-Line Stacked Kinetic Impact (Shorts 9:16)
-        hoặc Widescreen Cinema Subtitle (Long-form 16:9, PlayRes 1920x1080) & karaoke word-level highlight.
-        Tự động nạp font và màu sắc từ Niche Profile nếu niche_id được cung cấp.
+        Tạo nội dung file .ass chuẩn ở vùng Safe Zone tối ưu:
+        - Shorts 9:16 (1080x1920): Font 56px, MarginV=420px (nằm gọn dưới chủ thể trung tâm và phía trên vùng tiêu đề/tên kênh của YouTube Shorts), MarginL/R=115px.
+        - Long-form 16:9 (1920x1080): Font 46px, MarginV=68px, MarginL/R=140px.
+        - Đã xóa hoàn toàn dòng chữ banner kêu gọi Like / Share / Comment / Subscribe gây rối mắt trên video.
         """
-        eff_primary = primary_color or ASS_DIM_SILVER
-        eff_secondary = secondary_color or ASS_WHITE
+        eff_unspoken = primary_color or ASS_SOFT_WHITE
+        eff_spoken = secondary_color or ASS_WHITE
         eff_outline = outline_color or ASS_BLACK
         eff_font = fontname
-        eff_size = 50 if is_long_form else (fontsize if fontsize >= 74 else 78)
-        eff_margin = 75 if is_long_form else margin_v
+        eff_size = 46 if is_long_form else (fontsize if 48 <= int(fontsize or 56) <= 64 else 56)
+        eff_margin = 68 if is_long_form else (margin_v if 360 <= int(margin_v or 420) <= 500 else 420)
 
         if niche_id:
             try:
                 from app.services.niche_manager import get_niche, get_niche_subtitle_style
                 niche_prof = get_niche(niche_id)
                 niche_sub = get_niche_subtitle_style(niche_prof)
-                eff_primary = primary_color or niche_sub.get("primary_ass", ASS_DIM_SILVER)
-                eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_WHITE)
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
-                if not fontname or fontname in ("Arial", "Arial Black", "Montserrat ExtraBold"):
+                if not fontname or fontname in ("Arial", "Montserrat ExtraBold"):
                     eff_font = niche_sub.get("fontname", "Montserrat ExtraBold")
                 if not is_long_form:
-                    eff_size = fontsize if fontsize not in (42, 44, 68, 78) and fontsize >= 74 else max(int(niche_sub.get("fontsize", 78) or 78), 76)
-                    eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
-            except Exception as e:
+                    niche_fs = int(niche_sub.get("fontsize", 56) or 56)
+                    if fontsize in (40, 42, 44, 56, 68, 78):
+                        eff_size = niche_fs if 48 <= niche_fs <= 64 else 56
+                    niche_mv = int(niche_sub.get("margin_v", 420) or 420)
+                    if margin_v in (210, 420, 580, 600, 720):
+                        eff_margin = niche_mv if 360 <= niche_mv <= 500 else 420
+            except Exception:
                 pass
 
         eff_font = cls._resolve_effective_font(eff_font)
@@ -551,38 +695,29 @@ class SubtitleHelper:
         header = ASS_HEADER_TEMPLATE.format(
             fontname=eff_font,
             fontsize=eff_size,
-            primary=eff_secondary,     # PrimaryColour = màu highlight sau khi đọc (Trắng sáng #FFFFFF / Vàng)
-            secondary=eff_primary,     # SecondaryColour = màu mặc định trước khi đọc (Bạc xám #9E9E9E)
+            primary=eff_spoken,       # PrimaryColour = chữ trắng tinh khiết (#FFFFFF) khi đọc tới
+            secondary=eff_unspoken,   # SecondaryColour = chữ trắng dịu (#E4E4E4) trước khi đọc tới
             outline=eff_outline,
             back=ASS_SHADOW,
             margin_v=eff_margin,
         )
         if is_long_form:
             header = header.replace("PlayResX: 1080\nPlayResY: 1920", "PlayResX: 1920\nPlayResY: 1080")
-            header = header.replace(",235,1", ",55,1").replace(",230,1", ",55,1").replace(",225,1", ",55,1")
+            header = header.replace(",2,115,115,", ",2,140,140,")
 
         dialogue_lines = []
         current_offset_ms = 0
+        max_w_lim = 7 if is_long_form else 4
+        max_c_lim = 42 if is_long_form else 22
 
         for scene in scenes:
             scene_duration_ms = scene.audio_duration_ms or int(scene.estimated_seconds * 1000)
             if scene_duration_ms <= 0:
                 scene_duration_ms = 3000
 
-            # Căn chỉnh timeline theo start_offset_ms nếu scene có mốc thời gian cố định
             if getattr(scene, "start_offset_ms", None) is not None:
                 current_offset_ms = scene.start_offset_ms
 
-            # Chọn màu sắc cho Power Words theo Niche
-            raw_niche = (niche_id or "").lower()
-            if "scifi" in raw_niche:
-                power_color = "&H00FFFF00"  # Neon Cyan
-            elif "rescue" in raw_niche:
-                power_color = "&H002080FF"  # Vivid Warm Amber / Orange
-            else:
-                power_color = "&H000000FF"  # Vivid Crimson Red (High Urgency & Dopamine)
-
-            # Trích xuất bộ từ khóa ngữ cảnh do AI Director chọn cho riêng cảnh này
             raw_hl = getattr(scene, "highlight_words", None) or []
             scene_hl_set = set()
             for hw in raw_hl:
@@ -601,95 +736,73 @@ class SubtitleHelper:
 
             if word_timings and len(word_timings) > 0:
                 # ── CHẾ ĐỘ 1: ĐỒNG BỘ CHÍNH XÁC THEO MỐC TỪNG TỪ CỦA GIỌNG ĐỌC AI ──
-                chunks_data = []
-                cur_words = []
-                cur_len = 0
+                cleaned_wt_items: List[Dict[str, Any]] = []
                 for w_info in word_timings:
-                    raw_w = w_info.get("word", "").strip()
-                    raw_w = re.sub(r'\[(?:LOOP|HOOK|ACT\s*\d*|SCENE\s*\d*|PAUSE|BEAT|SILENCE|WHISPER)[^\]]*\]', '', raw_w, flags=re.IGNORECASE).strip()
+                    raw_w = str(w_info.get("word", "")).strip()
+                    raw_w = re.sub(
+                        r'\[(?:LOOP|HOOK|ACT\s*\d*|SCENE\s*\d*|PAUSE|BEAT|SILENCE|WHISPER)[^\]]*\]',
+                        '',
+                        raw_w,
+                        flags=re.IGNORECASE,
+                    ).strip()
+                    raw_w = cls._strip_ass_unsupported_emojis(raw_w)
                     w_text = raw_w.upper()
                     if not w_text:
                         continue
-                    candidate_len = cur_len + len(w_text) + (1 if cur_words else 0)
-                    max_w_lim = 6 if is_long_form else 3
-                    max_c_lim = 38 if is_long_form else 20
-                    should_break = (
-                        (len(cur_words) >= max_w_lim or candidate_len > max_c_lim) and len(cur_words) >= 2
-                    ) or (
-                        w_text.endswith((".", "!", "?", ":", ";", "—")) and len(cur_words) >= 2
-                    )
-                    if should_break and cur_words:
-                        chunks_data.append(cur_words)
-                        cur_words = [{**w_info, "word": w_text}]
-                        cur_len = len(w_text)
-                    else:
-                        cur_words.append({**w_info, "word": w_text})
-                        cur_len = candidate_len
+                    cleaned_wt_items.append({**w_info, "word": w_text})
 
-                if cur_words:
-                    chunks_data.append(cur_words)
-
-                # VideoLingo Semantic Rebalance: Không để mạo từ / giới từ ('THE', 'OF', 'IN', 'A', 'TO'...) bị treo ở cuối dòng phụ đề
-                for c_i in range(len(chunks_data) - 1):
-                    if (
-                        len(chunks_data[c_i]) >= 2
-                        and cls._is_dangling_proclitic(chunks_data[c_i][-1].get("word", ""))
-                        and len(chunks_data[c_i + 1]) <= 3
-                    ):
-                        moved_w = chunks_data[c_i].pop()
-                        chunks_data[c_i + 1].insert(0, moved_w)
-                chunks_data = [c for c in chunks_data if c]
+                chunks_data = cls._chunk_word_items(
+                    cleaned_wt_items,
+                    max_words=max_w_lim,
+                    max_chars=max_c_lim,
+                )
 
                 for chunk_idx, c_words in enumerate(chunks_data):
                     chunk_start_ms = current_offset_ms + c_words[0]["start_ms"]
                     chunk_end_ms = current_offset_ms + c_words[-1]["end_ms"]
 
-                    # Chuẩn Y2A-Auto (srt_transform_engine.py & subtitle_qc.py):
-                    # 1. Đảm bảo mật độ hiển thị CPS <= 22 ký tự/giây và tối thiểu 450ms
                     vis_chars = sum(len(re.sub(r"\s+", "", w["word"])) for w in c_words)
-                    min_req_ms = max(450, min(950, int(vis_chars * 1000.0 / 22.0)))
+                    min_req_ms = max(420, min(920, int(vis_chars * 1000.0 / 22.0)))
                     if chunk_end_ms - chunk_start_ms < min_req_ms:
                         chunk_end_ms = chunk_start_ms + min_req_ms
 
-                    # 2. Gộp khoảng nghỉ siêu nhỏ (< 250ms) và chống chồng lấn (Overlap Guard) với chunk kế tiếp
                     if chunk_idx < len(chunks_data) - 1:
                         next_start_ms = current_offset_ms + chunks_data[chunk_idx + 1][0]["start_ms"]
-                        if next_start_ms > chunk_end_ms and (next_start_ms - chunk_end_ms) < 250:
+                        if next_start_ms > chunk_end_ms and (next_start_ms - chunk_end_ms) < 220:
                             chunk_end_ms = next_start_ms
-                        elif chunk_end_ms > next_start_ms and next_start_ms > chunk_start_ms + 180:
+                        elif chunk_end_ms > next_start_ms and next_start_ms > chunk_start_ms + 160:
                             chunk_end_ms = next_start_ms
 
                     words = [w["word"] for w in c_words]
                     word_durations_cs = []
                     for idx_w, w in enumerate(c_words):
-                        dur_cs = max(int(w.get("duration_ms", 200) / 10), 5)
+                        dur_cs = max(int(w.get("duration_ms", 200) / 10), 4)
                         if idx_w < len(c_words) - 1:
                             gap = c_words[idx_w + 1]["start_ms"] - w["end_ms"]
                             if gap > 0:
                                 dur_cs += int(gap / 10)
                         word_durations_cs.append(dur_cs)
 
-                    chunk_pop_tag = r"{\t(0,65,\fscx107\fscy107)\t(65,160,\fscx100\fscy100)}"
                     karaoke_text = cls._build_karaoke_text(
                         words,
                         word_durations_cs,
-                        default_highlight=eff_secondary,
-                        power_color=power_color,
+                        default_highlight=eff_spoken,
                         scene_highlights=scene_hl_set,
+                        is_long_form=is_long_form,
                     )
 
                     start_str = cls._ms_to_ass_time(chunk_start_ms)
                     end_str = cls._ms_to_ass_time(chunk_end_ms)
 
                     dialogue_lines.append(
-                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{chunk_pop_tag}{karaoke_text}"
+                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
                     )
             else:
                 # ── CHẾ ĐỘ 2: FALLBACK PHÂN BỔ KÝ TỰ (Khi không có word_timings) ──
                 chunks = cls.split_text_to_chunks(
                     scene.narration,
-                    max_words=(6 if is_long_form else 3),
-                    max_chars=(38 if is_long_form else 20),
+                    max_words=max_w_lim,
+                    max_chars=max_c_lim,
                 )
                 if not chunks:
                     if getattr(scene, "start_offset_ms", None) is not None:
@@ -698,13 +811,18 @@ class SubtitleHelper:
                         current_offset_ms += scene_duration_ms
                     continue
 
-                chunks = [c.upper() for c in chunks]
+                chunks = [cls._strip_ass_unsupported_emojis(c).upper() for c in chunks]
+                chunks = [c for c in chunks if c]
+                if not chunks:
+                    current_offset_ms += scene_duration_ms
+                    continue
+
                 total_chars = sum(len(c) for c in chunks)
                 chunk_durations_ms = []
                 for c in chunks:
                     ratio = len(c) / total_chars if total_chars > 0 else 1.0 / len(chunks)
                     dur = int(scene_duration_ms * ratio)
-                    chunk_durations_ms.append(max(dur, 600))
+                    chunk_durations_ms.append(max(dur, 500))
 
                 diff = scene_duration_ms - sum(chunk_durations_ms)
                 if chunk_durations_ms:
@@ -719,29 +837,28 @@ class SubtitleHelper:
                     word_durations_cs = []
                     for w in words:
                         ratio = len(w) / total_word_chars if total_word_chars > 0 else 1.0 / len(words)
-                        dur_cs = max(int(chunk_dur_ms * ratio / 10), 5)
+                        dur_cs = max(int(chunk_dur_ms * ratio / 10), 4)
                         word_durations_cs.append(dur_cs)
 
                     total_word_cs = sum(word_durations_cs)
                     chunk_cs = chunk_dur_ms // 10
                     if word_durations_cs:
                         word_durations_cs[-1] += (chunk_cs - total_word_cs)
-                        word_durations_cs[-1] = max(word_durations_cs[-1], 5)
+                        word_durations_cs[-1] = max(word_durations_cs[-1], 4)
 
-                    chunk_pop_tag = r"{\t(0,65,\fscx107\fscy107)\t(65,160,\fscx100\fscy100)}"
                     karaoke_text = cls._build_karaoke_text(
                         words,
                         word_durations_cs,
-                        default_highlight=eff_secondary,
-                        power_color=power_color,
+                        default_highlight=eff_spoken,
                         scene_highlights=scene_hl_set,
+                        is_long_form=is_long_form,
                     )
 
                     start_str = cls._ms_to_ass_time(chunk_start_ms)
                     end_str = cls._ms_to_ass_time(chunk_end_ms)
 
                     dialogue_lines.append(
-                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{chunk_pop_tag}{karaoke_text}"
+                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
                     )
 
                     chunk_start_ms = chunk_end_ms
@@ -751,173 +868,15 @@ class SubtitleHelper:
             else:
                 current_offset_ms += scene_duration_ms
 
-        # ── Đã tắt thanh phù hiệu màu vàng ở đỉnh màn hình ([ // ... // ]) để giữ khung hình điện ảnh sạch 100% ──
-        if False and scenes:
-            raw_niche = (niche_id or "").lower()
-            full_txt = " ".join([s.narration for s in scenes]).lower()
-            # Phân biệt chuẩn xác Tiếng Việt (vi), Tiếng Bồ Đào Nha Brazil (pt-BR) và Tiếng Anh (en):
-            # Tính theo ĐA SỐ CẢNH (Majority Scene Language) để 1 ký tự rò rỉ không bao giờ lật ngược ngôn ngữ toàn bài!
-            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]', re.IGNORECASE)
-            pt_words = {
-                "não", "você", "uma", "para", "com", "mais", "pelo", "pela", "está",
-                "são", "isso", "até", "mas", "nas", "nos", "dos", "das", "onça",
-                "oceano", "mistério", "ciência", "metros", "selva", "amazônia", "pantanal",
-                "sucuri", "jacaré", "quando", "apenas", "fundo", "água", "águas",
-            }
-            txt_words = set(re.findall(r'\b\w+\b', full_txt))
-            vi_scene_count = sum(1 for s in scenes if vn_exclusive_re.search(str(getattr(s, "narration", "") or "")))
-            is_majority_vi = vi_scene_count >= max(2, (len(scenes) + 1) // 2)
-            is_pt = ("ç" in full_txt or "õ" in full_txt or "ã" in full_txt or len(txt_words & pt_words) >= 2) and not is_majority_vi
-            is_vi = is_majority_vi and not is_pt
-
-            # ── Tối ưu Anti-Swipe 0-3s: Chỉ hiển thị DUY NHẤT 1 phù hiệu HUD nhỏ gọn (1 dòng, <= 26 ký tự)
-            # ở sát mép trên (MarginV=230), tuyệt đối KHÔNG chồng 2 lớp HookHeadlineBanner + PatternInterruptBadge
-            # gây che khuất khuôn mặt/chủ thể chính ở trung tâm khung hình!
-            custom_open_badge = cls._strip_ass_unsupported_emojis(getattr(scenes[0], "overlay_badge", "") or "").strip()
-            effective_hook = cls._strip_ass_unsupported_emojis((hook_title or "").strip())
-            # Chặn tuyệt đối phụ đề/banner Tiếng Việt rò rỉ ở đầu video của kênh ngoại ngữ (en / pt-BR)
-            if not is_vi:
-                if custom_open_badge and (vn_exclusive_re.search(custom_open_badge) or "TỪ IN HOA" in custom_open_badge.upper() or "SỰ THẬT" in custom_open_badge.upper()):
-                    custom_open_badge = ""
-                if effective_hook and (vn_exclusive_re.search(effective_hook) or "TỪ IN HOA" in effective_hook.upper() or "SỰ THẬT" in effective_hook.upper()):
-                    effective_hook = ""
-            if custom_open_badge and len(custom_open_badge) <= 24:
-                badge_core = custom_open_badge.upper()
-            elif effective_hook:
-                clean_hook = re.sub(r'[—–―]+', ' ', effective_hook)
-                clean_hook = re.sub(r'#\w+', '', clean_hook).strip().upper()
-                hook_words = clean_hook.split()
-                badge_core = " ".join(hook_words[:4])
-                if len(badge_core) > 24:
-                    badge_core = badge_core[:24].rstrip()
-            elif "psychology" in raw_niche:
-                badge_core = "TÂM LÝ ĐEN TỐI" if is_vi else ("MENTE SOMBRIA" if is_pt else "MENTAL TRAP")
-            elif any(k in raw_niche for k in ("deep_sea", "ocean")):
-                badge_core = "VỰC THẲM BÍ ẨN" if is_vi else ("ABISMO OCULTO" if is_pt else "UNCHARTED ABYSS")
-            elif any(k in raw_niche for k in ("predator", "wildlife")):
-                badge_core = "ĐỐI ĐẦU SINH TỬ" if is_vi else ("DUELO MORTAL" if is_pt else "APEX DUEL")
-            elif any(k in raw_niche for k in ("rescue", "animal")):
-                badge_core = "HỒ SƠ CỨU HỘ" if is_vi else ("RESGATE REAL" if is_pt else "RESCUE ARCHIVE")
-            elif any(k in raw_niche for k in ("history", "mystery", "alternate")):
-                badge_core = "TÀI LIỆU MẬT" if is_vi else ("ARQUIVO SECRETO" if is_pt else "CLASSIFIED FILE")
-            elif "horror" in raw_niche:
-                badge_core = "HỒ SƠ KINH DỊ" if is_vi else ("LENDA URBANA" if is_pt else "URBAN LEGEND")
-            else:
-                badge_core = "ĐIỀU CHƯA BIẾT" if is_vi else ("ARQUIVO CRÍTICO" if is_pt else "CRITICAL FILE")
-
-            badge_title = f"[ // {badge_core} // ]"
-            first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
-            badge_end_ms = min(2400, max(1200, first_scene_dur_ms - 150))
-            badge_start_str = cls._ms_to_ass_time(0)
-            badge_end_str = cls._ms_to_ass_time(badge_end_ms)
-            dialogue_lines.insert(0,
-                f"Dialogue: 2,{badge_start_str},{badge_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(120,150)\\t(0,140,\\fscx105\\fscy105)}}{badge_title}"
-            )
-
-            # Mid-video & Climax Pattern Interrupt + Quantitative Stat Card Engine (Giây 10-16s và Giây 22-32s):
-            # 1. Tự động trích xuất con số/thống kê định lượng trong lời thoại (3,700 PSI, 11,000 METERS, 95%, $400B...) thành Stat Card
-            # 2. Hoặc ưu tiên overlay_badge do AI Director đặt / từ khóa bước ngoặt
-            # 3. Đặt tối đa 2 phù hiệu HUD cách nhau >= 7.5 giây để phá điểm rơi rụng ở giữa và cao trào video
-            stamps_added = 0
-            last_stamp_ms = badge_end_ms
-            evidence_kw = (
-                "bằng chứng", "sự thật", "dấu hiệu", "nghiên cứu", "quy tắc", "nhưng", "bất ngờ",
-                "evidence", "truth", "sign", "proof", "rule", "until", "however", "suddenly", "yet",
-                "verdade", "prova", "sinal", "estudo", "regra", "mas", "porém", "até que", "de repente", "cientistas", "ninguém",
-            )
-            stat_regex = re.compile(
-                r'(\$?\d[\d,\.]*\s*(?:%|percent|por cento|psi|mph|km/h|km\b|meters|metros|metro|m\b|feet|ft|tons|toneladas|kg|quilos|lbs|pound|pounds|billion|bilhões|million|milhões|trillion|b\b|m\b|milliseconds|seconds|segundos|sec|ms|hours|horas|days|dias|years|anos|°c|°f|graus|db|decibels|decibéis|x\b))',
-                re.IGNORECASE,
-            )
-            mid_scenes_pool = scenes[1:-1] if len(scenes) >= 3 else scenes[1:]
-            for idx, sc in enumerate(mid_scenes_pool, start=2):
-                if stamps_added >= 2:
-                    break
-                sc_start_ms = getattr(sc, "start_offset_ms", None)
-                if sc_start_ms is None:
-                    sc_start_ms = sum(s.audio_duration_ms or int(s.estimated_seconds * 1000) for s in scenes[:idx-1])
-                if sc_start_ms - last_stamp_ms < 4000:
-                    continue
-
-                sc_badge = cls._strip_ass_unsupported_emojis(getattr(sc, "overlay_badge", "") or "")
-                if not is_vi and sc_badge and (vn_exclusive_re.search(sc_badge) or "TỪ IN HOA" in sc_badge.upper()):
-                    sc_badge = ""
-                sc_txt = sc.narration.lower()
-                stat_match = stat_regex.search(sc.narration)
-
-                if sc_badge or stat_match or any(k in sc_txt for k in evidence_kw):
-                    sc_dur = sc.audio_duration_ms or int(sc.estimated_seconds * 1000)
-                    stamp_end_ms = sc_start_ms + min(2400, sc_dur)
-                    stamp_start_str = cls._ms_to_ass_time(sc_start_ms + 100)
-                    stamp_end_str = cls._ms_to_ass_time(stamp_end_ms)
-                    if sc_badge:
-                        stamp_title = f"[ // {sc_badge.upper()} // ]"
-                    elif stat_match:
-                        raw_stat = stat_match.group(1).strip().upper()
-                        prefix = "DỮ LIỆU" if is_vi else ("DADOS" if is_pt else "DATA")
-                        stamp_title = f"[ // {prefix}: {raw_stat} // ]"
-                    else:
-                        if stamps_added == 0:
-                            stamp_title = "[ // BƯỚC NGOẶT // ]" if is_vi else ("[ // A REVIRAVOLTA // ]" if is_pt else "[ // THE TURNING POINT // ]")
-                        else:
-                            stamp_title = "[ // SỰ THẬT CUỐI CÙNG // ]" if is_vi else ("[ // REVELAÇÃO FINAL // ]" if is_pt else "[ // THE FINAL REVEAL // ]")
-                    dialogue_lines.append(
-                        f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,140,\\fscx108\\fscy108)\\t(140,260,\\fscx100\\fscy100)}}{stamp_title}"
-                    )
-                    stamps_added += 1
-                    last_stamp_ms = stamp_end_ms
-
-            if stamps_added == 0 and len(scenes) >= 4:
-                mid_idx = min(3, len(scenes) // 2)  # Cảnh 4 (0-indexed = 3) ~ giây 12-15
-                sc = scenes[mid_idx]
-                sc_start_ms = getattr(sc, "start_offset_ms", None)
-                if sc_start_ms is None:
-                    sc_start_ms = sum(s.audio_duration_ms or int(s.estimated_seconds * 1000) for s in scenes[:mid_idx])
-                sc_dur = sc.audio_duration_ms or int(sc.estimated_seconds * 1000)
-                stamp_end_ms = sc_start_ms + min(2400, sc_dur)
-                stamp_start_str = cls._ms_to_ass_time(sc_start_ms + 100)
-                stamp_end_str = cls._ms_to_ass_time(stamp_end_ms)
-                stamp_title = "[ // SỰ THẬT NGẦM // ]" if is_vi else ("[ // O SEGREDO OCULTO // ]" if is_pt else "[ // THE HIDDEN TWIST // ]")
-                dialogue_lines.append(
-                    f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,140,\\fscx108\\fscy108)\\t(140,260,\\fscx100\\fscy100)}}{stamp_title}"
-                )
-
-        # ── Kích hoạt Visual CTA Banner (Like + Comment + Subscribe) ở phân cảnh cuối (chỉ áp dụng cho Shorts) ──
-        if show_cta_badge and (not is_long_form) and scenes and current_offset_ms > 3000:
-            last_scene = scenes[-1]
-            last_dur = last_scene.audio_duration_ms or int(last_scene.estimated_seconds * 1000)
-            cta_dur = max(min(last_dur, 4200), 3200)
-            cta_start_ms = max(0, current_offset_ms - cta_dur)
-            cta_end_ms = current_offset_ms
-            full_text = " ".join([s.narration for s in scenes]).lower()
-            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]', re.IGNORECASE)
-            pt_words = {
-                "não", "você", "uma", "para", "com", "mais", "pelo", "pela", "está",
-                "são", "isso", "até", "mas", "nas", "nos", "dos", "das", "onça",
-                "oceano", "mistério", "ciência", "metros", "selva", "amazônia", "pantanal",
-                "sucuri", "jacaré", "quando", "apenas", "fundo", "água", "águas",
-            }
-            txt_words = set(re.findall(r'\b\w+\b', full_text))
-            vi_scene_count = sum(1 for s in scenes if vn_exclusive_re.search(str(getattr(s, "narration", "") or "")))
-            is_majority_vi = vi_scene_count >= max(2, (len(scenes) + 1) // 2)
-            is_pt = ("ç" in full_text or "õ" in full_text or "ã" in full_text or len(txt_words & pt_words) >= 2) and not is_majority_vi
-            is_vi = is_majority_vi and not is_pt
-            raw_niche = (niche_id or "").lower()
-
-            cta_text = cls._build_visual_cta_banner_text(raw_niche, is_vi, is_pt)
-            cta_start_str = cls._ms_to_ass_time(cta_start_ms)
-            cta_end_str = cls._ms_to_ass_time(cta_end_ms)
-            dialogue_lines.append(
-                f"Dialogue: 1,{cta_start_str},{cta_end_str},CTABadge,,0,0,0,,{{\\fade(200,150)\\t(0,180,\\fscx108\\fscy108)\\t(180,360,\\fscx100\\fscy100)}}{cta_text}"
-            )
-
-        # ── Kích hoạt Watermark / Credit tác giả trên đỉnh video nếu có ──
+        # ── Watermark / Credit tác giả gọn nhẹ trên đỉnh video (nếu có yêu cầu ghi nguồn) ──
         if credit_text and credit_text.strip():
-            credit_clean = credit_text.strip().replace("\n", " ")
-            credit_end_str = cls._ms_to_ass_time(current_offset_ms if current_offset_ms > 0 else 60000)
-            dialogue_lines.insert(0,
-                f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}🎬 {credit_clean}"
-            )
+            credit_clean = cls._strip_ass_unsupported_emojis(credit_text.strip().replace("\n", " "))
+            if credit_clean:
+                credit_end_str = cls._ms_to_ass_time(current_offset_ms if current_offset_ms > 0 else 60000)
+                dialogue_lines.insert(
+                    0,
+                    f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}{credit_clean}",
+                )
 
         return header + "\n".join(dialogue_lines) + "\n"
 
@@ -926,19 +885,19 @@ class SubtitleHelper:
         cls,
         scenes: List[SceneContract],
         output_path: str,
-        fontname: str = "Arial Black",
-        fontsize: int = 68,
-        margin_v: int = 720,
+        fontname: str = "Montserrat ExtraBold",
+        fontsize: int = 56,
+        margin_v: int = 420,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
         hook_title: Optional[str] = None,
         is_long_form: bool = False,
     ) -> str:
-        """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile, Watermark Credit, Hook Headline Banner & Long-Form 16:9."""
+        """Tạo và lưu file .ass ra ổ đĩa ở vùng Safe Zone chuẩn, không chèn dòng chữ kêu gọi Like/Share/Comment."""
         content = cls.build_ass_content(
             scenes,
             fontname=fontname,
@@ -949,7 +908,7 @@ class SubtitleHelper:
             outline_color=outline_color,
             niche_id=niche_id,
             credit_text=credit_text,
-            show_cta_badge=show_cta_badge,
+            show_cta_badge=False,
             hook_title=hook_title,
             is_long_form=is_long_form,
         )
@@ -1078,41 +1037,40 @@ class SubtitleHelper:
         total_duration_sec: float = 0.0,
         clip_start_offset: float = 0.0,
         fontname: str = "Arial Black",
-        fontsize: int = 68,
-        margin_v: int = 720,
+        fontsize: int = 56,
+        margin_v: int = 420,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
     ) -> str:
         """
-        Tạo nội dung file .ass từ mốc thời gian thực của giọng đọc (ASR/Whisper/Transcript).
-        - Trích xuất từng câu/cụm từ có mốc start và duration thực.
-        - Khử hoàn toàn chuỗi rác template (placeholder sanitizer).
-        - Phân chia thành cụm từ ngắn (2-4 từ) và gắn tag karaoke {\\kf} theo từng từ.
-        - Căn chuẩn Safe Zone 30-35% từ đáy (margin_v=720), chống va chạm layer với CTA badge.
+        Tạo nội dung file .ass từ mốc thời gian thực của giọng đọc (ASR/Whisper/Transcript)
+        ở vùng Safe Zone tối ưu (MarginV=420), không chèn banner kêu gọi Like/Share/Comment.
         """
-        eff_primary = primary_color or ASS_WHITE
-        eff_secondary = secondary_color or ASS_YELLOW
+        eff_unspoken = primary_color or ASS_SOFT_WHITE
+        eff_spoken = secondary_color or ASS_WHITE
         eff_outline = outline_color or ASS_BLACK
         eff_font = fontname
-        eff_size = fontsize if fontsize >= 62 else 68
-        eff_margin = margin_v
+        eff_size = fontsize if 48 <= int(fontsize or 56) <= 64 else 56
+        eff_margin = margin_v if 360 <= int(margin_v or 420) <= 500 else 420
 
         if niche_id:
             try:
                 from app.services.niche_manager import get_niche, get_niche_subtitle_style
                 niche_prof = get_niche(niche_id)
                 niche_sub = get_niche_subtitle_style(niche_prof)
-                eff_primary = primary_color or niche_sub.get("primary_ass", ASS_WHITE)
-                eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
-                if not fontname or fontname in ("Arial", "Arial Black", "Montserrat ExtraBold"):
+                if not fontname or fontname in ("Arial", "Montserrat ExtraBold"):
                     eff_font = niche_sub.get("fontname", "Montserrat ExtraBold")
-                eff_size = fontsize if fontsize not in (42, 44, 68) and fontsize >= 62 else niche_sub.get("fontsize", 68)
-                eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
+                niche_fs = int(niche_sub.get("fontsize", 56) or 56)
+                if fontsize in (40, 42, 44, 56, 68, 78):
+                    eff_size = niche_fs if 48 <= niche_fs <= 64 else 56
+                niche_mv = int(niche_sub.get("margin_v", 420) or 420)
+                if margin_v in (210, 420, 580, 600, 720):
+                    eff_margin = niche_mv if 360 <= niche_mv <= 500 else 420
             except Exception:
                 pass
 
@@ -1121,8 +1079,8 @@ class SubtitleHelper:
         header = ASS_HEADER_TEMPLATE.format(
             fontname=eff_font,
             fontsize=eff_size,
-            primary=eff_secondary,     # Highlight color
-            secondary=eff_primary,     # Base color
+            primary=eff_spoken,
+            secondary=eff_unspoken,
             outline=eff_outline,
             back=ASS_SHADOW,
             margin_v=eff_margin,
@@ -1142,18 +1100,21 @@ class SubtitleHelper:
             if raw_dur <= 0.0:
                 raw_dur = max(float(seg.get("end", raw_start + 2.0)) - raw_start, 1.0)
 
-            # Căn chỉnh timestamp tương đối so với điểm bắt đầu clip
             rel_start_sec = max(0.0, raw_start - clip_start_offset)
             seg_start_ms = int(rel_start_sec * 1000)
             seg_dur_ms = max(int(raw_dur * 1000), 400)
             seg_end_ms = seg_start_ms + seg_dur_ms
             max_seen_end_ms = max(max_seen_end_ms, seg_end_ms)
 
-            chunks = cls.split_text_to_chunks(clean_text)
+            chunks = cls.split_text_to_chunks(clean_text, max_words=4, max_chars=22)
             if not chunks:
                 continue
 
-            chunks = [c.upper() for c in chunks]
+            chunks = [cls._strip_ass_unsupported_emojis(c).upper() for c in chunks]
+            chunks = [c for c in chunks if c]
+            if not chunks:
+                continue
+
             total_chars = sum(len(c) for c in chunks)
             chunk_durations_ms = []
             for c in chunks:
@@ -1195,32 +1156,14 @@ class SubtitleHelper:
 
         effective_total_ms = int(total_duration_sec * 1000) if total_duration_sec > 0 else max_seen_end_ms
 
-        # ── Kích hoạt Visual CTA Banner (Like + Comment + Subscribe) ở 3.5s - 4.2s cuối (MarginV=465 tránh đè Subtitle) ──
-        if show_cta_badge and effective_total_ms > 4000:
-            cta_dur = min(4000, max(2800, int(effective_total_ms * 0.16)))
-            cta_start_ms = max(0, effective_total_ms - cta_dur)
-            cta_end_ms = effective_total_ms
-            all_text_concat = " ".join([seg.get("text", "") for seg in timed_segments]).lower()
-            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]', re.IGNORECASE)
-            vi_seg_count = sum(1 for seg in timed_segments if vn_exclusive_re.search(str(seg.get("text", "") or "")))
-            is_majority_vi = vi_seg_count >= max(2, (len(timed_segments) + 1) // 2)
-            is_pt = ("ç" in all_text_concat or "õ" in all_text_concat or "ã" in all_text_concat) and not is_majority_vi
-            is_vi = is_majority_vi and not is_pt
-            raw_niche = (niche_id or "").lower()
-            cta_text = cls._build_visual_cta_banner_text(raw_niche, is_vi, is_pt)
-            cta_start_str = cls._ms_to_ass_time(cta_start_ms)
-            cta_end_str = cls._ms_to_ass_time(cta_end_ms)
-            dialogue_lines.append(
-                f"Dialogue: 1,{cta_start_str},{cta_end_str},CTABadge,,0,0,0,,{{\\fade(200,150)\\t(0,180,\\fscx108\\fscy108)\\t(180,360,\\fscx100\\fscy100)}}{cta_text}"
-            )
-
-        # ── Watermark Credit ở đỉnh video (Layer 2) ──
+        # ── Watermark Credit ở đỉnh video (Layer 2, nếu có yêu cầu ghi nguồn) ──
         if credit_text and credit_text.strip():
             clean_credit = cls._strip_ass_unsupported_emojis(credit_text.strip().replace("\n", " "))
-            credit_end_str = cls._ms_to_ass_time(effective_total_ms if effective_total_ms > 0 else 60000)
-            dialogue_lines.insert(0,
-                f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}// {clean_credit}"
-            )
+            if clean_credit:
+                credit_end_str = cls._ms_to_ass_time(effective_total_ms if effective_total_ms > 0 else 60000)
+                dialogue_lines.insert(0,
+                    f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}// {clean_credit}"
+                )
 
         return header + "\n".join(dialogue_lines) + "\n"
 
@@ -1232,14 +1175,14 @@ class SubtitleHelper:
         total_duration_sec: float = 0.0,
         clip_start_offset: float = 0.0,
         fontname: str = "Montserrat ExtraBold",
-        fontsize: int = 68,
-        margin_v: int = 720,
+        fontsize: int = 56,
+        margin_v: int = 420,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
     ) -> str:
         """Tạo và lưu file .ass từ timed_segments ra ổ đĩa."""
         content = cls.build_ass_from_timed_segments(
@@ -1254,7 +1197,7 @@ class SubtitleHelper:
             outline_color=outline_color,
             niche_id=niche_id,
             credit_text=credit_text,
-            show_cta_badge=show_cta_badge,
+            show_cta_badge=False,
         )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
@@ -1268,8 +1211,8 @@ class SubtitleHelper:
         cls,
         clips: List[Dict[str, Any]],
         fontname: str = "Montserrat ExtraBold",
-        fontsize: int = 68,
-        margin_v: int = 720,
+        fontsize: int = 56,
+        margin_v: int = 420,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
@@ -1279,32 +1222,23 @@ class SubtitleHelper:
         is_voiceover: bool = False,
     ) -> str:
         """
-        Xây dựng phụ đề chuyên biệt cho kịch bản Nấu Lại Đa Phân Đoạn (Multi-Clip Mashup):
-        1. Layer 2: Chapter / Timeline Context Badges ở ĐỈNH MÀN HÌNH (MarginV=260, Alignment=8).
-           Hiển thị nhãn bối cảnh (ví dụ: '🚨 THE RESCUE AT 2:00 AM', '⏪ 3 HOURS EARLIER (FLASHBACK)')
-           giúp người xem nắm bắt ngay mạch thời gian đảo cảnh, chống loạn nhịp.
-        2. Layer 0: Kinetic Captions Karaoke giật từng từ ở ĐÁY MÀN HÌNH (MarginV=720, Alignment=2).
-           Font to, viền dày, chữ trắng quét sáng Vàng rực rỡ (Yellow Wipe) với Power Words đỏ/cam.
-           Đảm bảo 100% video luôn có phụ đề, cứu vãn 70%+ người xem lướt Shorts ở chế độ tắt tiếng.
+        Xây dựng phụ đề chuyên biệt cho kịch bản Nấu Lại Đa Phân Đoạn (Multi-Clip Mashup) ở vùng Safe Zone (MarginV=420).
         """
-        eff_primary = primary_color or ASS_WHITE
-        eff_secondary = secondary_color or ASS_YELLOW
+        eff_unspoken = primary_color or ASS_SOFT_WHITE
+        eff_spoken = secondary_color or ASS_WHITE
         eff_outline = outline_color or ASS_BLACK
-        eff_back = "&H90000000"
+        eff_back = ASS_SHADOW
         eff_font = fontname or "Montserrat ExtraBold"
-        eff_size = fontsize if (fontsize and fontsize >= 62) else 68
-        eff_margin = margin_v or 720
+        eff_size = fontsize if (fontsize and 48 <= fontsize <= 64) else 56
+        eff_margin = margin_v if (margin_v and 360 <= margin_v <= 500) else 420
 
         if niche_id:
             try:
                 from app.services.niche_manager import get_niche, get_niche_subtitle_style
                 niche_prof = get_niche(niche_id)
                 niche_sub = get_niche_subtitle_style(niche_prof)
-                eff_primary = primary_color or niche_sub.get("primary_ass", ASS_WHITE)
-                eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
                 eff_font = fontname or niche_sub.get("fontname", "Montserrat ExtraBold")
-                eff_size = fontsize if (fontsize and fontsize not in (42, 44, 68) and fontsize >= 62) else niche_sub.get("fontsize", 68)
             except Exception:
                 pass
 
@@ -1313,8 +1247,8 @@ class SubtitleHelper:
         header = ASS_HEADER_TEMPLATE.format(
             fontname=eff_font,
             fontsize=eff_size,
-            primary=eff_primary,
-            secondary=eff_secondary,
+            primary=eff_spoken,
+            secondary=eff_unspoken,
             outline=eff_outline,
             back=eff_back,
             margin_v=eff_margin,
@@ -1393,7 +1327,7 @@ class SubtitleHelper:
                     d_ms = max(int(seg_d * 1000), 400)
                     e_ms = min(s_ms + d_ms, clip_end_ms)
 
-                    chunks = cls.split_text_to_chunks(seg_text, max_words=3, max_chars=20)
+                    chunks = cls.split_text_to_chunks(seg_text, max_words=4, max_chars=22)
                     if not chunks:
                         continue
                     chunks = [ch.upper() for ch in chunks]
@@ -1414,7 +1348,12 @@ class SubtitleHelper:
                         if w_durs:
                             w_durs[-1] += (target_c - tot_w)
                             w_durs[-1] = max(w_durs[-1], 3)
-                        k_text = cls._build_karaoke_text(words, w_durs, default_highlight=eff_secondary)
+                        k_text = cls._build_karaoke_text(
+                            words,
+                            w_durs,
+                            default_highlight=eff_spoken,
+                            use_smooth_wipe=True,
+                        )
                         dialogue_lines.append(
                             f"Dialogue: 0,{cls._ms_to_ass_time(c_st)},{cls._ms_to_ass_time(c_en)},Karaoke,,0,0,0,,{k_text}"
                         )
@@ -1425,7 +1364,7 @@ class SubtitleHelper:
                 if not clean_text or len(clean_text.split()) < 2:
                     clean_text = default_narrs.get(role, f"WATCH THIS SCENE #{c_idx}!")
 
-                chunks = cls.split_text_to_chunks(clean_text, max_words=3, max_chars=20)
+                chunks = cls.split_text_to_chunks(clean_text, max_words=4, max_chars=22)
                 if not chunks:
                     chunks = [clean_text[:25]]
                 # Nếu có voice_dur_ms thì phụ đề karaoke phân bổ theo thời gian đọc thật của voice, không bị kéo dãn lê thê
@@ -1452,7 +1391,12 @@ class SubtitleHelper:
                         w_durs[-1] += (target_c - tot_w)
                         w_durs[-1] = max(w_durs[-1], 3)
 
-                    k_text = cls._build_karaoke_text(words, w_durs, default_highlight=eff_secondary)
+                    k_text = cls._build_karaoke_text(
+                        words,
+                        w_durs,
+                        default_highlight=eff_spoken,
+                        use_smooth_wipe=True,
+                    )
                     dialogue_lines.append(
                         f"Dialogue: 0,{cls._ms_to_ass_time(c_st)},{cls._ms_to_ass_time(c_en)},Karaoke,,0,0,0,,{k_text}"
                     )
@@ -1462,11 +1406,12 @@ class SubtitleHelper:
 
         # ── 3. WATERMARK CREDIT Ở ĐỈNH VIDEO ──
         if credit_text and credit_text.strip():
-            clean_credit = credit_text.strip().replace("\n", " ")
-            credit_end_str = cls._ms_to_ass_time(current_timeline_ms)
-            dialogue_lines.insert(0,
-                f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}🎬 {clean_credit}"
-            )
+            clean_credit = cls._strip_ass_unsupported_emojis(credit_text.strip().replace("\n", " "))
+            if clean_credit:
+                credit_end_str = cls._ms_to_ass_time(current_timeline_ms)
+                dialogue_lines.insert(0,
+                    f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}{clean_credit}"
+                )
 
         return header + "\n".join(dialogue_lines) + "\n"
 
@@ -1475,9 +1420,9 @@ class SubtitleHelper:
         cls,
         clips: List[Dict[str, Any]],
         output_path: str,
-        fontname: str = "Arial Black",
-        fontsize: int = 68,
-        margin_v: int = 720,
+        fontname: str = "Montserrat ExtraBold",
+        fontsize: int = 56,
+        margin_v: int = 420,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
         is_english: bool = True,
