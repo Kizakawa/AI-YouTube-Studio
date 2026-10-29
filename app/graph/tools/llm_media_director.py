@@ -53,6 +53,7 @@ def plan_media_tools_with_llm_sync(
             "scene_id": s.get("scene_id"),
             "narration": s.get("narration", ""),
             "visual_keyword": s.get("visual_keyword", ""),
+            "visual_strategy": s.get("visual_strategy", ""),
             "estimated_seconds": s.get("estimated_seconds", 4.0),
         }
         for s in scenes
@@ -279,6 +280,14 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             if not d.get("camera_motion"):
                 d["camera_motion"] = "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)]
             d.setdefault("target_duration_sec", float(s.get("estimated_seconds") or 4.5))
+
+            if (
+                not is_mandatory_video_scene
+                and str(s.get("visual_strategy") or "").strip().upper() in ("DOODLE_2D_EXPLAINER", "DOODLE_2D_EXPLAINER_VIDEO")
+                and str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy")
+            ):
+                t_chosen = "render_doodle_2d_explainer_scene"
+                d["tool_name"] = t_chosen
 
             if is_mandatory_video_scene and t_chosen in ("search_google_cinematic_image", "search_pexels_pixabay_stock_video"):
                 if llm_monster_ref is not None:

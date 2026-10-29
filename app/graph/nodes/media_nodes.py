@@ -2782,10 +2782,46 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex_lf_r:
                     logger.debug(f"Scene {scene_id}: Long-form 16:9 refine error: {ex_lf_r}")
 
+            # 0B. Nếu phân cảnh được chỉ định là DOODLE_2D_EXPLAINER, ưu tiên dựng lại Doodle 2D Explainer Animation thay vì ghi đè bằng YouTube Short ngẫu nhiên
+            if not replaced and (
+                str(item.get("visual_strategy") or "").upper() in ("DOODLE_2D_EXPLAINER", "DOODLE_2D_EXPLAINER_VIDEO")
+                or str(item.get("tool") or "") == "render_doodle_2d_explainer_scene"
+            ):
+                try:
+                    from app.services.media.doodle_animation_tool import DoodleAnimationTool
+                    d_chars = ["@MANIPULATOR", "@MODERNYOU", "@PLEASER", "@ANCESTOR"]
+                    d_props = ["puppet_strings", "mask", "cage", "broken_compass", "scroll_feed", "treadmill"]
+                    out_d_ref = str(media_dir / f"scene_{scene_id:03d}_refined_doodle_2d_r{retry_count}.mp4")
+                    d_res_ref = await asyncio.to_thread(
+                        DoodleAnimationTool.render_scene_clip,
+                        narration=narr or state.get("topic", ""),
+                        output_path=out_d_ref,
+                        duration_seconds=sc_dur_sec + 0.25,
+                        scene_id=scene_id,
+                        total_scenes=total_scenes_refine,
+                        character_tag=d_chars[(scene_id + retry_count) % len(d_chars)],
+                        prop_type=d_props[(scene_id + retry_count) % len(d_props)],
+                        camera_motion=str(item.get("camera_motion") or "zoom_in"),
+                        width=w_ref,
+                        height=h_ref,
+                    )
+                    if d_res_ref and Path(d_res_ref).exists() and Path(d_res_ref).stat().st_size > 15_000:
+                        item["media_path"] = d_res_ref
+                        item["media_type"] = "video"
+                        item["pose_images"] = []
+                        item["production_method"] = "DOODLE_2D_EXPLAINER_VIDEO"
+                        item["visual_strategy"] = "DOODLE_2D_EXPLAINER_VIDEO"
+                        replaced = True
+                        logger.info(f"Scene {scene_id}: 🎨 Sửa lỗi kỹ thuật bằng Doodle 2D Explainer Animation mới: '{Path(d_res_ref).name}'")
+                except Exception as ex_d_r:
+                    logger.debug(f"Scene {scene_id}: Doodle 2D refine skip: {ex_d_r}")
+
             # 1. Ưu tiên săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync — chỉ cho Shorts)
             if not replaced and not is_lf_refine:
                 try:
                     from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                    from app.services.video_memory_rag import get_video_memory_rag
+                    rag_yt_ref = get_video_memory_rag()
                     out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
                     yt_ref_res = await asyncio.to_thread(
                         execute_youtube_short_peak_clone_sync,
@@ -2809,7 +2845,21 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         ok_yt_clean, _ = await asyncio.to_thread(
                             _verify_and_sanitize_refined_media, yt_ref_res["media_path"], True, scene_id
                         )
-                        if ok_yt_clean:
+                        ok_yt_sig, _ = (
+                            rag_yt_ref.verify_and_commit_in_job_clip(
+                                job_id=job_id_refine,
+                                scene_id=scene_id,
+                                media_path=yt_ref_res["media_path"],
+                                vid_id=str(yt_ref_res.get("source_url") or yt_ref_res["media_path"]),
+                                url=str(yt_ref_res.get("source_url") or yt_ref_res["media_path"]),
+                                title=str(yt_ref_res.get("title") or clean_kw_q),
+                            )
+                            if ok_yt_clean
+                            else (False, "failed_refine_gate")
+                        )
+                        if ok_yt_clean and ok_yt_sig:
+                            if yt_ref_res.get("source_url"):
+                                used_refine_urls.add(str(yt_ref_res["source_url"]))
                             item["media_path"] = yt_ref_res["media_path"]
                             item["media_type"] = "video"
                             item["pose_images"] = []
