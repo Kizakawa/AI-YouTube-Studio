@@ -402,7 +402,11 @@ def execute_youtube_short_peak_clone_sync(
                             continue
 
                         full_peak_path: Optional[str] = None
-                        if natural_peak_len >= scene_clip_len + 1.8 and raw_dur_sec >= actual_start_s + scene_clip_len + 1.5:
+                        if (
+                            (clip_role or "").upper() == "HOOK"
+                            and natural_peak_len >= scene_clip_len + 1.8
+                            and raw_dur_sec >= actual_start_s + scene_clip_len + 1.5
+                        ):
                             cand_full_path = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
                             try:
                                 trim_video(

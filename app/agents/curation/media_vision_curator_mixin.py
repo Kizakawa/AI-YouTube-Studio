@@ -276,6 +276,50 @@ TRẢ VỀ JSON DUY NHẤT:
             )
             return None, score, rationale, True
 
+        # Cứu hộ xác định (Deterministic Subject-Anchor Fallback) KHI VÀ CHỈ KHI Gemini Vision API bị 429/503 toàn cục:
+        # Không chọn mù ngẫu nhiên! Chỉ duyệt ứng viên Pexels/Pixabay khi:
+        # (1) Vượt qua bộ lọc EntityDetector chống lạc đề (`is_incongruent_stock_image == False`)
+        # (2) Slug/URL của clip chứa từ khóa thực thể chủ đạo (`subject_req` / `topic_ctx` / `expected_vis`)
+        try:
+            from app.services.media.entity_detector import is_incongruent_stock_image
+            import re as _re_fb
+            _stop_fb = {
+                "the", "and", "for", "with", "from", "into", "over", "under", "this", "that",
+                "video", "footage", "shot", "view", "close", "slow", "motion", "cinematic", "dark",
+            }
+            subj_tokens = {
+                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{subject_req} {topic_ctx}".lower())
+                if w not in _stop_fb
+            }
+            scene_tokens = {
+                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{expected_vis} {narration}".lower())
+                if w not in _stop_fb
+            }
+            best_det_cand = None
+            best_det_score = 0.0
+            for cand in eval_pool:
+                slug_txt = f"{cand.get('slug', '')} {cand.get('url', '')}".lower()
+                if is_incongruent_stock_image(slug_txt, topic=topic_ctx, narration=narration):
+                    continue
+                cand_tokens = set(_re_fb.findall(r"[a-zA-Z]{4,}", slug_txt))
+                subj_hits = len(cand_tokens.intersection(subj_tokens))
+                scene_hits = len(cand_tokens.intersection(scene_tokens))
+                if subj_hits >= 1 or (not subj_tokens and scene_hits >= 2) or (subj_hits + scene_hits >= 2):
+                    is_vert = (cand.get("height") or 0) >= (cand.get("width") or 0)
+                    det_sc = min(8.2, 7.1 + subj_hits * 0.35 + scene_hits * 0.2 + (0.2 if is_vert else 0.0))
+                    if det_sc > best_det_score:
+                        best_det_score = det_sc
+                        best_det_cand = cand
+            if best_det_cand is not None and best_det_score >= 7.2:
+                rationale_fb = f"Deterministic Subject-Anchor Match ({best_det_score:.1f}/10 while Gemini Vision API rate-limited)"
+                logger.info(
+                    f"🎬 [LLM Link & Vision Audit] ⚡ Cứu hộ Subject-Anchor chọn Video #{best_det_cand['raw_video'].get('id')} "
+                    f"('{best_det_cand['url']}') | Điểm: {best_det_score:.1f}/10"
+                )
+                return _format_winner(best_det_cand, round(best_det_score, 2), rationale_fb), round(best_det_score, 2), rationale_fb, False
+        except Exception as _e_det_fb:
+            logger.debug(f"[LLM Link & Vision Audit] Deterministic fallback skip: {_e_det_fb}")
+
         logger.warning("⚠️ [LLM Link & Vision Audit] Không thể kết nối Gemini Vision -> Từ chối chọn mù!")
         return None, 0.0, "Gemini Vision unavailable — rejected unverified stock videos", True
 

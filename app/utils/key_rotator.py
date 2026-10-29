@@ -13,14 +13,13 @@ import requests
 # Hệ thống sẽ bắn kiểm tra ĐỒNG THỜI (Parallel Probe) toàn bộ danh sách này cùng 1 lúc,
 # loại bỏ ngay các model bị treo (Timeout) hoặc hết hạn mức (429/404), và chọn Model xịn nhất phản hồi thành công.
 GEMINI_PRIORITY_MODELS: List[str] = [
-    "gemini-3-flash-preview",        # Tier S+ (#1): Gemini 3.0 Flash Preview (Multimodal & JSON nhanh nhất)
-    "gemini-3.1-flash-lite-preview", # Tier S  (#2): Gemini 3.1 Flash-Lite Preview (Siêu tốc, quota độc lập)
-    "gemini-flash-latest",           # Tier A+ (#3): Alias Flash chính thức (Hỗ trợ Vision & JSON gốc cực nhanh)
-    "gemini-flash-lite-latest",      # Tier A+ (#4): Alias Flash-Lite chính thức (Độ trễ cực thấp ~1.2s)
-    "gemini-2.5-flash",              # Tier A  (#5): Gemini 2.5 Flash ổn định
-    "gemini-2.5-flash-lite",         # Tier A  (#6): Gemini 2.5 Flash-Lite siêu tốc
-    "gemini-3.1-pro-preview",        # Tier A  (#7): Gemini 3.1 Pro Preview
-    "gemini-robotics-er-2-preview",  # Tier B  (#8): Gemini ER 2 Preview (Bucket quota độc lập)
+    "gemini-3-flash-preview",        # Tier S+ (#1): Gemini 3.0 Flash Preview (Multimodal & JSON nhanh ~2.2s)
+    "gemini-3.5-flash-lite",         # Tier S  (#2): Gemini 3.5 Flash-Lite (Bucket quota độc lập, ~2.1s)
+    "gemini-3.1-flash-lite-preview", # Tier S  (#3): Gemini 3.1 Flash-Lite Preview (Siêu tốc, quota độc lập ~1.8s)
+    "gemini-flash-lite-latest",      # Tier A+ (#4): Alias Flash-Lite chính thức (Độ trễ cực thấp ~1.2s–2.0s)
+    "gemini-3.6-flash",              # Tier A+ (#5): Gemini 3.6 Flash (Multimodal & JSON, quota độc lập)
+    "gemini-3.5-flash",              # Tier A  (#6): Gemini 3.5 Flash (Bucket quota độc lập)
+    "gemini-robotics-er-2-preview",  # Tier B  (#7): Gemini ER 2 Preview (Bucket quota độc lập ~1.5s)
 ]
 
 # Điểm xếp hạng độ "xịn" (Quality Tier) của từng model để chọn model mạnh nhất trong số các model phản hồi thành công
@@ -178,17 +177,14 @@ class KeyRotator:
                 or status_code in (500, 502, 503, 504)
                 or "internal error" in err_low
             ):
-                wait_t = cooldown_sec or 90.0
+                wait_t = cooldown_sec or 25.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_t
-                # Khi model trên server Google bị 503 Overloaded hoặc treo Timeout -> khóa tạm toàn cục *:model 90s
-                # để toàn bộ các Node tiếp theo nhảy ngay sang model khỏe mạnh thay vì chờ 25s mỗi lượt!
-                if status_code in (502, 503, 504) or "timed out" in err_low or "timeout" in err_low or "overloaded" in err_low:
-                    self._model_cooldowns[f"*:{model}"] = now + wait_t
                 active_t_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_t_locks >= max(len(self.keys), 1) or status_code in (502, 503, 504) or "timed out" in err_low or "timeout" in err_low:
-                    self._model_cooldowns[f"*:{model}"] = now + wait_t
+                # Chỉ tạm khóa toàn cục *:model ngắn hạn (18s) khi >= 3 keys (hoặc toàn bộ pool) cùng gặp 503/Timeout
+                if active_t_locks >= min(3, max(len(self.keys), 1)):
+                    self._model_cooldowns[f"*:{model}"] = now + min(wait_t, 18.0)
                     if model in KeyRotator._verified_live_models:
                         KeyRotator._verified_live_models = [
                             m for m in KeyRotator._verified_live_models if m != model
@@ -200,14 +196,14 @@ class KeyRotator:
             ):
                 self._global_cooldowns[key] = now + (cooldown_sec or 3600.0)
             else:
-                wait_s = cooldown_sec or 90.0
+                wait_s = cooldown_sec or 35.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
-                # Khóa toàn cục *:model 90s khi >= 2 key (hoặc toàn bộ pool) bị 429 trên cùng model này
+                # Chỉ khóa toàn cục *:model ngắn hạn (18s) khi TẤT CẢ các key trong pool đều bị 429 trên model này
                 active_key_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_key_locks >= min(2, max(len(self.keys), 1)):
-                    self._model_cooldowns[f"*:{model}"] = now + wait_s
+                if active_key_locks >= max(len(self.keys), 1):
+                    self._model_cooldowns[f"*:{model}"] = now + min(wait_s, 18.0)
                     if model in KeyRotator._verified_live_models:
                         KeyRotator._verified_live_models = [
                             m for m in KeyRotator._verified_live_models if m != model
@@ -374,7 +370,7 @@ class KeyRotator:
                     break  # Chuyển ngay sang Model kế tiếp trong pass hiện tại!
 
         # Fallback dự phòng cho các dòng Flash/Flash-Lite ổn định nếu tất cả cặp trên đang trong thời gian cooldown ngắn
-        for fb_model in ("gemini-3-flash-preview", "gemini-robotics-er-2-preview", "gemini-3.1-flash-lite-preview", "gemini-flash-lite-latest"):
+        for fb_model in ("gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-robotics-er-2-preview"):
             if yielded >= limit:
                 return
             if self._model_cooldowns.get(f"*:{fb_model}", 0.0) > time.monotonic():
@@ -384,6 +380,38 @@ class KeyRotator:
                 yielded += 1
                 yielded_pairs.add(f"{fb_model}::{fb_key}")
                 yield fb_model, fb_key
+
+        # Cứu hộ chống "0 requests": Nếu toàn bộ model đều đang vướng cooldown ngắn hạn (< 120s, không phải lỗi 404/Daily Quota 3600s),
+        # tự động chọn tối đa 3 cặp (model, key) sắp hết hạn cooldown sớm nhất để luôn thực hiện được request thật!
+        if yielded == 0 and self.keys:
+            now_rescue = time.monotonic()
+            rescue_candidates: List[Tuple[float, str, str]] = []
+            with self._global_lock:
+                for m in model_list:
+                    global_until = self._model_cooldowns.get(f"*:{m}", 0.0)
+                    if global_until - now_rescue > 120.0:
+                        continue  # Bỏ qua các model bị khóa 404 / Daily Quota 60 phút
+                    for k in self.keys:
+                        if self._global_cooldowns.get(k, 0.0) - now_rescue > 120.0:
+                            continue
+                        km_until = self._model_cooldowns.get(f"{k}:{m}", 0.0)
+                        if km_until - now_rescue > 120.0:
+                            continue
+                        eff_until = max(global_until, km_until)
+                        rescue_candidates.append((eff_until, m, k))
+            rescue_candidates.sort(key=lambda item: item[0])
+            used_rescue_models: set = set()
+            for _, r_model, r_key in rescue_candidates:
+                if yielded >= min(limit, 3):
+                    break
+                if r_model in used_rescue_models and len(rescue_candidates) > 3:
+                    continue
+                pair_id = f"{r_model}::{r_key}"
+                if pair_id not in yielded_pairs:
+                    used_rescue_models.add(r_model)
+                    yielded += 1
+                    yielded_pairs.add(pair_id)
+                    yield r_model, r_key
 
     @staticmethod
     def build_fast_json_gen_config(model_name: str, temperature: float = 0.15) -> dict:

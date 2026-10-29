@@ -194,8 +194,8 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin documentary style. Strict English only."
         ),
         "topics": [
-            "1986 Chernobyl Divers vs 20-Megaton Steam Explosion: How 3 Volunteers Drained 20,000 Tons of Radioactive Water to Save Europe",
             "1588 Spanish Armada 130 Warships vs English Fire Ships: How 8 Burning Hulks at Midnight Shattered the World's Richest Empire",
+            "1986 Chernobyl Divers vs 20-Megaton Steam Explosion: How 3 Volunteers Drained 20,000 Tons of Radioactive Water to Save Europe",
             "1281 Kamikaze Mega-Typhoon vs Kublai Khan 4,400 Warships: How a 2-Day Hurricane Sank 140,000 Troops and Saved Samurai Japan",
             "1815 Mount Tambora Super-Eruption vs The Year Without a Summer: How a VEI-7 Volcano Froze Crops in June 1816",
             "How 1 Unlocked Gate in 1453 Ended the 1,100-Year Byzantine Empire at Constantinople",

@@ -7,15 +7,14 @@ target_audience: Khán giả quốc tế mê mẩn bí ẩn đại dương, thá
 script_blueprint:
   tone_of_voice: Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập đánh trực diện vào giác quan và
     nỗi sợ nguyên thủy của người xem, khiến họ lạnh gáy nhưng không thể rời mắt.
-  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu bí ẩn cuốn hút chuẩn Zack D. Films (10.27M views avg) & Você Sabia? (47.3M subs). TUÂN THỦ QUY TẮC VÀNG PHÂN VAI — Tiêu đề (title) BẮT BUỘC nêu rõ thực thể/địa danh + hậu quả vật lý cực hạn để ăn YT_SEARCH, còn Cảnh 1 (0.0s-2.2s, 6-10 từ) dùng 1 trong 4 Đòn Tâm Lý Thị Giác (chỉ điểm chi tiết lạ trên màn hình / cảnh báo sinh tồn ngôi thứ 2 / sai lầm chí mạng), TUYỆT ĐỐI KHÔNG đọc lặp lại tiêu đề hay tiết lộ con số cuối ở giây 0.0s; để dành thông số vật lý cho Cảnh 2-3 và Cảnh 4 Twist!"
-  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Đòn Tâm Lý Thị Giác chỉ điểm dị thường trên màn hình hoặc cảnh báo sinh tồn ngôi thứ 2 (KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 - Dẫn chứng khoa học & thông số vật lý thứ nhất (độ sâu, nhiệt độ, áp suất) -> Cảnh 4-5 (Mid-Video 15s Twist) - Bằng chứng thực nghiệm lật ngược dự đoán kèm thông số thứ 2 -> Cảnh 6-7 (Payoff) - Giải mã cơ chế khoa học chấn động -> Cảnh 8 - Infinite Seamless Loop nối mượt về Cảnh 1"
+  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu bí ẩn cuốn hút chuẩn Zack D. Films (10.27M views avg) & Você Sabia? (47.3M subs). QUY TẮC VÀNG MỞ ĐẦU 0.0s: Cả Tiêu đề (title) VÀ Cảnh 1 (0.0s-2.2s, 6-10 từ) ĐỀU BẮT BUỘC nêu rõ Thực thể/Địa danh + Cú sốc vật lý hoặc Nghịch lý sinh tử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu chủ thể ('Look closely at...', 'Watch what happens...')."
+  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Nêu đích danh Thực thể/Địa danh + Cú sốc vật lý hoặc Cảnh báo sinh tồn ngôi thứ 2 ngay ở 0.0s (CẤM dùng 'Look closely at...' giấu chủ thể) -> Cảnh 2-3 - Dẫn chứng khoa học & thông số vật lý thứ nhất (độ sâu, nhiệt độ, áp suất) -> Cảnh 4-5 (Mid-Video 15s Twist) - Bằng chứng thực nghiệm lật ngược dự đoán kèm thông số thứ 2 -> Cảnh 6-7 (Payoff) - Giải mã cơ chế khoa học chấn động -> Cảnh 8 - Cú chốt tự nhiên nối mượt về Cảnh 1"
   hook_formulas:
-  - 'Visual Micro-Observation Pointer (Zack D. Films 15.7M Formula): ''Look closely at the circular scars on this whale''s head.'''
-  - '2nd-Person Survival Warning (Você Sabia? 6.6M Formula): ''Se um submarino tocar nessa linha branca no fundo do mar, ele não volta.'''
-  - 'The Fatal Mistake / Boundary Violation: ''Stepping onto this crystal-clear African lake shore turns birds into stone.'''
+  - 'Direct Speed / Scale Shock (Proven Winner `ud5FkqRebQM` 1,009 views): ''Great White Shark breaches at 25 mph, seeing you first.'''
+  - '2nd-Person Survival Warning with Named Entity (Proven Winner `M9xL2Qfv1eU` 1,286 views): ''Se esse pequeno polvo-de-anéis-azuis tocar sua pele, você para de respirar.'''
+  - 'Extreme Thermal / Geological Record (Proven Winner `JC6N20GwHHc` 10,598 views — 91.8% APV): ''A trezentos metros sob o México, a Caverna de Naica ferve a 58 graus.'''
   - 'Diver Forbidden Rule Hook: ''If you ever see square waves forming at the beach, get out immediately.'''
-  - 'Body vs Extreme Earth Physics (Zack D. Films Formula): ''Watch what happens to a steel hull the second it crosses this depth line.'''
-  - '@disastersexplained1 2nd-Person Sensory Danger Cold Open (1.54M Formula): ''You notice a pale line forming on the ocean surface. Calm, almost harmless. You think you still have time. That is the mistake.'''
+  - 'Abyssal Duel Paradox: ''Two thousand meters deep, a sperm whale dives straight into a colossal squid ambush.'''
   competitor_blueprint:
     benchmark_channel: "@disastersexplained1 (8.93M views — 'Every Tornado Shape Explained' 1.54M, 'Every Tornado Record Explained' Ud7TKMKQrHo) & @FossilVideos ('Would Orcas Dominate Every Prehistoric Ocean?' 3.73M)"
     long_form_archetypes:

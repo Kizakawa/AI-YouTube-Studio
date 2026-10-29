@@ -285,7 +285,11 @@ def delete_niche(niche_id: str) -> Tuple[bool, str]:
 # PROMPT INJECTION & STYLE CONVERTERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: str = "en") -> str:
+def build_script_prompt_instructions(
+    niche_profile: Dict[str, Any],
+    language: str = "en",
+    video_format: str = "short",
+) -> str:
     """
     Biến đổi hồ sơ ngách thành khối chỉ dẫn kịch bản chi tiết để tiêm vào Gemini ContentAgent.
     """
@@ -293,6 +297,7 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
     badge = niche_profile.get("badge", "Channel")
     target_aud = niche_profile.get("target_audience", "Đại chúng người xem Shorts")
     blueprint = niche_profile.get("script_blueprint", {})
+    is_lf = str(video_format or "short").strip().lower() in ("long", "long_form", "long-form", "16:9", "landscape", "horizontal", "documentary")
 
     tone = blueprint.get("tone_of_voice", "Cuốn hút, sắc bén, giàu chiều sâu thực chiến")
     pacing = blueprint.get(
@@ -322,13 +327,20 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
         sh_archs = "\n".join(f"      * {a}" for a in (comp_bp.get("shorts_archetypes") or []))
         prog = comp_bp.get("round_or_chapter_progression", "")
         thumb_rule = comp_bp.get("thumbnail_hook_rule", "2-3 words MAX in high-contrast White + Yellow/Red")
-        comp_bp_block = f"""
+        if is_lf:
+            comp_bp_block = f"""
 7. BẢN THIẾT KẾ VIRAL ĐỐI THỦ TRIỆU VIEW (COMPETITOR MILLION-VIEW BLUEPRINT — {comp_bp.get('benchmark_channel', 'Top Competitors')}):
    - Cấu trúc Long-Form 16:9 (Gauntlet / Every Record Explained / What If YOU...):
 {lf_archs}
-   - Cấu trúc Shorts 9:16:
-{sh_archs}
    - Tiến trình Chương / Vòng đấu (Chapter / Round Escalation): {prog}
+   - Quy tắc chữ Thumbnail (`thumbnail_text`): {thumb_rule}
+"""
+        else:
+            comp_bp_block = f"""
+7. BẢN THIẾT KẾ VIRAL SHORTS 9:16 (COMPETITOR MILLION-VIEW BLUEPRINT — {comp_bp.get('benchmark_channel', 'Top Competitors')}):
+   - Cấu trúc Shorts 9:16 (34–40 giây):
+{sh_archs}
+   - QUY TẮC KHÓA CHỦ THỂ 1V1 TRONG SHORTS (CHỐNG RỚT VIEW GIÂY 14): Trong thời lượng 34–40 giây của YouTube Shorts, TUYỆT ĐỐI CẤM chia thành nhiều vòng đấu (Round 1 -> Round 2 -> Round 3) hoặc đưa thêm con vật/chủ thể thứ 3 không có trong Tiêu đề! Toàn bộ 7–8 cảnh từ giây 0.0s đến giây cuối cùng BẮT BUỘC chỉ xoáy sâu vào đúng cặp đối đầu `Thực thể A vs Thực thể B` (hoặc hiện tượng duy nhất) đã hứa hẹn ở Tiêu đề!
    - Quy tắc chữ Thumbnail (`thumbnail_text`): {thumb_rule}
 """
 

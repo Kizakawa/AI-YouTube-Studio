@@ -210,22 +210,75 @@ class VideoAgent:
             is_hook = (scene.scene_id == 1)
             motion = (scene.camera_motion if scene.camera_motion in ("hyper_zoom", "warp_zoom", "zoom_in") else "zoom_in") if is_hook else scene.resolved_camera_motion
 
-            # Kiểm tra media_path tồn tại trước khi render
+            # Kiểm tra media_path tồn tại trước khi render (kèm cơ chế tự động khôi phục file media thật trong thư mục job)
             media_ok = scene.media_path and Path(scene.media_path).exists()
             if not media_ok:
-                logger.warning(
-                    f"  Scene {scene.scene_id}: media_path không tồn tại "
-                    f"('{scene.media_path}') → dùng placeholder gradient"
-                )
-                # Tạo placeholder gradient thay vì crash
-                from app.services.pipeline import VideoPipeline
-                placeholder = str(Path(work_dir) / f"placeholder_{scene.scene_id:03d}.png")
-                VideoPipeline._create_placeholder_image(
-                    placeholder,
-                    scene.visual_keyword or f"Scene {scene.scene_id}",
-                    scene_id=scene.scene_id
-                )
-                scene = scene.model_copy(update={"media_path": placeholder, "media_type": "image"})
+                recovered_path = None
+                recovered_type = "video"
+                media_search_dirs = [Path(work_dir).parent / "media", Path(work_dir)]
+                for m_dir in media_search_dirs:
+                    if not m_dir.exists():
+                        continue
+                    sc_vids = sorted(
+                        [
+                            p for p in m_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4")
+                            if p.is_file() and p.stat().st_size > 15_000 and not p.name.endswith("_fullpeak.mp4")
+                        ],
+                        key=lambda p: p.stat().st_mtime,
+                        reverse=True,
+                    )
+                    if sc_vids:
+                        recovered_path = str(sc_vids[0])
+                        recovered_type = "video"
+                        break
+                    sc_imgs = sorted(
+                        [
+                            p for p in m_dir.glob(f"scene_{scene.scene_id:03d}_*.*")
+                            if p.is_file() and p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp") and p.stat().st_size > 3_000
+                        ],
+                        key=lambda p: p.stat().st_mtime,
+                        reverse=True,
+                    )
+                    if sc_imgs:
+                        recovered_path = str(sc_imgs[0])
+                        recovered_type = "image"
+                        break
+                if not recovered_path:
+                    for m_dir in media_search_dirs:
+                        if not m_dir.exists():
+                            continue
+                        donor_vids = sorted(
+                            [
+                                p for p in m_dir.glob("*.mp4")
+                                if p.is_file() and p.stat().st_size > 25_000
+                            ],
+                            key=lambda p: p.stat().st_size,
+                            reverse=True,
+                        )
+                        if donor_vids:
+                            donor_pick = donor_vids[(scene.scene_id - 1) % len(donor_vids)]
+                            recovered_path = str(donor_pick)
+                            recovered_type = "video"
+                            break
+                if recovered_path and Path(recovered_path).exists():
+                    logger.info(
+                        f"  Scene {scene.scene_id}: 🛡️ Đã tự động khôi phục media thật '{Path(recovered_path).name}' "
+                        f"(thay cho đường dẫn thiếu '{scene.media_path}')"
+                    )
+                    scene = scene.model_copy(update={"media_path": recovered_path, "media_type": recovered_type})
+                else:
+                    logger.warning(
+                        f"  Scene {scene.scene_id}: media_path không tồn tại "
+                        f"('{scene.media_path}') → dùng placeholder gradient"
+                    )
+                    from app.services.pipeline import VideoPipeline
+                    placeholder = str(Path(work_dir) / f"placeholder_{scene.scene_id:03d}.png")
+                    VideoPipeline._create_placeholder_image(
+                        placeholder,
+                        scene.visual_keyword or f"Scene {scene.scene_id}",
+                        scene_id=scene.scene_id
+                    )
+                    scene = scene.model_copy(update={"media_path": placeholder, "media_type": "image"})
 
             raw_type = (scene.media_type or "image").lower()
             if (

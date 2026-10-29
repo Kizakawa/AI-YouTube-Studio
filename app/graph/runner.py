@@ -324,70 +324,79 @@ class GraphRunner:
             except Exception as e_drv:
                 logger.warning(f"[LangGraph Job {self.job_id}] Tự động tải lên Google Drive không thành công: {e_drv}")
 
-        # 4. Lưu toàn bộ kết quả vào Database
-        with get_db() as db:
-            j = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
-            if j:
-                j.video_path = final_state.get("rendered_video_path")
-                j.audio_path = final_state.get("full_audio_path")
-                j.subtitle_path = final_state.get("subtitle_path")
-                j.audio_duration_ms = final_state.get("total_audio_duration_ms")
-                if final_state.get("drive_link"):
-                    j.drive_link = final_state.get("drive_link")
-                
-                if final_state.get("script_data"):
-                    s_data = dict(final_state["script_data"])
-                    media_map = {m["scene_id"]: m for m in final_state.get("scenes_media", [])}
-                    audio_map = {a["scene_id"]: a for a in final_state.get("scenes_audio", [])}
-                    enriched_scenes_list = []
-                    for sc in s_data.get("scenes", []):
-                        sc_copy = dict(sc)
-                        sc_id = sc_copy.get("scene_id")
-                        if sc_id in media_map:
-                            sc_copy["media_path"] = media_map[sc_id].get("media_path")
-                            sc_copy["media_type"] = media_map[sc_id].get("media_type")
-                            sc_copy["pose_images"] = media_map[sc_id].get("pose_images")
-                            sc_copy["visual_strategy"] = media_map[sc_id].get("visual_strategy")
-                            sc_copy["production_method"] = media_map[sc_id].get("production_method")
-                            sc_copy["tool"] = media_map[sc_id].get("tool")
-                            sc_copy["strategy_rationale"] = media_map[sc_id].get("strategy_rationale")
-                        if sc_id in audio_map:
-                            sc_copy["audio_path"] = audio_map[sc_id].get("audio_path")
-                            sc_copy["audio_duration_ms"] = audio_map[sc_id].get("duration_ms")
-                            sc_copy["word_timings"] = audio_map[sc_id].get("word_timings")
-                        enriched_scenes_list.append(sc_copy)
-                    s_data["scenes"] = enriched_scenes_list
-                    j.scenes_json = json.dumps(s_data, ensure_ascii=False)
-                    j.title = s_data.get("title", j.title)
-                    j.description = s_data.get("description", j.description)
-                    # Tự động ghi nguồn các clip Creative Commons (CC BY) đã dùng vào cuối mô tả video
-                    try:
-                        from app.services.media.license_policy import append_credits_to_description
-                        j.description = append_credits_to_description(j.description, self.job_id)
-                    except Exception as e_cred:
-                        logger.warning(f"[LangGraph Job {self.job_id}] Không thể nối credits CC BY: {e_cred}")
-                    if s_data.get("full_narration"):
-                        j.script = s_data["full_narration"]
-                
-                # Tổng hợp điểm số chất lượng từ 4 Graders
-                scores_summary = {
-                    "script_critic": final_state.get("script_eval"),
-                    "visual_critic": final_state.get("media_eval"),
-                    "hook_video_grader": final_state.get("hook_video_eval"),
-                    "audio_qa": final_state.get("audio_eval"),
-                    "video_qa": final_state.get("video_eval"),
-                    "video_format": final_video_format,
-                    "drive_upload": drive_upload_info,
-                }
-                j.quality_scores = json.dumps(scores_summary, ensure_ascii=False)
-                
-                j.status = "RENDERED"
-                j.progress_percent = 100
-                if final_state.get("drive_link"):
-                    j.progress_message = f"✅ Video hoàn thành & đã tải lên Google Drive: {final_state['drive_link']}"
+        # 4. Lưu toàn bộ kết quả vào Database (tự động thử lại tối đa 3 lần nếu Cloud DB tạm ngắt kết nối)
+        for _db_save_att in range(3):
+            try:
+                with get_db() as db:
+                    j = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                    if j:
+                        j.video_path = final_state.get("rendered_video_path")
+                        j.audio_path = final_state.get("full_audio_path")
+                        j.subtitle_path = final_state.get("subtitle_path")
+                        j.audio_duration_ms = final_state.get("total_audio_duration_ms")
+                        if final_state.get("drive_link"):
+                            j.drive_link = final_state.get("drive_link")
+                        
+                        if final_state.get("script_data"):
+                            s_data = dict(final_state["script_data"])
+                            media_map = {m["scene_id"]: m for m in final_state.get("scenes_media", [])}
+                            audio_map = {a["scene_id"]: a for a in final_state.get("scenes_audio", [])}
+                            enriched_scenes_list = []
+                            for sc in s_data.get("scenes", []):
+                                sc_copy = dict(sc)
+                                sc_id = sc_copy.get("scene_id")
+                                if sc_id in media_map:
+                                    sc_copy["media_path"] = media_map[sc_id].get("media_path")
+                                    sc_copy["media_type"] = media_map[sc_id].get("media_type")
+                                    sc_copy["pose_images"] = media_map[sc_id].get("pose_images")
+                                    sc_copy["visual_strategy"] = media_map[sc_id].get("visual_strategy")
+                                    sc_copy["production_method"] = media_map[sc_id].get("production_method")
+                                    sc_copy["tool"] = media_map[sc_id].get("tool")
+                                    sc_copy["strategy_rationale"] = media_map[sc_id].get("strategy_rationale")
+                                if sc_id in audio_map:
+                                    sc_copy["audio_path"] = audio_map[sc_id].get("audio_path")
+                                    sc_copy["audio_duration_ms"] = audio_map[sc_id].get("duration_ms")
+                                    sc_copy["word_timings"] = audio_map[sc_id].get("word_timings")
+                                enriched_scenes_list.append(sc_copy)
+                            s_data["scenes"] = enriched_scenes_list
+                            j.scenes_json = json.dumps(s_data, ensure_ascii=False)
+                            j.title = s_data.get("title", j.title)
+                            j.description = s_data.get("description", j.description)
+                            # Tự động ghi nguồn các clip Creative Commons (CC BY) đã dùng vào cuối mô tả video
+                            try:
+                                from app.services.media.license_policy import append_credits_to_description
+                                j.description = append_credits_to_description(j.description, self.job_id)
+                            except Exception as e_cred:
+                                logger.warning(f"[LangGraph Job {self.job_id}] Không thể nối credits CC BY: {e_cred}")
+                            if s_data.get("full_narration"):
+                                j.script = s_data["full_narration"]
+                        
+                        # Tổng hợp điểm số chất lượng từ 4 Graders
+                        scores_summary = {
+                            "script_critic": final_state.get("script_critic") or final_state.get("script_eval"),
+                            "visual_critic": final_state.get("media_eval"),
+                            "hook_video_grader": final_state.get("hook_video_eval"),
+                            "audio_qa": final_state.get("audio_eval"),
+                            "video_qa": final_state.get("video_eval"),
+                            "video_format": final_video_format,
+                            "drive_upload": drive_upload_info,
+                        }
+                        j.quality_scores = json.dumps(scores_summary, ensure_ascii=False)
+                        
+                        j.status = "RENDERED"
+                        j.progress_percent = 100
+                        if final_state.get("drive_link"):
+                            j.progress_message = f"✅ Video hoàn thành & đã tải lên Google Drive: {final_state['drive_link']}"
+                        else:
+                            j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 5 tầng kiểm định chất lượng."
+                        j.error_message = None
+                break
+            except Exception as _e_save_final:
+                if _db_save_att < 2:
+                    import time as _t_s
+                    _t_s.sleep(0.8 * (_db_save_att + 1))
                 else:
-                    j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 5 tầng kiểm định chất lượng."
-                j.error_message = None
+                    logger.warning(f"[LangGraph Job {self.job_id}] Không thể lưu metadata cuối vào DB (video vẫn an toàn trên đĩa): {_e_save_final}")
 
         self._finish_trace("COMPLETED", final_state=final_state)
         logger.info(f"🎉 [LangGraph Job {self.job_id}] Video hoàn thành: {final_state.get('rendered_video_path')}")

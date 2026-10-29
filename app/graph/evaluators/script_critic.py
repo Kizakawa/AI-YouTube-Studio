@@ -157,13 +157,14 @@ class ScriptCritic:
             score = min(score, 5.5)
             extra_critiques.append(
                 f"HOOK BLOCKED: Scene 1 uses a weak Yes/No question or abstract metaphor ('{s1_narr}') which causes >70% swipe-away. "
-                f"Replace with a direct visual pointer ('Look at...', 'Olhe bem para...') + concrete physical metric or 'A vs B' clash in 6-9 words!"
+                f"Immediately name the primary entity/combatants + a shocking physical metric or lethal paradox in 6-10 words!"
             )
 
-        # 1B. Chặn Hội Chứng "Đọc Nhại Tiêu Đề & Lộ Kết Quả Ở Giây 0.0s" (Title Echo & Early Outcome Spoiler Syndrome)
-        # Bằng chứng thực nghiệm (Job #574 WydijnmcX1k 38 views, Job #556/#558 0-4 views):
-        # Khi Cảnh 1 đọc lặp lại nguyên xi cấu trúc Tiêu đề ("A vs B: 320 km/h vencem...") hoặc tiết lộ luôn kết quả ở giây 1.0s,
-        # người xem mất hoàn toàn khoảng trống tò mò (Curiosity Gap) và vuốt bỏ ngay lập tức.
+        # 1B. Chặn Đọc Nhãn Tiêu Đề Có Dấu Hai Chấm ("A vs B: ...") VÀ Chặn Hook Mơ Hồ Giấu Chủ Thể ("Look closely at..." / "Watch the exact moment...")
+        # Thực nghiệm YouTube Analytics v2 (Jobs #615 5.9% Stay, #618 7.8% Stay, #632 16.9% Stay, #623 30.1% Stay vs Winners #555 51.4% Stay, #589 1,325 views/12h):
+        # - Khi Cảnh 1 mở đầu bằng câu chỉ trỏ mơ hồ ("Look closely at why you cannot find the exit", "Watch the exact moment this massive predator feels pain")
+        #   mà KHÔNG nêu đích danh Thực thể chính hoặc con số/xung đột cụ thể ngay ở 0.0s, 70%–94% người xem trên Shorts Feed vuốt bỏ ngay lập tức!
+        # - Ngược lại, 100% video đạt 45%–54% Stayed và >1,000–40,000 views đều nêu đích danh Thực thể + Con số/Nghịch lý sinh tử ngay ở câu đầu tiên!
         _stop_echo = {
             "the", "and", "for", "with", "from", "into", "this", "that", "how", "why", "what", "when", "who",
             "uma", "uns", "umas", "dos", "das", "nos", "nas", "por", "para", "com", "sem", "sob", "sobre",
@@ -174,7 +175,7 @@ class ScriptCritic:
         title_tokens = {
             w.lower()
             for w in re.findall(r"\b[a-zA-ZÀ-ỹ0-9]{3,}\b", title_clean_no_tag, flags=re.UNICODE)
-            if w.lower() not in _stop_echo
+            if w.lower() not in _stop_echo and not w.isdigit()
         }
         s1_first_clause = re.split(r"[.!?]", s1_narr)[0].strip() if s1_narr else ""
         s1_clause_tokens = {
@@ -182,11 +183,6 @@ class ScriptCritic:
             for w in re.findall(r"\b[a-zA-ZÀ-ỹ0-9]{3,}\b", s1_first_clause, flags=re.UNICODE)
             if w.lower() not in _stop_echo
         }
-        title_hook_overlap = (
-            len(title_tokens & s1_clause_tokens) / max(1, min(len(title_tokens), len(s1_clause_tokens)))
-            if (title_tokens and s1_clause_tokens)
-            else 0.0
-        )
         is_colon_header_echo = bool(
             re.match(
                 r"^[^.!?]{2,40}\b(?:vs\.?|versus|contra)\b[^.!?]{2,40}:",
@@ -196,19 +192,36 @@ class ScriptCritic:
         )
         is_early_outcome_spoiler = bool(
             re.search(
-                r"\b(?:vencem|vence|venceu|derrotam|derrota|ganha|wins|won|defeats|defeated|beats|transformed\s+into)\b",
+                r"\b(?:vencem|vence|venceu|derrotam|derrota|ganha|wins|won|defeats|defeated|beats)\b",
                 s1_first_clause,
                 re.IGNORECASE | re.UNICODE,
             )
-            and (is_colon_header_echo or title_hook_overlap >= 0.45)
+            and is_colon_header_echo
         )
-        if is_colon_header_echo or is_early_outcome_spoiler or (title_hook_overlap >= 0.62 and len(title_tokens & s1_clause_tokens) >= 3):
+        is_vague_pointer_prefix = bool(
+            re.match(
+                r"^(?:look\s+closely\s+at|watch\s+the\s+exact\s+moment|watch\s+what\s+happens\s+when|olhe\s+bem\s+para|repare\s+bem\s+n[oa]s?)\b",
+                s1_first_clause,
+                re.IGNORECASE | re.UNICODE,
+            )
+        )
+        is_entity_blind_hook = bool(
+            title_tokens
+            and len(title_tokens) >= 2
+            and len(title_tokens & s1_clause_tokens) == 0
+            and not re.search(r"\d", s1_first_clause)
+        )
+        if is_colon_header_echo or is_early_outcome_spoiler:
             score = min(score, 5.8)
             extra_critiques.append(
-                f"TITLE ECHO / EARLY SPOILER BLOCKED: Scene 1 ('{s1_first_clause[:65]}') repeats the Title phrasing "
-                f"(overlap={title_hook_overlap:.0%}) or spoils the final outcome at 0.0s! "
-                f"NEVER read the title aloud or reveal who wins in Scene 1. Rewrite Scene 1 using a Psychological-Visual Hook "
-                f"(Visual Micro-Observation 'Look closely at...', Fatal Mistake 'O último erro...', or Survival Paradox)!"
+                f"COLON TITLE HEADER ECHO BLOCKED: Scene 1 ('{s1_first_clause[:65]}') reads a colon header or spoils the winner at 0.0s! "
+                f"Write a natural active sentence naming the primary entity + shocking metric or life-or-death paradox at 0.0s."
+            )
+        elif is_vague_pointer_prefix or is_entity_blind_hook:
+            score = min(score, 5.8)
+            extra_critiques.append(
+                f"ENTITY-BLIND / VAGUE POINTER HOOK BLOCKED: Scene 1 ('{s1_first_clause[:65]}') hides the primary subject or uses a generic 'Look closely / Watch the exact moment' pointer (proven 70%-94% Swipe-Away on Shorts)! "
+                f"Scene 1 MUST explicitly name the primary entity/combatants from the title + a concrete physical metric or shocking paradox right at 0.0s!"
             )
 
         # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-14 từ cho Shorts, 4-34 từ cho Long-Form Documentary)
@@ -219,6 +232,16 @@ class ScriptCritic:
             extra_critiques.append(
                 f"Scene 1 hook length ({w_cnt} words) is suboptimal. Condense to 6-9 words (max {max_hook_w} words) to match the opening cut."
             )
+
+        # 2B. Chặn nhồi nhét nhiều vòng đấu (Round 1 / Round 2 / Round 3) vào Shorts 35s gây rớt view ở giây 14 (như Job #623)
+        if not is_lf_hook and isinstance(scenes, list):
+            full_short_text = " ".join(str(sc.get("narration") or "") for sc in scenes if isinstance(sc, dict))
+            if re.search(r"\bround\s+(?:one|two|three|1|2|3)\b", full_short_text, re.IGNORECASE):
+                score = min(score, 5.5)
+                extra_critiques.append(
+                    "MULTI-ROUND BAIT-AND-SWITCH IN SHORTS BLOCKED: Never use 'Round One / Round Two / Round Three' or switch to a 3rd unannounced opponent inside a 35-second Short! "
+                    "Focus 100% of all 7-8 scenes on the exact 1v1 duel or single phenomenon promised in the Title."
+                )
 
         # 3. Đối chiếu chống lặp lại mô-típ của Bottom 3 Losers (video có swipe_away_pct cao nhất kênh)
         s1_tokens = {w.lower() for w in words if len(w) > 3}
@@ -248,19 +271,19 @@ class ScriptCritic:
             )
             and not re.search(r"\d", eff_title)
         )
-        # Đánh giá độc lập sức căng của riêng `s1_narr` (không để `eff_title` kéo điểm ảo khi `s1_narr` nhạt hoặc nhại tiêu đề)
+        # Đánh giá độc lập sức căng của riêng `s1_narr` (không thưởng cho câu chỉ trỏ rỗng 'look closely / watch')
         s1_has_number = bool(re.search(r"\d", s1_narr))
         has_number = bool(re.search(r"\d", combined))
         _shock_pattern = (
             r"(?:%|\b(?:vs\.?|versus|against|contra|refused|crushes|destroys|kills|deadly|impossible|instant|second|seconds|minute|minutes|meters|feet|miles|percent|psi|mph|celsius|degrees|decibels|"
-            r"nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|veneno|erro|olhe|repare|"
-            r"shocking|terrified|ambush|strike|pierces|boils|paralyzes|never|always|expose|exposes|fail|fails|confess|trap|caught|freeze|freezes|panic|liar|liars|guilty|mistake|look\s+closely|watch)\b)"
+            r"nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|veneno|erro|"
+            r"shocking|terrified|ambush|strike|pierces|boils|paralyzes|never|always|expose|exposes|fail|fails|confess|trap|caught|freeze|freezes|panic|liar|liars|guilty|mistake|vanished|erupted)\b)"
         )
         s1_has_shock = bool(re.search(_shock_pattern, s1_narr, re.IGNORECASE | re.UNICODE))
         has_confrontation_or_shock = bool(re.search(_shock_pattern, combined, re.IGNORECASE | re.UNICODE))
         has_hook_violation = bool(
             weak_q or abstract_metaphor or is_colon_header_echo or is_early_outcome_spoiler
-            or (title_hook_overlap >= 0.62 and len(title_tokens & s1_clause_tokens) >= 3)
+            or is_vague_pointer_prefix or is_entity_blind_hook
         )
         if vague_title_match:
             score = min(score, 6.5)

@@ -201,15 +201,11 @@ class ScriptGeneratorMixin:
             )
         memory_sections.append(
             """🔥 MANDATORY CEILING-BREAKER ARCHITECTURE (APPLY STRICTLY TO ALL EN & pt-BR CHANNELS):
-1. GOLDEN SEPARATION OF DUTY: `TITLE` (YT_SEARCH ENGINE) VS. `SCENE 1 HOOK 0.0s` (RETENTION LOCK):
-   - `title`: MUST explicitly name high-search-volume entities + extreme physical metric ("Lula-Colossal vs Cachalote: O Duelo a 2.000m 🦑🐋", "Onça-Pintada vs Jacaré: A Mordida de 1.500 PSI 🐆🐊", "Green Anaconda vs. Black Caiman: 1,500 PSI Duel"). NEVER hide the entity in the title!
-   - `Scene 1 (0.0s–2.2s)`: NEVER repeat the title verbatim or spoil the final metric at 0.0s like a dry textbook! Save the hard number (PSI, meters, dB, °C) for Act 2 (Scenes 2–3) and Act 3 (Scene 4 Twist).
-2. OPEN SCENE 1 (6–10 WORDS MAX) USING 1 OF 4 PSYCHOLOGICAL-VISUAL HOOK ARCHETYPES:
-   - Archetype 1 (Visual Micro-Observation / Camouflage Pointer): "Olhe bem para essas marcas redondas na pele desse cachalote." / "What looks like a dead tree branch in this river just opened its eyes."
-   - Archetype 2 (The Fatal Mistake / Hunter Becomes Hunted): "O último erro desse jacaré foi subir nesse barranco sem olhar para cima." / "This caiman's last mistake was climbing onto this riverbank alone."
-   - Archetype 3 (2nd-Person Survival Simulation): "Se um submarino tocar nessa linha branca no fundo do mar, ele não volta." / "If someone touches their neck while apologizing, watch their eyes next."
-   - Archetype 4 (The Illusion Breaker / Role Reversal): "Seis leões famintos cercaram esse pequeno animal, mas os leões estão fugindo." / "Six starving lions surrounded this tiny animal, and the lions are running away."
-   - ZERO passive introductions, ZERO rhetorical or Yes/No questions ("Did you know...", "Você sabia...")."""
+1. GOLDEN 0.0s RETENTION LOCK: EXPLICIT ENTITY + EXTREME METRIC OR LETHAL PARADOX IN SCENE 1:
+   - `title`: MUST explicitly name high-search-volume entities + extreme physical metric ("Lula-Colossal vs Cachalote: O Duelo a 2.000m 🦑🐋", "Komodo Dragon vs 1,200lb Water Buffalo: Venom Ambush 🦎🐃"). NEVER hide the entity in the title!
+   - `Scene 1 (0.0s–2.2s, 6–10 words)`: Viewers scrolling the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND deliver an immediate shocking physical metric, clash, or lethal paradox right at 0.0s!
+   - STRICTLY FORBIDDEN VAGUE POINTERS: NEVER start Scene 1 with vague entity-blind pointers like "Look closely at why...", "Watch the exact moment...", or "Olhe bem para..." that hide the subject! Real YouTube Analytics proves hiding the entity in Scene 1 causes 70%–94% Swipe-Away!
+   - STRICTLY FORBIDDEN IN SHORTS: NEVER split a 35-second Short into "Round 1, Round 2, Round 3" or switch to a 3rd unannounced opponent! Keep 100% of all 7–8 scenes focused on the exact entities promised in the `title`!"""
         )
         if recent_titles:
             memory_sections.append(
@@ -294,11 +290,11 @@ Do NOT write the full script yet. Spend your full reasoning capacity to deeply u
    - Angle A (Asymmetric 1v1 Clash / Direct Confrontation): Frame around "Entity A vs Entity B" with an extreme physical metric.
    - Angle B (Counter-Intuitive Paradox / Hidden Lethal Mechanism): Expose why what 99% of people believe about this topic is dead wrong.
    - Angle C (Visceral 0.0s Survival / Micro-Behavior Test): Immediate high-stakes action or observable real-life trap.
-3. SELECT THE #1 WINNING BLUEPRINT FOR >70% STAYED & 100%+ APV (SEPARATE TITLE VS. SCENE 1 HOOK):
+3. SELECT THE #1 WINNING BLUEPRINT FOR >70% STAYED & 100%+ APV (EXPLICIT ENTITY + SHOCK METRIC/PARADOX AT 0.0s):
    - `winning_title`: Search-optimized High-CTR Title in {target_lang_display} explicitly naming the primary entities + concrete metric (`[Entity A] vs [Entity B]: [Extreme Metric]`).
    - BROAD-APPEAL ENTITY TRANSLATION IN TITLE (NO OBSCURE JARGON HEADERS): If the input topic uses an obscure scientific, geological, or academic psychology term that 90% of broad viewers do not instantly recognize (e.g., "Brinicle", "Pratfall Effect", "Zeigarnik Effect"), NEVER start `winning_title` with that obscure jargon word! Translate it into an instantly recognizable mass-appeal entity or physical confrontation (e.g., instead of "The Antarctic Brinicle", write "Underwater Ice Tornado vs Sea Life: -2°C Death Trap"; instead of "The Pratfall Effect", write "Why One Clumsy Mistake Makes People Trust You Instantly"). Save the technical term for Act 2 (Scene 2-3)!
-   - `selected_hook_archetype`: Choose the #1 best psychological-visual hook archetype for Scene 1 (`1. Visual Micro-Observation ("Look closely at...")`, `2. The Fatal Mistake ("O último erro...")`, `3. 2nd-Person Survival Simulation ("If you ever...")`, or `4. The Illusion Breaker / Role Reversal`).
-   - `scene_1_hook_0s`: 6–10 words in {target_lang_display} using `selected_hook_archetype`. CRITICAL: NEVER repeat `winning_title` verbatim or spoil the final metric/winner in `scene_1_hook_0s`! Lock the viewer's eyes onto a strange visual detail, fatal mistake, or survival warning at 0.0s, and save the hard metrics for `act_2_concrete_proof` (Scenes 2–3) and `scene_4_mid_video_15s_twist` (Scene 4)!
+   - `selected_hook_archetype`: Choose the #1 best high-retention hook archetype for Scene 1 (`1. Direct Scale / Extreme Metric Clash`, `2. Walking Dead / Lethal Paradox with Named Entity`, `3. Concrete Historical / Scientific Shock Event`, or `4. Named Psychological / Behavioral Trap`).
+   - `scene_1_hook_0s`: 6–10 words in {target_lang_display} using `selected_hook_archetype`. CRITICAL: Viewers in the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, `scene_1_hook_0s` MUST explicitly name the primary entity/combatants from `winning_title` + a shocking physical metric, clash, or lethal paradox right at 0.0s! NEVER use vague pointers like "Look closely at..." or "Watch the exact moment..." that hide the entity!
    - `counterfactual_debate_comment`: 12–22 words in {target_lang_display}. Design an unresolved Counterfactual Twist / Escalated 2v1 Odds / Next-Opponent 50-50 Debate Question ending with `(1) ... or (2) ... 👇` that was NOT already answered inside the video (ZERO 'Subscribe/Inscreva-se' spam!).
 
 Return ONLY valid JSON:
@@ -310,8 +306,8 @@ Return ONLY valid JSON:
   "winning_angle": "Angle A | Angle B | Angle C — plus 1-sentence reason why it maximizes Stayed-to-Watch % and APV %",
   "primary_entity": "Bare 1-2 word English name of the primary subject/entity",
   "winning_title": "High-CTR Searchable Title in {target_lang_display} (28-55 chars naming exact entities + concrete number or 'A vs B' + emojis)",
-  "selected_hook_archetype": "1. Visual Micro-Observation | 2. The Fatal Mistake | 3. 2nd-Person Survival Simulation | 4. The Illusion Breaker",
-  "scene_1_hook_0s": "6-10 word psychological-visual hook in {target_lang_display} using selected_hook_archetype (NEVER repeats winning_title verbatim or spoils the final metric at 0.0s; NO '?' questions)",
+  "selected_hook_archetype": "1. Direct Scale Clash | 2. Lethal Paradox with Named Entity | 3. Concrete Shock Event | 4. Named Behavioral Trap",
+  "scene_1_hook_0s": "6-10 word hook in {target_lang_display} explicitly naming the primary entity/combatants + shocking metric or paradox at 0.0s (NEVER use vague 'Look closely at...' or 'Watch the exact moment...'; NO '?' questions)",
   "act_2_concrete_proof": "Specific real-world example, quote, or documented event + first hard metric for Scenes 2-3",
   "scene_4_mid_video_15s_twist": "Explosive 15-second Plot Twist / Second Hook for Scene 4 that flips expectations with a 2nd concrete metric",
   "act_4_ultimate_payoff": "Decisive biomechanical outcome, scientific revelation, or surgical counter-move for Scenes 6-7",
@@ -346,8 +342,8 @@ Return ONLY valid JSON:
                     f"- Winning Angle: {bp_data.get('winning_angle', '')}\n"
                     f"- Primary Entity: {bp_data.get('primary_entity', '')}\n"
                     f"- Recommended High-CTR Searchable Title: {bp_data.get('winning_title', '')}\n"
-                    f"- Selected Psychological-Visual Hook Archetype: {bp_data.get('selected_hook_archetype', '')}\n"
-                    f"- Mandatory Scene 1 Hook (0.0s — NEVER repeat Title verbatim): {bp_data.get('scene_1_hook_0s', '')}\n"
+                    f"- Selected Hook Archetype: {bp_data.get('selected_hook_archetype', '')}\n"
+                    f"- Mandatory Scene 1 Hook (0.0s — explicitly name entity + shock metric/paradox): {bp_data.get('scene_1_hook_0s', '')}\n"
                     f"- Mandatory Act 2 Proof + First Hard Metric (Scenes 2-3): {bp_data.get('act_2_concrete_proof', '')}\n"
                     f"- Mandatory Scene 4 Mid-Video 15s Reversal Twist + Second Metric: {bp_data.get('scene_4_mid_video_15s_twist', '')}\n"
                     f"- Mandatory Act 4 Payoff (Scenes 6-7): {bp_data.get('act_4_ultimate_payoff', '')}\n"
@@ -375,7 +371,8 @@ Return ONLY valid JSON:
         STAGE 3 (Executive Showrunner Retention Doctor & Hot Peak Query Distiller LLM Pass):
         Đầu tư thêm 1 lượt gọi LLM độc lập sau khi có bản nháp để chuốt sắc từng câu chữ:
         - Đảm bảo Tiêu đề (`title`) có tên thực thể + con số cực hạn để ăn tìm kiếm `YT_SEARCH`.
-        - Đảm bảo Cảnh 1 (0.0s Hook) dùng 1 trong 4 Đòn Tâm Lý Thị Giác (6-10 từ), KHÔNG đọc lặp lại Tiêu đề và KHÔNG tiết lộ luôn kết quả ở giây 0.0s.
+        - Đảm bảo Cảnh 1 (0.0s Hook) nêu đích danh Thực thể chính + thông số gây sốc hoặc nghịch lý sinh tử ngay ở giây 0.0s (CẤM dùng câu chỉ trỏ mơ hồ "Look closely at..." giấu chủ thể).
+        - Đảm bảo không nhồi nhét "Round 1, Round 2, Round 3" vào Shorts 35s gây rớt view ở giây 14.
         - Đảm bảo Cảnh 2-3 và Cảnh 4 (15s Mid-Video Climax) tung ra các thông số vật lý/cú bẻ lái (Plot Twist) chống tụt APV.
         - Nối mạch nhân quả ("Nhưng / Chính vì vậy / Cho đến khi") giữa 8 phân cảnh và khóa vòng lặp vô tận ở Cảnh 8.
         - Chắt lọc 5 truy vấn tiếng Anh cực chuẩn (`hook_search_queries`) để săn cảnh Peak trên YouTube Shorts.
@@ -391,15 +388,17 @@ CURRENT DRAFT SCRIPT JSON:
 {draft_script.model_dump_json(indent=2)}
 
 YOUR EXECUTIVE PUNCH-UP MANDATE (UPGRADE EVERY WEAK LINK WHILE PRESERVING 7-8 SCENES & 92-118 TOTAL WORDS):
-1. GOLDEN SEPARATION BETWEEN `TITLE` VS. `SCENE 1 HOOK` (0.0s–2.2s | 6 TO 10 WORDS):
+1. GOLDEN 0.0s RETENTION LOCK IN `SCENE 1 HOOK` (0.0s–2.2s | 6 TO 10 WORDS):
    - Keep `title` razor-sharp for `YT_SEARCH` + CTR (explicitly naming the primary entities + concrete metric/confrontation).
-   - Check Scene 1 (`scenes[0].narration` and `hook`): If Scene 1 repeats the `title` verbatim or sounds like a dry textbook reading a number at 0.0s, REWRITE Scene 1 into one of the **4 Psychological-Visual Hook Archetypes** (*1. Visual Micro-Observation "Look closely at..." / "Olhe bem para..."*, *2. The Fatal Mistake "O último erro..." / "...last mistake was..."*, *3. 2nd-Person Survival Simulation "If you..." / "Se você..."*, or *4. The Illusion Breaker / Role Reversal*) while shifting the hard numerical metric into Scenes 2–3! NEVER use '?' questions in Scene 1.
+   - Check Scene 1 (`scenes[0].narration` and `hook`): Scene 1 MUST explicitly name the primary entity/combatants from `title` AND deliver an immediate shocking physical metric, clash, or lethal paradox right at 0.0s (e.g., "Fifteen hundred pounds of muscle crushes a four-hundred-pound lion.", "This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead.", "Las Vegas casinos remove every clock to trap your brain's dopamine.")!
+   - STRICTLY BAN VAGUE POINTERS: If Scene 1 starts with a vague entity-blind pointer like "Look closely at...", "Watch the exact moment...", or "Olhe bem para..." that hides the subject, REWRITE Scene 1 immediately so it explicitly names the primary entity + shocking metric or paradox! NEVER use '?' questions in Scene 1.
+   - ZERO MULTI-ROUND BAIT-AND-SWITCH: If any scene in this Short mentions "Round One / Round Two / Round Three" or switches to a 3rd animal not in `title`, REWRITE those scenes so 100% of the Short stays focused on the exact 1v1 duel or phenomenon promised in `title`!
 2. CAUSAL STORYTELLING FLOW ("BUT / THEREFORE" TRANSITIONS):
    - Ensure every scene flows into the next with high-tension causal connectors rather than flat textbook listing. Every scene MUST be 100% grammatically complete (11–16 words per body scene).
 3. SCENE 4 MID-VIDEO CLIMAX TWIST (14.0s–20.0s | ANTI-DROP-OFF ENGINE):
    - Ensure Scene 4 (`climax_scene_id`) delivers an explosive SECOND HOOK / REVERSAL TWIST backed by a second concrete metric/mechanism, and has a sharp uppercase HUD `overlay_badge` (e.g. `"[ // THE 15-SECOND TWIST // ]"`).
-4. SCENE 7/8 INFINITE ECHO-LOOP FINALE (APV > 100%):
-   - Craft the final scene's closing sentence so its thought/paradox bridges directly back into Scene 1's opening hook. ZERO spoken Subscribe/Follow/Comment CTA!
+4. SCENE 7/8 NATURAL FINALE (APV > 100%):
+   - Craft the final scene's closing sentence as a punchy, memorable conclusion that connects naturally back to the opening premise (NEVER write robotic phrases like "that is why you should look closely at..."). ZERO spoken Subscribe/Follow/Comment CTA!
 5. DISTILL 5 HOT YOUTUBE SHORTS PEAK SEARCH QUERIES (`hook_search_queries`):
    - Based on the hottest physical climax moments in this script, provide 5 distinct, concrete English search queries (3–5 words each, subject + explosive peak action/setting) optimized for finding viral YouTube Shorts peak clips.
 6. SELF-CONTAINED, PRONOUN-FREE VISUAL QUERIES (`visual_keyword`, `stock_query`, `visual_prompt`):
@@ -409,7 +408,7 @@ YOUR EXECUTIVE PUNCH-UP MANDATE (UPGRADE EVERY WEAK LINK WHILE PRESERVING 7-8 SC
 
 Return ONLY the complete upgraded JSON matching the exact same schema as CURRENT DRAFT SCRIPT JSON."""
         try:
-            raw_polished = self._call_api(polish_prompt, json_mode=False, timeout=28, max_total_seconds=45)
+            raw_polished = self._call_api(polish_prompt, json_mode=True, timeout=18, max_total_seconds=28)
             polished_contract = self._parse_json_script(
                 raw_polished,
                 channel_niche=channel_niche,
@@ -459,7 +458,7 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
 
         from app.services.niche_manager import get_niche, build_script_prompt_instructions
         niche_profile = get_niche(channel_niche)
-        niche_instructions = build_script_prompt_instructions(niche_profile, language=language)
+        niche_instructions = build_script_prompt_instructions(niche_profile, language=language, video_format=vf)
         lang_instruction = build_language_integrity_instruction(language)
         regional_hook_instruction = build_regional_hook_mastery_instruction(language, channel_niche=channel_niche)
         channel_memory_block = self._build_channel_context_memory(
@@ -526,10 +525,10 @@ Video Format Mode: {'LONG-FORM 16:9 DOCUMENTARY (16-22 scenes, 360-560 words, ~3
 ═══════════════════════════════════════════════════════════
 MASTER-CLASS YOUTUBE {'LONG-FORM 5-CHAPTER DOCUMENTARY (3–4.5 MINUTES | 360–560 WORDS | 16–22 SCENES)' if is_long_form else 'SHORTS ARCHITECTURE (34–42 SECONDS | 92–118 WORDS | MILLION-VIEW EMPIRICAL BLUEPRINT)'}
 YouTube rewards TWO metrics simultaneously:
-1. Viewed vs. Swiped-Away > 75%: Achieved by separating the role of `title` (explicitly naming high-search entities + extreme metric for `YT_SEARCH`) from `Scene 1 Hook` ({'8–14 words' if is_long_form else '6–10 words, ~1.6–2.2s'} using one of the 4 Psychological-Visual Hook Archetypes that locks the viewer's eyes without repeating the title verbatim).
+1. Viewed vs. Swiped-Away > 75%: Achieved by explicitly naming the primary entity/combatants in BOTH `title` (for `YT_SEARCH`) AND `Scene 1 Hook` ({'8–14 words' if is_long_form else '6–10 words, ~1.6–2.2s'} delivering an immediate shocking physical metric, clash, or lethal paradox right at 0.0s — NEVER hiding the subject behind vague "Look closely at..." or "Watch the exact moment..." pointers!).
 2. High Retention + Smooth, Complete Narrative ({'360–560 words across 16–22 widescreen scenes, 18–26 words per body scene, 8–12s per scene' if is_long_form else '92–118 words, 34–42s across 7–8 scenes, 11–16 words per body scene'}):
    - NEVER write an abrupt, choppy, or truncated script ("cụt lủn")! Let the sentences flow naturally into one another with smooth transitions, clear context, and complete explanations.
-   - {'For LONG-FORM 16:9 mode: Structure the 16–22 scenes across 5 gripping Documentary Chapters using one of the 3 Competitor Million-View Blueprints:\n     * (A) `@FossilVideos` Gauntlet / Survival Tier-List (Wildlife): Chapter 1 (Scenes 1–3: Cold Open & Contender Stats), Chapter 2 (Scenes 4–7: Round 1 & Round 2 Challengers), Chapter 3 (Scenes 8–12: Round 3 Armored/Venom Threat & Mid-Point Twist), Chapter 4 (Scenes 13–17: Round 4 Pack/Apex Confrontation), Chapter 5 (Scenes 18–20: The Final Boss & Ultimate Verdict).\n     * (B) `@disastersexplained1` "Every X Record/Type Explained" (Mysteries/Ocean): Open Scene 1 with a 2nd-person sensory danger hook ("You notice a calm line on the water... You think you still have time. That is the mistake."), then escalate Chapter 1 -> Chapter 5 from the strangest warning sign to the deadliest unbroken record.\n     * (C) `@IFinity_What` "What If YOU..." 2nd-Person Timeline Escalation (Alternate History & Psychology): Frame directly around "YOU" escalating from Chapter 1 (Minute 1: The Superpower/Control Illusion) -> Chapter 2 (Hour 12: The First Hidden Glitch) -> Chapter 3 (Day 3: Systemic/Neural Overload) -> Chapter 4 (Day 7: Complete Collapse) -> Chapter 5 (The Final Aftermath).\n     * Put clean Chapter HUD badges like "[ // CHAPTER 1: THE SILENT TRAP // ]" or "[ // ROUND 1: THE SPEED TEST // ]" in `overlay_badge` ONLY on the first scene of each chapter (Scenes 1, 4, 8, 13, 18) and `null` on all other scenes!' if is_long_form else 'Natural documentary sentence length per body scene (11 to 16 words per body scene) — prioritize natural storytelling rhythm and emotional depth over rigid word counting!'}
+   - {'For LONG-FORM 16:9 mode: Structure the 16–22 scenes across 5 gripping Documentary Chapters using one of the 3 Competitor Million-View Blueprints:\n     * (A) `@FossilVideos` Gauntlet / Survival Tier-List (Wildlife): Chapter 1 (Scenes 1–3: Cold Open & Contender Stats), Chapter 2 (Scenes 4–7: Round 1 & Round 2 Challengers), Chapter 3 (Scenes 8–12: Round 3 Armored/Venom Threat & Mid-Point Twist), Chapter 4 (Scenes 13–17: Round 4 Pack/Apex Confrontation), Chapter 5 (Scenes 18–20: The Final Boss & Ultimate Verdict).\n     * (B) `@disastersexplained1` "Every X Record/Type Explained" (Mysteries/Ocean): Open Scene 1 with a 2nd-person sensory danger hook ("You notice a calm line on the water... You think you still have time. That is the mistake."), then escalate Chapter 1 -> Chapter 5 from the strangest warning sign to the deadliest unbroken record.\n     * (C) `@IFinity_What` "What If YOU..." 2nd-Person Timeline Escalation (Alternate History & Psychology): Frame directly around "YOU" escalating from Chapter 1 (Minute 1: The Superpower/Control Illusion) -> Chapter 2 (Hour 12: The First Hidden Glitch) -> Chapter 3 (Day 3: Systemic/Neural Overload) -> Chapter 4 (Day 7: Complete Collapse) -> Chapter 5 (The Final Aftermath).\n     * Put clean Chapter HUD badges like "[ // CHAPTER 1: THE SILENT TRAP // ]" or "[ // ROUND 1: THE SPEED TEST // ]" in `overlay_badge` ONLY on the first scene of each chapter (Scenes 1, 4, 8, 13, 18) and `null` on all other scenes!' if is_long_form else 'For SHORTS 9:16 mode: Keep 100% of all 7–8 scenes locked on the exact 1v1 duel or single phenomenon promised in the `title`! NEVER split a 35-second Short into "Round One / Round Two / Round Three" or switch to a 3rd unannounced opponent!'}
    - Every scene MUST be a 100% grammatically complete sentence. NEVER chop one sentence across two scenes!
 ═══════════════════════════════════════════════════════════
 1. THE MANDATORY 5-ACT DUAL-PEAK STORYTELLING BLUEPRINT (target: {word_range_en}):
@@ -538,13 +537,13 @@ YouTube rewards TWO metrics simultaneously:
      * Before writing Scene 1, if the input Topic is broad or lacks a number, you MUST autonomously anchor the story around a **real, verifiable extreme physical/biological/historical metric** (`1,500 PSI`, `93°C`, `2,000m`, `1883`, `0.2 seconds`, `4-second silence`, `230 dB`) AND a **visceral "A vs B" confrontation or counter-intuitive anomaly**.
    - YOU MUST EXECUTE ALL 5 ACTS SMOOTHLY IN ORDER across {'16 to 22 scenes (5 Documentary Chapters)' if is_long_form else '7 to 8 scenes'}:
 
-     * ACT 1 — THE 1.8-SECOND PSYCHOLOGICAL-VISUAL HOOK (Scene 1 | 6 to 10 words MAX):
-       - CRITICAL RULE: DO NOT repeat the `title` verbatim or spoil the final numerical outcome at 0.0s! Open *in media res* using 1 of the **4 Million-View Psychological-Visual Hook Archetypes**:
-         1. Visual Micro-Observation / Camouflage Pointer ("Olhe bem para essas marcas redondas na pele desse cachalote.", "What looks like a dead tree branch in this river just opened its eyes.")
-         2. The Fatal Mistake / Hunter Becomes Hunted ("O último erro desse jacaré foi subir nesse barranco sem olhar para cima.", "This caiman's last mistake was climbing onto this riverbank alone.")
-         3. 2nd-Person Survival / Behavioral Simulation ("Se um submarino tocar nessa linha branca no fundo do mar, ele não volta.", "If someone touches their neck while apologizing, watch their eyes next.")
-         4. The Illusion Breaker / Role Reversal ("Seis leões famintos cercaram esse pequeno animal, mas os leões estão fugindo.", "Six starving lions surrounded this tiny animal, and the lions are running away.")
-       - FORBIDDEN: Verbatim title repetition, dry Wikipedia metric readouts at 0.0s, abstract poetic metaphors ("loaded weapon", "silent cage"), or passive "Did you know?" questions.
+     * ACT 1 — THE 1.8-SECOND ENTITY + SHOCK HOOK (Scene 1 | 6 to 10 words MAX):
+       - CRITICAL RULE: Viewers in the Shorts Feed DO NOT read the bottom title before hearing the first 2 seconds of voiceover! Therefore, Scene 1 MUST explicitly name the primary entity/combatants from the `title` AND deliver an immediate shocking physical metric, clash, or lethal paradox right at 0.0s:
+         1. Direct Scale / Extreme Metric Clash ("Fifteen hundred pounds of muscle crushes a four-hundred-pound lion.", "Thirty thousand razor quills versus the deadliest jaws in Africa.")
+         2. Lethal Paradox with Named Entity ("This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead.", "Esta mamba-negra mata em segundos, mas o mangusto ri do veneno!")
+         3. Concrete Historical / Scientific Shock Event ("One hundred thousand Mongol horsemen vanished forty miles from Vienna.", "Earth survived only because the Krakatoa volcano killed thousands.")
+         4. Named Psychological / Behavioral Trap ("Las Vegas casinos remove every clock to trap your brain's dopamine.")
+       - FORBIDDEN: Vague entity-blind pointers ("Look closely at why...", "Watch the exact moment..."), raw colon headers ("A vs B: ..."), abstract poetic metaphors ("loaded weapon", "silent cage"), or passive "Did you know?" questions.
 
      * ACT 2 — NATURAL CONTEXT, CONCRETE PROOF & FIRST HARD METRIC (Scenes 2 – 3):
        - Smoothly build the context, reveal the **first concrete physical/scientific metric** (PSI, depth, temperature, year, reaction time), and show real-life proof:
@@ -562,37 +561,30 @@ YouTube rewards TWO metrics simultaneously:
          * For Psychology: Give the exact calm verbal/behavioral counter-move that disarms the trap on the spot.
          * For Wildlife / Rescue / Mysteries: Deliver the decisive biomechanical outcome, joyful transformation, or scientific revelation that resolves the twist.
 
-     * ACT 5 — ECHO-LOOP FINALE & SEAMLESS INFINITE BRIDGE (Final Scene 7 or 8 -> Loops into Scene 1):
+     * ACT 5 — NATURAL PUNCHY FINALE & SEAMLESS BRIDGE (Final Scene 7 or 8 -> Loops into Scene 1):
        - ZERO SPOKEN OUTRO CTA: NEVER say "Subscribe", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in the narration!
-       - Craft the final complete sentence so its final concept/paradox echoes and bridges directly back into the exact visual situation of Scene 1's opening hook (driving repeat views and `APV > 100%`).
+       - Craft the final complete sentence as a natural, punchy conclusion that bridges back into Scene 1's opening premise (NEVER write robotic sentences like "that is why you should look closely at...").
 
-2. HIGH-CTR SEARCHABLE TITLE VS. SCENE 1 HOOK RULES (LEARNED FROM 368 MILLION-VIEW SHORTS):
+2. HIGH-CTR SEARCHABLE TITLE VS. SCENE 1 HOOK RULES (PROVEN BY OUR OWN TOP ANALYTICS WINNERS):
    - The first 1.5 - 2.2 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
    - HIGH-CTR TITLE MANDATE (`YT_SEARCH` DISCOVERY ENGINE):
      * NEVER write bleak/depressing-only titles for Animal Rescue (FORBIDDEN: "Frozen Puppy Found in Rain"). ALWAYS build a transformation/recognition gap ("The Exact Moment This Stray Dog Realized He Was Safe 🥺❤️", "He Guarded This Drain For 72 Hours Until Rescuers Looked Inside 🐾").
      * NEVER write vague generic titles that hide the subject (FORBIDDEN: "Invisible Monsters Waiting To Strike", "That Fake Smile Exposes Their Envy", "Where Does This Endless River Go?"). ALWAYS name the specific entity/phenomenon + concrete number or "A vs B" clash ("Green Anaconda vs. Black Caiman: 1,500 PSI River Duel! 🐍🐊", "The 93°C Boiling Amazon River With Zero Volcanoes! 🔥🌊", "The 4-Second Eye Freeze That Exposes Fake Smiles 👁️🚩").
      * NEVER repeat saturated numbers like "11,000m" on Mysteries; use fresh, verifiable physical metrics and visceral sensory/fear hooks.
-   - SCENE 1 HOOK ARCHETYPES (6–10 WORDS MAX — CHOOSE 1 OF 4 & NEVER REPEAT THE TITLE VERBATIM):
-     * Archetype 1 (Visual Micro-Observation / Camouflage Pointer):
-       Point directly at a strange detail, scar, or camouflaged threat on screen so the viewer's eyes lock onto the frame:
-       - "Olhe bem para essas marcas redondas na pele desse cachalote."
-       - "O que parece um tronco podre nessa água rasa acabou de abrir os olhos."
-       - "Look closely at the circular scars on this whale's head."
-       - "Watch this man's hands the second the detective asks about the car."
-     * Archetype 2 (The Fatal Mistake / Hunter Becomes Hunted):
-       Drop into the exact moment a predator, historical figure, or person makes a fatal miscalculation:
-       - "O último erro desse jacaré foi subir nesse barranco sem olhar para cima."
-       - "This caiman's last mistake was climbing onto this riverbank alone."
-       - "One wrong turn by a single driver in 1914 triggered a world war."
-     * Archetype 3 (2nd-Person Survival / Behavioral Simulation):
-       Put the viewer inside the danger zone using "Se você..." / "If you..." / "When someone...":
-       - "Se um submarino tocar nessa linha branca no fundo do mar, ele não volta."
-       - "If someone touches their neck while apologizing, watch their eyes next."
-     * Archetype 4 (The Illusion Breaker / Role Reversal):
-       Present a visual scene that defies common sense:
-       - "Seis leões famintos cercaram esse pequeno animal, mas os leões estão fugindo."
-       - "Six starving lions surrounded this tiny animal, and the lions are running away."
-   - NEVER start with abstract literary metaphors, textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
+   - SCENE 1 HOOK ARCHETYPES (6–10 WORDS MAX — EXPLICITLY NAME THE ENTITY + SHOCK METRIC OR PARADOX AT 0.0s):
+     * Archetype 1 (Direct Scale / Extreme Metric Clash):
+       - "Fifteen hundred pounds of muscle crushes a four-hundred-pound lion."
+       - "Thirty thousand razor quills versus the deadliest jaws in Africa."
+     * Archetype 2 (Lethal Paradox with Named Entity):
+       - "This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead."
+       - "Esta mamba-negra mata em segundos, mas o mangusto ri do veneno!"
+     * Archetype 3 (Concrete Historical / Scientific Shock Event):
+       - "One hundred thousand Mongol horsemen vanished forty miles from Vienna."
+       - "Earth survived only because the Krakatoa volcano killed thousands."
+     * Archetype 4 (Named Psychological / Behavioral Trap):
+       - "Las Vegas casinos remove every clock to trap your brain's dopamine."
+       - "FBI interrogators place one water cup six inches from guilty suspects."
+   - NEVER start with vague entity-blind pointers ("Look closely at...", "Watch the exact moment..."), abstract literary metaphors, textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
    - thumbnail_text MUST be STRICTLY 2 to 3 ULTRA-PUNCHY WORDS MAX in ALL CAPS with ZERO emojis (competitor `@FossilVideos` & `@IFinity_What` formula: e.g. "TOO EASY?", "TURN INVISIBLE.", "EVERY RECORD", "1,500 PSI!", "ZERO SURVIVORS", "4 SECONDS MAX"). Our Thumbnail Engine renders Word 1 in Pure White and Word 2-3 in High-Contrast Yellow/Red!
 
 3. SEAMLESS INFINITE LOOP ENDING (NO SPOKEN OUTRO CTA):
@@ -682,7 +674,12 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                raw_text = self._call_api(current_prompt, json_mode=False, timeout=45 if is_long_form else 30)
+                raw_text = self._call_api(
+                    current_prompt,
+                    json_mode=True,
+                    timeout=35 if is_long_form else 20,
+                    max_total_seconds=60 if is_long_form else 38,
+                )
                 script = self._parse_json_script(raw_text, channel_niche=channel_niche, topic=topic, video_format=vf)
                 last_script = script
 
@@ -695,6 +692,22 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 
                 if linter_res.is_valid:
                     logger.info(f"✅ [ContentAgent] Script ({vf}) passed Quality Gate Linter on attempt {attempt}/{max_attempts}")
+                    hook_txt = str((script.scenes[0].narration if script.scenes else script.hook) or "").strip()
+                    hook_wc = len(hook_txt.split())
+                    title_clean = re.sub(r"[^\w\s]", "", str(script.title or "").lower()).strip()
+                    hook_clean = re.sub(r"[^\w\s]", "", hook_txt.lower()).strip()
+                    draft_already_sharp = (
+                        6 <= hook_wc <= 12
+                        and "?" not in hook_txt
+                        and title_clean[:20] not in hook_clean
+                        and len(getattr(script, "hook_search_queries", None) or []) >= 3
+                    )
+                    if draft_already_sharp:
+                        logger.info(
+                            f"⚡ [ContentAgent Fast-Track] Bản thảo Stage-2 đã đạt chuẩn 5-Act & 4 Đòn Tâm Lý Thị Giác "
+                            f"(Hook {hook_wc} từ, {len(script.scenes)} cảnh) -> Bỏ qua lượt gọi LLM Stage-3 dư thừa!"
+                        )
+                        return script
                     if not kwargs.get("skip_deep_polish") and not is_long_form:
                         polished = self._polish_script_for_maximum_retention(
                             draft_script=script,
@@ -736,11 +749,7 @@ Rewrite immediately addressing ALL violations above!
             except Exception as e:
                 logger.warning(f"[ContentAgent] Generation attempt {attempt}/{max_attempts} error: {e}")
                 if attempt < max_attempts:
-                    time.sleep(2.5)
-                    try:
-                        self.rotator.probe_all_models_concurrently(force=True)
-                    except Exception:
-                        pass
+                    time.sleep(1.0)
                     continue
                 if not last_script:
                     logger.info(

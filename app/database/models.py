@@ -180,20 +180,29 @@ def create_configured_engine(raw_url: str):
     is_postgres = db_url.startswith("postgresql://") or db_url.startswith("postgresql+psycopg2://")
 
     if is_postgres:
+        from sqlalchemy.pool import NullPool
         driver_url = db_url
         if driver_url.startswith("postgresql://"):
             driver_url = "postgresql+psycopg2://" + driver_url[len("postgresql://"):]
+        is_pgbouncer_pooler = (":6543" in driver_url) or ("pooler." in driver_url)
         last_pg_err = None
         for pg_attempt in range(1, 4):
             try:
+                pool_kwargs = (
+                    {"poolclass": NullPool}
+                    if is_pgbouncer_pooler
+                    else {
+                        "pool_size": 3,
+                        "max_overflow": 4,
+                        "pool_pre_ping": True,
+                        "pool_use_lifo": True,
+                        "pool_recycle": 20,
+                        "pool_timeout": 30,
+                    }
+                )
                 eng = create_engine(
                     driver_url,
                     echo=False,
-                    pool_size=3,           # Giữ pool nhỏ gọn cho Supabase Pooler
-                    max_overflow=4,        # Tránh vượt giới hạn kết nối đồng thời của Supabase Free
-                    pool_pre_ping=True,    # Tự kiểm tra connection sống/chết trước mỗi query
-                    pool_recycle=25,       # Recycle sau 25s để tránh Supabase PgBouncer đóng kết nối idle
-                    pool_timeout=30,       # Fail-fast sau 30s nếu không lấy được connection
                     connect_args={
                         "connect_timeout": 10,
                         "keepalives": 1,
@@ -201,11 +210,15 @@ def create_configured_engine(raw_url: str):
                         "keepalives_interval": 5,
                         "keepalives_count": 3,
                     },
+                    **pool_kwargs,
                 )
                 # Test ping connection (chỉ dùng SELECT 1, tuyệt đối không gọi ALTER TABLE gây khóa bảng trên PgBouncer)
                 with eng.connect() as test_conn:
                     test_conn.execute(text("SELECT 1"))
-                logger.info("✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud!")
+                logger.info(
+                    f"✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud "
+                    f"({'NullPool/PgBouncer' if is_pgbouncer_pooler else 'QueuePool'})!"
+                )
                 return eng, db_url
             except Exception as ex:
                 last_pg_err = ex
@@ -280,15 +293,26 @@ def get_db():
     tự động commit nếu thành công, rollback + close nếu exception.
     """
     from sqlalchemy.exc import OperationalError
-    db = SessionLocal()
-    try:
-        db.execute(text("SELECT 1"))
-    except Exception:
-        try:
-            db.close()
-        except Exception:
-            pass
+    import time as _time
+    db = None
+    for _db_att in range(3):
         db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            break
+        except Exception:
+            try:
+                db.close()
+            except Exception:
+                pass
+            try:
+                engine.dispose()
+            except Exception:
+                pass
+            if _db_att < 2:
+                _time.sleep(0.4 * (_db_att + 1))
+            else:
+                db = SessionLocal()
     try:
         yield db
         db.commit()

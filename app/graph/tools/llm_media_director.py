@@ -177,10 +177,14 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 }
 
                 tool_capable_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
-                for model_name, api_key in rotator.iter_best_model_key_pairs(tool_capable_models):
+                for model_name, api_key in rotator.iter_best_model_key_pairs(tool_capable_models, max_total_attempts=4):
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                    gen_cfg_tool: Dict[str, Any] = {"temperature": 0.2}
+                    if "lite" not in model_name.lower() and not model_name.startswith("gemma-"):
+                        gen_cfg_tool["thinkingConfig"] = {"thinkingBudget": 0}
+                    payload["generationConfig"] = gen_cfg_tool
                     try:
-                        resp = requests.post(url, json=payload, timeout=32 if total_scenes >= 25 else 18)
+                        resp = requests.post(url, json=payload, timeout=(3.5, 22 if total_scenes >= 25 else 11.5))
                         if resp.status_code == 200:
                             data = resp.json()
                             parts = (
@@ -318,7 +322,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["youtube_search_query"] = p_sq
                 d["fallback_broad_query"] = s_sq
 
-            d["scope_audited"] = False
+            d["scope_audited"] = True
             final_plan.append(d)
             continue
 
@@ -546,22 +550,24 @@ Return ONLY a valid JSON object in this exact format:
         keys = settings.get_gemini_keys_pool()
         rotator = KeyRotator(keys) if keys else None
         if rotator and rotator.has_keys:
-            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS):
+            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=4):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                gen_cfg: Dict[str, Any] = {"temperature": 0.1}
-                if not model_name.startswith("gemma-"):
-                    gen_cfg["responseMimeType"] = "application/json"
+                gen_cfg = KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1)
                 payload = {
                     "contents": [{"parts": [{"text": audit_prompt}]}],
                     "generationConfig": gen_cfg,
                 }
                 try:
-                    req_t = 14 if model_name.startswith("gemma-") else 18
-                    resp = requests.post(url, json=payload, timeout=req_t)
+                    req_t = 12 if model_name.startswith("gemma-") else 11.5
+                    resp = requests.post(url, json=payload, timeout=(3.5, req_t))
                     if resp.status_code == 200:
                         cands = resp.json().get("candidates") or []
                         if cands:
-                            txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                            txt = "".join(
+                                p.get("text", "")
+                                for p in cands[0].get("content", {}).get("parts", [])
+                                if isinstance(p, dict) and not p.get("thought")
+                            )
                             m = re.search(r"\{.*\}", txt, re.DOTALL)
                             if m:
                                 parsed = json.loads(m.group(0))

@@ -56,19 +56,25 @@ class ScriptJsonParserMixin:
                 "safetySettings": safety_settings,
             }
             if json_mode and not model.startswith("gemma-"):
-                payload["generationConfig"] = {"responseMimeType": "application/json"}
+                payload["generationConfig"] = KeyRotator.build_fast_json_gen_config(model, temperature=0.35)
+            elif not model.startswith("gemma-") and "lite" not in model.lower():
+                payload["generationConfig"] = {"temperature": 0.4, "thinkingConfig": {"thinkingBudget": 0}}
 
             try:
                 attempts += 1
                 rem_budget = max(8.0, float(max_total_seconds) - elapsed)
-                req_timeout = min(timeout, 14 if model.startswith("gemma-") else 18, max(8, int(rem_budget * 0.55)))
-                r = self.session.post(url, json=payload, timeout=req_timeout)
+                req_timeout = min(timeout, 12 if model.startswith("gemma-") else 14, max(8, int(rem_budget * 0.55)))
+                r = self.session.post(url, json=payload, timeout=(3.5, req_timeout))
                 if r.status_code == 200:
                     data = r.json()
                     candidates = data.get("candidates", [])
                     if candidates:
                         parts = candidates[0].get("content", {}).get("parts", [])
-                        texts = [p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p]
+                        texts = [
+                            p.get("text", "")
+                            for p in parts
+                            if isinstance(p, dict) and "text" in p and not p.get("thought")
+                        ]
                         full_text = "".join(texts).strip()
                         if full_text:
                             logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")

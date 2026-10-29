@@ -9,13 +9,13 @@ target_audience: Khán giả toàn cầu đam mê thế giới động vật hoa
 script_blueprint:
   tone_of_voice: Trầm hùng, dồn dập, sắc bén, kích thích adrenaline tột độ, uy lực và tôn kính trước sự
     tàn khốc hoàn hảo của mẹ thiên nhiên.
-  pacing: "Siêu cuốn hút, thời lượng vàng 34 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu phim tài liệu kịch tính tối ưu đồng thời Stayed-to-Watch > 65% và APV 90-115%. TUÂN THỦ QUY TẮC VÀNG PHÂN VAI — Tiêu đề (title) BẮT BUỘC chứa tên thực thể + chỉ số vật lý cực hạn để ăn tìm kiếm YT_SEARCH, còn Cảnh 1 (0.0s-2.2s, 6-10 từ) TUYỆT ĐỐI KHÔNG đọc lặp lại tiêu đề hay đọc con số khô khan ở giây 0.0s mà phải dùng 1 trong 4 Đòn Tâm Lý Thị Giác!"
+  pacing: "Siêu cuốn hút, thời lượng vàng 34 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu phim tài liệu kịch tính tối ưu đồng thời Stayed-to-Watch > 65% và APV 90-115%. QUY TẮC VÀNG MỞ ĐẦU 0.0s: Cả Tiêu đề (title) VÀ Cảnh 1 (0.0s-2.2s, 6-10 từ) ĐỀU BẮT BUỘC nêu đích danh Thực thể chính / Cặp đối đầu + Cú sốc vật lý hoặc Nghịch lý sinh tử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu tên chủ thể ('Look closely at...', 'Watch the exact moment...') hoặc nhồi nhét nhiều vòng đấu (Round 1 -> Round 2 -> Round 3) trong Shorts 35s!"
   hook_formulas:
-  - 'Visual Micro-Observation / Camouflage Pointer (Casual Geographic 8.6M Formula): ''What looks like a dead tree branch in this river just opened its eyes.'''
-  - 'The Fatal Mistake / Hunter Becomes Hunted (FiveZero Safaris 18.7M Formula): ''This caiman''s last mistake was climbing onto this riverbank without looking up.'''
-  - 'Illusion Breaker / Role Reversal (ViralHog 1.59M Formula): ''Six starving lions surrounded this small badger, and the lions are backing away.'''
-  - 'Portuguese Extreme Confrontation Pointer (Richard Rasmussen 5.31M Formula): ''O último erro desse jacaré foi subir nesse barranco sem olhar para cima.'''
-  - '@FossilVideos Gauntlet Survival Challenge (12.08M & 1.99M Formula): ''Drop a polar bear into the African savanna, and Round One is over in ten seconds.'''
+  - 'Direct Scale / Extreme Metric Clash (Proven Winner `A-oNKdpL0rM` 1,146 views & `w7iUy-8hjVo` 47.7% Stay): ''Fifteen hundred pounds of muscle crushes a four-hundred-pound lion.'' / ''Thirty thousand razor quills versus the deadliest jaws in Africa.'''
+  - 'Walking Dead / Lethal Paradox with Named Entity (Proven Winner `1NeB0Qe6_t4` 1,325 views/12h): ''This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead.'''
+  - 'Portuguese Direct Confrontation Paradox (Proven Winner `TXPjVAIaKWw` 40,225 views — 51.4% Stay, 79.1% APV): ''Esta mamba-negra mata em segundos, mas o mangusto ri do veneno!'''
+  - 'The Fatal Mistake with Explicit Species (Proven Winner `XoeQ1I_WHsI` 2,700 views — 51.3% Stay): ''O último erro de qualquer predador é desafiar as garras desse casuar.'''
+  - 'Surgical Predator Mechanism (Proven Winner `LLLIDVuvK8E` 1,220 views): ''The Jaguar doesn''t hunt like lions—it targets skull kill-switches.'''
   competitor_blueprint:
     benchmark_channel: "@FossilVideos (20.4M views across 14 videos — 'How Long You'd Last in Every Prehistoric Era' 12.08M, 'Could a Polar Bear Beat Every Ice Age Predator?' 1.99M)"
     long_form_archetypes:
@@ -36,7 +36,7 @@ script_blueprint:
   - 'Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds'
   - Why A Pack Of Giant River Otters Can Drive A Jaguar Out Of Its Territory
   - 'Wolverine vs Grizzly Bear: Why 35 Pounds Of Fury Forces An 800lb Giant To Back Off'
-  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Đòn Tâm Lý Thị Giác (Chỉ điểm chi tiết ngụy trang / Sai lầm chí mạng / Đảo chiều kẻ săn mồi, KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 (Act 2) - Tung thông số vũ khí sinh học thứ nhất (PSI, km/h, Volt, mg độc tố) -> Cảnh 4-5 (Act 3 - Mid-Video 15s Twist) - Kẻ bị săn tung cơ chế phản đòn bất ngờ kèm thông số thứ 2 -> Cảnh 6-7 (Act 4 Payoff) - Đòn kết liễu sinh học xác thực -> Cảnh 8 (Act 5) - Cầu nối Vòng lặp Vô tận (Infinite Loop Bridge) nối mượt về Cảnh 1 (Zero Spoken Subscribe CTA)"
+  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Nêu đích danh Thực thể chính / Cặp đối đầu + Thông số cực hạn hoặc Nghịch lý sinh tử ngay ở 0.0s (CẤM dùng 'Look closely at...' giấu chủ thể) -> Cảnh 2-3 (Act 2) - Giải phẫu vũ khí sinh học thứ nhất (PSI, km/h, Volt, mg độc tố) -> Cảnh 4-5 (Act 3 - Mid-Video 15s Twist) - Kẻ bị săn tung cơ chế phản đòn bất ngờ kèm thông số thứ 2 -> Cảnh 6-7 (Act 4 Payoff) - Đòn kết liễu sinh học xác thực -> Cảnh 8 (Act 5) - Cú chốt tự nhiên nối mượt về Cảnh 1 (Zero Spoken Subscribe CTA)"
   forbidden_words:
   - Chào mừng các bạn đến với thế giới động vật
   - Hôm nay chúng ta sẽ tìm hiểu về loài

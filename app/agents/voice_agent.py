@@ -860,9 +860,14 @@ class VoiceAgent:
             self.last_used_engine = Counter(engine_tracker).most_common(1)[0][0]
 
         # ── KHÓA TRẦN THỜI LƯỢNG VÀNG (33s - 40.5s) CHO SHORTS — BỎ QUA KHI LÀ VIDEO DÀI 16:9 ──
+        # Đảm bảo không bao giờ tăng tốc vượt ngưỡng 184 WPM của AudioQA (tránh vòng lặp TOO_FAST 217 WPM trên kịch bản nhiều từ như pt-BR)
         total_raw_ms = sum(int(sc.audio_duration_ms or 0) for sc in enriched_scenes)
-        if total_raw_ms > 40500 and not is_long_form and len(enriched_scenes) <= 12:
-            tempo_factor = min(1.24, max(1.05, total_raw_ms / 37500.0))
+        total_words_cnt = sum(len((sc.narration or "").split()) for sc in enriched_scenes)
+        min_safe_wpm_ms = (total_words_cnt / 184.0) * 60000.0 if total_words_cnt > 0 else 37500.0
+        target_golden_ms = max(37500.0, min(52000.0, min_safe_wpm_ms))
+        is_slowdown_retry = bool(rate and str(rate).strip().startswith("-"))
+        if total_raw_ms > max(40500.0, target_golden_ms + 1200.0) and not is_long_form and len(enriched_scenes) <= 12 and not is_slowdown_retry:
+            tempo_factor = min(1.20, max(1.04, total_raw_ms / target_golden_ms))
             logger.info(
                 f"⚡ [VoiceAgent GoldenDurationCap] Tổng audio={total_raw_ms/1000:.1f}s (> 40.5s) "
                 f"-> Tự động tăng nhịp kể chuyện x{tempo_factor:.2f} để đưa về Khung Vàng ~{total_raw_ms/tempo_factor/1000:.1f}s "

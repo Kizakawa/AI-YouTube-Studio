@@ -191,24 +191,24 @@ Respond ONLY in valid JSON:
 }}
 """
         import requests
-        from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
+        from app.utils.key_rotator import GEMINI_PRIORITY_MODELS, KeyRotator
         rotator = self.rotator
         headers = {"Content-Type": "application/json"}
-        for model, k_use in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=6):
+        for model, k_use in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=3):
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={k_use}"
-                gen_cfg = {"temperature": 0.2}
-                if not model.startswith("gemma-"):
-                    gen_cfg["responseMimeType"] = "application/json"
+                gen_cfg = KeyRotator.build_fast_json_gen_config(model, temperature=0.2)
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": gen_cfg
                 }
-                req_timeout = 14 if model.startswith("gemma-") else 20
-                resp = requests.post(url, headers=headers, json=payload, timeout=req_timeout)
+                resp = requests.post(url, headers=headers, json=payload, timeout=(3.5, 9.0))
                 if resp.status_code == 200:
                     data = resp.json()
-                    content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                    content = "".join(
+                        p.get("text", "") for p in parts if isinstance(p, dict) and not p.get("thought")
+                    ).strip()
                     s_idx, e_idx = content.find("{"), content.rfind("}")
                     if s_idx != -1 and e_idx != -1:
                         content = content[s_idx:e_idx + 1]

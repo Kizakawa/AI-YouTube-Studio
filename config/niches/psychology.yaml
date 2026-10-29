@@ -15,14 +15,14 @@ script_blueprint:
   tone_of_voice: Trầm tĩnh, sắc lạnh như hồ sơ pháp y FBI & giải phẫu thần kinh học,
     trực diện không một từ thừa (Surgical forensic profiler & neuro-scientist — Grade-5
     US spoken clarity, Zack D. Films / JCS Criminal Psychology vibe).
-  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 phân cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh để đạt APV > 95% và qua bài kiểm tra Cohort ngày 2). TUÂN THỦ QUY TẮC VÀNG PHÂN VAI (Charisma on Command 9.78M / The Behavioral Arts 1.25M / Dr Julie 1.23M Formula) — Tiêu đề (title) BẮT BUỘC nêu rõ tình huống tâm lý/thẩm vấn hoặc cơ chế não bộ có lượng tìm kiếm YT_SEARCH cao, còn Cảnh 1 (0.0s-2.2s, 6-10 từ) TUYỆT ĐỐI KHÔNG đọc lại tiêu đề hay định nghĩa sách giáo khoa! Cảnh 1 phải mở bằng (1) Một câu thoại công kích/khen đểu ngoài đời thực, hoặc (2) Chỉ điểm vi biểu cảm/cử chỉ tay chân của nghi phạm trên màn hình, sau đó Cảnh 2-3 mổ xẻ cơ chế thần kinh/FBI và Cảnh 4-7 đưa ra đòn phản công thực chiến 2 bước!"
+  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 phân cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh để đạt APV > 95% và qua bài kiểm tra Cohort ngày 2). QUY TẮC VÀNG MỞ ĐẦU 0.0s: Cả Tiêu đề (title) VÀ Cảnh 1 (0.0s-2.2s, 6-10 từ) ĐỀU BẮT BUỘC nêu rõ chủ thể/bẫy tâm lý/thẩm vấn FBI + Cú sốc hành vi hoặc câu thoại ngoài đời thực ngay ở 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu chủ thể ('Look closely at why you cannot find the exit', 'Watch this...')!"
   hook_formulas:
-  - 'Real-Life Spoken Insult / Manipulation Trap (Charisma on Command 9.78M Formula): ''"You actually look good today" is a hidden insult — watch their eyes next.'''
-  - 'Forensic Micro-Expression Pointer (The Behavioral Arts 1.25M Formula): ''Watch this suspect''s hands the exact second the detective mentions the car.'''
-  - 'Courtroom / FBI Water Cup Glitch (#1 Channel Winner): ''If a suspect touches their neck while apologizing, they are hiding something.'''
-  - 'Extreme Brain / Sensory Deprivation Warning: ''If the door to this silent chamber closes, your brain hallucinates within minutes.'''
-  - 'Casino & Billionaire Mind Trap: ''Look at the carpet and ceiling the next time you walk into a casino.'''
-  - '@IFinity_What 2nd-Person Brain Paradox Escalation (493K & 89.9K Formula): ''At first, never needing sleep feels like a superpower—until Hour 72 rewires your optic nerve.'''
+  - 'Real-Life Spoken Insult / Manipulation Trap (Charisma on Command 9.78M Formula): ''"You actually look good today" is a hidden insult—here is why.'''
+  - 'Named FBI Interrogation Trap: ''FBI interrogators place one water cup six inches from guilty suspects.'''
+  - 'Courtroom / Body Language Glitch (#1 Channel Winner `IuVZBifW04w`): ''If a suspect touches their neck while apologizing, they are lying.'''
+  - 'Extreme Brain / Sensory Deprivation Warning: ''Inside a minus-nine-decibel silent chamber, human brains hallucinate within minutes.'''
+  - 'Named Casino & Billionaire Mind Trap: ''Las Vegas casinos remove every clock to spike your brain''s dopamine.'''
+  - '@IFinity_What 2nd-Person Brain Paradox Escalation (493K & 89.9K Formula): ''At first, never needing sleep feels like a superpower—until Hour 72 rewires your brain.'''
   competitor_blueprint:
     benchmark_channel: "@IFinity_What (734K views in 12 days — 'What If You Could Turn Invisible at Will?' 493K, 'What If You Knew Everything in the World?' 89.9K, 'What If You Never Needed to Sleep?' 65.9K)"
     long_form_archetypes:

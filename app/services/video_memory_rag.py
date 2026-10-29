@@ -1156,6 +1156,25 @@ class VideoMemoryRAG:
                 for y_d in range(96, 144)
             )
 
+            # Phát hiện khung ngang 16:9/4:3 bị đóng viền mờ trên & dưới (baked-in letterbox blur bars) trong video dọc 9:16
+            orig_w, orig_h = im_obj.size
+            has_letterbox_blur_bars = False
+            if orig_h > orig_w:
+                top_sh = float(ImageStat.Stat(edges.crop((8, 4, 152, 36))).mean[0])
+                mid_sh = float(ImageStat.Stat(edges.crop((8, 60, 152, 180))).mean[0])
+                bot_sh = float(ImageStat.Stat(edges.crop((8, 204, 152, 236))).mean[0])
+                if top_sh < 5.2 and bot_sh < 5.2 and mid_sh >= 11.5:
+                    max_top_seam = max(
+                        sum(1 for x_c in range(8, 152) if abs(px_g[x_c, y_s] - px_g[x_c, y_s + 1]) >= 18) / 144.0
+                        for y_s in range(18, 68)
+                    )
+                    max_bot_seam = max(
+                        sum(1 for x_c in range(8, 152) if abs(px_g[x_c, y_s] - px_g[x_c, y_s + 1]) >= 18) / 144.0
+                        for y_s in range(172, 222)
+                    )
+                    if max_top_seam >= 0.78 and max_bot_seam >= 0.78:
+                        has_letterbox_blur_bars = True
+
             if white_paper_ratio > 0.45:
                 return True, f"white_paper={white_paper_ratio:.2f}"
             if neutral_grey_bg > 0.48:
@@ -1164,6 +1183,8 @@ class VideoMemoryRAG:
                 return True, f"sharp_mean={sharp_mean:.1f}"
             if has_white_h_divider or has_white_v_divider or has_split_collage_seam:
                 return True, "collage_divider"
+            if has_letterbox_blur_bars:
+                return True, f"letterbox_blur_bars(top={top_sh:.1f},bot={bot_sh:.1f},mid={mid_sh:.1f})"
             if text_rows >= 38 and (white_paper_ratio > 0.22 or black_poster_ratio > 0.32):
                 return True, f"poster_text_rows={text_rows}"
             if (

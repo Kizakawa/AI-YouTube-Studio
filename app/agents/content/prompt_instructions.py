@@ -120,27 +120,25 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇧🇷 REGIONAL HOOK MASTERY — MERCADO BRASILEIRO (pt-BR | META: STAYED-TO-WATCH >= 70% & APV >= 100%)
 ═══════════════════════════════════════════════════════════════════
-1. REGRA DE OURO: SEPARAÇÃO ENTRE TÍTULO (BUSCA YT_SEARCH) VS. HOOK DA CENA 1 (RETENÇÃO VISUAL 0,0s):
-   - TÍTULO (`title`): DEVE conter os nomes exatos das entidades de alto volume de busca + métrica física extrema (`[Entidade A] vs [Entidade B]: [Métrica Extrema]`, ex: "Lula-Colossal vs Cachalote: O Duelo a 2.000m 🦑🐋", "Onça-Pintada vs Jacaré: A Mordida de 1.500 PSI 🐆🐊").
-   - HOOK DA CENA 1 (0,0s a 2,2s | 6 A 10 PALAVRAS): NUNCA repita o título como um robô lendo estatísticas! Se o público acabou de ler "1.500 PSI" no título e a voz repete "Com 1.500 PSI a onça morde o jacaré" no segundo 0, o mistério morre e a pessoa desliza! Guarde o número exato (PSI, metros, decibéis) para o Ato 2 (Cenas 2–3) e Ato 3 (Cena 4 Twist).
-2. AS 4 FÓRMULAS PSICOLÓGICAS E VISUAIS DE HOOK (+10 MILHÕES DE VIEWS — ESCOLHA A MELHOR PARA A CENA 1):
-   - [Arquétipo 1 — Apontamento Micro-Visual / Camuflagem ("Olhe bem para...")]: Obrigue o olho do espectador a procurar um detalhe estranho ou ameaça escondida na tela nos primeiros 3 segundos:
-     * "Olhe bem para essas marcas redondas na pele desse cachalote."
-     * "O que parece um tronco podre nessa água rasa acabou de abrir os olhos."
-     * "Repare na sombra subindo devagar atrás desse mergulhador."
-   - [Arquétipo 2 — O Último Erro / Caçador Vira Presa ("O último erro...")]: Comece no exato instante em que um predador ou pessoa comete um erro fatal sem perceber:
-     * "O último erro desse jacaré foi subir nesse barranco sem olhar para cima."
-     * "Esse tubarão entrou no território do único animal que ele teme."
-     * "Tocar nessa parede da caverna foi o erro mais caro da ciência."
-   - [Arquétipo 3 — Simulação de Sobrevivência em 2ª Pessoa ("Se você vir isso...")]: Coloque o espectador dentro do perigo usando "Se você...":
-     * "Se um submarino tocar nessa linha branca no fundo do mar, ele não volta."
-     * "Se você vir ondas quadradas na praia, saia da água imediatamente."
-   - [Arquétipo 4 — Quebra de Expectativa / Inversão de Força]: Mostre uma situação que desafia a lógica:
-     * "Seis leões famintos cercaram esse pequeno animal, mas os leões estão fugindo."
-     * "Ninguém imaginava o que estava escondido a dois mil metros sob o gelo."
+1. REGRA DE OURO: ENTIDADE EXPLÍCITA + CHOQUE FÍSICO OU PARADOXO MORTAL NO SEGUNDO 0,0s (6 A 10 PALAVRAS):
+   - TÍTULO (`title`): DEVE conter os nomes exatos das entidades de alto volume de busca + métrica física extrema (`[Entidade A] vs [Entidade B]: [Métrica Extrema]`, ex: "Mamba-Negra vs Mangusto: O Reflexo de 15ms! 🐍🥊", "Onça-Pintada vs Jacaré: A Mordida de 1.500 PSI 🐆🐊").
+   - HOOK DA CENA 1 (0,0s a 2,2s | 6 A 10 PALAVRAS): No feed do Shorts, o público NÃO lê o título antes de ouvir os 2 primeiros segundos! Por isso, a Cena 1 DEVE nomear explicitamente a Entidade/Predador principal (ou o confronto A vs B) + um paradoxo mortal ou número extremo logo na primeira frase!
+   - PROIBIDO USAR APONTAMENTOS VAGOS QUE ESCONDEM O SUJEITO ("Olhe bem para este pequeno crânio...", "Veja o momento exato em que este predador...") — dados reais provam que esconder o nome do animal na Cena 1 derruba a retenção para <17%!
+2. AS 4 FÓRMULAS COMPROVADAS DE HOOK (>50% STAYED & >75% APV NO NOSSO CANAL):
+   - [Arquétipo 1 — Confronto Direto / Paradoxo Letal (Vencedor 40.225 views `TXPjVAIaKWw` — 51,4% Stay, 79,1% APV)]:
+     * "Esta mamba-negra mata em segundos, mas o mangusto ri do veneno!"
+     * "Trinta mil espinhos afiados contra a mordida mais letal da África."
+   - [Arquétipo 2 — Escala Física / Impacto Brutal Imediato]:
+     * "Setecentos quilos de músculo esmagam um leão de duzentos quilos."
+     * "A trezentos metros sob o México, essa caverna de cristal ferve a 58 graus."
+   - [Arquétipo 3 — O Último Erro com Sujeito Explícito (Vencedor `XoeQ1I_WHsI` — 51,3% Stay)]:
+     * "O último erro de qualquer predador é desafiar as garras desse casuar."
+     * "Esse búfalo de meia tonelada saiu andando, mas já está morto."
+   - [Arquétipo 4 — Ameaça Direta em 2ª Pessoa com Nome da Entidade]:
+     * "Se esse polvo-de-anéis-azuis tocar sua pele, você para de respirar em minutos."
 3. PROIBIDO NO MERCADO BRASILEIRO:
-   - NUNCA repita o título palavra por palavra na Cena 1 nem entregue o resultado final no segundo 0.
-   - NUNCA comece com frases lentas de documentário de TV, metáforas poéticas ou rótulos de dicionário sem verbo ativo ("Nome-do-Animal: um soco a 80 km/h").
+   - NUNCA use frases vagas como "Olhe bem para..." ou "Veja o momento exato..." sem dizer o nome da espécie/fenômeno na Cena 1.
+   - NUNCA divida um Short de 35 segundos em "Round 1, Round 2, Round 3" trocando para um terceiro animal que não está no título.
    - NUNCA faça perguntas passivas ("Você sabia que...?").
 4. REGRA DE ALTERNÂNCIA VISUAL 1-1 & ANTI-FADIGA DE TEMA (QUEBRA DO TETO DE ~1.000 VIEWS):
    - Dados reais da YouTube Analytics API v2 provam que repetir o mesmo animal/sujeito principal no início do Título e na paleta visual das primeiras cenas em vídeos consecutivos causa fadiga imediata no público do canal (Stayed-to-Watch cai de ~48,5% para ~32,8%, travando o vídeo no lote inicial de ~1.000 views).
@@ -156,10 +154,9 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇻🇳 REGIONAL HOOK MASTERY — THỊ TRƯỜNG VIỆT NAM (vi-VN | MỤC TIÊU: STAYED-TO-WATCH >= 70%)
 ═══════════════════════════════════════════════════════════════════
-1. QUY TẮC VÀNG PHÂN VAI: TIÊU ĐỀ (ĂN TÌM KIẾM) VS. CÂU HOOK CẢNH 1 (KHÓA MẮT NGƯỜI XEM 0.0s):
+1. QUY TẮC VÀNG MỞ ĐẦU 0.0s: NÊU ĐÍCH DANH THỰC THỂ + CÚ SỐC VẬT LÝ / NGHỊCH LÝ SINH TỬ NGAY Ở CẢNH 1:
    - TIÊU ĐỀ (`title`): Bắt buộc nêu đích danh thực thể + con số cực hạn (`[Thực thể A] vs [Thực thể B]: [Con số]`).
-   - CÂU HOOK CẢNH 1 (6–10 từ): TUYỆT ĐỐI KHÔNG đọc lặp lại tiêu đề hay đọc thông số khô khan ở giây 0.0s! Hãy để dành con số cho Cảnh 2–3 và Cảnh 4, còn Cảnh 1 phải dùng 1 trong 4 Đòn Tâm Lý Thị Giác: (1) Chỉ tay vào chi tiết lạ trên màn hình ("Hãy nhìn kỹ vết sẹo tròn trên đầu con cá nhà táng này..."), (2) Sai lầm cuối cùng ("Sai lầm cuối cùng của con cá sấu này là..."), (3) Cảnh báo sinh tồn ngôi thứ 2 ("Nếu bạn nhìn thấy vệt nước này..."), hoặc (4) Phá vỡ định kiến.
-   - Tuyệt đối không mở đầu bằng câu hỏi thụ động ("Bạn có biết...") hay văn phong sách giáo khoa.{bench_block}
+   - CÂU HOOK CẢNH 1 (6–10 từ): Bắt buộc nêu đích danh Thực thể chính (hoặc cặp đấu A vs B) + thông số gây sốc hoặc nghịch lý sinh tử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu tên chủ thể kiểu "Hãy nhìn kỹ vào..." khiến người xem không biết video nói về cái gì trong 3 giây đầu.{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """
     else:
@@ -167,28 +164,29 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇺🇸 REGIONAL HOOK MASTERY — US / GLOBAL ENGLISH MARKET (en-US | TARGET: STAYED-TO-WATCH >= 70%)
 ═══════════════════════════════════════════════════════════════════
-1. GOLDEN SEPARATION OF DUTY: SEARCHABLE TITLE VS. 0.0s SCENE 1 CURIOSITY HOOK (6 TO 10 WORDS | GRADE-5 ENGLISH):
-   - TITLE (`title`): MUST explicitly name the high-search-volume primary entities + extreme physical metric or confrontation (`[Entity A] vs [Entity B]: [Extreme Metric]`, e.g., "Green Anaconda vs. Black Caiman: 1,500 PSI River Duel 🐍🐊", "The 93°C Boiling Amazon River That Cooks Everything 🔥🌊").
-   - SCENE 1 HOOK (0.0s–2.2s): NEVER repeat the Title verbatim in Scene 1, and NEVER spoil the final outcome or recite a dry textbook statistic at 0.0s! If the viewer reads "1,500 PSI" in the title and the voiceover immediately repeats "This jaguar crushes skulls with 1,500 PSI," the curiosity gap dies in 1.5 seconds! Save the hard numerical metric for Act 2 (Scenes 2–3) and Act 3 (Scene 4 Mid-Video Twist).
-2. THE 4 MILLION-VIEW US PSYCHOLOGICAL-VISUAL HOOK ARCHETYPES (CHOOSE THE #1 BEST FIT FOR SCENE 1 IN 6–10 WORDS):
-   - [Archetype 1 — Visual Micro-Observation / Camouflage Pointer ("Look closely at...")]: Force the viewer's eyes to scan the frame for a hidden threat, strange scar, or micro-expression during the first 3 seconds:
-     * "Look closely at the circular scars on this whale's head."
-     * "What looks like a dead tree branch in this river just opened its eyes."
-     * "Watch this suspect's hands the exact second the detective mentions the car."
-   - [Archetype 2 — The Fatal Mistake / In Medias Res Trap]: Drop the viewer into the exact moment a predator, army, or person makes a lethal miscalculation (Casual Geographic / HistoryMarche 5.33M Formula):
-     * "This caiman's last mistake was climbing onto this riverbank without looking up."
-     * "The Roman legions pushed forward, walking straight into Hannibal's hidden riverbed trap."
-     * "Drinking from this crystal-clear desert pool was a fatal mistake."
-   - [Archetype 3 — 2nd-Person Survival / Real-Life Spoken Trap ("If you ever..." / Quoted Insult)]: Put the viewer inside the danger or open with a real-life manipulation quote (Charisma on Command 9.78M / Zack D. Films 15.7M Formula):
-     * "Saying 'you actually look good today' is a hidden insult—watch their eyes next."
-     * "If a submarine touches this white line on the seafloor, it never surfaces."
-     * "If someone touches their neck while apologizing, watch what their eyes do next."
-   - [Archetype 4 — The Illusion Breaker / Time-Anchored Emotional Shock]: Present a visual paradox or concrete abandonment duration (Casual Geographic 8.6M / GeoBeats Animals 2.77M Formula):
-     * "Six starving lions surrounded this tiny animal, and the lions are running away."
-     * "He spent ten years completely alone in a concrete cage without a soft bed."
-     * "Everyone walked past this muddy canal drain, not realizing two eyes were staring back."
-3. STRICTLY BANNED IN US HOOKS:
-   - NO verbatim Title repetition in Scene 1, NO dry Wikipedia metric recitation at 0.0s, NO abstract poetry ("loaded weapon", "silent cage"), and NO passive Yes/No questions ("Did you know...?").
+1. GOLDEN 0.0s RETENTION RULE: EXPLICIT ENTITY + EXTREME METRIC OR LETHAL PARADOX IN SCENE 1 (6 TO 10 WORDS | GRADE-5 ENGLISH):
+   - TITLE (`title`): MUST explicitly name the high-search-volume primary entities + extreme physical metric or confrontation (`[Entity A] vs [Entity B]: [Extreme Metric]`, e.g., "Komodo Dragon vs 1,200lb Water Buffalo: Venom Ambush 🦎🐃", "1,500lb Cape Buffalo vs 400lb Lion: The Ultimate Revenge 🐃🦁").
+   - SCENE 1 HOOK (0.0s–2.2s, 6–10 words): Viewers scrolling the Shorts Feed DO NOT read the bottom title before hearing the first 2 seconds of voiceover! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND deliver an immediate shocking physical metric, clash, or lethal paradox right at 0.0s!
+   - STRICTLY FORBIDDEN VAGUE POINTERS: NEVER start Scene 1 with vague entity-blind pointers like `"Look closely at why you cannot find the exit"`, `"Look closely at these deadly floating blue tentacles"`, or `"Watch the exact moment this massive predator feels pain"`! Real YouTube Analytics proves that hiding the subject behind `"Look closely at..."` causes 70%–94% Swipe-Away in the first 2 seconds!
+2. THE 4 PROVEN HIGH-RETENTION US HOOK ARCHETYPES (CHOOSE THE #1 BEST FIT FOR SCENE 1 IN 6–10 WORDS):
+   - [Archetype 1 — Direct Scale / Extreme Metric Clash (Proven Winner `A-oNKdpL0rM` 1,146 views & `w7iUy-8hjVo` 47.7% Stay)]:
+     * "Fifteen hundred pounds of muscle crushes a four-hundred-pound lion."
+     * "Thirty thousand razor quills versus the deadliest jaws in Africa."
+     * "A fifteen-hundred-pound polar bear charges a six-hundred-pound Siberian tiger."
+   - [Archetype 2 — Walking Dead / Lethal Paradox with Named Entity (Proven Winner `1NeB0Qe6_t4` 1,325 views in 12h & `D_sIws9Buto` 123.8% APV)]:
+     * "This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead."
+     * "Earth survived only because the Krakatoa volcano killed thousands."
+     * "The Jaguar doesn't hunt like lions—it targets skull kill-switches."
+   - [Archetype 3 — Concrete Historical / Scientific Shock Event (Proven Winner `PVoVipDbLt8` 87.5% APV)]:
+     * "One hundred thousand Mongol horsemen vanished forty miles from Vienna."
+     * "In 1815, Mount Tambora's eruption buried June under freezing snowstorms."
+   - [Archetype 4 — Named Psychological / Behavioral Trap]:
+     * "Las Vegas casinos remove every clock to trap your brain's dopamine."
+     * "FBI interrogators place one water cup six inches from guilty suspects."
+3. STRICTLY BANNED IN US SHORTS:
+   - NO vague `"Look closely at..."` or `"Watch the exact moment..."` hooks that hide the primary subject in Scene 1.
+   - NO multi-round gauntlets (`"Round One... Round Two... Round Three..."`) or bait-and-switch 3rd animals inside a 35-second Short: all 7–8 scenes MUST stay 100% focused on the exact entities promised in the `title`!
+   - NO abstract poetry ("loaded weapon", "silent cage"), and NO passive Yes/No questions ("Did you know...?").
 4. 1-1 VISUAL CONTRAST & LEAD-SUBJECT ALTERNATION RULE (BREAKING THE ~1,000-VIEW SEED COHORT CEILING):
    - Real YouTube Analytics v2 telemetry proves that starting consecutive uploads with the exact same lead subject/species noun or identical opening visual color palette triggers Audience Cohort Fatigue (Stayed-to-Watch drops from ~48.5% to ~32.8%, capping views at ~1,000).
    - NEVER start the new `title` or Scene 1 visual hook with the same primary subject noun/entity that led the channel's last 2-3 videos! Always alternate visual palettes and foreground the freshest, most visually contrasting phenomenon or opponent.
