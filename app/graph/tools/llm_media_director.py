@@ -21,6 +21,7 @@ from app.graph.tools.tool_schemas import (
     MEDIA_DIRECTOR_TOOLS,
     _clean_yt_search_phrase,
     _sanitize_tool_arg,
+    build_single_entity_stock_queries,
 )
 
 
@@ -112,12 +113,16 @@ STEP 2 — SELECT THE OPTIMAL `@tool` & CONTEXT-ANCHORED SEARCH QUERY FOR EACH S
         (NEVER call `search_google_cinematic_image` for psychology because open-web Google Images return text quote cards and book covers!).
    - FOR REAL-WORLD WILDLIFE, NATURE, ANIMAL RESCUE, SCIENCE, OR ALTERNATE HISTORY TOPICS:
      -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for all body scenes AND the Final Scene `scene_id={total_scenes}`), only calling `search_google_cinematic_image` on a middle scene when a specific historical map, document, or static artifact has no motion video equivalent (and NEVER on Scene 1, Scene 2, Scene {max(1, total_scenes - 1)}, or Scene {total_scenes}).
-     -> SEARCH-ENGINE-NATIVE QUERY ENGINEERING (CRITICAL — PREVENT DUMB SEARCHES):
-        * `subject_entity` (Scene-Accurate): Set `subject_entity` to the exact entity physically acting in that specific scene, OR in a 2-entity duel (`Entity A vs Entity B`), set `"Entity A or Entity B"` (e.g., `"Leopard or African Crested Porcupine"`) so our Vision Auditor accepts valid footage of either contender!
-        * `youtube_search_query` (3–5 words, Real YouTube Titles): Write the exact 3–5 word phrase real YouTube Shorts creators use in video titles (e.g., `"leopard attacking porcupine"`, `"porcupine rattling quills closeup"`, `"leopard injured by porcupine quills"`, `"porcupine defending against leopard"`). NEVER write narrative story phrases that nobody titles a video with (FORBIDDEN: `"porcupine walking away savanna"`, `"porcupine quill embedded in animal skin macro"`).
-        * `fallback_broad_query` / `primary_stock_query` / `secondary_stock_query` (2–3 words, Pexels/Pixabay Index Format): Write the 2–3 word **canonical common species/subject noun + habitat/action** that Pexels/Pixabay actually index (e.g., `"porcupine wildlife"`, `"porcupine quills closeup"`, `"leopard hunting savanna"`).
-          - FORBIDDEN #1 (NO GENERIC TEXTURES): When a sentence zooms into a body part or microscopic mechanism (`"these needles"`, `"microscopic barbs"`, `"1500 PSI bite"`), NEVER write `"microscopic texture nature"` or `"sharp needle texture macro"` (which returns sewing needles, incense sticks, and leaves on Pexels!). Always anchor to the real animal (`"porcupine quills closeup"`).
-          - FORBIDDEN #2 (NEVER DROP THE HEAD NOUN): Always keep the core noun (`"porcupine"`, `"leopard"`, `"octopus"`), never regional adjectives alone (`"African Crested"`).
+     -> SEARCH-ENGINE-NATIVE DUAL-TRACK QUERY ENGINEERING (CRITICAL — SEARCH BOTH CLASH & SINGLE-ENTITY, FAST-DROP IF NEEDED):
+        * `subject_entity` (Scene-Accurate): Set `subject_entity` to the exact entity physically acting in that specific scene, OR in a 2-entity duel (`Entity A vs Entity B`), set `"Entity A or Entity B"` (e.g., `"Saltwater Crocodile or Bull Shark"`, `"Leopard or African Crested Porcupine"`) so our Vision Auditor accepts valid footage of either contender!
+        * `youtube_search_query` (3–5 words, Dual-Track Strategy):
+          - For individual body scenes describing ONE contender's weapon, movement, anatomy, or habitat: ONLY search **that single entity + real physical action/habitat** (e.g., `"saltwater crocodile swimming river"`, `"bull shark underwater"`, `"porcupine rattling quills closeup"`). Do NOT inject `"A vs B"` into single-entity body scenes (which lures comparison `#edit` and AI Veo videos)!
+          - For direct clash/encounter scenes (e.g., Opening Hook or Climax clash): write a real camera-encounter query (`"leopard attacking porcupine"`, `"crocodile vs bull shark"`). Our engine searches BOTH `"A vs B"` and single-entity queries in parallel, and automatically drops `"A vs B"` immediately if no clean unedited clash footage exists!
+          - NEVER write literary story phrases that nobody titles a video with (FORBIDDEN: `"porcupine walking away savanna"`, `"quill embedded in animal skin macro"`).
+        * `fallback_broad_query` / `primary_stock_query` / `secondary_stock_query` (2–4 words, Strictly Single-Entity — FORBIDDEN `"vs"`): Write the 2–4 word **single canonical species/subject noun + real habitat/action** that Pexels/Pixabay/Documentary libraries actually index (e.g., `"saltwater crocodile river"`, `"bull shark underwater"`, `"porcupine wildlife"`).
+          - FORBIDDEN #1 (NEVER PUT `"vs"` OR `"A vs B"` IN FALLBACK/STOCK QUERIES): Stock libraries index single subjects; `"vs"` returns 0 relevant results!
+          - FORBIDDEN #2 (NO GENERIC TEXTURES): When a sentence zooms into a body part or microscopic mechanism (`"these needles"`, `"microscopic barbs"`, `"1500 PSI bite"`), NEVER write `"microscopic texture nature"` or `"sharp needle texture macro"`. Always anchor to the real entity (`"porcupine quills closeup"`).
+          - FORBIDDEN #3 (NEVER DROP THE HEAD NOUN): Always keep the core noun (`"porcupine"`, `"crocodile"`, `"shark"`), never regional adjectives alone (`"African Crested"`).
 
 2. DECIDE `search_scope` FOR EACH INDIVIDUAL SCENE (`"SCENE_SPECIFIC"` vs `"SCRIPT_OVERALL"`):
    - `"SCENE_SPECIFIC"`: The split sentence (once pronouns are resolved) describes a clear, standalone visual action of the subject.
@@ -322,10 +327,25 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             elif t_chosen == "clone_youtube_short_peak_clip":
                 video_peak_count += 1
                 d.setdefault("clip_role", "HOOK" if sid == 1 else "PEAK")
-                d.setdefault("fallback_broad_query", s.get("stock_query") or default_overall_q)
+                raw_fb = d.get("fallback_broad_query") or s.get("stock_query") or default_overall_q
+                clean_single_fbs = build_single_entity_stock_queries(
+                    raw_queries=[raw_fb, s.get("visual_keyword") or ""],
+                    subject_entity=str(d.get("subject_entity") or default_subj),
+                    topic=topic,
+                    max_words=4,
+                )
+                d["fallback_broad_query"] = clean_single_fbs[0] if clean_single_fbs else raw_fb
             elif t_chosen == "search_pexels_pixabay_stock_video":
-                p_sq = d.get("primary_stock_query") or s.get("stock_query") or s.get("visual_keyword") or default_overall_q
-                s_sq = d.get("secondary_stock_query") or s.get("stock_query") or default_overall_q
+                p_raw = d.get("primary_stock_query") or s.get("stock_query") or s.get("visual_keyword") or default_overall_q
+                s_raw = d.get("secondary_stock_query") or s.get("stock_query") or default_overall_q
+                clean_p_list = build_single_entity_stock_queries(
+                    raw_queries=[p_raw, s_raw, s.get("visual_keyword") or ""],
+                    subject_entity=str(d.get("subject_entity") or default_subj),
+                    topic=topic,
+                    max_words=4,
+                )
+                p_sq = clean_p_list[0] if clean_p_list else p_raw
+                s_sq = clean_p_list[1] if len(clean_p_list) > 1 else (clean_p_list[0] if clean_p_list else s_raw)
                 d["primary_stock_query"] = p_sq
                 d["secondary_stock_query"] = s_sq
                 d["youtube_search_query"] = p_sq

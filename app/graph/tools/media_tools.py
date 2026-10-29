@@ -19,6 +19,9 @@ from app.graph.tools.tool_schemas import (
     _TALKING_HEAD_BLOCKLIST,
     _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST,
     _YT_QUERY_FILLER_WORDS,
+    has_versus_pattern,
+    is_edit_or_ai_slop_video_metadata,
+    build_single_entity_stock_queries,
     clone_youtube_short_peak_clip,
     search_google_cinematic_image,
     summon_epic_monster_cinematic_media,
@@ -72,4 +75,7 @@ __all__ = [
     "_verify_short_clip_with_gemini_vision",
     "_search_youtube_flat_cached",
     "_rank_youtube_candidates_with_llm",
+    "has_versus_pattern",
+    "is_edit_or_ai_slop_video_metadata",
+    "build_single_entity_stock_queries",
 ]

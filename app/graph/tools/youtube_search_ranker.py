@@ -25,6 +25,7 @@ from app.graph.tools.tool_schemas import (
     _TALKING_HEAD_BLOCKLIST,
     _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST,
     _YT_QUERY_FILLER_WORDS,
+    is_edit_or_ai_slop_video_metadata,
 )
 
 
@@ -273,11 +274,12 @@ def _search_youtube_flat_cached(
     search_phrases: List[str],
     subject_anchors: Set[str],
     all_query_tokens: Set[str],
+    allow_3d_cgi_monster: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    Quét song song tối đa 5 nhánh ứng viên YouTube Shorts (`extract_flat="in_playlist"`)
-    qua LangGraph `Send` API + `Annotated[List[Dict[str, Any]], operator.add]` có bộ nhớ đệm (cache)
-    mở rộng lên 25 ứng viên/truy vấn để tăng tốc độ tìm kiếm gấp 3-5 lần!
+    Quét song song tối đa 4 nhánh ứng viên YouTube (Kệ Shorts dọc 9:16 + Video gốc 16:9 HD/4K quay thật)
+    qua LangGraph `Send` API có bộ nhớ đệm (cache), đồng thời lọc bỏ 0ms ổ video `#edit` so sánh, quiz
+    và video AI Veo/Sora/Kling có logo góc.
     """
     import yt_dlp
 
@@ -291,7 +293,7 @@ def _search_youtube_flat_cached(
     }
 
     def _fetch_single_yt_phrase(sp: str) -> List[Dict[str, Any]]:
-        cache_key = f"{license_policy.license_mode()}::vshort::{sp.lower().strip()}"
+        cache_key = f"{license_policy.license_mode()}::vdual::{sp.lower().strip()}"
         with _yt_url_lock:
             cached_entries = _yt_flat_search_cache.get(cache_key)
         if cached_entries:
@@ -301,26 +303,26 @@ def _search_youtube_flat_cached(
                 cached_entries = _yt_flat_search_cache.get(cache_key)
             if cached_entries:
                 return cached_entries
-            # Bước 1 (Ưu tiên số 1): Quét kệ YouTube Shorts dọc 9:16 nguyên bản (`shortsLockupViewModel` / `/shorts/`)
-            native_shorts = license_policy.search_youtube_native_shorts_flat(sp, max_results=20)
+            # Bước 1: Quét kệ YouTube Shorts dọc 9:16 nguyên bản (`shortsLockupViewModel` / `/shorts/`)
+            native_shorts = license_policy.search_youtube_native_shorts_flat(sp, max_results=12)
             seen_s_ids = {str(x.get("id") or "") for x in native_shorts if x.get("id")}
             combined_entries: List[Dict[str, Any]] = list(native_shorts)
 
-            # Bước 2: Bổ sung ứng viên từ yt-dlp nếu kệ Shorts trả về ít hơn 10 kết quả
-            if len(combined_entries) < 10:
-                yt_query = license_policy.youtube_search_target(sp, max_results=20)
-                try:
-                    with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=20)) as ydl:
-                        res = ydl.extract_info(yt_query, download=False)
-                    for e in ((res or {}).get("entries") or []):
-                        if e and isinstance(e, dict):
-                            eid = str(e.get("id") or "")
-                            if eid and eid not in seen_s_ids:
-                                seen_s_ids.add(eid)
-                                e["is_vertical_short"] = license_policy.is_entry_vertical_short(e)
-                                combined_entries.append(e)
-                except Exception:
-                    pass
+            # Bước 2 (Luôn bổ sung song song): Quét cả video YouTube thường 16:9 HD/4K quay thật (không khóa ở < 10)
+            # vì rất nhiều thước phim hoang dã/tài liệu gốc sạch chữ 100% nằm ở dạng 16:9 chứ không nằm trong ổ #shorts edit!
+            yt_query = license_policy.youtube_search_target(sp, max_results=12)
+            try:
+                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=12)) as ydl:
+                    res = ydl.extract_info(yt_query, download=False)
+                for e in ((res or {}).get("entries") or []):
+                    if e and isinstance(e, dict):
+                        eid = str(e.get("id") or "")
+                        if eid and eid not in seen_s_ids:
+                            seen_s_ids.add(eid)
+                            e["is_vertical_short"] = license_policy.is_entry_vertical_short(e)
+                            combined_entries.append(e)
+            except Exception:
+                pass
             cached_entries = combined_entries
             if cached_entries:
                 with _yt_url_lock:
@@ -355,7 +357,7 @@ def _search_youtube_flat_cached(
                 webpage_url = f"https://www.youtube.com{webpage_url}"
 
             dur = float(entry.get("duration") or (25.0 if is_vert_short else 0.0))
-            if dur <= 0 or dur < 4 or dur > 210:
+            if dur <= 0 or dur < 4 or dur > 240:
                 continue
 
             title = str(entry.get("title") or "")
@@ -366,6 +368,8 @@ def _search_youtube_flat_cached(
             if any(bad in meta_lower for bad in _TALKING_HEAD_BLOCKLIST):
                 continue
             if any(bad_ch in meta_lower for bad_ch in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST):
+                continue
+            if is_edit_or_ai_slop_video_metadata(title, uploader, allow_3d_cgi_monster=allow_3d_cgi_monster):
                 continue
 
             title_lower = title.lower()
@@ -378,8 +382,10 @@ def _search_youtube_flat_cached(
                 30.0 if views >= 250_000 else
                 12.0 if views >= 50_000 else 0.0
             )
-            short_fmt_bonus = 25.0 if (0 < dur <= 75) else (15.0 if dur <= 150 else 0.0)
-            vertical_native_bonus = 165.0 if is_vert_short else 0.0
+            short_fmt_bonus = 20.0 if (0 < dur <= 75) else (15.0 if dur <= 180 else 0.0)
+            # Chỉ thưởng nhẹ +25.0 cho video dọc (thay vì +165.0 khóa cứng) để video 16:9 quay thật sạch chữ vượt lên trên #shorts edit!
+            vertical_native_bonus = 25.0 if is_vert_short else 0.0
+            clean_title_bonus = 25.0 if title.count("#") <= 2 else (-20.0 if title.count("#") >= 5 else 0.0)
             score = (
                 (anchor_hits * 65.0)
                 + (action_hits * 35.0)
@@ -387,6 +393,7 @@ def _search_youtube_flat_cached(
                 + viral_boost
                 + short_fmt_bonus
                 + vertical_native_bonus
+                + clean_title_bonus
             )
             candidates.append({
                 "id": vid_id,
@@ -399,7 +406,7 @@ def _search_youtube_flat_cached(
                 "score": score,
             })
 
-    candidates.sort(key=lambda x: (bool(x.get("is_vertical_short")), x["score"]), reverse=True)
+    candidates.sort(key=lambda x: x["score"], reverse=True)
     return candidates
 
 
@@ -413,10 +420,10 @@ def _rank_youtube_candidates_with_llm(
     allow_3d_cgi_monster: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    Bộ não LLM Batch Candidate Selector cho YouTube Shorts:
-    - Thay thế hoàn toàn kiểu lọc từ khóa cứng (`anchor_hits == 0` hoặc regex động từ hành động).
-    - Gửi danh sách tối đa 20 ứng viên YouTube (`id`, `title`, `uploader`, `duration`, `view_count`, `format`) trong 1 lần gọi JSON duy nhất
-      để LLM đánh giá ngữ nghĩa: ưu tiên tuyệt đối các video dọc `9:16_NATIVE_SHORT` đúng chủ thể để vừa khít khung hình 9:16 không bị mất góc!
+    Bộ não LLM Batch Candidate Selector cho YouTube:
+    - Gửi danh sách tối đa 20 ứng viên YouTube (`id`, `title`, `uploader`, `duration`, `view_count`, `format`) trong 1 lần gọi JSON duy nhất.
+    - Ưu tiên số 1 cho CẢNH QUAY THẬT NGUYÊN BẢN SẠCH CHỮ (cả `9:16_NATIVE_SHORT` lẫn `16:9_LANDSCAPE` tư liệu gốc);
+      loại bỏ ngay các video `#edit` so sánh, `"Who would win"` hoặc AI tạo sinh giả cảnh thật.
     """
     if not candidates or len(candidates) <= 1:
         return candidates
@@ -437,7 +444,7 @@ def _rank_youtube_candidates_with_llm(
     mode_desc = (
         "Photorealistic 3D CGI / Unreal Engine 5 / Megalophobia / Thalassophobia scale animation (REJECT 2D cartoons, Minecraft, Roblox, GMod, Lego, tier lists, reactions)"
         if allow_3d_cgi_monster
-        else "Real-world high-impact documentary / authentic footage (REJECT cartoons, video games, slideshows, sleeping/passive pet videos, talking-head explainers, or wrong species/subjects)"
+        else "Real-world high-impact documentary / authentic camera footage (REJECT comparison #edit videos, 'Who would win' debates, AI-generated Veo/Sora/Kling videos, cartoons, video games, slideshows, sleeping/passive pet videos, talking-head explainers, or wrong species/subjects)"
     )
 
     prompt = f"""You are the Lead LLM Video Candidate Curator for a viral YouTube Shorts studio.
@@ -453,9 +460,12 @@ Candidate YouTube Videos:
 
 TASK:
 1. Semantically evaluate each candidate title + channel + duration + views + format against the Topic, Primary Subject, and Scene Narration (understand synonyms, scientific names, and contextual meaning—do NOT rely on naive exact word matching).
-2. CRITICAL VERTICAL FRAMING PRIORITY: Strongly prioritize candidates with `"format": "9:16_NATIVE_SHORT"` over `"16:9_LANDSCAPE"` whenever they match the subject, because native 9:16 Shorts fit the vertical screen naturally without cropping off parts of the subject's body!
-3. REJECT any candidate that is off-topic, shows the wrong subject/species, is a passive/boring clip (e.g., sleeping, screensaver, 1-hour loop), or is a reaction/gaming/tier-list/compilation video.
-4. Score the approved candidates from 0.0 to 10.0 based on how well they deliver a dramatic, well-framed 9:16 visual moment for this scene.
+2. CLEAN RAW FOOTAGE OVER EDITED SHORTS (CRITICAL):
+   - Prioritize CLEAN, AUTHENTIC, UNEDITED RAW FOOTAGE (both `"9:16_NATIVE_SHORT"` and `"16:9_LANDSCAPE"` wildlife/field/documentary recordings—our FFmpeg engine smart-crops 16:9 cleanly!) OVER heavily-edited `#shorts` reposts, `"A vs B"` comparison edits, `"Who would win"` quizzes, or AI-generated Veo clips!
+   - DUAL-TRACK "A vs B" RULE: If a candidate is a GENUINE real-life camera encounter of both entities interacting, score it highest (`9.0–10.0`). If `"A vs B"` candidates look like comparison edits, fan montages, debates, or AI renders, REJECT them into `"rejected_ids"` immediately and approve the cleanest single-entity real footage!
+   - When two candidates are equally clean & authentic raw footage, give a slight preference (+0.3) to `"9:16_NATIVE_SHORT"`.
+3. REJECT any candidate that is off-topic, shows the wrong subject/species, is a comparison `#edit` / quiz / AI-slop clip, a passive/boring clip (sleeping, screensaver, 1-hour loop), or a reaction/gaming/tier-list/compilation video.
+4. Score the approved candidates from 0.0 to 10.0 based on authenticity, absence of burned-in edit overlays, and dramatic visual impact for this scene.
 
 Return ONLY valid JSON in this exact format:
 {{

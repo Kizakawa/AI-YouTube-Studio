@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 from app.graph.tools.tool_schemas import (
     _yt_url_lock,
     _clean_yt_search_phrase,
+    build_single_entity_stock_queries,
 )
 from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
 
@@ -179,24 +180,29 @@ def _try_licensed_stock_video_fallback(
         try:
             from app.graph.evaluators.visual_critic import VisualCritic
             media_agent = MediaAgent()
-            scene_core_2w = _clean_yt_search_phrase(search_query or (search_phrases[0] if search_phrases else ""), max_words=2)
-            scene_subj_hint = (
-                f"{search_phrases[0]} (hoặc {scene_core_2w or subject_entity})"
-                if (effective_scope == "SCENE_SPECIFIC" and search_phrases)
-                else (subject_entity or topic)
-            )
-            stock_query_candidates: List[str] = []
             raw_cand_sources = (
-                [search_query, scene_core_2w, *search_phrases]
+                [search_query, *search_phrases]
                 if effective_scope == "SCENE_SPECIFIC"
                 else [*search_phrases, overall_script_query, subject_entity]
             )
-            for cand_sq in raw_cand_sources:
-                c_clean = (cand_sq or "").strip()
-                if c_clean and c_clean.lower() not in [x.lower() for x in stock_query_candidates]:
-                    stock_query_candidates.append(c_clean)
+            # Fast-Drop 'A vs B' khi xuống kho Pexels/Pixabay/Wikimedia: tách sạch thành truy vấn ĐƠN CHỦ THỂ!
+            stock_query_candidates = build_single_entity_stock_queries(
+                raw_queries=raw_cand_sources,
+                subject_entity=subject_entity,
+                topic=topic,
+                max_words=4,
+            )
             if not stock_query_candidates:
-                stock_query_candidates = [search_query or topic or "wildlife nature"]
+                stock_query_candidates = [
+                    _clean_yt_search_phrase(search_query or subject_entity or topic, max_words=3, strip_distractor_props=True)
+                    or "wildlife nature"
+                ]
+            scene_core_2w = _clean_yt_search_phrase(stock_query_candidates[0], max_words=2, strip_distractor_props=True)
+            scene_subj_hint = (
+                f"{stock_query_candidates[0]} (hoặc {subject_entity or scene_core_2w})"
+                if effective_scope == "SCENE_SPECIFIC"
+                else (subject_entity or topic)
+            )
 
             va_vid = {
                 "analysis_source": "ai",
@@ -226,9 +232,10 @@ def _try_licensed_stock_video_fallback(
                         narration=effective_narr,
                         topic=topic or overall_script_query,
                     )
-                    if (not best_stock_v or not best_stock_v.get("url")) and hasattr(media_agent, "_stock_fetcher"):
+                    stock_backend = getattr(media_agent, "_stock", None) or getattr(media_agent, "_stock_fetcher", None)
+                    if (not best_stock_v or not best_stock_v.get("url")) and stock_backend is not None:
                         try:
-                            wiki_vids = media_agent._stock_fetcher.search_wikimedia_videos(st_q, per_page=6) or []
+                            wiki_vids = stock_backend.search_wikimedia_videos(st_q, per_page=6) or []
                             for wv in wiki_vids:
                                 w_url = wv.get("url")
                                 if w_url and not is_media_already_used(w_url, used):
@@ -248,135 +255,145 @@ def _try_licensed_stock_video_fallback(
                     best_stock_v = None
                 if not best_stock_v or not best_stock_v.get("url"):
                     continue
-                v_url = best_stock_v["url"]
                 st_title = str(best_stock_v.get("title") or "")
-                with tempfile.TemporaryDirectory() as tmp_s:
-                    raw_stock = str(Path(tmp_s) / "stock_raw.mp4")
-                    media_agent.download_file(v_url, raw_stock)
-                    if not Path(raw_stock).exists() or Path(raw_stock).stat().st_size <= 20000:
-                        rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
-                        continue
-                    # Kiểm tra độ phân giải >= 720p, độ nét >= 5.2 và độ sáng trên stock clip bản quyền (Pexels/Pixabay không có watermark kênh thứ 3)
-                    raw_gate = VisualCritic.inspect_clip_before_concat(
-                        raw_stock, min_short_edge=720, min_sharpness=5.2, check_watermark=False, allow_snow=True
-                    )
-                    if not raw_gate.get("passed", False):
-                        logger.info(
-                            f"🚫 [LicensedStockGate] Bỏ qua stock clip '{st_title[:45]}' vì không đạt chuẩn kỹ thuật: "
-                            f"{'; '.join(raw_gate.get('issues') or [])}"
-                        )
-                        rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
-                        continue
+                candidate_stock_urls = [best_stock_v["url"]]
+                for alt_u in (best_stock_v.get("_vision_alternates") or []):
+                    if alt_u and alt_u not in candidate_stock_urls and not is_media_already_used(alt_u, used):
+                        candidate_stock_urls.append(alt_u)
 
-                    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-                    from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
-                    raw_st_dur = max(0.0, get_duration_ms(raw_stock) / 1000.0)
-                    min_st_dur = max(3.0, target_duration_sec)
-                    st_start, st_peak_len = find_hook_peak_window(
-                        raw_stock,
-                        min_duration=min_st_dur,
-                        max_duration=min(max_peak_duration_sec, max(min_st_dur, raw_st_dur)),
-                    )
-                    trim_video(
-                        input_path=raw_stock,
-                        duration_seconds=min_st_dur,
-                        output_path=output_path,
-                        width=1080,
-                        height=1920,
-                        fps=30,
-                        apply_grading=True,
-                        is_hook_scene=((clip_role or "").upper() == "HOOK"),
-                        fair_use_transform=False,
-                        start_offset_sec=st_start,
-                        preserve_continuous_flow=True,
-                    )
-                    if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
-                        ok_st_sig, _ = rag.verify_and_commit_in_job_clip(
-                            job_id=job_id,
-                            scene_id=eff_scene_id,
-                            media_path=output_path,
-                            url=v_url,
-                            title=st_title,
-                            is_continuation_slice=False,
-                        )
-                        if not ok_st_sig:
-                            rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
-                            Path(output_path).unlink(missing_ok=True)
+                for cand_idx_u, v_url in enumerate(candidate_stock_urls[:3]):
+                    if cand_idx_u > 0:
+                        if not rag.try_claim_in_job_video(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id):
                             continue
-
-                        # Nếu clip đã được LLM Link & Vision Auditor duyệt trực tiếp qua ảnh Thumbnail (score >= 6.8),
-                        # không gọi lại Gemini Vision lần thứ 2 trên cùng 1 video để tiết kiệm 6.5 giây/cảnh!
-                        if best_stock_v.get("vision_curated") and float(best_stock_v.get("vision_score") or 0.0) >= 6.8:
-                            passed_st_vis = True
-                            st_vis_score = float(best_stock_v.get("vision_score") or 8.0)
-                            st_vis_reason = "Approved by LLM Link & Thumbnail Vision Auditor"
-                        else:
-                            passed_st_vis, st_vis_score, st_vis_reason = _verify_short_clip_with_gemini_vision(
-                                video_path=output_path,
-                                topic=topic,
-                                narration=narration,
-                                subject_entity=subject_entity or topic,
-                                overall_script_query=overall_script_query or st_q,
-                                search_scope=effective_scope,
-                                video_title=st_title,
-                                allow_3d_cgi_monster=False,
-                                strict_no_fallback=True,
-                            )
-                        if not passed_st_vis:
+                    with tempfile.TemporaryDirectory() as tmp_s:
+                        raw_stock = str(Path(tmp_s) / "stock_raw.mp4")
+                        media_agent.download_file(v_url, raw_stock)
+                        if not Path(raw_stock).exists() or Path(raw_stock).stat().st_size <= 20000:
+                            rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
+                            continue
+                        # Kiểm tra độ phân giải >= 720p, độ nét >= 5.2 và độ sáng trên stock clip bản quyền (Pexels/Pixabay không có watermark kênh thứ 3)
+                        raw_gate = VisualCritic.inspect_clip_before_concat(
+                            raw_stock, min_short_edge=720, min_sharpness=5.2, check_watermark=False, allow_snow=True
+                        )
+                        if not raw_gate.get("passed", False):
                             logger.info(
-                                f"🚫 [LicensedStockVision] Gemini Vision từ chối stock clip '{st_title[:45]}' "
-                                f"({st_vis_score}/10: {st_vis_reason}) -> Thử ứng viên tiếp theo!"
+                                f"🚫 [LicensedStockGate] Bỏ qua stock clip '{st_title[:45]}' vì không đạt chuẩn kỹ thuật: "
+                                f"{'; '.join(raw_gate.get('issues') or [])}"
                             )
                             rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
-                            Path(output_path).unlink(missing_ok=True)
                             continue
 
-                        full_peak_path_st = None
-                        if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:
-                            cand_full_st = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
-                            try:
-                                trim_video(
-                                    input_path=raw_stock,
-                                    duration_seconds=st_peak_len,
-                                    output_path=cand_full_st,
-                                    width=1080,
-                                    height=1920,
-                                    fps=30,
-                                    apply_grading=True,
-                                    is_hook_scene=False,
-                                    fair_use_transform=False,
-                                    start_offset_sec=st_start,
-                                    preserve_continuous_flow=True,
-                                )
-                                if Path(cand_full_st).exists() and Path(cand_full_st).stat().st_size > 25000:
-                                    full_peak_path_st = cand_full_st
-                            except Exception:
-                                pass
+                        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                        from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
+                        raw_st_dur = max(0.0, get_duration_ms(raw_stock) / 1000.0)
+                        min_st_dur = max(3.0, target_duration_sec)
+                        st_start, st_peak_len = find_hook_peak_window(
+                            raw_stock,
+                            min_duration=min_st_dur,
+                            max_duration=min(max_peak_duration_sec, max(min_st_dur, raw_st_dur)),
+                        )
+                        trim_video(
+                            input_path=raw_stock,
+                            duration_seconds=min_st_dur,
+                            output_path=output_path,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            apply_grading=True,
+                            is_hook_scene=((clip_role or "").upper() == "HOOK"),
+                            fair_use_transform=False,
+                            start_offset_sec=st_start,
+                            preserve_continuous_flow=True,
+                        )
+                        if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
+                            ok_st_sig, _ = rag.verify_and_commit_in_job_clip(
+                                job_id=job_id,
+                                scene_id=eff_scene_id,
+                                media_path=output_path,
+                                url=v_url,
+                                title=st_title,
+                                is_continuation_slice=False,
+                            )
+                            if not ok_st_sig:
+                                rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
+                                Path(output_path).unlink(missing_ok=True)
+                                continue
 
-                        used.update(extract_media_identity(v_url))
-                        record_used_media(
-                            url=v_url,
-                            query=st_q,
-                            job_id=job_id,
-                            source="pexels_stock_video",
-                            media_path=output_path,
-                        )
-                        logger.info(
-                            f"🎬 [LicensedStockVideo HD Fallback] Đã tải & duyệt video Pexels/Pixabay "
-                            f"(scope={effective_scope}, peak={st_peak_len:.1f}s, vis={st_vis_score}/10) cho {clip_role}: '{st_title[:50]}'"
-                        )
-                        return {
-                            "media_path": output_path,
-                            "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
-                            "source_url": v_url,
-                            "title": st_title or "HD Portrait Stock Video",
-                            "window": f"{st_start:.1f}s-{st_start + (st_peak_len if full_peak_path_st else min_st_dur):.1f}s",
-                            "vision_score": st_vis_score,
-                            "search_scope": effective_scope,
-                            "full_peak_path": full_peak_path_st,
-                            "full_peak_duration_sec": round(st_peak_len if full_peak_path_st else min_st_dur, 2),
-                            "scene_clip_duration_sec": round(min_st_dur, 2),
-                        }
+                            # Nếu clip đã được LLM Link & Vision Auditor duyệt trực tiếp qua ảnh Thumbnail (score >= 6.5, khớp ngưỡng StockFetcher),
+                            # không gọi lại Gemini Vision lần thứ 2 trên cùng 1 video để tiết kiệm 6.5 giây/cảnh!
+                            pre_vis_score = float(best_stock_v.get("vision_score") or best_stock_v.get("curation_score") or 0.0)
+                            is_pre_curated = bool(best_stock_v.get("vision_curated") or ("curation_score" in best_stock_v))
+                            if is_pre_curated and pre_vis_score >= 6.5:
+                                passed_st_vis = True
+                                st_vis_score = pre_vis_score
+                                st_vis_reason = "Approved by LLM Link & Thumbnail Vision Auditor"
+                            else:
+                                passed_st_vis, st_vis_score, st_vis_reason = _verify_short_clip_with_gemini_vision(
+                                    video_path=output_path,
+                                    topic=topic,
+                                    narration=narration,
+                                    subject_entity=subject_entity or topic,
+                                    overall_script_query=overall_script_query or st_q,
+                                    search_scope=effective_scope,
+                                    video_title=st_title,
+                                    allow_3d_cgi_monster=False,
+                                    strict_no_fallback=True,
+                                )
+                            if not passed_st_vis:
+                                logger.info(
+                                    f"🚫 [LicensedStockVision] Gemini Vision từ chối stock clip '{st_title[:45]}' "
+                                    f"({st_vis_score}/10: {st_vis_reason}) -> Thử ứng viên tiếp theo!"
+                                )
+                                rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
+                                Path(output_path).unlink(missing_ok=True)
+                                continue
+
+                            full_peak_path_st = None
+                            if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:
+                                cand_full_st = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
+                                try:
+                                    trim_video(
+                                        input_path=raw_stock,
+                                        duration_seconds=st_peak_len,
+                                        output_path=cand_full_st,
+                                        width=1080,
+                                        height=1920,
+                                        fps=30,
+                                        apply_grading=True,
+                                        is_hook_scene=False,
+                                        fair_use_transform=False,
+                                        start_offset_sec=st_start,
+                                        preserve_continuous_flow=True,
+                                    )
+                                    if Path(cand_full_st).exists() and Path(cand_full_st).stat().st_size > 25000:
+                                        full_peak_path_st = cand_full_st
+                                except Exception:
+                                    pass
+
+                            used.update(extract_media_identity(v_url))
+                            record_used_media(
+                                url=v_url,
+                                query=st_q,
+                                job_id=job_id,
+                                source="pexels_stock_video",
+                                media_path=output_path,
+                            )
+                            logger.info(
+                                f"🎬 [LicensedStockVideo HD Fallback] Đã tải & duyệt video Pexels/Pixabay "
+                                f"(scope={effective_scope}, peak={st_peak_len:.1f}s, vis={st_vis_score}/10) cho {clip_role}: '{st_title[:50]}'"
+                            )
+                            return {
+                                "media_path": output_path,
+                                "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
+                                "source_url": v_url,
+                                "title": st_title or "HD Portrait Stock Video",
+                                "window": f"{st_start:.1f}s-{st_start + (st_peak_len if full_peak_path_st else min_st_dur):.1f}s",
+                                "vision_score": st_vis_score,
+                                "search_scope": effective_scope,
+                                "full_peak_path": full_peak_path_st,
+                                "full_peak_duration_sec": round(st_peak_len if full_peak_path_st else min_st_dur, 2),
+                                "scene_clip_duration_sec": round(min_st_dur, 2),
+                            }
         except Exception as e_st:
             logger.debug(f"[LicensedStockVideo] Lỗi tìm stock video có giấy phép: {e_st}")
 

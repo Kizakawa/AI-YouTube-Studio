@@ -700,9 +700,10 @@ class StockFetcher:
                     "source": "pexels_video",
                     "thumbnail": v.get("image", ""),
                 }
-        if v.get("url", "").endswith(".mp4"):
+        raw_u_no_qs = str(v.get("url") or "").split("?", 1)[0].lower()
+        if raw_u_no_qs.endswith(".mp4"):
             if not is_media_already_used(v["url"], used_set):
-                return {
+                out_cand = {
                     "url": v["url"],
                     "title": v.get("title", f"Video: {query}"),
                     "width": v.get("width", 1080),
@@ -712,6 +713,10 @@ class StockFetcher:
                     "source": v.get("source", "video"),
                     "thumbnail": v.get("thumbnail") or v.get("image", ""),
                 }
+                for keep_k in ("web_url", "_vision_alternates", "curation_score", "curation_rationale"):
+                    if keep_k in v:
+                        out_cand[keep_k] = v[keep_k]
+                return out_cand
         return None
 
     @trace_custom_span("StockFetcher.search_best_video_clip", run_type="tool")
@@ -743,7 +748,18 @@ class StockFetcher:
 
         def _push(q: str):
             q = (q or "").strip()
-            if q and q not in candidate_queries:
+            if not q:
+                return
+            if re.search(r"\b(?:vs\.?|versus)\b", q, re.IGNORECASE):
+                try:
+                    from app.graph.tools.tool_schemas import build_single_entity_stock_queries
+                    for sq_single in build_single_entity_stock_queries([q], subject_entity="", topic=topic, max_words=3):
+                        if sq_single and sq_single not in candidate_queries:
+                            candidate_queries.append(sq_single)
+                    return
+                except Exception:
+                    pass
+            if q not in candidate_queries:
                 candidate_queries.append(q)
 
         _ctx_low = f"{topic} {query} {narration}".lower()

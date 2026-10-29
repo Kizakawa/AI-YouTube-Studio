@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 from app.graph.tools.tool_schemas import (
     _clean_yt_search_phrase,
     _resolve_adaptive_search_queries,
+    build_single_entity_stock_queries,
 )
 
 
@@ -64,6 +65,7 @@ def execute_google_cinematic_image_sync(
     )
 
     subj = (subject_entity or "").strip()
+    search_qs = build_single_entity_stock_queries(search_qs, subject_entity=subject_entity, topic=topic, max_words=5) or search_qs
     if not subj:
         subj = _clean_yt_search_phrase(overall_script_query or topic, max_words=3) or (search_qs[0] if search_qs else smart_query)
 
@@ -112,7 +114,7 @@ def execute_google_cinematic_image_sync(
                     u_px = px_it.get("url")
                     if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
                         all_candidate_urls.append(u_px)
-                for pxb_it in (media_agent._stock_fetcher.search_pixabay_photos(q_extra, per_page=5) or []):
+                for pxb_it in (media_agent.search_pixabay_photos(q_extra, per_page=5) or []):
                     u_pxb = pxb_it.get("url")
                     if u_pxb and u_pxb not in all_candidate_urls and not is_media_already_used(u_pxb, used):
                         all_candidate_urls.append(u_pxb)

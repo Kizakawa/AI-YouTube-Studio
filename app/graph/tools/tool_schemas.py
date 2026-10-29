@@ -48,9 +48,50 @@ _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST = (
     "dissolve", "criticalpast", "framepool", "envato", "videvo", "adobe stock",
     "wildfilmhistory", "british pathe", "ap archive", "stock footage", "stock video",
     "tiktok", "douyin", "kwai", "capcut", "inshot", "kinemaster",
-    "filmora", "alighty", "credit:", "credits:",
+    "filmora", "alighty", "alight motion", "credit:", "credits:",
     "🎥", "📸", "top 10", "top 5", "tier list", "explained", "whatsapp status",
 )
+
+# Bộ lọc 0ms (biên từ \b an toàn, không bắt nhầm chuỗi con như 'caiman' hay '#airforce') chặn ổ video #edit so sánh, quiz & AI Veo/Sora/Kling
+_EDIT_COMPARISON_SPAM_RE = re.compile(
+    r"(?:^|[\s|/])#(?:edit|edits|vsedit|vsedits|editz|capcut|alightmotion|aftereffects|phonk|veo|veo2|veo3|sora|kling|klingai|hailuo|pika|runwayml)(?:\b|$)"
+    r"|\b(?:who\s+would\s+win|who\s+wins|who\s+won|who\s+is\s+(?:the\s+)?(?:real\s+)?king|vs\s+edit|edit\s+audio|animal\s+revolt|battle\s+simulator|power\s+scaling|power\s+level|debunked)\b",
+    re.IGNORECASE,
+)
+
+_AI_SLOP_REAL_FOOTAGE_RE = re.compile(
+    r"(?:^|[\s|/])#(?:ai|aivideo|aishorts|aiart|aianimation|aigenerated|midjourney)(?:\b|$)"
+    r"|\b(?:ai[\s\-]+generated|ai[\s\-]+video|made[\s\-]+with[\s\-]+ai|google[\s\-]+veo|veo[\s\-]+[23]\b|kling[\s\-]+ai|hailuo[\s\-]+ai|sora[\s\-]+ai)\b",
+    re.IGNORECASE,
+)
+
+_VERSUS_TOKEN_RE = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
+
+
+def has_versus_pattern(text: str) -> bool:
+    """Kiểm tra nhanh câu truy vấn hoặc tiêu đề có chứa mẫu đối đầu 'A vs B' / 'versus' hay không."""
+    return bool(_VERSUS_TOKEN_RE.search(str(text or "")))
+
+
+def is_edit_or_ai_slop_video_metadata(
+    title: str,
+    uploader: str = "",
+    allow_3d_cgi_monster: bool = False,
+) -> bool:
+    """
+    Chặn ngay ở tầng Metadata (0ms, trước khi gọi yt-dlp tải file):
+    - Ổ video fan-edit so sánh (`#edit`, `#edits`, `#vsedit`, `Who would win`, `Who won:`, `Animal Revolt Battle Simulator`, `Phonk`...)
+    - Ổ video AI tạo sinh có logo góc (`#veo`, `Google Veo`, `#sora`, `#kling`, và `#ai` / `AI generated` khi cảnh yêu cầu quay thật).
+    Giữ nguyên 100% các video quay cảnh chạm trán thật ngoài tự nhiên/tài liệu (VD: 'Crocodile attacks shark', 'Jaguar vs Caiman real fight').
+    """
+    meta = f"{title or ''} {uploader or ''}".strip()
+    if not meta:
+        return False
+    if _EDIT_COMPARISON_SPAM_RE.search(meta):
+        return True
+    if not allow_3d_cgi_monster and _AI_SLOP_REAL_FOOTAGE_RE.search(meta):
+        return True
+    return False
 
 _YT_QUERY_FILLER_WORDS = {
     "cinematic", "4k", "8k", "hd", "1080p", "edit", "edits", "visuals", "footage", "scene", "scenes",
@@ -80,13 +121,15 @@ def clone_youtube_short_peak_clip(
     QUY TẮC BẮT BUỘC CHO 4 THAM SỐ TRUY VẤN (`subject_entity`, `youtube_search_query`, `fallback_broad_query`, `overall_script_query`):
     1. `subject_entity`: Tên chủ thể thực tế xuất hiện trong khung hình của phân cảnh này.
        - Nếu kịch bản là cuộc đối đầu 2 thực thể (`Entity A vs Entity B`), hãy ghi đúng thực thể đang hành động ở câu đó hoặc ghi cả hai (`"Leopard or African Crested Porcupine"`) để giám khảo Vision không từ chối nhầm cảnh quay hợp lệ của đối thủ!
-    2. `youtube_search_query` (3–5 từ tiếng Anh): Viết ĐÚNG CÁCH các kênh YouTube Shorts đặt tiêu đề video thực tế (VD: `"leopard vs porcupine"`, `"porcupine rattling quills closeup"`, `"leopard injured by porcupine quills"`).
-       - CẤM TUYỆT ĐỐI viết các cụm từ kể chuyện văn học không ai dùng đặt tên video (CẤM: `"porcupine walking away savanna"`, `"quill embedded in animal skin macro"`).
-    3. `fallback_broad_query` (2–3 từ tiếng Anh, BẮT BUỘC): Truy vấn dự phòng chuẩn chỉ mục Pexels/Pixabay gồm **Danh từ loài/chủ thể phổ biến + môi trường/hành động** (VD: `"porcupine wildlife"`, `"leopard hunting savanna"`).
-       - CẤM cắt cụt mất danh từ chính (CẤM: `"African Crested"` thiếu chữ `"Porcupine"`) và CẤM dùng từ mô tả vật liệu/bề mặt chung chung (CẤM: `"microscopic texture"`, `"sharp needle texture"`).
+    2. `youtube_search_query` (3–5 từ tiếng Anh — CHIẾN LƯỢC SONG SONG "DUAL-TRACK"):
+       - Với các cảnh mô tả riêng từng chủ thể/vũ khí/môi trường: CHỈ search đúng **Tên 1 thực thể + hành động quay thật ngoài tự nhiên** (VD: `"saltwater crocodile swimming river"`, `"bull shark underwater"`, `"porcupine rattling quills closeup"`).
+       - Với cảnh giao chiến trực tiếp (Hook / Climax): có thể đặt truy vấn chạm trán thật (VD: `"leopard attacking porcupine"`, `"crocodile vs shark"`), hệ thống sẽ search song song cả `"A vs B"` lẫn truy vấn đơn chủ thể `fallback_broad_query` — nếu `"A vs B"` không có cảnh quay thật sạch chữ thì tự động bỏ ngay để lấy cảnh đơn chủ thể!
+       - CẤM TUYỆT ĐỐI viết cụm kể chuyện văn học (CẤM: `"porcupine walking away savanna"`, `"quill embedded in animal skin macro"`).
+    3. `fallback_broad_query` (2–4 từ tiếng Anh, BẮT BUỘC ĐƠN CHỦ THỂ — CẤM `"vs"`): Truy vấn dự phòng chuẩn chỉ mục Pexels/Pixabay/Documentary gồm **Danh từ 1 loài/chủ thể gốc + môi trường/hành động quay thật** (VD: `"saltwater crocodile river"`, `"bull shark underwater"`, `"porcupine wildlife"`).
+       - TUYỆT ĐỐI KHÔNG nhét `"A vs B"` hoặc `"vs"` vào `fallback_broad_query`, CẤM cắt cụt mất danh từ chính (CẤM: `"African Crested"` thiếu chữ `"Porcupine"`) và CẤM dùng từ vật liệu vô hồn (CẤM: `"microscopic texture"`).
     4. `search_scope` (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`) & `overall_script_query`:
        - Chọn `"SCENE_SPECIFIC"` khi câu thoại (sau khi đã thay đại từ "It/The cat/These needles" bằng tên thực thể thật) mô tả hành động/chi tiết thị giác rõ ràng.
-       - Chọn `"SCRIPT_OVERALL"` khi câu thoại là câu chuyển ý, ẩn dụ hoặc số liệu trừu tượng -> tìm kiếm xoay quanh `overall_script_query` (3–5 từ cốt lõi của toàn kịch bản, VD: `"leopard vs porcupine wildlife"`).
+       - Chọn `"SCRIPT_OVERALL"` khi câu thoại là câu chuyển ý, ẩn dụ hoặc số liệu trừu tượng -> tìm kiếm song song `overall_script_query` (3–5 từ cốt lõi của kịch bản) và `fallback_broad_query` đơn chủ thể.
     """
     return {
         "tool_name": "clone_youtube_short_peak_clip",
@@ -359,6 +402,95 @@ def _clean_yt_search_phrase(
     return " ".join(core[:max_words]).strip()
 
 
+def build_single_entity_stock_queries(
+    raw_queries: List[str],
+    subject_entity: str = "",
+    topic: str = "",
+    max_words: int = 4,
+) -> List[str]:
+    """
+    Chuyển hóa danh sách truy vấn (có thể chứa 'Entity A vs Entity B' hoặc 'Entity A or Entity B')
+    thành các câu truy vấn ĐƠN CHỦ THỂ sạch ('Entity A + hành động/môi trường', 'Entity B + ...')
+    để:
+      1. Chạy nhánh song song (Dual-Track) cùng với 'A vs B' trên YouTube.
+      2. Tầng dự phòng Pexels / Pixabay / Wikimedia Stock tuyệt đối KHÔNG gửi cụm 'A vs B' gây lạc chủ đề.
+    Không hardcode bất kỳ từ khóa chủ đề/loài vật nào.
+    """
+    out: List[str] = []
+    seen_low: Set[str] = set()
+
+    def _add_clean(phrase: str) -> None:
+        cleaned = _clean_yt_search_phrase(
+            phrase,
+            subject_entity="",
+            max_words=max_words,
+            strip_distractor_props=False,
+        )
+        # Loại bỏ token 'vs' / 'versus' nếu còn sót ở rìa
+        toks = [t for t in cleaned.split() if t.lower() not in ("vs", "versus")]
+        final_p = " ".join(toks[:max_words]).strip()
+        if final_p and final_p.lower() not in seen_low:
+            seen_low.add(final_p.lower())
+            out.append(final_p)
+
+    # 1. Giữ nguyên trước tất cả các câu truy vấn vốn đã ĐƠN CHỦ THỂ (không chứa 'vs'/'versus' hoặc 'A or B')
+    for rq in raw_queries:
+        s = str(rq or "").strip()
+        if not s:
+            continue
+        head = re.split(r"[:—–]\s*", s, maxsplit=1)[0].strip()
+        if not has_versus_pattern(head) and not re.search(r"\bor\b", head, re.IGNORECASE):
+            _add_clean(head)
+
+    # 2. Tách các thực thể độc lập từ subject_entity ('A or B'), các câu 'A vs B' và topic
+    subj_low = str(subject_entity or "").lower()
+    split_entities: List[str] = []
+    for src in (subject_entity, *raw_queries, topic):
+        s = str(src or "").strip()
+        if not s:
+            continue
+        head = re.split(r"[:—–]\s*", s, maxsplit=1)[0].strip()
+        if has_versus_pattern(head):
+            parts = _VERSUS_TOKEN_RE.split(head)
+        elif re.search(r"\bor\b", head, re.IGNORECASE):
+            parts = re.split(r"\bor\b", head, flags=re.IGNORECASE)
+        else:
+            continue
+        for pt in parts:
+            # Bỏ phần hashtag hoặc hậu tố số liệu đo lường (VD: '3700 PSI', '#Shorts')
+            pt_clean = re.sub(r"#\S+", " ", pt)
+            pt_clean = re.sub(r"\b\d[\d,.]*\s*(?:psi|lbs?|kg|km|mph|ft|meters?|m)\b", " ", pt_clean, flags=re.IGNORECASE)
+            ent = _clean_yt_search_phrase(pt_clean, max_words=min(3, max_words), strip_distractor_props=True)
+            if ent and ent.lower() not in {e.lower() for e in split_entities}:
+                split_entities.append(ent)
+
+    # Ưu tiên thực thể khớp với subject_entity của cảnh hiện tại lên trước (nếu subject_entity chỉ nêu 1 bên)
+    if split_entities and subj_low and not re.search(r"\b(?:vs\.?|versus|or)\b", subj_low):
+        split_entities.sort(
+            key=lambda e: 0 if any(tok in subj_low for tok in e.lower().split() if len(tok) >= 3) else 1
+        )
+
+    for ent in split_entities:
+        _add_clean(ent)
+
+    if not out and (subject_entity or topic):
+        fallback_one = _clean_yt_search_phrase(
+            subject_entity or topic,
+            max_words=min(3, max_words),
+            strip_distractor_props=True,
+        )
+        if fallback_one:
+            _add_clean(fallback_one)
+
+    # Nếu phân cảnh này chỉ nói về 1 thực thể cụ thể (subject_entity không chứa 'vs'/'or'), ổn định thứ tự ưu tiên thực thể đó lên đầu!
+    if len(out) > 1 and subj_low and not re.search(r"\b(?:vs\.?|versus|or)\b", subj_low):
+        subj_toks = [t for t in re.findall(r"[a-zA-Z0-9]{3,}", subj_low) if t not in _YT_QUERY_FILLER_WORDS]
+        if subj_toks:
+            out.sort(key=lambda q: 0 if any(st in q.lower() for st in subj_toks) else 1)
+
+    return out
+
+
 def _resolve_adaptive_search_queries(
     search_scope: str,
     scene_query: str,
@@ -370,31 +502,47 @@ def _resolve_adaptive_search_queries(
     max_words: int = 5,
 ) -> Tuple[str, List[str]]:
     """
-    Trả về `(effective_scope, ordered_queries)` dựa 100% trên quyết định ngữ nghĩa của LLM Director & LLM Scope Judge:
-    - `SCENE_SPECIFIC`: Ưu tiên số 1 là `scene_query` do LLM viết cho cảnh đó, dự phòng bằng `overall_script_query`.
-    - `SCRIPT_OVERALL`: Ưu tiên số 1 là `overall_script_query` (xoay quanh tổng thể kịch bản), dự phòng bằng `scene_query`.
-    Tuyệt đối không dùng từ khóa cứng trong code để ghi đè `search_scope` của LLM.
+    Chiến lược Tìm Kiếm Song Song 2 Nhánh (Dual-Track: 'A vs B' + 'Đơn Chủ Thể Quay Thật'):
+    - Giữ nhánh `A vs B` (từ `overall_script_query` / `scene_query`) để YouTube vẫn săn được video chạm trán thật nếu có.
+    - Đồng thời LUÔN kèm nhánh truy vấn ĐƠN CHỦ THỂ sạch (không chứa `vs`) ngay trong cùng lượt quét song song 4 nhánh,
+      để nếu `A vs B` chỉ toàn video `#edit` / AI hoặc không tìm được clip sạch thì có sẵn ngay clip quay thật của từng thực thể!
     """
     _ = narration
     scope_norm = (search_scope or "SCENE_SPECIFIC").strip().upper()
     if scope_norm not in ("SCENE_SPECIFIC", "SCRIPT_OVERALL"):
         scope_norm = "SCENE_SPECIFIC"
 
-    overall_base = overall_script_query or topic or subject_entity
+    overall_base = re.split(r"[:—–]\s*", str(overall_script_query or topic or subject_entity or ""), maxsplit=1)[0].strip()
     q_overall = _clean_yt_search_phrase(overall_base, subject_entity=subject_entity, max_words=max_words)
     q_scene = _clean_yt_search_phrase(scene_query, subject_entity=subject_entity, max_words=max_words)
-    q_fallback = _clean_yt_search_phrase(
-        fallback_query or f"{subject_entity} {topic}",
+
+    single_entity_fallbacks = build_single_entity_stock_queries(
+        raw_queries=[fallback_query, scene_query, overall_base],
         subject_entity=subject_entity,
-        max_words=max_words,
+        topic=topic,
+        max_words=min(4, max_words),
+    )
+    q_fallback = single_entity_fallbacks[0] if single_entity_fallbacks else _clean_yt_search_phrase(
+        fallback_query or subject_entity or topic,
+        subject_entity=subject_entity,
+        max_words=min(3, max_words),
+        strip_distractor_props=True,
     )
 
     if scope_norm == "SCRIPT_OVERALL":
-        ordered = [q for q in dict.fromkeys([q_overall, q_scene, q_fallback]) if q]
+        base_list = [q_overall, q_scene, q_fallback, *single_entity_fallbacks[:2]]
     else:
-        ordered = [q for q in dict.fromkeys([q_scene, q_fallback, q_overall]) if q]
+        base_list = [q_scene, q_fallback, q_overall, *single_entity_fallbacks[:2]]
 
-    return scope_norm, ordered
+    ordered: List[str] = []
+    seen_q: Set[str] = set()
+    for q in base_list:
+        qn = (q or "").strip()
+        if qn and qn.lower() not in seen_q:
+            seen_q.add(qn.lower())
+            ordered.append(qn)
+
+    return scope_norm, ordered[:4]
 
 
 def _sanitize_tool_arg(val: Any, fallback: str = "") -> str:

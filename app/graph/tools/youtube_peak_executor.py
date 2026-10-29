@@ -24,6 +24,8 @@ from app.graph.tools.tool_schemas import (
     _YT_QUERY_FILLER_WORDS,
     _TALKING_HEAD_BLOCKLIST,
     _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST,
+    has_versus_pattern,
+    is_edit_or_ai_slop_video_metadata,
     _extract_subject_anchor_tokens,
     _clean_yt_search_phrase,
     _resolve_adaptive_search_queries,
@@ -140,7 +142,12 @@ def execute_youtube_short_peak_clone_sync(
             import yt_dlp
             from app.graph.evaluators.visual_critic import VisualCritic
 
-            candidates = _search_youtube_flat_cached(search_phrases, subject_anchors, all_query_tokens)
+            candidates = _search_youtube_flat_cached(
+                search_phrases,
+                subject_anchors,
+                all_query_tokens,
+                allow_3d_cgi_monster=allow_3d_cgi_monster,
+            )
             unused_cands = [
                 c for c in candidates
                 if not is_media_already_used(c["url"], used) and f"yt:{c['id']}" not in used
@@ -166,6 +173,8 @@ def execute_youtube_short_peak_clone_sync(
 
             max_claimed_probes = 3 if (clip_role or "").upper() == "HOOK" else 2
             claimed_probes = 0
+            # Fast-Drop 'A vs B': chỉ thử tối đa 1 ứng viên mang tiêu đề 'A vs B'; nếu thất bại thì bỏ ngay toàn bộ nhánh 'vs' để lấy clip đơn chủ thể sạch!
+            vs_probes_attempted = 0
             cand_pool = list(ordered_cands[:20])
             if len(cand_pool) > 4 and eff_scene_id > 1:
                 rot_c = (eff_scene_id - 1) % min(5, len(cand_pool))
@@ -177,6 +186,12 @@ def execute_youtube_short_peak_clone_sync(
                 vid_url = cand["url"]
                 vid_id = cand.get("id") or ""
                 cand_title = str(cand.get("title") or "")
+                is_vs_cand = has_versus_pattern(cand_title)
+                if is_vs_cand and vs_probes_attempted >= 1:
+                    logger.info(
+                        f"⚡ [Fast-Drop A vs B] Đã thử nhánh 'vs' không tìm được cảnh thật sạch -> Bỏ qua '{cand_title[:45]}' để chuyển ngay sang clip đơn chủ thể!"
+                    )
+                    continue
 
                 if not rag.try_claim_in_job_video(
                     job_id=job_id,
@@ -194,6 +209,8 @@ def execute_youtube_short_peak_clone_sync(
                     used.update(extract_media_identity(vid_url))
 
                 claimed_probes += 1
+                if is_vs_cand:
+                    vs_probes_attempted += 1
                 info_entry: Dict[str, Any] = cand
                 license_verified = not license_policy.cc_only_enabled()
                 if license_policy.cc_only_enabled():

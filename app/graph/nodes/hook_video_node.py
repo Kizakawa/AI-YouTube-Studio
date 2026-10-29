@@ -569,16 +569,18 @@ CRITICAL PEAK HARVESTING & DIRECTORIAL RULES:
    - "VIRAL_SHORT_ACTION_PEAK": Default #1 priority for wildlife predators, animal rescues, underwater/ocean phenomena, natural disasters, 3D CGI monsters, AND psychology/forensic/neuroscience topics where real YouTube Shorts peak clips (FBI interrogation room, courtroom reaction, 3D glowing brain MRI, iconic character cold stare) create an instant visceral shock.
    - "CINEMATIC_BROLL_FAST_CUT": Secondary fallback only when a quiet philosophical topic has no concrete YouTube Shorts visual spectacle.
    - "HYBRID_MOTION_AND_SCENE_MONTAGE": Best for counterfactual history ("What If"), ancient empires, or historical events.
-3. ENGINEER 5 HYPER-TARGETED YOUTUBE SHORTS PEAK QUERIES ("search_queries"):
-   - Write 5 distinct English search queries (3–6 words each) in the exact phrasing used by viral YouTube Shorts titles (`[Concrete Subject] + [Explosive Action/Strike/Phenomenon] + [Setting/Detail]`).
-   - For Psychology / Dark Psychology / Human Behavior: follow the YAML `abstract_to_physical_query_translations` to translate abstract concepts into concrete physical YouTube Short queries (e.g., `"fbi interrogation body language eye contact"`, `"suspect sweating interrogation room camera"`, `"3d brain neural network glowing animation"`, `"human eye pupil dilating macro slow motion"`).
-   - Query 1 ("beat_1_query"): The ultimate 0.0–2.5s Opening Peak Shock.
-   - Query 2 ("beat_2_query"): Distinct close-up strike, weapon, or micro-expression reaction shot for 2.5–5.0s.
-   - Query 3: Viral YouTube Short native phrasing with `shorts` keyword.
-   - Query 4: The 15-Second Mid-Video Climax visual for Scene {climax_scene_id}.
-   - Query 5: High-impact close-up / phenomenon angle.
-   - NEVER use abstract words ("manipulation", "psychology", "envy", "alternate history", "what if") in queries.
-   - Also provide "must_see_visual_cues" (3–4 concrete visual elements that must appear in the Peak frames) and "stock_broll_queries" (2 concise 2–3 word noun + habitat/lighting queries for Pexels/Pixabay).
+3. ENGINEER 5 DUAL-TRACK YOUTUBE PEAK QUERIES ("search_queries" — BOTH REAL ENCOUNTER & CLEAN SINGLE-ENTITY):
+   - Write 5 distinct English search queries (3–5 words each) in authentic documentary/camera-recording phrasing (`[Concrete Subject] + [Real Physical Action/Habitat]`).
+   - DUAL-TRACK "A vs B" STRATEGY (CRITICAL):
+     * When the script pits two entities against each other (`Entity A vs Entity B`): use Query 1–2 to probe GENUINE real-camera encounter footage (`"Entity A attacking Entity B"`, `"Entity A vs Entity B"` — NEVER `#edit` or `"who would win"`), AND dedicate Queries 3–5 to **CLEAN SINGLE-ENTITY REAL FOOTAGE** of each contender individually (`"[Entity A] + [real action/habitat]"`, `"[Entity B] + [real action/habitat]"`, e.g., `"saltwater crocodile swimming river"`, `"bull shark underwater"`). That way we search BOTH simultaneously and immediately drop `"A vs B"` if no clean clash clip exists!
+   - For Psychology / Dark Psychology / Human Behavior: follow the YAML `abstract_to_physical_query_translations` to translate abstract concepts into concrete physical YouTube queries (e.g., `"fbi interrogation body language eye contact"`, `"suspect sweating interrogation room camera"`, `"3d brain neural network glowing animation"`, `"human eye pupil dilating macro slow motion"`).
+   - Query 1 ("beat_1_query"): The ultimate 0.0–2.5s Opening Peak Shock (real clash or single-entity explosive action).
+   - Query 2 ("beat_2_query"): Distinct close-up strike, weapon, or single-entity power shot for 2.5–5.0s.
+   - Query 3: Single-entity A real physical action + natural habitat (NO `"vs"`).
+   - Query 4: Single-entity B (or Mid-Video Climax Scene {climax_scene_id}) real physical action + habitat (NO `"vs"`).
+   - Query 5: High-impact close-up / phenomenon angle (NO `"vs"`).
+   - NEVER use abstract words ("manipulation", "psychology", "envy", "alternate history", "what if") or edit tags ("#edit", "who would win") in queries.
+   - Also provide "must_see_visual_cues" (3–4 concrete visual elements that must appear in the Peak frames) and "stock_broll_queries" (2 concise 2–3 word SINGLE-ENTITY noun + habitat/action queries for Pexels/Pixabay — NEVER include `"vs"` in `stock_broll_queries`).
 
 Return ONLY valid JSON:
 {{
@@ -724,6 +726,9 @@ Return ONLY valid JSON:
     from app.graph.tools.media_tools import (
         _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST,
         _TALKING_HEAD_BLOCKLIST,
+        has_versus_pattern,
+        is_edit_or_ai_slop_video_metadata,
+        build_single_entity_stock_queries,
     )
     from app.graph.evaluators.visual_critic import VisualCritic
 
@@ -733,13 +738,27 @@ Return ONLY valid JSON:
     )
 
     cand_seq_idx = 0
-    # Ưu tiên tuyệt đối số 1: Luôn chạy đủ 5 truy vấn săn YouTube Shorts dọc 9:16 nguyên bản (`/shorts/`, `shortsLockupViewModel`)
+    # Dual-Track YouTube Hook Search: Giữ tối đa 2 truy vấn 'A vs B' (săn cảnh chạm trán thật) + dành ít nhất 3 nhánh cho Đơn Chủ Thể quay thật!
     raw_yt_q = list(queries[:5])
+    single_hook_fallbacks = build_single_entity_stock_queries(
+        raw_queries=[*stock_broll_queries, beat_1_subject, beat_2_subject, *raw_yt_q],
+        subject_entity=canonical_subject or primary_entity,
+        topic=topic,
+        max_words=4,
+    )
     yt_queries_to_run: List[str] = []
-    for q_item in raw_yt_q:
+    vs_q_count = 0
+    for q_item in [*raw_yt_q, *single_hook_fallbacks]:
         q_str = str(q_item or "").strip()
-        if q_str and q_str.lower() not in {x.lower() for x in yt_queries_to_run} and len(yt_queries_to_run) < 5:
-            yt_queries_to_run.append(q_str)
+        if not q_str or q_str.lower() in {x.lower() for x in yt_queries_to_run}:
+            continue
+        if has_versus_pattern(q_str):
+            if vs_q_count >= 2:
+                continue
+            vs_q_count += 1
+        yt_queries_to_run.append(q_str)
+        if len(yt_queries_to_run) >= 5:
+            break
     subject_anchor_words = {
         w.lower()
         for src_s in (canonical_subject, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query, *queries, *stock_broll_queries, primary_entity, topic)
@@ -747,7 +766,7 @@ Return ONLY valid JSON:
         if w.lower() not in {"the", "and", "for", "with", "from", "into", "that", "this", "why", "how", "what", "when", "fatal", "nature", "defies", "ambush", "secret", "truth", "footage", "action", "wildlife", "cinematic", "dramatic", "close", "shorts", "short"}
     }
 
-    # ── BƯỚC 2A: QUÉT SONG SONG ĐA TRUY VẤN TRÊN KỆ YOUTUBE SHORTS DỌC 9:16 & DÙNG LLM CHỌN RA TOP 8 SHORT PEAK NHẤT ──
+    # ── BƯỚC 2A: QUÉT SONG SONG ĐA TRUY VẤN (KỆ SHORTS 9:16 + VIDEO GỐC 16:9 HD SẠCH CHỮ) & DÙNG LLM CHỌN TOP 8 CLIP PEAK ──
     pooled_flat_by_id: Dict[str, Dict[str, Any]] = {}
 
     def _run_flat_search_for_query(q_pair: tuple[int, str]) -> tuple[int, str, List[Dict[str, Any]]]:
@@ -756,29 +775,28 @@ Return ONLY valid JSON:
         try:
             import yt_dlp
             # Bước 1: Quét trực tiếp kệ YouTube Shorts dọc 9:16 (`shortsLockupViewModel` / `/shorts/`)
-            native_entries = license_policy.search_youtube_native_shorts_flat(q, max_results=20)
+            native_entries = license_policy.search_youtube_native_shorts_flat(q, max_results=12)
             seen_q_ids = {str(x.get("id") or "") for x in native_entries if x.get("id")}
             combined_entries: List[Dict[str, Any]] = list(native_entries)
 
-            # Bước 2: Bổ sung từ yt-dlp nếu kệ Shorts dọc trả về < 8 ứng viên
-            if len(combined_entries) < 8:
-                flat_opts = {
-                    "quiet": True,
-                    "no_warnings": True,
-                    "extract_flat": "in_playlist",
-                    "skip_download": True,
-                    "socket_timeout": 8,
-                    "ignoreerrors": True,
-                }
-                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=16)) as ydl_flat:
-                    flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=16), download=False)
-                for e_flat_item in ((flat_res or {}).get("entries") or []):
-                    if isinstance(e_flat_item, dict):
-                        eid = str(e_flat_item.get("id") or "").strip()
-                        if eid and eid not in seen_q_ids:
-                            seen_q_ids.add(eid)
-                            e_flat_item["is_vertical_short"] = license_policy.is_entry_vertical_short(e_flat_item)
-                            combined_entries.append(e_flat_item)
+            # Bước 2 (Luôn bổ sung song song): Quét cả video YouTube thường 16:9 HD/4K quay thật (không khóa ở < 8)
+            flat_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": "in_playlist",
+                "skip_download": True,
+                "socket_timeout": 8,
+                "ignoreerrors": True,
+            }
+            with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=10)) as ydl_flat:
+                flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=10), download=False)
+            for e_flat_item in ((flat_res or {}).get("entries") or []):
+                if isinstance(e_flat_item, dict):
+                    eid = str(e_flat_item.get("id") or "").strip()
+                    if eid and eid not in seen_q_ids:
+                        seen_q_ids.add(eid)
+                        e_flat_item["is_vertical_short"] = license_policy.is_entry_vertical_short(e_flat_item)
+                        combined_entries.append(e_flat_item)
 
             for entry in combined_entries:
                 if not isinstance(entry, dict):
@@ -788,7 +806,7 @@ Return ONLY valid JSON:
                     continue
                 is_vert_short = license_policy.is_entry_vertical_short(entry)
                 dur_e = float(entry.get("duration") or (25.0 if is_vert_short else 0.0))
-                if dur_e <= 0 or dur_e < 4 or dur_e > 120:
+                if dur_e <= 0 or dur_e < 4 or dur_e > 180:
                     continue
                 title_e = str(entry.get("title") or "")
                 uploader_e = str(entry.get("uploader") or entry.get("channel") or "")
@@ -799,6 +817,11 @@ Return ONLY valid JSON:
                     any(bad in meta_e for bad in _TALKING_HEAD_BLOCKLIST)
                     or any(bad_c in meta_e for bad_c in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST)
                     or any(cp_w in meta_e for cp_w in _COPYRIGHT_CLAIM_BLOCKLIST)
+                    or is_edit_or_ai_slop_video_metadata(
+                        title_e,
+                        uploader_e,
+                        allow_3d_cgi_monster=bool(is_3d_cgi_subject or is_scifi_pre),
+                    )
                 ):
                     continue
                 title_low = title_e.lower()
@@ -827,8 +850,9 @@ Return ONLY valid JSON:
                     30.0 if views_e >= 250_000 else
                     12.0 if views_e >= 50_000 else 0.0
                 )
-                short_fmt_bonus = 25.0 if (0 < dur_e <= 75) else 0.0
-                vertical_native_bonus = 165.0 if is_vert_short else 0.0
+                short_fmt_bonus = 20.0 if (0 < dur_e <= 75) else (10.0 if dur_e <= 150 else 0.0)
+                vertical_native_bonus = 25.0 if is_vert_short else 0.0
+                clean_title_bonus = 25.0 if title_e.count("#") <= 2 else (-20.0 if title_e.count("#") >= 5 else 0.0)
                 peak_intensity_bonus = (
                     42.0
                     if re.search(
@@ -864,6 +888,7 @@ Return ONLY valid JSON:
                         + viral_boost
                         + short_fmt_bonus
                         + vertical_native_bonus
+                        + clean_title_bonus
                     ),
                 })
         except Exception as e_flat:
@@ -898,7 +923,7 @@ Return ONLY valid JSON:
 
     pooled_cands_sorted = sorted(
         pooled_flat_by_id.values(),
-        key=lambda x: (bool(x.get("is_vertical_short")), float(x.get("score", 0.0))),
+        key=lambda x: float(x.get("rag_score") or x.get("score") or 0.0),
         reverse=True,
     )[:22]
 
@@ -918,9 +943,9 @@ Return ONLY valid JSON:
             }
             for c in candidates_pool
         ]
-        scout_prompt = f"""You are an elite YouTube Shorts Peak Action Scout & Hook Producer.
-We have a finalized script and {len(compact_list)} candidate YouTube Shorts found across our hot peak queries.
-Your job is to read the script and the candidate titles/metadata, and select the TOP 6 YouTube Shorts that are most likely to contain JAW-DROPPING, REAL PEAK FOOTAGE for our Opening Hook (0.0–3.5s) and Mid-Video Climax (Scene {climax_scene_id}).
+        scout_prompt = f"""You are an elite YouTube Peak Action Scout & Hook Producer.
+We have a finalized script and {len(compact_list)} candidate YouTube videos (both 9:16 Shorts and 16:9 raw documentary/field recordings) found across our Dual-Track queries.
+Your job is to read the script and the candidate titles/metadata, and select the TOP 6 YouTube videos that are most likely to contain CLEAN, UNEDITED, JAW-DROPPING REAL PEAK FOOTAGE for our Opening Hook (0.0–3.5s) and Mid-Video Climax (Scene {climax_scene_id}).
 
 - Script Title: {script_title}
 - Hot Topic Essence: {hot_topic_essence}
@@ -929,13 +954,15 @@ Your job is to read the script and the candidate titles/metadata, and select the
 - Must-See Visual Cues: {json.dumps(must_see_visual_cues, ensure_ascii=False)}
 - Full Script: {full_script_text[:1800]}
 
-CANDIDATE YOUTUBE SHORTS POOL:
+CANDIDATE YOUTUBE VIDEOS POOL:
 {json.dumps(compact_list, ensure_ascii=False, indent=2)}
 
 SELECTION RULES:
-1. CRITICAL 9:16 VERTICAL FRAMING PRIORITY: Strongly prioritize candidates with `"format": "9:16_NATIVE_SHORT"` over `"16:9_LANDSCAPE"` whenever they match the subject! Native 9:16 Shorts keep the entire body of the subject fitted inside the vertical frame, whereas cropping 16:9 videos cuts off 70% of the frame.
-2. Prioritize candidates whose titles describe REAL, HIGH-INTENSITY PHYSICAL ACTION, CLOSE-UP CLASH, or SHOCKING NATURAL PHENOMENA matching "{hot_topic_essence}" and "{visual_hook_blueprint}".
-3. Reject clickbait commentary, reactions, podcasts, toys/figurines, clothing/apparel ads, video game mods (unless 3D CGI monster is requested), or passive zoo/sleeping clips.
+1. CLEAN RAW FOOTAGE OVER EDITED SHORTS (CRITICAL):
+   - Prioritize CLEAN, AUTHENTIC, UNEDITED RAW FOOTAGE (both `"9:16_NATIVE_SHORT"` and `"16:9_LANDSCAPE"` wildlife/field/documentary clips—our FFmpeg engine smart-crops 16:9 cleanly!) OVER heavily-edited comparison `#shorts`, `"Who would win"` debates, or AI-generated Veo/Sora clips!
+   - DUAL-TRACK "A vs B" RULE: Include at most 1–2 `"A vs B"` candidates ONLY if they look like GENUINE real-camera encounter recordings. Always include clean single-entity real-action clips of the individual contenders so if `"A vs B"` is dirty/edited, we immediately have clean single-entity Peak footage!
+2. Prioritize candidates whose titles describe REAL, HIGH-INTENSITY PHYSICAL ACTION, CLOSE-UP STRIKE, or SHOCKING NATURAL PHENOMENA matching "{hot_topic_essence}" and "{visual_hook_blueprint}".
+3. Reject comparison `#edit` videos, `"Who would win"` quizzes, AI-generated clips (unless 3D CGI monster is requested), clickbait commentary, reactions, podcasts, toys/figurines, or passive zoo/sleeping clips.
 4. Pick up to 6 best video IDs ordered from #1 strongest Opening Hook Peak to #6.
 
 Return ONLY valid JSON:
@@ -1115,8 +1142,30 @@ Return ONLY valid JSON:
         return results_for_cand
 
     if top_curated_yt_cands and len(candidate_videos) < 8:
-        # Tải & lọc trước Wave 1 (Top 4 ứng viên điểm cao nhất); chỉ tải tiếp Wave 2 (#5-#8) nếu Wave 1 có < 3 clip vượt cổng kỹ thuật
-        wave1_cands = list(enumerate(top_curated_yt_cands[:4]))
+        # Dual-Track Wave 1: Tối đa 2 ứng viên 'A vs B' + ít nhất 2 ứng viên ĐƠN CHỦ THỂ quay thật ngay trong Wave 1;
+        # nếu Wave 1 không ra đủ clip sạch -> Fast-Drop toàn bộ 'A vs B' ở Wave 2 để chỉ tải clip đơn chủ thể!
+        wave1_selected: List[Dict[str, Any]] = []
+        wave1_ids: set = set()
+        vs_in_w1 = 0
+        for cand_w in top_curated_yt_cands:
+            is_vs_w = has_versus_pattern(cand_w.get("title", "")) or has_versus_pattern(cand_w.get("matched_query", ""))
+            if is_vs_w:
+                if vs_in_w1 >= 2:
+                    continue
+                vs_in_w1 += 1
+            wave1_selected.append(cand_w)
+            wave1_ids.add(cand_w.get("id"))
+            if len(wave1_selected) >= 4:
+                break
+        if len(wave1_selected) < 4:
+            for cand_w in top_curated_yt_cands:
+                if cand_w.get("id") not in wave1_ids:
+                    wave1_selected.append(cand_w)
+                    wave1_ids.add(cand_w.get("id"))
+                if len(wave1_selected) >= 4:
+                    break
+
+        wave1_cands = list(enumerate(wave1_selected))
         with ThreadPoolExecutor(max_workers=min(4, len(wave1_cands))) as dl_pool:
             dl_batches = list(dl_pool.map(_download_and_extract_single_short, wave1_cands))
         for batch in dl_batches:
@@ -1126,8 +1175,15 @@ Return ONLY valid JSON:
                 validated_peaks[v_str] = peak_meta
                 if peak_meta.get("passed") and len(candidate_videos) < 8:
                     candidate_videos.append(v_str)
-        if len(candidate_videos) < 3 and len(top_curated_yt_cands) > 4:
-            wave2_cands = list(enumerate(top_curated_yt_cands[4:8], start=4))
+        if len(candidate_videos) < 3 and len(top_curated_yt_cands) > len(wave1_selected):
+            # Fast-Drop 'A vs B' ở Wave 2: Bỏ qua các video 'vs' còn lại, chỉ tải clip đơn chủ thể sạch!
+            rem_non_vs = [
+                c for c in top_curated_yt_cands
+                if c.get("id") not in wave1_ids and not has_versus_pattern(c.get("title", ""))
+            ]
+            if not rem_non_vs:
+                rem_non_vs = [c for c in top_curated_yt_cands if c.get("id") not in wave1_ids]
+            wave2_cands = list(enumerate(rem_non_vs[:4], start=4))
             with ThreadPoolExecutor(max_workers=min(4, len(wave2_cands))) as dl_pool2:
                 dl_batches2 = list(dl_pool2.map(_download_and_extract_single_short, wave2_cands))
             for batch in dl_batches2:
@@ -1139,8 +1195,7 @@ Return ONLY valid JSON:
                         candidate_videos.append(v_str)
         cand_seq_idx = min(8, len(top_curated_yt_cands)) + 10
 
-    # ── TẦNG DỰ PHÒNG SỐ 2 (CHỈ KHI 100% YOUTUBE SHORTS TẦNG 1 KHÔNG TÌM ĐƯỢC CLIP NÀO): PEXELS HD + PIXABAY HD + WIKIMEDIA ──
-    # Tuyệt đối KHÔNG trộn Stock Video vào cùng bể ứng viên Tầng 1 của YouTube Shorts để đảm bảo mở đầu luôn là Peak Viral trên YT Shorts!
+    # ── TẦNG DỰ PHÒNG SỐ 2 (CHỈ KHI 100% YOUTUBE TẦNG 1 KHÔNG TÌM ĐƯỢC CLIP NÀO): PEXELS HD + PIXABAY HD + WIKIMEDIA ──
     need_multi_source_broll = (
         not is_3d_cgi_subject
         and len(candidate_videos) == 0
@@ -1148,11 +1203,13 @@ Return ONLY valid JSON:
     if need_multi_source_broll:
         try:
             from app.agents.media_agent import MediaAgent
-            multi_beat_queries: List[str] = []
-            for bq in [*stock_broll_queries, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query]:
-                bq_clean = str(bq or "").strip()
-                if bq_clean and bq_clean.lower() not in {x.lower() for x in multi_beat_queries}:
-                    multi_beat_queries.append(bq_clean)
+            # Fast-Drop 'A vs B' tuyệt đối khi xuống kho Pexels/Pixabay: chỉ giữ truy vấn ĐƠN CHỦ THỂ!
+            multi_beat_queries = build_single_entity_stock_queries(
+                raw_queries=[*stock_broll_queries, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query],
+                subject_entity=canonical_subject or primary_entity,
+                topic=topic,
+                max_words=4,
+            )
             if not multi_beat_queries:
                 multi_beat_queries = [canonical_subject or visual_keyword or topic]
 

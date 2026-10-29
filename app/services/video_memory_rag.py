@@ -1063,15 +1063,15 @@ class VideoMemoryRAG:
 
             rgb_small = im_obj.convert("RGB").resize((160, 240))
             g_small = rgb_small.convert("L")
-            hist = g_small.histogram()
             tot_px = 160 * 240
-            black_poster_ratio = sum(hist[:24]) / tot_px
             px_rgb = rgb_small.load()
             px_g = g_small.load()
-            # Chỉ coi là nền giấy trắng (white_paper) hoặc nền xám phẳng (grey_bg) khi các điểm ảnh phẳng tuyệt đối
-            # kiểu đồ họa 2D/trang sách kỹ thuật số (chênh lệch lân cận <= 1), tránh báo nhầm tuyết trắng, bầu trời mùa đông, sương mù!
+            # Chỉ coi là nền giấy trắng (white_paper), nền xám phẳng (grey_bg) hoặc nền đen poster kỹ thuật số (flat_black_poster)
+            # khi các điểm ảnh PHẲNG TUYỆT ĐỐI kiểu đồ họa 2D/slide chữ (chênh lệch lân cận <= 1, độ bão hòa màu thấp),
+            # tránh báo nhầm tuyết trắng, sương mù, hoặc vùng nước sâu/bóng tối rừng đêm trong cảnh quay thật!
             flat_white_px = 0
             flat_grey_px = 0
+            flat_black_px = 0
             for y_g in range(240):
                 for x_g in range(159):
                     rgb_c = px_rgb[x_g, y_g]
@@ -1082,47 +1082,68 @@ class VideoMemoryRAG:
                         flat_white_px += 1
                     elif sat_c <= 3 and 110 <= g_c <= 200 and diff_nx <= 1:
                         flat_grey_px += 1
+                    elif max(rgb_c) <= 20 and sat_c <= 5 and diff_nx <= 1:
+                        flat_black_px += 1
             white_paper_ratio = flat_white_px / tot_px
             neutral_grey_bg = flat_grey_px / tot_px
+            flat_black_poster_ratio = flat_black_px / tot_px
             edges = g_small.filter(ImageFilter.FIND_EDGES)
             sharp_mean = float(ImageStat.Stat(edges).mean[0])
             px_e = edges.load()
             text_rows = 0
+            zero_edge_rows = 0
             for y_r in range(15, 225):
                 row_vals = [px_e[x_c, y_r] for x_c in range(12, 148)]
                 high_transitions = sum(1 for k_i in range(len(row_vals) - 1) if abs(row_vals[k_i] - row_vals[k_i + 1]) > 46)
                 if high_transitions >= 16:
                     text_rows += 1
+                elif high_transitions <= 1 and max(row_vals) <= 18:
+                    zero_edge_rows += 1
 
-            # Phát hiện hộp chữ trắng/vàng có viền đen trên nền tối ở nửa dưới, giữa hoặc nửa trên (Infographic / TikTok caption / banner 1-2 dòng):
-            # Dùng cửa sổ 3-pixel ngang để bắt chính xác chữ trắng/vàng có viền đen sau khi thu nhỏ 160x240 (tránh bị làm mờ biên bởi nội suy bilinear)
-            bot_white_text_rows = 0
-            bot_dense_banner_rows = 0
-            for y_r in range(118, 238):
-                wt_trans = sum(
-                    1 for x_c in range(14, 144)
-                    if max(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) >= 198
-                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) <= 74
-                    and (max(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) - min(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r])) >= 115
-                )
-                if wt_trans >= 10:
-                    bot_white_text_rows += 1
-                if wt_trans >= 13:
-                    bot_dense_banner_rows += 1
+            # Phát hiện hộp chữ trắng/vàng có viền đen trên nền tối ở nửa dưới hoặc nửa trên (Infographic / TikTok caption / banner 1-2 dòng):
+            # Phụ đề thật ở khung 160x240 luôn tạo thành DẢI DÒNG LIỀN MẠCH (>= 4 hàng ngang liên tiếp có nét chữ trắng/vàng trung tính + viền đen sắc),
+            # khác hẳn sóng nước lấp lánh, vảy/răng động vật, tán lá hay rạn san hô (vốn phân bố rải rác từng hàng lẻ hoặc phủ đều cả vùng giữa khung hình!).
+            def _is_caption_stroke_triplet(x_c: int, y_r: int) -> bool:
+                g0, g1, g2 = px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]
+                g_hi = max(g0, g1, g2)
+                g_lo = min(g0, g1, g2)
+                if g_hi < 204 or g_lo > 68 or (g_hi - g_lo) < 126:
+                    return False
+                # Điểm sáng của chữ phụ đề thường là trắng trung tính hoặc vàng/cam sáng (không phải ánh nước xanh lơ/xanh lục tự nhiên)
+                hi_idx = 0 if g0 == g_hi else (1 if g1 == g_hi else 2)
+                r_h, g_h, b_h = px_rgb[x_c + hi_idx, y_r]
+                is_neutral_white = min(r_h, g_h, b_h) >= 195 and (max(r_h, g_h, b_h) - min(r_h, g_h, b_h)) <= 24
+                is_warm_yellow_caption = r_h >= 210 and g_h >= 175 and b_h <= 95
+                return is_neutral_white or is_warm_yellow_caption
 
-            top_white_text_rows = 0
-            top_dense_banner_rows = 0
-            for y_r in range(6, 118):
-                wt_trans = sum(
-                    1 for x_c in range(14, 144)
-                    if max(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) >= 198
-                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) <= 74
-                    and (max(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) - min(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r])) >= 115
-                )
-                if wt_trans >= 10:
-                    top_white_text_rows += 1
-                if wt_trans >= 13:
-                    top_dense_banner_rows += 1
+            def _scan_caption_zone(y_start: int, y_end: int) -> Tuple[int, int, int, int]:
+                white_rows = 0
+                dense_rows = 0
+                cur_white_run = 0
+                max_white_run = 0
+                cur_dense_run = 0
+                max_dense_run = 0
+                for y_r in range(y_start, y_end):
+                    wt_trans = sum(1 for x_c in range(14, 144) if _is_caption_stroke_triplet(x_c, y_r))
+                    if wt_trans >= 10:
+                        white_rows += 1
+                        cur_white_run += 1
+                        if cur_white_run > max_white_run:
+                            max_white_run = cur_white_run
+                    else:
+                        cur_white_run = 0
+                    if wt_trans >= 14:
+                        dense_rows += 1
+                        cur_dense_run += 1
+                        if cur_dense_run > max_dense_run:
+                            max_dense_run = cur_dense_run
+                    else:
+                        cur_dense_run = 0
+                return white_rows, dense_rows, max_white_run, max_dense_run
+
+            top_white_text_rows, top_dense_banner_rows, top_max_w_run, top_max_d_run = _scan_caption_zone(6, 92)
+            mid_white_text_rows, _, _, _ = _scan_caption_zone(92, 148)
+            bot_white_text_rows, bot_dense_banner_rows, bot_max_w_run, bot_max_d_run = _scan_caption_zone(148, 238)
 
             def _row_white_cnt(y_idx: int) -> int:
                 return sum(
@@ -1185,16 +1206,17 @@ class VideoMemoryRAG:
                 return True, "collage_divider"
             if has_letterbox_blur_bars:
                 return True, f"letterbox_blur_bars(top={top_sh:.1f},bot={bot_sh:.1f},mid={mid_sh:.1f})"
-            if text_rows >= 38 and (white_paper_ratio > 0.22 or black_poster_ratio > 0.32):
+            if 28 <= text_rows <= 145 and zero_edge_rows >= 32 and (white_paper_ratio > 0.22 or flat_black_poster_ratio > 0.34):
                 return True, f"poster_text_rows={text_rows}"
-            if (
-                bot_white_text_rows >= 9
-                or top_white_text_rows >= 9
-                or bot_dense_banner_rows >= 3
-                or top_dense_banner_rows >= 3
-                or (bot_dense_banner_rows + top_dense_banner_rows) >= 3
-            ):
-                return True, f"embedded_caption_box(bot={bot_white_text_rows}/{bot_dense_banner_rows},top={top_white_text_rows}/{top_dense_banner_rows})"
+            is_fullframe_natural_sparkle = (mid_white_text_rows >= 14 and max(top_max_d_run, bot_max_d_run) < 6)
+            has_bot_caption_band = (bot_max_d_run >= 4 or (bot_white_text_rows >= 10 and bot_max_w_run >= 4))
+            has_top_caption_band = (top_max_d_run >= 4 or (top_white_text_rows >= 10 and top_max_w_run >= 4))
+            if not is_fullframe_natural_sparkle and (has_bot_caption_band or has_top_caption_band):
+                return (
+                    True,
+                    f"embedded_caption_box(bot={bot_white_text_rows}/run={bot_max_w_run}:{bot_max_d_run},"
+                    f"top={top_white_text_rows}/run={top_max_w_run}:{top_max_d_run})",
+                )
             return False, ""
         except Exception as e:
             return False, str(e)
