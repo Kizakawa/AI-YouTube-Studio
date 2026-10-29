@@ -140,17 +140,39 @@ class SceneContextAnalyzerMixin:
         models: Optional[List[str]] = None,
         max_attempts: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Gọi Gemini API trả về JSON với KeyRotator ưu tiên Model mạnh nhất trước."""
+        """Gọi Gemini API trả về JSON với KeyRotator, thread-local Session và giới hạn tổng wall-clock."""
         if not self.rotator:
             return None
 
+        import time as _time
         import requests
+
         parts: List[Dict[str, Any]] = [{"text": prompt}]
         for mime, b64 in (images or []):
             parts.append({"inline_data": {"mime_type": mime, "data": b64}})
 
+        # Thread-local requests.Session tránh xung đột SSL socket khi nhiều worker threads gọi Vision song song
+        tls = getattr(self, "_tls_http", None)
+        if tls is None:
+            tls = _threading.local()
+            self._tls_http = tls
+        http_sess = getattr(tls, "session", None)
+        if http_sess is None:
+            http_sess = requests.Session()
+            tls.session = http_sess
+
+        per_req_timeout = max(4.0, float(timeout or 15))
+        wall_budget_sec = max(per_req_timeout * 2.6, 24.0)
+        t_deadline = _time.monotonic() + wall_budget_sec
+
         conn_errors = 0
         for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=max_attempts or 6):
+            remaining_wall = t_deadline - _time.monotonic()
+            if remaining_wall <= 1.5:
+                logger.warning(
+                    f"[VisualCurationAgent] Đạt ngưỡng wall-clock ({wall_budget_sec:.1f}s) cho gemini_json -> thoát sớm chống treo."
+                )
+                break
             if images and model.startswith("gemma-"):
                 continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
@@ -159,9 +181,28 @@ class SceneContextAnalyzerMixin:
                 "contents": [{"parts": parts}],
                 "generationConfig": gen_cfg,
             }
+            sem_wait = min(remaining_wall, max(per_req_timeout, 8.0))
+            if not _VISION_SEM.acquire(timeout=sem_wait):
+                logger.warning("[VisualCurationAgent] Quá hạn chờ _VISION_SEM -> thoát sớm tránh dồn hàng đợi.")
+                break
             try:
-                with _VISION_SEM:
-                    res = self.session.post(url, json=payload, timeout=KeyRotator.fast_timeout(timeout))
+                eff_read = min(per_req_timeout, max(3.5, t_deadline - _time.monotonic()))
+                res = http_sess.post(url, json=payload, timeout=KeyRotator.fast_timeout(eff_read))
+            except requests.exceptions.Timeout as e:
+                self.rotator.mark_model_rate_limited(key, model, status_code=504, error_text=f"Timeout: {e}")
+                continue
+            except requests.exceptions.ConnectionError:
+                conn_errors += 1
+                if conn_errors >= 2:
+                    return None
+                continue
+            except Exception as e:
+                logger.debug(f"[VisualCurationAgent] Gemini call error on {model}: {e}")
+                continue
+            finally:
+                _VISION_SEM.release()
+
+            try:
                 if res.status_code == 200:
                     data = res.json()
                     candidates = data.get("candidates", [])
@@ -180,16 +221,8 @@ class SceneContextAnalyzerMixin:
                 elif res.status_code in (429, 403, 404, 503, 400):
                     self.rotator.mark_model_rate_limited(key, model, status_code=res.status_code, error_text=res.text[:800])
                     continue
-            except requests.exceptions.Timeout as e:
-                self.rotator.mark_model_rate_limited(key, model, status_code=504, error_text=f"Timeout: {e}")
-                continue
-            except requests.exceptions.ConnectionError:
-                conn_errors += 1
-                if conn_errors >= 2:
-                    return None
-                continue
             except Exception as e:
-                logger.debug(f"[VisualCurationAgent] Gemini call error on {model}: {e}")
+                logger.debug(f"[VisualCurationAgent] Gemini parse error on {model}: {e}")
                 continue
 
         return None

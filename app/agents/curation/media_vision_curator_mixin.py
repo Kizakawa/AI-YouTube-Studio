@@ -320,13 +320,28 @@ TRẢ VỀ JSON DUY NHẤT:
             _stop_fb = {
                 "the", "and", "for", "with", "from", "into", "over", "under", "this", "that",
                 "video", "footage", "shot", "view", "close", "slow", "motion", "cinematic", "dark",
+                "foot", "feet", "inch", "pound", "ton", "tons", "mile", "miles", "year", "years",
+                "day", "days", "hour", "hours", "second", "seconds", "minute", "minutes", "half",
+                "part", "rate", "mode", "design", "crew", "people", "person", "world", "life",
+                "massive", "extreme", "giant", "entire", "afternoon", "overnight", "against",
             }
-            subj_tokens = {
-                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{subject_req} {topic_ctx}".lower())
+            scene_queries_str = " ".join(
+                str(x) for x in ((visual_analysis or {}).get("search_queries") or []) if x
+            )
+            neg_tokens = {
+                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", " ".join(str(x) for x in negative_cues).lower())
                 if w not in _stop_fb
             }
-            scene_tokens = {
-                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{expected_vis} {narration}".lower())
+            core_subj_tokens = {
+                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{subject_req}".lower())
+                if w not in _stop_fb
+            }
+            scene_intent_tokens = {
+                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{scene_queries_str} {expected_vis}".lower())
+                if w not in _stop_fb
+            }
+            narr_tokens = {
+                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{narration}".lower())
                 if w not in _stop_fb
             }
             best_det_cand = None
@@ -336,11 +351,16 @@ TRẢ VỀ JSON DUY NHẤT:
                 if is_incongruent_stock_image(slug_txt, topic=topic_ctx, narration=narration):
                     continue
                 cand_tokens = set(_re_fb.findall(r"[a-zA-Z]{4,}", slug_txt))
-                subj_hits = len(cand_tokens.intersection(subj_tokens))
-                scene_hits = len(cand_tokens.intersection(scene_tokens))
-                if subj_hits >= 1 or (not subj_tokens and scene_hits >= 2) or (subj_hits + scene_hits >= 2):
+                if neg_tokens and cand_tokens.intersection(neg_tokens - core_subj_tokens - scene_intent_tokens):
+                    continue
+                subj_hits = len(cand_tokens.intersection(core_subj_tokens))
+                intent_hits = len(cand_tokens.intersection(scene_intent_tokens))
+                narr_hits = len(cand_tokens.intersection(narr_tokens))
+                distinct_anchor_hits = len(cand_tokens.intersection(core_subj_tokens | scene_intent_tokens))
+                # Bắt buộc khớp ít nhất 2 token nội dung đặc trưng của cảnh/chủ thể (chống khớp mù 1 từ đơn lẻ gây lệch bối cảnh/niên đại)
+                if distinct_anchor_hits >= 2 and (intent_hits >= 2 or (subj_hits >= 1 and (intent_hits + narr_hits) >= 1)):
                     is_vert = (cand.get("height") or 0) >= (cand.get("width") or 0)
-                    det_sc = min(8.2, 7.1 + subj_hits * 0.35 + scene_hits * 0.2 + (0.2 if is_vert else 0.0))
+                    det_sc = min(8.2, 7.0 + subj_hits * 0.35 + intent_hits * 0.25 + min(narr_hits, 2) * 0.1 + (0.2 if is_vert else 0.0))
                     if det_sc > best_det_score:
                         best_det_score = det_sc
                         best_det_cand = cand

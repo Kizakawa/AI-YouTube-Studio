@@ -310,6 +310,69 @@ def test_stock_fetcher_no_name_error_and_hook_candidate_dedup():
     print("Test 6 PASSED!")
 
 
+def test_vision_wall_clock_deadline_and_multi_token_deterministic_fallback():
+    print("\n=== Test 7: Vision Wall-Clock Guard & Multi-Token Deterministic Stock Fallback (4-Domain) ===")
+    import time
+    from unittest.mock import patch
+    import requests
+    from app.agents.visual_curation_agent import VisualCurationAgent
+
+    agent = VisualCurationAgent()
+
+    # 7A. Verify _call_gemini_json never hangs indefinitely when HTTP calls stall
+    if agent.rotator:
+        def _slow_timeout(*args, **kwargs):
+            time.sleep(0.25)
+            raise requests.exceptions.Timeout("simulated read timeout")
+
+        with patch("requests.Session.post", side_effect=_slow_timeout):
+            t0 = time.monotonic()
+            out = agent._call_gemini_json("{}", timeout=4, max_attempts=3)
+            elapsed = time.monotonic() - t0
+            assert out is None
+            assert elapsed < 5.0, f"Expected fast bounded exit, took {elapsed:.2f}s"
+
+    # 7B. Verify Deterministic Fallback rejects single-token false positives ('roman' -> 'bustling roman shopping street')
+    # and accepts genuine multi-token matches when Gemini Vision is rate-limited
+    def _mk_cand(vid_id: int, slug_url: str) -> dict:
+        return {
+            "id": vid_id,
+            "url": f"https://www.pexels.com/video/{slug_url}-{vid_id}/",
+            "duration": 10,
+            "image": "",
+            "video_files": [{"link": f"https://videos.pexels.com/{vid_id}.mp4", "width": 1080, "height": 1920, "file_type": "video/mp4"}],
+        }
+
+    with patch.object(VisualCurationAgent, "_fetch_video_thumbnails_for_llm", return_value=([], {})), \
+         patch.object(VisualCurationAgent, "_call_gemini_json", return_value=None):
+        # Single-word overlap ('roman') on modern shopping tourists MUST BE REJECTED
+        win_bad, _, _, _ = agent.curate_candidate_videos(
+            candidates=[_mk_cand(101, "bustling-roman-shopping-street-scene")],
+            visual_analysis={
+                "subject": "Hannibal Barca",
+                "search_queries": ["roman soldiers crowded battle"],
+                "expected_visual_content": "ancient roman legionaries trapped in battle",
+            },
+            narration="Thousands of Romans died standing up unable to lift their shields.",
+            topic="Hannibal Barca vs 86,000 Roman Legionaries at Cannae in 216 BC",
+        )
+        assert win_bad is None, f"Single-word anachronistic stock clip should be rejected, got: {win_bad}"
+
+        # Multi-token match ('fbi', 'detective', 'interrogation', 'suspect') MUST BE ACCEPTED
+        win_good, sc_good, _, _ = agent.curate_candidate_videos(
+            candidates=[_mk_cand(202, "detective-questioning-nervous-suspect-in-interrogation-room")],
+            visual_analysis={
+                "subject": "FBI Interrogation",
+                "search_queries": ["detective interrogation nervous suspect"],
+                "expected_visual_content": "detective watching suspect ankle lock in interrogation room",
+            },
+            narration="While a suspect maintains eye contact, their ankles remain locked.",
+            topic="FBI Limbic Freeze Test vs Rehearsed Suspects",
+        )
+        assert win_good is not None and sc_good >= 7.2, "Valid multi-token match must be rescued cleanly!"
+    print("Test 7 PASSED!")
+
+
 if __name__ == "__main__":
     test_dual_track_queries_4_domains()
     test_0ms_edit_and_ai_slop_filter()
@@ -317,4 +380,5 @@ if __name__ == "__main__":
     test_live_dual_track_youtube_search_mix()
     test_all_14_yaml_niches_video_search_strategy()
     test_stock_fetcher_no_name_error_and_hook_candidate_dedup()
-    print("\nALL 6 YAML DUAL-TRACK SEARCH, STOCK FETCHER & DEDUP TESTS PASSED 100%!")
+    test_vision_wall_clock_deadline_and_multi_token_deterministic_fallback()
+    print("\nALL 7 YAML DUAL-TRACK SEARCH, VISION GUARD & STOCK FALLBACK TESTS PASSED 100%!")
