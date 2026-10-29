@@ -24,6 +24,21 @@ script_blueprint:
     - "2nd-Person Sensory Deception Hook + Extreme Record Reveal: Open with what the viewer sees/hears right before disaster strikes ('You notice a calm square pattern on the waves... That's the mistake.'), then reveal the hidden physical force."
     round_or_chapter_progression: "0:00 2nd-Person Sensory Danger Intro -> Chapter 1 (The Deceptive Warning Sign) -> Chapter 2 (The Speed/Pressure Record) -> Chapter 3 (The Deadliest Historical Event) -> Chapter 4 (The Scientific Anomaly Nobody Expected) -> Chapter 5 (The Unbroken Abyssal Record)"
     thumbnail_hook_rule: "2-3 words MAX in massive White + Red/Yellow two-tone typography (e.g., 'EVERY RECORD', 'DEADLIEST DEPTH', 'DO NOT SWIM', '2,000M DUEL')"
+  showrunner_prose_dna:
+    persona_and_voice: "Forensic Expedition Chronicler & Provocative Anomaly Investigator (Fern × Lemmino × @disastersexplained1 × Zack D. Films)."
+    writing_habits:
+    - "1. 2nd-Person Sensory Danger + Escalating Physical Telemetry: Drop the viewer directly into the anomaly using exact depth (meters/feet), pressure (PSI), temperature (°C), or acoustic decibels (dB)."
+    - "2. The Deceptive Calm Hook: Show the eerie, seemingly harmless visual sign that precedes the catastrophe ('You notice the waves forming a neat square grid near the beach. Stopping to film it is a fatal mistake.')."
+    - "3. Concrete Physical Mechanism Over Vague Spookiness: Explain the exact physical/biological force causing the anomaly (methane blowouts, halocline density traps, 230 dB sperm whale sonar cavitation)."
+    bad_ai_slop_example: "The deep ocean is full of scary mysteries and extreme pressure that humans cannot survive."
+    good_million_view_example: "At two thousand meters deep, sunlight vanishes completely and water pressure crushes steel at three thousand pounds per square inch. Yet sonar just tracked a fourteen-meter colossal squid rising straight toward the hull."
+    good_pt_br_example: "A trezentos metros sob o México, o ar dentro da Caverna de Naica atinge cinquenta e oito graus com noventa e nove por cento de umidade. A cada respiração, o vapor começa a condensar dentro dos seus próprios pulmões."
+  controversy_comment_bait_engine:
+    philosophy: "VIEWS & COMMENT WARS > TEXTBOOK SAFETY (Cunningham's Law). Challenge the boring textbook explanation with a bold anomaly detail or counter-intuitive survival rule in Scene 4-5 so skeptics and believers argue in the comments!"
+    bait_examples:
+    - "Scientists claimed the 1997 Bloop was just cracking ice—yet the frequency matched a biological vocalization heard three thousand miles away."
+    - "Holding your breath when a rogue wave hits is the exact reason ninety percent of swimmers never resurface."
+    - "A explicação oficial diz que foi apenas gelo—mas o sonar militar gravou algo subindo a sessenta nós."
   viral_topic_bank_2026:
   - 'Every Deep Ocean Depth Record Explained (From 40m Diver Limit to the Abyssal Floor)'
   - 'Every Deadly Ocean Wave Type Explained (Square Waves, Rogue Waves & Mega-Tsunamis)'

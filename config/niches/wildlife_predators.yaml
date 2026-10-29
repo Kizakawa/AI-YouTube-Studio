@@ -25,6 +25,21 @@ script_blueprint:
     - "Gauntlet Boss Round Extraction: Focus on the single most shocking asymmetric matchup from the Gauntlet (e.g. 'Jaguar vs 8 Giant River Otters', 'Honey Badger vs 6 Lions') with a 2-way counter-attack twist at Scene 4."
     round_or_chapter_progression: "0:00 Cold Open & Contender Stats -> Chapter 1 (Round 1: The Speed Challenger) -> Chapter 2 (Round 2: The Venom/Ambush Specialist) -> Chapter 3 (Round 3: The Armored Tank) -> Chapter 4 (Round 4: The Pack Threat) -> Chapter 5 (Final Boss & Ultimate Verdict)"
     thumbnail_hook_rule: "2-3 words MAX in massive White + Yellow/Red two-tone typography (e.g., 'TOO EASY?', 'SOLO ELITE?', 'ZERO CHANCE', '1,500 PSI!')"
+  showrunner_prose_dna:
+    persona_and_voice: "High-Adrenaline, Opinionated Combat Biomechanics Analyst (TierZoo stats & roast breakdown × Casual Geographic × @FossilVideos Gauntlet intensity)."
+    writing_habits:
+    - "1. Combat Stats & Anatomical Weapon Breakdown: Treat every animal encounter like a heavyweight engineering duel—cite exact weight (lbs/kg), bite force (PSI), strike speed (milliseconds / mph), venom lethality, and armor thickness."
+    - "2. Zero Slow Nature Poetry: Never write textbook filler like 'Nature is full of amazing predators.' Every sentence must describe a physical strike, biomechanical advantage, or survival counter-mechanism."
+    - "3. Two-Way Counter-Build Twist: Establish Predator A's lethal weapon in Act 1–2, then flip the fight in Act 3 by revealing Opponent B's biological counter-weapon!"
+    bad_ai_slop_example: "The jaguar is a powerful apex predator that uses its strong jaws to hunt caimans in the river."
+    good_million_view_example: "Lions spend ten minutes suffocating a prey's windpipe. The Pantanal Jaguar skips the throat entirely—driving 1,500 PSI straight through the caiman's skull to shut down its brainstem in 0.3 seconds."
+    good_pt_br_example: "Enquanto os leões levam dez minutos para sufocar a garganta, a onça-pintada ignora o pescoço. Ela crava mil e quinhentos PSI direto no crânio do jacaré, desligando o cérebro em menos de um segundo."
+  controversy_comment_bait_engine:
+    philosophy: "VIEWS & COMMENT WARS > POLITE NEUTRALITY (Cunningham's Law). Never give a neutral 'both animals are strong' verdict! Intentionally plant 1 bold, provocative 'Fanboy Trigger' claim in Scene 1 or Scene 4-5 that disrespects a fan-favorite predator or declares an audacious underdog win so lion/tiger/bear/shark fans argue furiously in the comments!"
+    bait_examples:
+    - "Pound for pound, the African Lion is the most overrated predator on Earth—and a Pantanal Jaguar would end it in ten seconds."
+    - "A thirty-pound Honey Badger makes a four-hundred-pound Lion back down every single time."
+    - "Quilo por quilo, o leão africano é o predador mais superestimado da Terra—e uma onça-pintada acabaria com ele em dez segundos."
   viral_topic_bank_2026:
   - 'Could a Jaguar Beat Every Predator in the African Savanna? (5-Round Gauntlet)'
   - 'How Long You Would Last Against Every Deadly Amazon River Predator'

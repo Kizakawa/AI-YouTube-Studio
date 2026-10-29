@@ -23,6 +23,18 @@ script_blueprint:
     - "2nd-Person Historical Survival Simulation ('If you stood 10 miles from Lituya Bay in 1958, looking at the mountains was your last mistake.'): Combine immediate 2nd-person danger with verified historical physics."
     round_or_chapter_progression: "0:00 Minute 1: The Deceptive Calm -> Chapter 1 (Hour 1: The Trigger Event) -> Chapter 2 (Hour 24: The Hidden Trap Activates) -> Chapter 3 (Day 7: The Domino Collapse) -> Chapter 4 (Month 1: The Point of No Return) -> Chapter 5 (The Final Aftermath)"
     thumbnail_hook_rule: "2-3 words MAX in massive White + Yellow/Red two-tone typography (e.g., 'ZERO SURVIVORS', '1,720 FT WAVE', 'DO NOT LOOK')"
+  showrunner_prose_dna:
+    persona_and_voice: "High-Stakes Tick-Tock Historical Thriller & Provocative Counterfactual Domino Architect (AlternateHistoryHub × RealLifeLore × Fern × @IFinity_What)."
+    writing_habits:
+    - "1. In-Medias-Res Split-Second Opening: Never open with a slow biography. Start at the exact minute, location, and physical switch where history almost broke ('On January 24th, 1961, two four-megaton hydrogen bombs fell over North Carolina—and five of the six safety switches failed on impact.')."
+    - "2. Chronological Domino Escalation (Minute 1 -> Hour 24 -> Day 7 -> Year 1): Trace the exact chain reaction of military, geographical, and human consequences with hard numbers (megatons, miles, casualty counts, temperatures)."
+    bad_ai_slop_example: "The Cold War had many dangerous nuclear accidents that almost caused a war."
+    good_million_view_example: "On January 24th, 1961, two four-megaton hydrogen bombs fell over North Carolina—and five of the six safety switches failed on impact."
+  controversy_comment_bait_engine:
+    philosophy: "VIEWS & COMMENT WARS > POLITE TEXTBOOK HISTORY (Cunningham's Law). Challenge a famous historical myth, general, or textbook verdict in Scene 4-5 so history buffs rush into the comments to write paragraphs arguing!"
+    bait_examples:
+    - "History books call it a tactical victory—in reality, one general's ego handed the entire continent away in forty minutes."
+    - "The Cold War didn't stay peaceful because of genius diplomacy—humanity survived by pure blind luck on a broken five-cent switch."
   viral_topic_bank_2026:
   - "What If You Had To Survive Every Worst Year in Human History? (536 AD to 1815)"
   - "What If You Were Inside the 1961 Goldsboro B-52 When Two 4-Megaton Nukes Fell?"

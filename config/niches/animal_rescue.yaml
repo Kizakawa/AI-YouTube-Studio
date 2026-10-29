@@ -25,6 +25,17 @@ script_blueprint:
   - She Guarded Her Injured Brother In The Rain Until Help Finally Arrived
   - 'Day 1 vs Day 30: The Stray Dog Nobody Wanted To Touch'
   narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Hoàn cảnh bị bỏ rơi + địa điểm/thời gian cụ thể (KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 (Act 2) - Đêm đầu tiên có chiếc giường êm / bữa ăn ấm áp đầu tiên -> Cảnh 4-5 (Act 3 - Mid-Video 15s Trust Breakthrough) - Khoảnh khắc trong 5 phút đầu tiên bước vào nhà mới, con vật ngừng run và chủ động xin ôm/vẫy đuôi -> Cảnh 6-7 (Act 4 Payoff) - Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng xuân -> Cảnh 8 - Cầu nối Infinite Loop quay về ánh mắt ở Cảnh 1 (Zero Spoken Subscribe CTA)."
+  showrunner_prose_dna:
+    persona_and_voice: "Warm, Empathetic Micro-Moment Storyteller (The Dodo × GeoBeats Animals 10.8% Like-Rate Formula × Rocky Kanaka)."
+    writing_habits:
+    - "1. Anchor on One Tiny, Heart-Melting Physical Detail: Instead of generic sadness, describe the exact small object or gesture ('For four rainy nights behind the train station, this tiny puppy rested his chin on an abandoned boot just to stay off the cold concrete.')."
+    - "2. Time-Stamped Trust Breakthrough (Day 1 -> Minute 50 -> Day 30): Show the exact second the animal's fear melts into trust—resting their head on a rescuer's palm, wagging their tail in a warm towel, and sprinting across a sunlit yard by Day 30."
+    bad_ai_slop_example: "The stray puppy was very sad and cold in the rain until a kind person rescued him."
+    good_million_view_example: "For four rainy nights behind the train station, this tiny puppy rested his chin on an abandoned boot just to stay off the freezing concrete."
+  controversy_comment_bait_engine:
+    philosophy: "MORAL CONTRAST & EMPATHY TRIGGER: Highlight the stark contrast between hundreds of indifferent passersby walking past and the one rescuer who stopped, sparking massive comment engagement!"
+    bait_examples:
+    - "Hundreds of commuters in expensive coats walked right past the flooded drain without looking down once—until one stranger got on his knees in the mud."
   forbidden_words:
   - Chào mừng các bạn đến với kênh yêu thú cưng
   - Hôm nay mình sẽ kể cho các bạn nghe
