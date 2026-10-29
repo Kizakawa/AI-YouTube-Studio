@@ -85,6 +85,7 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
                 scenes=scenes,
                 proposed_decisions=strat_list,
                 primary_entity=primary_entity,
+                channel_niche=channel_style,
             )
             existing_plan = {
                 **existing_plan,
@@ -120,6 +121,7 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
             scenes=scenes,
             proposed_decisions=tool_decisions,
             primary_entity=primary_entity,
+            channel_niche=channel_style,
         )
     plan = {
         "topic_classification": "HYBRID_TOOL_CALLING",

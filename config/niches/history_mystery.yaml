@@ -29,9 +29,9 @@ script_blueprint:
   - Cảm ơn các bạn đã theo dõi
   - Lịch sử thế giới rất phong phú
   cta_templates:
-  - Empires crumble into dust, but the truth remains buried. Subscribe to uncover what history erased.
-  - The official records were rewritten, yet the stone monuments still whisper the real secret. Subscribe so you never miss the untold truth.
-  - History is written by the victors, but what they erased is the most dangerous truth. Follow to unmask the hidden archives.
+  - "Do you think this ancient monument was built with (1) Lost Forgotten Engineering or (2) Sheer Human Labor? Vote 1 or 2 below! 👇"
+  - "If archaeologists opened that sealed chamber tomorrow, what is more likely inside: (1) Royal Relics or (2) A Historical Cover-Up? 👇"
+  - "Was the official chronicle (1) Accurate History or (2) Rewritten by the Victors? 👇"
   anti_hallucination_rules:
   - Phải trích dẫn đúng mốc niên đại, tên nhân vật, địa danh khảo cổ có thật (như
     Howard Carter, Tutankhamun, Pompeii, Göbekli Tepe).
@@ -82,3 +82,65 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Ancient Civilizations, Sealed Archaeological Tombs & Unsolved Historical Mysteries (Tutankhamun, Pompeii, Gobekli Tepe,
+    Roman Empire, Lost Relics). Requires real archaeological expedition footage, ancient ruins aerials, and authentic artifacts.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      When a historical topic pits two empires/armies against each other (Empire A vs Empire B), probe at most 1 documented battle reenactment
+      query alongside 3+ clean SINGLE-ENTITY archaeological ruin, artifact, or historical action queries; FAST-DROP 'A vs B' immediately if it returns #edit maps or AI Veo clips!
+    single_entity_body_scene_rule: >
+      Every body scene MUST search ONLY '[Single Monument / Civilization / Artifact] + [Real Expedition or Aerial Action]' with ZERO 'vs'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Ancient Monument or Artifact] + [Setting]' (e.g. 'egyptian pyramid sunset', 'ancient roman ruins') with ZERO 'vs'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 Shorts AND 16:9 HD/4K raw archaeological documentary, drone ruin aerials, and museum artifact footage.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      Never mix modern skyscrapers, smartphones, or countryball/mapping #edit clips into ancient history scenes; keep all scenes grounded in authentic period ruins, excavations, and artifacts.
+    clash_query_examples:
+    - "roman legion battle reenactment"
+    single_entity_query_examples:
+    - "egyptian pyramid tomb excavation"
+    - "pompeii ancient ruins aerial drone"
+    - "gobekli tepe stone pillars excavation"
+    - "ancient golden pharaoh mask closeup"
+    stock_fallback_examples:
+    - "ancient pyramid desert"
+    - "archaeology ruins aerial"
+    - "ancient stone hieroglyphs"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#historyedit"
+    - "#countryballs"
+    - "#mapping"
+    - "#capcut"
+    - "#phonk"
+    - "#veo"
+    - "google veo"
+    - "who would win"
+    - "who won"
+    - "vs edit"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aishorts"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "ai generated"
+    - "ai video"
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Real Archaeological Expedition, Monument Aerials & Historical Reenactment"
+    when_to_use: "Use for Scene 1-2 Opening Hook, Climax, and Ending scenes."
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "[Single Ancient Site / Civilization / Artifact] + [Expedition / Aerial / Reenactment Action] (ZERO 'vs')"
+  - archetype: "2. Archival Manuscripts, Maps & Museum Relics"
+    when_to_use: "Use ONLY on middle scenes (Scene 3-6) when depicting a specific historical manuscript, tomb map, or artifact."
+    recommended_tool: "search_google_cinematic_image"
+    query_formula: "[Specific Historical Relic / Manuscript + Era] (4-6 English words)"
+  strictly_forbidden_visuals:
+  - "Modern smartphones/offices, countryball #edit videos, AI Veo corner watermarks, or burned-in subtitles"

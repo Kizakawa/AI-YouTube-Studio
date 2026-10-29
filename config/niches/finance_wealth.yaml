@@ -29,10 +29,8 @@ script_blueprint:
   - Làm giàu không khó
   - Hãy đầu tư ngay hôm nay
   cta_templates:
-  - Bạn đang ở bậc thang tài chính số mấy? Để lại con số bên dưới và đăng ký kênh
-    để đổi đời.
-  - Lưu video này lại trước khi bạn tiêu hết tháng lương tiếp theo, và theo dõi kênh
-    ngay.
+  - "Nếu hôm nay có 100 triệu nhàn rỗi, bạn chọn (1) Tích sản lãi kép dài hạn hay (2) Kinh doanh xoay vòng vốn? Bình luận 1 hoặc 2 bên dưới! 👇"
+  - "Theo bạn bẫy tiêu tiền nguy hiểm nhất với người trẻ là (1) Trả góp lãi ẩn hay (2) Mua sắm sĩ diện? 👇"
   anti_hallucination_rules:
   - Dẫn chứng chính xác tên nhà đầu tư (Warren Buffett, Charlie Munger, Ray Dalio,
     John Bogle), quy luật lãi kép, lạm phát.
@@ -84,3 +82,60 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Financial Traps, Institutional Money Mechanics & Billionaire Capital Allocation (Warren Buffett, Ray Dalio, Compounding,
+    Inflation). Combines sleek Wall Street noir B-roll, gold vault bullion, printing presses, and 2D Doodle money-trap animations.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      NEVER put 'A vs B' or 'vs' in finance video searches (which triggers guru #edit / TikTok flex clips with burned-in subtitles).
+      Search ONLY single concrete financial objects, Wall Street architecture, vault gold bullion, or use 2D Doodle money-scale metaphors!
+    single_entity_body_scene_rule: >
+      Every real-footage scene MUST search ONLY '[Single Concrete Financial Object / Building] + [Physical Action + Noir Lighting]' with ZERO 'vs' and ZERO abstract terms ('inflation', 'mindset', 'passive income').
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Concrete Money/Gold/Building Object] + [Action]' (e.g. 'gold bars vault', 'dollar printing press') with ZERO 'vs'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 Shorts AND 16:9 HD clean financial documentary B-roll (currency printing presses, gold vaults, Wall Street night aerials).
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      Reject fake-guru podcast talking heads, trading course screenshots, and burned-in caption reels; route abstract compounding/debt concepts to render_doodle_2d_explainer_scene!
+    clash_query_examples:
+    - "stock exchange trading floor bell"
+    single_entity_query_examples:
+    - "us dollar bills printing press machine"
+    - "gold bullion bars vault closeup"
+    - "wall street skyscraper night aerial"
+    - "stock market ticker red crash screen"
+    stock_fallback_examples:
+    - "gold bars vault"
+    - "wall street night aerial"
+    - "counting cash bills dark"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#moneyedit"
+    - "#sigmaedit"
+    - "#capcut"
+    - "#phonk"
+    - "#veo"
+    - "google veo"
+    - "who would win"
+    - "vs edit"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "ai generated"
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Sleek Financial Documentary & Gold/Currency Hardware B-Roll"
+    when_to_use: "Use for Scene 1-2 Opening Hook, institutional proof, and Final Scene."
+    recommended_tool: "clone_youtube_short_peak_clip (or fetch_clean_cinematic_portrait_or_broll)"
+    query_formula: "[Concrete Financial Object / Skyscraper / Vault] + [Physical Motion] (ZERO 'vs')"
+  - archetype: "2. 2D Doodle Money Trap & Compounding Metaphor"
+    when_to_use: "Use when explaining hidden interest traps, inflation erosion, or asset vs liability dynamics."
+    recommended_tool: "render_doodle_2d_explainer_scene"
+    query_formula: "character_tag (@MODERNYOU, @FARMER, @MANIPULATOR) + prop_type (money_scale, alarm, puppet_strings, split)"
+  strictly_forbidden_visuals:
+  - "Podcast/course-seller talking heads, cheesy smiling office workers, comparison #edit clips, or AI Veo watermarks"

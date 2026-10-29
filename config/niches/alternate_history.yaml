@@ -130,14 +130,72 @@ llm_production_blueprint:
     Counterfactual History, Historical Engineering Disasters & Geopolitical What-If Scenarios (Carrington Solar Superstorm,
     Nikola Tesla Wardenclyffe Tower, Roman Empire, WWII Turning Points). Combines real archival/cinematic battle & engineering
     footage with high-detail historical artwork.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      Even when titles frame a historical paradox as 'A vs. B' (e.g. 'Two 4-Megaton Nukes vs. One Low-Voltage Switch', '1,720-Foot Wave vs. Empire State Building'),
+      only probe 'A vs B' if it is an actual documented military battle, and run 3+ clean SINGLE-ENTITY archival/disaster queries in parallel;
+      FAST-DROP 'A vs B' immediately if it returns countryball/map #edit videos or AI Veo clips!
+    single_entity_body_scene_rule: >
+      Every body scene MUST search ONLY one concrete historical hardware, natural disaster, or battlefield spectacle + real archival/cinematic action
+      (ZERO 'vs', ZERO 'what if', ZERO 'alternate history' meta-words in search queries).
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Single Historical Hardware / Phenomenon] + [Physical Action]' with ZERO 'vs' / 'versus'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 Shorts AND 16:9 HD/archival documentary footage (declassified nuclear tests, WWII naval footage, volcanic eruptions, historical battle reenactments).
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      NEVER output static portraits, utility power lines, or telegraph office desks ('JP Morgan portrait', 'power lines'). Always rewrite every scene query to high-motion
+      cinematic battle, engineering hardware, shockwave, or natural catastrophe footage!
+    clash_query_examples:
+    - "ww2 battleship firing uboat"
+    - "roman legion cavalry battle"
+    single_entity_query_examples:
+    - "nuclear explosion mushroom cloud archival"
+    - "b52 bomber flying cold war"
+    - "giant tsunami wave crashing storm"
+    - "mount tambora volcano eruption ash"
+    - "chernobyl reactor control room archival"
+    stock_fallback_examples:
+    - "nuclear explosion mushroom cloud"
+    - "vintage military bomber aircraft"
+    - "volcano eruption lava ash"
+    - "giant ocean storm wave"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#historyedit"
+    - "#countryballs"
+    - "#mapping"
+    - "#capcut"
+    - "#phonk"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "who wins"
+    - "who won"
+    - "vs edit"
+    - "power scaling"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aishorts"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "ai generated"
+    - "ai video"
+    - "made with ai"
   visual_archetypes_and_tool_routing:
   - archetype: "1. Explosive Historical / Scientific / Military Action Footage"
     when_to_use: "Use for Scene 1-2 Opening Hook, Climax, and Final Scene."
     recommended_tool: "clone_youtube_short_peak_clip"
-    query_formula: "[Historical Event/Entity/Phenomenon] + [Cinematic Action/Footage] (e.g. 'solar storm coronal mass ejection earth', 'nikola tesla wardenclyffe tower lightning', 'roman legion battle cinematic')"
+    query_formula: "[Single Historical Event/Hardware/Phenomenon] + [Cinematic/Archival Action] (ZERO 'vs' or 'what if')"
   - archetype: "2. Historical Maps, Blueprints & Archival Artifacts"
     when_to_use: "Use ONLY on middle scenes (Scene 3-6) when showing a specific historical portrait, patent blueprint, or empire map."
     recommended_tool: "search_google_cinematic_image"
     query_formula: "[Historical Subject + Era/Artifact] (4-6 English words)"
   strictly_forbidden_visuals:
-  - "Modern memes, video game HUDs, or text quote cards"
+  - "Modern memes, countryball/mapping #edit clips, AI Veo watermarks, video game HUDs, or text quote cards"

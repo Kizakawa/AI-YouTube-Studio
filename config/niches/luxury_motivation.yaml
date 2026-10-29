@@ -29,9 +29,8 @@ script_blueprint:
   - Cố lên bạn nhé
   - Đăng ký kênh ủng hộ mình
   cta_templates:
-  - Nếu bạn chọn trở thành kẻ chiến thắng chứ không phải khán giả, nhấn thích và theo
-    dõi kênh chiến binh.
-  - Lưu video này để xem mỗi sáng thức dậy, và đăng ký kênh bước vào top 1%.
+  - "Sáng mai lúc 5 giờ chuông reo, bạn chọn (1) Bật dậy kỷ luật thép hay (2) Ngủ nướng thêm 30 phút? Bình luận 1 hoặc 2 bên dưới! 👇"
+  - "Theo bạn thứ tạo ra khoảng cách lớn nhất sau 5 năm là (1) Tài năng bẩm sinh hay (2) Kỷ luật lặp lại mỗi ngày? 👇"
   anti_hallucination_rules:
   - Gắn liền với các câu chuyện có thật của huyền thoại thể thao & kinh doanh (Kobe
     Bryant, Michael Jordan, Elon Musk, David Goggins, Steve Jobs).
@@ -84,3 +83,57 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Iron Discipline, Champion Mindset & High-Contrast Luxury Grit (Kobe Bryant, Michael Jordan, David Goggins).
+    Requires clean, intense athletic training, solitary pre-dawn discipline, and sleek golden-hour cinematography without burned-in motivational captions.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      NEVER put 'A vs B' or 'vs' in motivation video searches (which triggers sigma/phonk #edit reels covered in flashing text).
+      Search ONLY single high-grit athletic actions or clean luxury hardware cinematography!
+    single_entity_body_scene_rule: >
+      Every scene MUST search ONLY '[Single Athlete or Luxury Vehicle/Setting] + [Intense Physical Action + Dark/Golden Lighting]' with ZERO 'vs' and ZERO abstract words ('motivation', 'discipline', 'success').
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Single Athlete or Vehicle] + [Physical Action]' (e.g. 'boxer punching bag sweat', 'supercar sunset highway') with ZERO 'vs'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 Shorts AND 16:9 HD clean commercial-grade sports/automotive cinematography without burned-in quote overlays.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      Strictly reject motivational speech talking heads with burned-in captions (#motivationedit, #sigmaedit); every clip must be 100% text-free physical grit or luxury motion.
+    clash_query_examples:
+    - "boxing sparring ring sweat slow motion"
+    single_entity_query_examples:
+    - "boxer punching heavy bag dark gym"
+    - "sprinter starting blocks slow motion"
+    - "athlete running rain pre dawn dark"
+    - "matte black supercar driving sunset"
+    stock_fallback_examples:
+    - "boxer training dark gym"
+    - "athlete sweat workout"
+    - "private jet sunset runway"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#motivationedit"
+    - "#sigmaedit"
+    - "#capcut"
+    - "#alightmotion"
+    - "#phonk"
+    - "#veo"
+    - "google veo"
+    - "who would win"
+    - "quotes"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "ai generated"
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. High-Grit Athletic Discipline & Golden-Hour Luxury Motion"
+    when_to_use: "Use across Scene 1 Hook, body grit scenes, and Final Scene."
+    recommended_tool: "fetch_clean_cinematic_portrait_or_broll (media_preference='VIDEO_BROLL') or clone_youtube_short_peak_clip"
+    query_formula: "[Athlete / Vehicle / Solitary Champion] + [Physical Action + Dark/Sunset Lighting] (ZERO 'vs' or 'motivation')"
+  strictly_forbidden_visuals:
+  - "Burned-in quote reels, podcast talking heads, #sigmaedit phonk clips, or AI Veo corner watermarks"

@@ -29,9 +29,8 @@ script_blueprint:
   - Công nghệ rất có ích cho con người
   - Cảm ơn các bạn đã theo dõi kênh
   cta_templates:
-  - Bạn nghĩ con người hay AI sẽ thắng trong 5 năm tới? Bình luận ý kiến và đăng ký
-    kênh để không bị bỏ lại phía sau.
-  - Lưu lại video này để kiểm chứng vào năm 2030, và theo dõi kênh ngay.
+  - "Trong 5 năm tới, bạn nghĩ công nghệ này sẽ (1) Giải phóng con người hay (2) Thay thế 80% việc làm? Bình luận 1 hoặc 2 bên dưới! 👇"
+  - "Nếu được cấy chip nâng cấp trí nhớ ngay ngày mai, bạn chọn (1) Thử ngay hay (2) Không bao giờ? 👇"
   anti_hallucination_rules:
   - Bám sát các mô hình AI có thật (GPT, Claude, Gemini, Sora, Tesla Optimus, Neuralink,
     Starship).
@@ -84,3 +83,55 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    AI Robotics, Space Telescopes, Quantum Computing & 2050 Future Tech (Tesla Optimus, Figure 02, Starship, James Webb,
+    Neuralink). Combines real hardware demo footage and NASA/ESA space visualizations.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      When comparing two technologies or rockets (e.g. Starship vs Saturn V, Optimus vs Atlas), probe at most 1 direct side-by-side hardware test
+      query alongside 3+ clean SINGLE-ENTITY hardware/space footage queries; FAST-DROP 'A vs B' immediately if it returns fan #edit / phonk clips!
+    single_entity_body_scene_rule: >
+      Every body scene MUST search ONLY '[Single Robot / Spacecraft / Chip Hardware] + [Real Demo or Space Action]' with ZERO 'vs'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Single Tech Hardware or Space Object] + [Action]' (e.g. 'humanoid robot walking', 'rocket launch flame') with ZERO 'vs'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 Shorts AND 16:9 HD/4K official robotics lab demos, rocket launches, and NASA/ESA space telescope footage.
+    allow_3d_cgi_video: true
+    anti_flop_scene_continuity_rule: >
+      Prefer official clean robotics/aerospace hardware tests and clean 3D space visualizations; reject talking-head tech reviewers and #edit TikTok overlays.
+    clash_query_examples:
+    - "boston dynamics atlas humanoid robot test"
+    single_entity_query_examples:
+    - "humanoid robot walking laboratory demo"
+    - "spacex starship booster catch launch"
+    - "james webb telescope deep space nebula"
+    - "quantum computer golden chandelier lab"
+    stock_fallback_examples:
+    - "humanoid robot lab"
+    - "microchip glowing circuit"
+    - "deep space galaxy stars"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#capcut"
+    - "#alightmotion"
+    - "#phonk"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "who won"
+    - "vs edit"
+    forbidden_ai_slop_markers:
+    - "#aishorts"
+    - "made with veo"
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Real Robotics, Rocketry & Space Telescope Footage"
+    when_to_use: "Use across Scene 1-2 Opening Hook, body hardware demos, and Final Scene."
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "[Specific Robot / Spacecraft / Chip] + [Physical Action / Lab Demo] (ZERO 'vs')"
+  strictly_forbidden_visuals:
+  - "Medieval/ancient props, tech YouTuber talking heads, comparison #edit clips, or AI Veo corner watermarks"

@@ -275,6 +275,7 @@ def _search_youtube_flat_cached(
     subject_anchors: Set[str],
     all_query_tokens: Set[str],
     allow_3d_cgi_monster: bool = False,
+    channel_niche: str = "",
 ) -> List[Dict[str, Any]]:
     """
     Quét song song tối đa 4 nhánh ứng viên YouTube (Kệ Shorts dọc 9:16 + Video gốc 16:9 HD/4K quay thật)
@@ -369,7 +370,12 @@ def _search_youtube_flat_cached(
                 continue
             if any(bad_ch in meta_lower for bad_ch in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST):
                 continue
-            if is_edit_or_ai_slop_video_metadata(title, uploader, allow_3d_cgi_monster=allow_3d_cgi_monster):
+            if is_edit_or_ai_slop_video_metadata(
+                title,
+                uploader,
+                allow_3d_cgi_monster=allow_3d_cgi_monster,
+                channel_niche=channel_niche,
+            ):
                 continue
 
             title_lower = title.lower()

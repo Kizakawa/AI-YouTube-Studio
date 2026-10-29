@@ -29,10 +29,8 @@ script_blueprint:
   - Hãy luôn mỉm cười và vui vẻ
   - Triết học rất khó hiểu nhưng hay
   cta_templates:
-  - Bạn có sẵn sàng buông bỏ điều bạn không thể kiểm soát? Nhấn thích để ghi nhớ lời
-    nhắc này và theo dõi kênh.
-  - Lưu video này để mở lại mỗi khi bạn cảm thấy chông chênh, và đăng ký kênh rèn
-    luyện tâm trí.
+  - "Khi gặp biến cố bất ngờ, phản xạ đầu tiên của bạn là (1) Im lặng quan sát hay (2) Phản ứng ngay lập tức? Bình luận 1 hoặc 2 bên dưới! 👇"
+  - "Theo bạn điều khó buông bỏ nhất là (1) Lời phán xét của người khác hay (2) Kỳ vọng hoàn hảo của chính mình? 👇"
   anti_hallucination_rules:
   - Trích dẫn đúng tư tưởng của các triết gia Khắc Kỷ cổ đại (Marcus Aurelius - Meditations,
     Seneca - Letters, Epictetus - Enchiridion).
@@ -82,3 +80,60 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Classical Stoicism (Marcus Aurelius, Seneca, Epictetus) & Timeless Inner Mastery. Combines classical marble sculptures,
+    dramatic storm-crashing cliffs, golden-hour mountain solitude, and 2D Doodle philosophical metaphors.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      NEVER put 'A vs B' or 'vs' in Stoicism video searches (which triggers sigma #edit / phonk quote reels with burned-in text).
+      Search ONLY single classical sculptures, dramatic natural elements, solitary cinematic human framing, or use 2D Doodle metaphors!
+    single_entity_body_scene_rule: >
+      Every scene MUST search ONLY '[Single Classical Sculpture / Nature Element / Solitary Figure] + [Lighting or Motion]' with ZERO 'vs' and ZERO abstract words ('stoicism', 'mindset', 'wisdom').
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Classical Statue or Nature Scene] + [Lighting/Action]' (e.g. 'marble statue shadow', 'waves crashing dark cliff') with ZERO 'vs'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 Shorts AND 16:9 HD clean classical architecture, sculpture, and dramatic landscape cinematography.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      NEVER select quote-card videos with burned-in motivational captions or modern neon nightclub clips; combine clean classical/nature motion video with ~25% 2D Doodle Explainer scenes.
+    clash_query_examples:
+    - "ocean storm waves crashing rocky cliff"
+    single_entity_query_examples:
+    - "ancient roman marble statue shadow light"
+    - "lone man standing mountain peak mist"
+    - "hourglass sand falling macro dark"
+    - "hand writing candlelight old parchment"
+    stock_fallback_examples:
+    - "marble statue dark light"
+    - "ocean waves rocky cliff"
+    - "man mountain sunrise mist"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#stoicedit"
+    - "#sigmaedit"
+    - "#capcut"
+    - "#phonk"
+    - "#veo"
+    - "google veo"
+    - "who would win"
+    - "quotes"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "ai generated"
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Classical Marble Statues & Dramatic Nature Cinematography"
+    when_to_use: "Use for Scene 1-2 Opening Hook, emotional climax, and Final Scene."
+    recommended_tool: "fetch_clean_cinematic_portrait_or_broll (media_preference='VIDEO_BROLL')"
+    query_formula: "[Classical Statue / Solitary Figure / Storm Landscape] + [Chiaroscuro / Golden Light] (ZERO 'vs' or 'stoicism')"
+  - archetype: "2. 2D Doodle Philosophical Paradox Metaphor"
+    when_to_use: "Use on 1-2 middle scenes to illustrate internal control vs external chaos."
+    recommended_tool: "render_doodle_2d_explainer_scene"
+    query_formula: "character_tag (@ANCESTOR, @MODERNYOU) + prop_type (split, block, brain_battery, spear_nature)"
+  strictly_forbidden_visuals:
+  - "Motivational text quote cards, #stoicedit phonk captions, modern plastic offices, or AI Veo corner watermarks"

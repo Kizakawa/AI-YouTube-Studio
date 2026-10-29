@@ -142,11 +142,20 @@ def execute_youtube_short_peak_clone_sync(
             import yt_dlp
             from app.graph.evaluators.visual_critic import VisualCritic
 
+            resolved_niche = ""
+            if channel_id:
+                try:
+                    from app.services.niche_manager import get_channel_niche
+                    resolved_niche = str((get_channel_niche(channel_id) or {}).get("id") or "")
+                except Exception:
+                    resolved_niche = ""
+
             candidates = _search_youtube_flat_cached(
                 search_phrases,
                 subject_anchors,
                 all_query_tokens,
                 allow_3d_cgi_monster=allow_3d_cgi_monster,
+                channel_niche=resolved_niche,
             )
             unused_cands = [
                 c for c in candidates

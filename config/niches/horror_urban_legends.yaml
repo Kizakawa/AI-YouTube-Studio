@@ -28,10 +28,8 @@ script_blueprint:
   - Chúc các bạn ngủ ngon
   - Video này mang tính giải trí
   cta_templates:
-  - Đừng xem video này một mình trong bóng tối. Nhấn lưu lại và chia sẻ cho người
-    bạn muốn hù dọa.
-  - Nếu bạn cảm thấy có ai đó vừa nhìn sau lưng bạn, bấm đăng ký kênh để phá bỏ lời
-    nguyền.
+  - "Nếu nghe thấy tiếng gõ cửa đúng 3 giờ 07 phút sáng, bạn sẽ (1) Nhìn qua lỗ mắt mèo hay (2) Khóa trái phòng nằm im? 👇"
+  - " Theo bạn câu chuyện này là (1) Hiện tượng có thật chưa lời giải hay (2) Trùng hợp rợn người? 👇"
   anti_hallucination_rules:
   - Tạo dựng cốt truyện kịch tính nhưng không vi phạm chính sách nội dung gây hại
     hoặc kích động bạo lực của YouTube.
@@ -80,3 +78,55 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Creepypasta, 3AM Urban Legends, Cursed Artifacts & Analog Found-Footage Horror. Requires eerie dark hallways,
+    night-vision anomalies, fog silhouettes, or 3D CGI cryptid scale footage without bright daylight or comedy memes.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      NEVER stuff 'A vs B' or 'vs' into horror video searches (which lures monster power-scaling #edit / phonk videos).
+      Search ONLY single eerie atmospheric settings, night-vision sightings, or cryptid dark silhouettes!
+    single_entity_body_scene_rule: >
+      Every scene MUST search ONLY '[Single Eerie Subject or Dark Setting] + [Flashlight / Fog / Night-Vision Action]' with ZERO 'vs'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Dark Horror Setting] + [Lighting/Motion]' (e.g. 'dark hallway flashlight', 'foggy forest night') with ZERO 'vs'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 horror Shorts AND 16:9 HD dark atmospheric / analog night-vision footage without burned-in subtitles.
+    allow_3d_cgi_video: true
+    anti_flop_scene_continuity_rule: >
+      Maintain dark nocturnal / low-key lighting continuity across all scenes; immediately reject bright sunny daylight clips or 2D kids cartoons.
+    clash_query_examples:
+    - "creepy silhouette standing dark hallway"
+    single_entity_query_examples:
+    - "flashlight beam dark abandoned corridor"
+    - "shadowy figure standing foggy forest night"
+    - "night vision camera eerie woods movement"
+    - "old analog tv static dark room"
+    stock_fallback_examples:
+    - "dark hallway flashlight"
+    - "creepy fog forest night"
+    - "abandoned corridor shadow"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#capcut"
+    - "#alightmotion"
+    - "#phonk"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "who won"
+    - "vs edit"
+    - "power scaling"
+    forbidden_ai_slop_markers:
+    - "made with veo"
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Eerie Night-Vision, Dark Corridor & Cryptid Silhouette Footage"
+    when_to_use: "Use across Scene 1 Hook, rising dread body scenes, and Final Scene."
+    recommended_tool: "clone_youtube_short_peak_clip (or summon_epic_monster_cinematic_media for colossal cryptids)"
+    query_formula: "[Dark Setting / Eerie Silhouette] + [Flashlight / Fog / Night Action] (ZERO 'vs')"
+  strictly_forbidden_visuals:
+  - "Bright sunny daylight beaches, cheerful cartoons, comparison #edit clips, or AI Veo corner watermarks"

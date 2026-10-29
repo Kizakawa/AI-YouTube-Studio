@@ -29,9 +29,8 @@ script_blueprint:
   - Hãy ăn uống đầy đủ chất
   - Cảm ơn đã theo dõi video
   cta_templates:
-  - Bạn có dám thử thách 7 ngày áp dụng thói quen này không? Để lại cam kết bên dưới
-    và đăng ký kênh theo dõi.
-  - Lưu lại video này để bắt đầu từ sáng mai, và theo dõi kênh nâng cấp cơ thể.
+  - "Sáng ngủ dậy việc đầu tiên bạn làm là (1) Cầm điện thoại lướt ngay hay (2) Uống nước và đón nắng sáng? Bình luận 1 hoặc 2 bên dưới! 👇"
+  - "Bạn có dám thử cắt sạch đường tinh luyện trong 7 ngày tới: (1) Chốt thử thách hay (2) Khó quá chưa cai được? 👇"
   anti_hallucination_rules:
   - Luôn dựa trên kiến thức sinh lý học thần kinh (Andrew Huberman, Matthew Walker,
     David Sinclair, Peter Attia).
@@ -85,3 +84,51 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Neuro-Biology, Sleep Optimization, Dopamine Balance & Longevity Science (Huberman, Matthew Walker, Cellular 3D).
+    Combines 3D glowing cellular/neural visualizations with crisp real-world athletic and circadian morning footage.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      NEVER put 'A vs B' or 'vs' in health/biohacking video searches. Search ONLY single anatomical/3D cellular processes
+      or single clean human athletic/circadian actions!
+    single_entity_body_scene_rule: >
+      Every scene MUST search ONLY '[Single 3D Organ/Cell or Human Action] + [Biological Process or Crisp Setting]' with ZERO 'vs'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[3D Organ/Cell or Athlete] + [Action]' (e.g. 'brain synapse glowing', 'runner morning mist') with ZERO 'vs'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 Shorts AND 16:9 HD clean 3D medical/cellular animations and high-speed athletic cinematography.
+    allow_3d_cgi_video: true
+    anti_flop_scene_continuity_rule: >
+      Reject doctor/influencer talking-head podcasts, supplement ads, and static text infographics; keep every scene dynamic with 3D cellular motion or real human physiology.
+    clash_query_examples:
+    - "immune cell attacking bacteria microscope"
+    single_entity_query_examples:
+    - "3d brain neurons synapse glowing"
+    - "red blood cells flowing artery 3d"
+    - "athlete running cold morning mist"
+    - "human eye pupil dilating sunlight"
+    stock_fallback_examples:
+    - "brain synapse glowing"
+    - "runner morning sun"
+    - "beating heart 3d"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#capcut"
+    - "#phonk"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "vs edit"
+    forbidden_ai_slop_markers:
+    - "made with veo"
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. 3D Cellular / Neural Visualization & Real Physiology Action"
+    when_to_use: "Use across Scene 1 Hook, internal biological mechanism scenes, and Final Scene."
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "[3D Organ/Cell or Human Physiological Action] + [Motion/Process] (ZERO 'vs')"
+  strictly_forbidden_visuals:
+  - "Supplement bottles/ads, doctor talking-head podcasts, static text charts, or AI Veo corner watermarks"

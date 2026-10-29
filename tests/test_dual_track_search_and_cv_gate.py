@@ -182,9 +182,85 @@ def test_live_dual_track_youtube_search_mix():
     print("Test 4 PASSED!")
 
 
+def test_all_14_yaml_niches_video_search_strategy():
+    print("\n=== Test 5: All 14 YAML Profiles Single-Source-of-Truth Dual-Track Search Verification ===")
+    from app.services.niche_manager import (
+        load_all_niches,
+        get_niche_video_search_strategy,
+        build_script_prompt_instructions,
+        build_llm_production_overview_prompt,
+    )
+
+    profiles = load_all_niches(force_reload=True)
+    assert len(profiles) >= 14, f"Expected all 14 YAML niche profiles, got {len(profiles)}"
+
+    required_vss_keys = (
+        "dual_track_clash_rule",
+        "single_entity_body_scene_rule",
+        "stock_and_fallback_rule",
+        "format_unlock_rule",
+        "anti_flop_scene_continuity_rule",
+        "single_entity_query_examples",
+        "stock_fallback_examples",
+        "forbidden_edit_markers",
+    )
+    for prof in profiles:
+        nid = prof["id"]
+        raw_vss = (prof.get("llm_production_blueprint") or {}).get("video_search_strategy") or {}
+        assert raw_vss, f"YAML '{nid}.yaml' is missing llm_production_blueprint.video_search_strategy!"
+        for rk in required_vss_keys:
+            assert raw_vss.get(rk), f"YAML '{nid}.yaml' missing video_search_strategy.{rk}!"
+        merged_vss = get_niche_video_search_strategy(nid)
+        assert merged_vss["single_entity_query_examples"], f"Empty single_entity_query_examples for {nid}"
+        assert all(not has_versus_pattern(q) for q in merged_vss["stock_fallback_examples"]), (
+            f"YAML '{nid}.yaml' stock_fallback_examples must NEVER contain 'vs': {merged_vss['stock_fallback_examples']}"
+        )
+
+    # Verify dynamic prompt injection across 4 distinct domains
+    for test_niche in ("wildlife_predators", "deep_sea_earth_mysteries", "psychology", "alternate_history"):
+        script_prompt = build_script_prompt_instructions(test_niche, language="en")
+        director_prompt = build_llm_production_overview_prompt(test_niche, include_all_niches_map=False)
+        header = f"YAML VIDEO SEARCH & DUAL-TRACK QUERY STRATEGY (FROM `config/niches/{test_niche}.yaml`)"
+        assert header in script_prompt, f"Script prompt missing YAML search strategy for {test_niche}"
+        assert header in director_prompt, f"Director prompt missing YAML search strategy for {test_niche}"
+
+    # Verify YAML-configured niche markers dynamically block spam in is_edit_or_ai_slop_video_metadata
+    assert is_edit_or_ai_slop_video_metadata(
+        "Roman Empire vs Mongol Empire #countryballs #shorts",
+        "HistoryMap",
+        channel_niche="alternate_history",
+    ), "YAML marker #countryballs in alternate_history.yaml must be dynamically blocked!"
+    assert is_edit_or_ai_slop_video_metadata(
+        "Thomas Shelby cold stare #sigmaedit",
+        "MindsetClips",
+        channel_niche="psychology",
+    ), "YAML marker #sigmaedit in psychology.yaml must be dynamically blocked!"
+    assert is_edit_or_ai_slop_video_metadata(
+        "Marcus Aurelius wisdom #stoicedit",
+        "StoicDaily",
+        channel_niche="philosophy_stoicism",
+    ), "YAML marker #stoicedit in philosophy_stoicism.yaml must be dynamically blocked!"
+
+    # Verify zero hardcoded crocodile/bull-shark strings remain in Python orchestration prompt files
+    repo_root = Path(__file__).resolve().parent.parent
+    python_prompt_files = [
+        repo_root / "app" / "graph" / "tools" / "llm_media_director.py",
+        repo_root / "app" / "graph" / "tools" / "tool_schemas.py",
+        repo_root / "app" / "graph" / "nodes" / "hook_video_node.py",
+        repo_root / "app" / "agents" / "content" / "script_generator_mixin.py",
+    ]
+    for py_file in python_prompt_files:
+        txt = py_file.read_text(encoding="utf-8").lower()
+        assert "saltwater crocodile" not in txt and "bull shark" not in txt, (
+            f"Hardcoded wildlife example leaked in Python file {py_file.name} instead of living in YAML!"
+        )
+    print(f"Verified all {len(profiles)} YAML profiles + dynamic prompt injection + zero Python domain hardcoding! Test 5 PASSED!")
+
+
 if __name__ == "__main__":
     test_dual_track_queries_4_domains()
     test_0ms_edit_and_ai_slop_filter()
     test_cv_natural_ripples_vs_real_captions()
     test_live_dual_track_youtube_search_mix()
-    print("\nALL 4 DUAL-TRACK SEARCH & CV GATE TESTS PASSED 100%!")
+    test_all_14_yaml_niches_video_search_strategy()
+    print("\nALL 5 YAML DUAL-TRACK SEARCH & CV GATE TESTS PASSED 100%!")

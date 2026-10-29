@@ -115,10 +115,56 @@ llm_production_blueprint:
   niche_overview: >
     Heartwarming Animal Rescue, Inter-Species Maternal Bonding & Vet Transformation Stories. Requires 100% authentic,
     emotional real-world footage of puppies, kittens, and rescued animals from Scene 1 to the final transformation.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      Even when titles use 'Day 1 vs Day 30', NEVER search 'vs' on YouTube or Stock! Only probe inter-species bonding ('mother dog nursing kitten')
+      alongside single-animal rescue/transformation queries, and FAST-DROP any clip containing burned-in captions or AI Veo watermarks!
+    single_entity_body_scene_rule: >
+      Every scene MUST search ONLY '[Exact Breed + Coat Color Animal] + [Real Emotional State / Rescue Action + Setting]' with ZERO 'vs'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Exact Breed + Coat Color Puppy/Dog/Cat] + [Setting/Action]' with ZERO 'vs' / 'versus'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 rescue Shorts AND 16:9 HD clean shelter/vet camera recordings without burned-in story captions.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      MANDATORY SINGLE-BREED & COAT-COLOR CONTINUITY across all scenes 1..N! Every scene's query and fallback stock query MUST lock onto
+      the exact same breed and coat color (e.g. 'white poodle puppy' or 'golden retriever dog') so the video never stitches 8 different breeds together!
+    clash_query_examples:
+    - "mother dog nursing abandoned kitten"
+    single_entity_query_examples:
+    - "stray golden retriever shivering rain"
+    - "rescuer wrapping wet puppy towel"
+    - "veterinarian examining rescued golden puppy"
+    - "golden retriever dog running sunny yard"
+    stock_fallback_examples:
+    - "golden retriever puppy rain"
+    - "vet caring small puppy"
+    - "happy golden retriever running"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#capcut"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "vs edit"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aishorts"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "#hailuo"
+    - "ai generated"
+    - "ai video"
+    - "made with ai"
   visual_archetypes_and_tool_routing:
-  - archetype: "1. Real Emotional Rescue & Transformation Video"
+  - archetype: "1. Real Emotional Rescue & Transformation Video (Single-Breed Continuity)"
     when_to_use: "Use across all scenes (Opening Hook, Vet Care, and Final Happy Transformation)."
     recommended_tool: "clone_youtube_short_peak_clip"
-    query_formula: "[Specific Animal] + [Physical State/Action + Setting] (e.g. 'stray puppy shivering rain rescue', 'mother dog nursing abandoned kitten', 'rescued dog happy transformation')"
+    query_formula: "[Locked Breed + Color Animal] + [Physical State/Action + Setting] (ZERO 'vs')"
   strictly_forbidden_visuals:
-  - "Wild apex predators killing prey, graphic gore, or text quote cards"
+  - "Wild apex predators killing prey, AI-generated fake rescue clips, graphic gore, or text quote cards"

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Cache in-memory
 _cached_niches: Optional[Dict[str, Dict[str, Any]]] = None
+_cached_video_metadata_regexes: Dict[str, Tuple[Optional[re.Pattern], Optional[re.Pattern], bool]] = {}
 
 # Alias mapping cho các từ khóa ngách cũ
 NICHE_ALIASES: Dict[str, str] = {
@@ -113,9 +114,10 @@ def load_all_niches(force_reload: bool = False) -> List[Dict[str, Any]]:
     Quét và đọc toàn bộ file *.yaml trong config/niches.
     Trả về danh sách các Niche Profile.
     """
-    global _cached_niches
+    global _cached_niches, _cached_video_metadata_regexes
     if _cached_niches is not None and not force_reload:
         return list(_cached_niches.values())
+    _cached_video_metadata_regexes.clear()
 
     niches_dir = get_niches_dir()
     profiles: Dict[str, Dict[str, Any]] = {}
@@ -343,6 +345,150 @@ def build_million_view_showrunner_prose_dna(niche_id_or_profile: Any, language: 
     return "\n" + "\n".join(lines) + "\n"
 
 
+def _dedupe_str_list(items: List[Any]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for raw in items or []:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        k = s.lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(s)
+    return out
+
+
+def _compile_yaml_marker_regex(markers: List[str]) -> Optional[re.Pattern]:
+    """
+    Biên dịch danh sách marker từ YAML (`forbidden_edit_markers` / `forbidden_ai_slop_markers`)
+    thành Regex an toàn tuyệt đối theo biên từ (`\\b`) hoặc biên hashtag (`#tag`),
+    không bao giờ bắt nhầm chuỗi con (như 'ai' trong 'caiman' hay '#ai' trong '#airforce').
+    """
+    parts: List[str] = []
+    for raw_m in _dedupe_str_list(markers):
+        if raw_m.startswith("#"):
+            tag_body = re.escape(raw_m[1:].strip())
+            if tag_body:
+                parts.append(rf"(?:^|[\s|/])#{tag_body}(?:\b|$)")
+        else:
+            words = [re.escape(w) for w in raw_m.split() if w]
+            if words:
+                sep = r"\s+"
+                parts.append(rf"\b{sep.join(words)}\b")
+    if not parts:
+        return None
+    return re.compile("|".join(parts), re.IGNORECASE)
+
+
+def get_niche_video_search_strategy(niche_id_or_profile: Any = "general") -> Dict[str, Any]:
+    """
+    Đọc cấu hình chiến lược tìm kiếm video Dual-Track (`llm_production_blueprint.video_search_strategy`)
+    trực tiếp từ file YAML (`config/niches/*.yaml`), kế thừa mặc định từ `general.yaml` nếu ngách tùy biến thiếu khóa.
+    """
+    if isinstance(niche_id_or_profile, dict):
+        profile = niche_id_or_profile
+    else:
+        profile = get_niche(str(niche_id_or_profile or "general"))
+
+    gen_profile = get_niche("general")
+    base_vss = ((gen_profile.get("llm_production_blueprint") or {}).get("video_search_strategy") or {})
+    active_vss = ((profile.get("llm_production_blueprint") or {}).get("video_search_strategy") or {})
+
+    allow_3d_cgi = bool(active_vss.get("allow_3d_cgi_video", base_vss.get("allow_3d_cgi_video", False)))
+    edit_markers = _dedupe_str_list(
+        list(base_vss.get("forbidden_edit_markers") or [])
+        + list(active_vss.get("forbidden_edit_markers") or [])
+    )
+    if allow_3d_cgi:
+        ai_markers = _dedupe_str_list(list(active_vss.get("forbidden_ai_slop_markers") or []))
+    else:
+        ai_markers = _dedupe_str_list(
+            list(base_vss.get("forbidden_ai_slop_markers") or [])
+            + list(active_vss.get("forbidden_ai_slop_markers") or [])
+        )
+
+    merged: Dict[str, Any] = {
+        "niche_id": str(profile.get("id") or "general"),
+        "dual_track_clash_rule": str(active_vss.get("dual_track_clash_rule") or base_vss.get("dual_track_clash_rule") or "").strip(),
+        "single_entity_body_scene_rule": str(active_vss.get("single_entity_body_scene_rule") or base_vss.get("single_entity_body_scene_rule") or "").strip(),
+        "stock_and_fallback_rule": str(active_vss.get("stock_and_fallback_rule") or base_vss.get("stock_and_fallback_rule") or "").strip(),
+        "format_unlock_rule": str(active_vss.get("format_unlock_rule") or base_vss.get("format_unlock_rule") or "").strip(),
+        "anti_flop_scene_continuity_rule": str(active_vss.get("anti_flop_scene_continuity_rule") or base_vss.get("anti_flop_scene_continuity_rule") or "").strip(),
+        "allow_3d_cgi_video": allow_3d_cgi,
+        "clash_query_examples": _dedupe_str_list(list(active_vss.get("clash_query_examples") or base_vss.get("clash_query_examples") or [])),
+        "single_entity_query_examples": _dedupe_str_list(list(active_vss.get("single_entity_query_examples") or base_vss.get("single_entity_query_examples") or [])),
+        "stock_fallback_examples": _dedupe_str_list(list(active_vss.get("stock_fallback_examples") or base_vss.get("stock_fallback_examples") or [])),
+        "forbidden_edit_markers": edit_markers,
+        "forbidden_ai_slop_markers": ai_markers,
+    }
+    return merged
+
+
+def get_niche_forbidden_video_metadata_regexes(
+    niche_id_or_profile: Any = "general",
+) -> Tuple[Optional[re.Pattern], Optional[re.Pattern], bool]:
+    """
+    Trả về `(edit_spam_regex, ai_slop_regex, allow_3d_cgi_video)` được biên dịch có cache từ YAML `config/niches/*.yaml`.
+    """
+    if isinstance(niche_id_or_profile, dict):
+        cache_key = str(niche_id_or_profile.get("id") or "").strip().lower()
+    else:
+        raw_k = str(niche_id_or_profile or "general").strip().lower()
+        cache_key = NICHE_ALIASES.get(raw_k, raw_k) or "general"
+
+    if cache_key and cache_key in _cached_video_metadata_regexes and not isinstance(niche_id_or_profile, dict):
+        return _cached_video_metadata_regexes[cache_key]
+
+    vss = get_niche_video_search_strategy(niche_id_or_profile)
+    compiled = (
+        _compile_yaml_marker_regex(vss.get("forbidden_edit_markers") or []),
+        _compile_yaml_marker_regex(vss.get("forbidden_ai_slop_markers") or []),
+        bool(vss.get("allow_3d_cgi_video", False)),
+    )
+    if cache_key and not isinstance(niche_id_or_profile, dict):
+        _cached_video_metadata_regexes[cache_key] = compiled
+    return compiled
+
+
+def build_video_search_strategy_prompt_block(niche_id_or_profile: Any = "general") -> str:
+    """
+    Kết xuất khối chỉ dẫn `YAML VIDEO SEARCH & DUAL-TRACK QUERY STRATEGY` trực tiếp từ `config/niches/*.yaml`
+    để tiêm đồng nhất vào ContentAgent, HookVideoNode, LLMMediaDirector và VisualCurationAgent.
+    Tuyệt đối không hardcode ví dụ loài vật hay từ khóa ngách trong Python!
+    """
+    vss = get_niche_video_search_strategy(niche_id_or_profile)
+    lines: List[str] = [
+        f"🔎 YAML VIDEO SEARCH & DUAL-TRACK QUERY STRATEGY (FROM `config/niches/{vss['niche_id']}.yaml`):",
+    ]
+    if vss.get("dual_track_clash_rule"):
+        lines.append(f"  * Dual-Track Clash vs. Single-Entity Rule: {vss['dual_track_clash_rule']}")
+    if vss.get("single_entity_body_scene_rule"):
+        lines.append(f"  * Single-Entity Body Scene Rule (NO 'A vs B' Stuffing): {vss['single_entity_body_scene_rule']}")
+    if vss.get("stock_and_fallback_rule"):
+        lines.append(f"  * Stock & Fallback Broad Query Rule (ZERO 'vs'): {vss['stock_and_fallback_rule']}")
+    if vss.get("format_unlock_rule"):
+        lines.append(f"  * Raw 16:9 + 9:16 Format Mix Rule: {vss['format_unlock_rule']}")
+    if vss.get("anti_flop_scene_continuity_rule"):
+        lines.append(f"  * Niche Anti-Flop Scene Continuity Guardrail: {vss['anti_flop_scene_continuity_rule']}")
+    if vss.get("clash_query_examples"):
+        ex_clash = ", ".join(f'"{q}"' for q in vss["clash_query_examples"][:4])
+        lines.append(f"  * YAML Direct-Encounter / Hook Query Examples: {ex_clash}")
+    if vss.get("single_entity_query_examples"):
+        ex_single = ", ".join(f'"{q}"' for q in vss["single_entity_query_examples"][:5])
+        lines.append(f"  * YAML Clean Single-Entity Real-Action Query Examples: {ex_single}")
+    if vss.get("stock_fallback_examples"):
+        ex_stock = ", ".join(f'"{q}"' for q in vss["stock_fallback_examples"][:4])
+        lines.append(f"  * YAML Canonical Stock/Fallback Query Examples (2-4 words, NO 'vs'): {ex_stock}")
+    banned_tags = _dedupe_str_list(
+        list(vss.get("forbidden_edit_markers") or [])[:10]
+        + list(vss.get("forbidden_ai_slop_markers") or [])[:8]
+    )
+    if banned_tags:
+        lines.append("  * YAML Forbidden #Edit / Quiz / AI-Slop Video Markers: " + ", ".join(f'"{t}"' for t in banned_tags))
+    return "\n".join(lines)
+
+
 def build_script_prompt_instructions(
     niche_profile: Any,
     language: str = "en",
@@ -441,6 +587,7 @@ def build_script_prompt_instructions(
 6. QUY TẮC DẪN CHỨNG & XÁC THỰC (ANTI-HALLUCINATION / RESEARCH RULES):
 {facts_text}{comp_bp_block}
 {build_million_view_showrunner_prose_dna(niche_profile, language=language)}
+9. {build_video_search_strategy_prompt_block(niche_profile)}
 ═══════════════════════════════════════════════════════════════════════
 """
 
@@ -566,6 +713,8 @@ def build_llm_production_overview_prompt(
                 f"    - Recommended @tool: `{arch.get('recommended_tool', '')}`\n"
                 f"    - Query/Param Formula: {arch.get('query_formula', '')}"
             )
+
+    lines.append("\n" + build_video_search_strategy_prompt_block(profile))
 
     translations = bp.get("abstract_to_physical_query_translations") or []
     if isinstance(translations, list) and translations:

@@ -77,20 +77,38 @@ def is_edit_or_ai_slop_video_metadata(
     title: str,
     uploader: str = "",
     allow_3d_cgi_monster: bool = False,
+    channel_niche: str = "",
 ) -> bool:
     """
-    Chặn ngay ở tầng Metadata (0ms, trước khi gọi yt-dlp tải file):
-    - Ổ video fan-edit so sánh (`#edit`, `#edits`, `#vsedit`, `Who would win`, `Who won:`, `Animal Revolt Battle Simulator`, `Phonk`...)
-    - Ổ video AI tạo sinh có logo góc (`#veo`, `Google Veo`, `#sora`, `#kling`, và `#ai` / `AI generated` khi cảnh yêu cầu quay thật).
-    Giữ nguyên 100% các video quay cảnh chạm trán thật ngoài tự nhiên/tài liệu (VD: 'Crocodile attacks shark', 'Jaguar vs Caiman real fight').
+    Chặn ngay ở tầng Metadata (0ms, trước khi gọi yt-dlp tải file), đồng bộ trực tiếp với
+    `llm_production_blueprint.video_search_strategy` trong `config/niches/*.yaml`:
+    - Ổ video fan-edit so sánh (`forbidden_edit_markers` trong YAML: `#edit`, `#vsedit`, `Who would win`, `Who won`, `#veo`...)
+    - Ổ video AI tạo sinh (`forbidden_ai_slop_markers` trong YAML: `#sora`, `#kling`, `#ai`, `AI generated`...) khi cảnh yêu cầu quay thật.
     """
     meta = f"{title or ''} {uploader or ''}".strip()
     if not meta:
         return False
     if _EDIT_COMPARISON_SPAM_RE.search(meta):
         return True
-    if not allow_3d_cgi_monster and _AI_SLOP_REAL_FOOTAGE_RE.search(meta):
+
+    yaml_edit_re = None
+    yaml_ai_re = None
+    yaml_allow_3d = False
+    try:
+        from app.services.niche_manager import get_niche_forbidden_video_metadata_regexes
+        yaml_edit_re, yaml_ai_re, yaml_allow_3d = get_niche_forbidden_video_metadata_regexes(channel_niche or "general")
+    except Exception:
+        pass
+
+    if yaml_edit_re is not None and yaml_edit_re.search(meta):
         return True
+
+    effective_allow_3d = bool(allow_3d_cgi_monster or (yaml_allow_3d and channel_niche))
+    if not effective_allow_3d:
+        if _AI_SLOP_REAL_FOOTAGE_RE.search(meta):
+            return True
+        if yaml_ai_re is not None and yaml_ai_re.search(meta):
+            return True
     return False
 
 _YT_QUERY_FILLER_WORDS = {
@@ -118,18 +136,18 @@ def clone_youtube_short_peak_clip(
     Công cụ này tìm kiếm video YouTube Shorts thực tế trên mạng, dò đoạn PEAK (Most Replayed / hành động cao trào),
     kiểm duyệt bằng Gemini Vision và cắt đoạn chuẩn 9:16.
 
-    QUY TẮC BẮT BUỘC CHO 4 THAM SỐ TRUY VẤN (`subject_entity`, `youtube_search_query`, `fallback_broad_query`, `overall_script_query`):
+    QUY TẮC BẮT BUỘC CHO 4 THAM SỐ TRUY VẤN (BÁM SÁT `video_search_strategy` TRONG `config/niches/*.yaml`):
     1. `subject_entity`: Tên chủ thể thực tế xuất hiện trong khung hình của phân cảnh này.
-       - Nếu kịch bản là cuộc đối đầu 2 thực thể (`Entity A vs Entity B`), hãy ghi đúng thực thể đang hành động ở câu đó hoặc ghi cả hai (`"Leopard or African Crested Porcupine"`) để giám khảo Vision không từ chối nhầm cảnh quay hợp lệ của đối thủ!
-    2. `youtube_search_query` (3–5 từ tiếng Anh — CHIẾN LƯỢC SONG SONG "DUAL-TRACK"):
-       - Với các cảnh mô tả riêng từng chủ thể/vũ khí/môi trường: CHỈ search đúng **Tên 1 thực thể + hành động quay thật ngoài tự nhiên** (VD: `"saltwater crocodile swimming river"`, `"bull shark underwater"`, `"porcupine rattling quills closeup"`).
-       - Với cảnh giao chiến trực tiếp (Hook / Climax): có thể đặt truy vấn chạm trán thật (VD: `"leopard attacking porcupine"`, `"crocodile vs shark"`), hệ thống sẽ search song song cả `"A vs B"` lẫn truy vấn đơn chủ thể `fallback_broad_query` — nếu `"A vs B"` không có cảnh quay thật sạch chữ thì tự động bỏ ngay để lấy cảnh đơn chủ thể!
-       - CẤM TUYỆT ĐỐI viết cụm kể chuyện văn học (CẤM: `"porcupine walking away savanna"`, `"quill embedded in animal skin macro"`).
-    3. `fallback_broad_query` (2–4 từ tiếng Anh, BẮT BUỘC ĐƠN CHỦ THỂ — CẤM `"vs"`): Truy vấn dự phòng chuẩn chỉ mục Pexels/Pixabay/Documentary gồm **Danh từ 1 loài/chủ thể gốc + môi trường/hành động quay thật** (VD: `"saltwater crocodile river"`, `"bull shark underwater"`, `"porcupine wildlife"`).
-       - TUYỆT ĐỐI KHÔNG nhét `"A vs B"` hoặc `"vs"` vào `fallback_broad_query`, CẤM cắt cụt mất danh từ chính (CẤM: `"African Crested"` thiếu chữ `"Porcupine"`) và CẤM dùng từ vật liệu vô hồn (CẤM: `"microscopic texture"`).
+       - Nếu kịch bản đối đầu 2 thực thể (`Entity A vs Entity B`), ghi đúng thực thể đang hành động ở câu đó hoặc ghi `"Entity A or Entity B"` để giám khảo Vision chấp nhận cảnh quay hợp lệ của một trong hai chủ thể.
+    2. `youtube_search_query` (3–5 từ tiếng Anh — CHIẾN LƯỢC SONG SONG "DUAL-TRACK" TỪ YAML):
+       - Với các cảnh thân bài mô tả riêng từng chủ thể/vũ khí/cơ chế/môi trường: CHỈ search đúng **`[Single Canonical Entity] + [Real Physical Action / Environment]`** theo mẫu `single_entity_query_examples` của YAML (TUYỆT ĐỐI KHÔNG nhét `"A vs B"` vào cảnh đơn chủ thể để né sạch ổ `#edit` và AI Veo!).
+       - Với cảnh giao chiến/chạm trán trực tiếp (Hook / Climax): có thể đặt truy vấn chạm trán thật theo `clash_query_examples` của YAML; hệ thống sẽ search song song cả nhánh đối đầu lẫn `fallback_broad_query` đơn chủ thể và tự động Fast-Drop nhánh `"A vs B"` ngay nếu không có cảnh thật sạch chữ!
+       - CẤM TUYỆT ĐỐI viết cụm kể chuyện văn học dài dòng không ai dùng đặt tiêu đề video.
+    3. `fallback_broad_query` (2–4 từ tiếng Anh, BẮT BUỘC ĐƠN CHỦ THỂ — CẤM `"vs"`): Truy vấn dự phòng chuẩn chỉ mục Stock/Documentary theo `stock_fallback_examples` của YAML (`[Single Canonical Subject Noun] + [Habitat/Action]`).
+       - TUYỆT ĐỐI KHÔNG nhét `"A vs B"` hoặc `"vs"` vào `fallback_broad_query`, CẤM cắt mất danh từ gốc của chủ thể và CẤM dùng từ vật liệu vô hồn.
     4. `search_scope` (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`) & `overall_script_query`:
-       - Chọn `"SCENE_SPECIFIC"` khi câu thoại (sau khi đã thay đại từ "It/The cat/These needles" bằng tên thực thể thật) mô tả hành động/chi tiết thị giác rõ ràng.
-       - Chọn `"SCRIPT_OVERALL"` khi câu thoại là câu chuyển ý, ẩn dụ hoặc số liệu trừu tượng -> tìm kiếm song song `overall_script_query` (3–5 từ cốt lõi của kịch bản) và `fallback_broad_query` đơn chủ thể.
+       - Chọn `"SCENE_SPECIFIC"` khi câu thoại (sau khi đã khôi phục đại từ về tên chủ thể thật) mô tả hành động/chi tiết thị giác rõ ràng.
+       - Chọn `"SCRIPT_OVERALL"` khi câu thoại là câu chuyển ý, ẩn dụ hoặc số liệu trừu tượng -> tìm kiếm song song `overall_script_query` (3–5 từ cốt lõi) và `fallback_broad_query` đơn chủ thể.
     """
     return {
         "tool_name": "clone_youtube_short_peak_clip",

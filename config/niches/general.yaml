@@ -25,10 +25,8 @@ script_blueprint:
   - Trong video này
   - Hãy like và subscribe kênh
   cta_templates:
-  - Bạn đã từng chứng kiến điều này bao giờ chưa? Thả bình luận bên dưới và đăng ký
-    kênh theo dõi thêm nhiều điều thú vị.
-  - Lưu lại video này và theo dõi kênh để không bỏ lỡ những sự thật bất ngờ.
-  - Did this surprise you? Subscribe now so you never miss another unbelievable story.
+  - "Before watching this, did you assume (1) The Common Belief or (2) Already Knew the Twist? Vote 1 or 2 below! 👇"
+  - "Which detail surprised you more: (1) The Opening Shock or (2) The Hidden Mechanism? Drop 1 or 2 in the comments! 👇"
   anti_hallucination_rules:
   - Kiểm chứng thông tin chính xác trước khi khẳng định một sự thật.
   banned_lexicon: &id001
@@ -73,3 +71,85 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Universal Viral Documentary & Real-World Phenomena Shorts. Prioritizes 100% clean, unedited real-camera motion footage
+    across both vertical 9:16 Shorts and 16:9 HD/4K documentary recordings.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      When the script pits two entities against each other (Entity A vs Entity B), run DUAL-TRACK search in parallel on Opening Hook & Climax scenes:
+      probe at most 1-2 genuine real-camera encounter queries ('[Entity A] vs [Entity B]') alongside 3+ clean SINGLE-ENTITY real-action queries.
+      If 'A vs B' yields no clean unedited real footage, FAST-DROP 'A vs B' immediately and use clean single-entity Peak footage!
+    single_entity_body_scene_rule: >
+      For every body scene focusing on ONE entity, mechanism, or environment, NEVER stuff 'A vs B' or 'vs' into visual_keyword or youtube_search_query
+      (which lures #edit comparison videos and AI Veo/Sora clips). Search ONLY '[Single Canonical Entity] + [Real Physical Action + Natural Setting]'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Single Canonical Subject Noun] + [Setting/Action]' with ZERO 'vs' / 'versus', NEVER dropping the head noun,
+      and NEVER searching generic material textures or literal metaphor props.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 YouTube Shorts AND 16:9 HD/4K raw documentary/field recordings; prioritize clean unedited raw footage over heavily-edited comparison #shorts.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      Ensure every scene's query is 100% self-contained (zero unresolved pronouns), visually distinct from adjacent scenes, and free of watermarks or burned-in captions.
+    clash_query_examples:
+    - "eagle catching fish river"
+    single_entity_query_examples:
+    - "lightning strike storm clouds slow motion"
+    - "volcano lava flowing night aerial"
+    - "high speed train crossing bridge aerial"
+    stock_fallback_examples:
+    - "lightning storm clouds"
+    - "ocean waves aerial"
+    - "modern city night drone"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#vsedits"
+    - "#editz"
+    - "#capcut"
+    - "#alightmotion"
+    - "#aftereffects"
+    - "#phonk"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "who wins"
+    - "who won"
+    - "who is the real king"
+    - "vs edit"
+    - "edit audio"
+    - "animal revolt"
+    - "battle simulator"
+    - "power scaling"
+    - "power level"
+    - "debunked"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aishorts"
+    - "#aiart"
+    - "#aianimation"
+    - "#aigenerated"
+    - "#midjourney"
+    - "#sora"
+    - "#kling"
+    - "#klingai"
+    - "#hailuo"
+    - "#pika"
+    - "#runwayml"
+    - "ai generated"
+    - "ai video"
+    - "made with ai"
+    - "sora ai"
+    - "kling ai"
+    - "hailuo ai"
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Real-World Documentary & High-Impact Physical Motion Video"
+    when_to_use: "Use for Scene 1-2 Opening Hook, dynamic body scenes, and Final Scene."
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "Dual-Track on clash scenes; strictly single-entity '[Canonical Subject] + [Real Physical Action + Environment]' on body scenes (ZERO 'vs' in body/fallback)"
+  strictly_forbidden_visuals:
+  - "Comparison #edit split-screens, 'Who would win' quiz overlays, AI Veo corner watermarks, or burned-in subtitles"

@@ -569,18 +569,19 @@ CRITICAL PEAK HARVESTING & DIRECTORIAL RULES:
    - "VIRAL_SHORT_ACTION_PEAK": Default #1 priority for wildlife predators, animal rescues, underwater/ocean phenomena, natural disasters, 3D CGI monsters, AND psychology/forensic/neuroscience topics where real YouTube Shorts peak clips (FBI interrogation room, courtroom reaction, 3D glowing brain MRI, iconic character cold stare) create an instant visceral shock.
    - "CINEMATIC_BROLL_FAST_CUT": Secondary fallback only when a quiet philosophical topic has no concrete YouTube Shorts visual spectacle.
    - "HYBRID_MOTION_AND_SCENE_MONTAGE": Best for counterfactual history ("What If"), ancient empires, or historical events.
-3. ENGINEER 5 DUAL-TRACK YOUTUBE PEAK QUERIES ("search_queries" — BOTH REAL ENCOUNTER & CLEAN SINGLE-ENTITY):
-   - Write 5 distinct English search queries (3–5 words each) in authentic documentary/camera-recording phrasing (`[Concrete Subject] + [Real Physical Action/Habitat]`).
-   - DUAL-TRACK "A vs B" STRATEGY (CRITICAL):
-     * When the script pits two entities against each other (`Entity A vs Entity B`): use Query 1–2 to probe GENUINE real-camera encounter footage (`"Entity A attacking Entity B"`, `"Entity A vs Entity B"` — NEVER `#edit` or `"who would win"`), AND dedicate Queries 3–5 to **CLEAN SINGLE-ENTITY REAL FOOTAGE** of each contender individually (`"[Entity A] + [real action/habitat]"`, `"[Entity B] + [real action/habitat]"`, e.g., `"saltwater crocodile swimming river"`, `"bull shark underwater"`). That way we search BOTH simultaneously and immediately drop `"A vs B"` if no clean clash clip exists!
-   - For Psychology / Dark Psychology / Human Behavior: follow the YAML `abstract_to_physical_query_translations` to translate abstract concepts into concrete physical YouTube queries (e.g., `"fbi interrogation body language eye contact"`, `"suspect sweating interrogation room camera"`, `"3d brain neural network glowing animation"`, `"human eye pupil dilating macro slow motion"`).
+3. ENGINEER 5 DUAL-TRACK YOUTUBE PEAK QUERIES ("search_queries" — STRICTLY GOVERNED BY THE INJECTED `YAML VIDEO SEARCH & DUAL-TRACK QUERY STRATEGY` ABOVE):
+   - Write 5 distinct English search queries (3–5 words each) in authentic documentary/camera-recording phrasing (`[Concrete Subject] + [Real Physical Action/Environment]`), matching the `YAML Clean Single-Entity Real-Action Query Examples` and `YAML Direct-Encounter / Hook Query Examples` above.
+   - YAML DUAL-TRACK "A vs B" STRATEGY (CRITICAL):
+     * Follow the YAML `Dual-Track Clash vs. Single-Entity Rule`: when the script pits two entities against each other (`Entity A vs Entity B`) and the active niche allows real encounter probes, use at most Query 1–2 to probe GENUINE real-camera encounter footage (`"[Entity A] attacking [Entity B]"`, `"[Entity A] vs [Entity B]"` — NEVER `#edit` or `"who would win"`), AND dedicate Queries 3–5 to **CLEAN SINGLE-ENTITY REAL FOOTAGE** of each contender individually (`"[Entity A] + [real action/environment]"`, `"[Entity B] + [real action/environment]"`). That way our engine searches BOTH simultaneously and immediately Fast-Drops `"A vs B"` if no clean clash clip exists!
+     * If the active niche's YAML `Dual-Track Clash vs. Single-Entity Rule` forbids `"vs"` in video searches, make ALL 5 queries 100% single-entity concrete physical queries!
+   - For abstract psychological/historical/philosophical concepts: follow the YAML `abstract_to_physical_query_translations` and `Niche Anti-Flop Scene Continuity Guardrail` above.
    - Query 1 ("beat_1_query"): The ultimate 0.0–2.5s Opening Peak Shock (real clash or single-entity explosive action).
    - Query 2 ("beat_2_query"): Distinct close-up strike, weapon, or single-entity power shot for 2.5–5.0s.
-   - Query 3: Single-entity A real physical action + natural habitat (NO `"vs"`).
-   - Query 4: Single-entity B (or Mid-Video Climax Scene {climax_scene_id}) real physical action + habitat (NO `"vs"`).
+   - Query 3: Single-entity A real physical action + natural environment (NO `"vs"`).
+   - Query 4: Single-entity B (or Mid-Video Climax Scene {climax_scene_id}) real physical action + environment (NO `"vs"`).
    - Query 5: High-impact close-up / phenomenon angle (NO `"vs"`).
-   - NEVER use abstract words ("manipulation", "psychology", "envy", "alternate history", "what if") or edit tags ("#edit", "who would win") in queries.
-   - Also provide "must_see_visual_cues" (3–4 concrete visual elements that must appear in the Peak frames) and "stock_broll_queries" (2 concise 2–3 word SINGLE-ENTITY noun + habitat/action queries for Pexels/Pixabay — NEVER include `"vs"` in `stock_broll_queries`).
+   - NEVER use abstract meta-words or any tag listed in `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
+   - Also provide "must_see_visual_cues" (3–4 concrete visual elements that must appear in the Peak frames) and "stock_broll_queries" (2 concise 2–4 word SINGLE-ENTITY queries matching `YAML Canonical Stock/Fallback Query Examples` — NEVER include `"vs"` in `stock_broll_queries`).
 
 Return ONLY valid JSON:
 {{
@@ -821,6 +822,7 @@ Return ONLY valid JSON:
                         title_e,
                         uploader_e,
                         allow_3d_cgi_monster=bool(is_3d_cgi_subject or is_scifi_pre),
+                        channel_niche=niche,
                     )
                 ):
                     continue
@@ -943,9 +945,13 @@ Return ONLY valid JSON:
             }
             for c in candidates_pool
         ]
+        from app.services.niche_manager import build_video_search_strategy_prompt_block
+        yaml_scout_rules = build_video_search_strategy_prompt_block(niche or "general")
         scout_prompt = f"""You are an elite YouTube Peak Action Scout & Hook Producer.
 We have a finalized script and {len(compact_list)} candidate YouTube videos (both 9:16 Shorts and 16:9 raw documentary/field recordings) found across our Dual-Track queries.
-Your job is to read the script and the candidate titles/metadata, and select the TOP 6 YouTube videos that are most likely to contain CLEAN, UNEDITED, JAW-DROPPING REAL PEAK FOOTAGE for our Opening Hook (0.0–3.5s) and Mid-Video Climax (Scene {climax_scene_id}).
+Your job is to read the script, the active YAML VIDEO SEARCH STRATEGY, and the candidate titles/metadata, and select the TOP 6 YouTube videos that are most likely to contain CLEAN, UNEDITED, JAW-DROPPING REAL PEAK FOOTAGE for our Opening Hook (0.0–3.5s) and Mid-Video Climax (Scene {climax_scene_id}).
+
+{yaml_scout_rules}
 
 - Script Title: {script_title}
 - Hot Topic Essence: {hot_topic_essence}

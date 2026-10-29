@@ -28,10 +28,11 @@ script_blueprint:
   showrunner_prose_dna:
     persona_and_voice: "High-Adrenaline, Opinionated Combat Biomechanics Analyst (TierZoo stats & roast breakdown × Casual Geographic × @FossilVideos Gauntlet intensity)."
     writing_habits:
-    - "1. Combat Stats & Anatomical Weapon Breakdown: Treat every animal encounter like a heavyweight engineering duel—cite exact weight (lbs/kg), bite force (PSI), strike speed (milliseconds / mph), venom lethality, and armor thickness."
-    - "2. Zero Slow Nature Poetry: Never write textbook filler like 'Nature is full of amazing predators.' Every sentence must describe a physical strike, biomechanical advantage, or survival counter-mechanism."
-    - "3. Two-Way Counter-Build Twist: Establish Predator A's lethal weapon in Act 1–2, then flip the fight in Act 3 by revealing Opponent B's biological counter-weapon!"
-    bad_ai_slop_example: "The jaguar is a powerful apex predator that uses its strong jaws to hunt caimans in the river."
+    - "1. ZERO ACADEMIC STUDY OPENERS: NEVER start any sentence with 'Studies show...', 'Biomechanics studies reveal...', 'Estudos mostram que...', 'Estudos de biomecânica mostram que...', or 'Pesquisas indicam...'. Jump straight into the physical clash or weapon contrast ('Enquanto o leão tenta sufocar a garganta, a onça crava 1.500 PSI direto na caixa craniana.')."
+    - "2. Combat Stats & Anatomical Weapon Breakdown: Treat every animal encounter like a heavyweight engineering duel—cite exact weight (lbs/kg), bite force (PSI), strike speed (milliseconds / mph), venom lethality, and armor thickness."
+    - "3. Zero Slow Nature Poetry: Never write textbook filler like 'Nature is full of amazing predators.' Every sentence must describe a physical strike, biomechanical advantage, or survival counter-mechanism."
+    - "4. Two-Way Counter-Build Twist: Establish Predator A's lethal weapon in Act 1–2, then flip the fight in Act 3 by revealing Opponent B's biological counter-weapon!"
+    bad_ai_slop_example: "Estudos de biomecânica comparada mostram que a onça exerce 1.500 PSI para caçar jacarés no rio."
     good_million_view_example: "Lions spend ten minutes suffocating a prey's windpipe. The Pantanal Jaguar skips the throat entirely—driving 1,500 PSI straight through the caiman's skull to shut down its brainstem in 0.3 seconds."
     good_pt_br_example: "Enquanto os leões levam dez minutos para sufocar a garganta, a onça-pintada ignora o pescoço. Ela crava mil e quinhentos PSI direto no crânio do jacaré, desligando o cérebro em menos de um segundo."
   controversy_comment_bait_engine:
@@ -144,15 +145,87 @@ llm_production_blueprint:
     Apex Terrestrial Wildlife Predator Duels & Extreme Survival Mechanics (Jaguar vs Black Caiman, Honey Badger vs Lions,
     Peregrine Falcon 389 km/h Dive, Saltwater Crocodile 3,700 PSI). Must maintain >= 85% real moving wildlife footage
     with high-intensity physical strikes in the first 4.5-5.5 seconds.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      When the script pits two animals against each other (Species A vs Species B), run DUAL-TRACK search in parallel on Opening Hook & Climax scenes:
+      probe at most 1-2 genuine real-camera encounter queries ('[Species A] attacking [Species B]', '[Species A] vs [Species B]') alongside 3+ clean
+      SINGLE-SPECIES real-action queries. If 'A vs B' yields no clean unedited real encounter clip, FAST-DROP 'A vs B' immediately and use clean single-species Peak footage!
+    single_entity_body_scene_rule: >
+      For every body scene focusing on ONE animal's weapon, bite force, movement, anatomy, or habitat, NEVER stuff 'A vs B' or 'vs' into
+      visual_keyword or youtube_search_query (which lures #edit comparison videos and AI Veo/Sora clips). Search ONLY '[Single Canonical Species] + [Real Physical Action + Natural Habitat]'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Single Canonical Species Noun] + [Habitat or Visible Anatomical Feature]' with ZERO 'vs' / 'versus'.
+      NEVER drop the head species noun (never write regional adjectives alone) and NEVER search generic material textures ('microscopic texture', 'needle macro').
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 YouTube Shorts AND 16:9 HD/4K raw wildlife documentary/safari/drone recordings; prioritize clean unedited raw footage over heavily-edited comparison #shorts.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      In a 2-species duel, set subject_entity to the exact active species in that scene OR 'Species A or Species B' so Vision accepts valid footage of either contender,
+      while strictly rejecting unrelated ecological lookalikes (e.g. whale shark != bull shark, domestic cat != leopard) and captive zoo enclosures.
+    clash_query_examples:
+    - "jaguar attacking caiman river"
+    - "crocodile vs bull shark"
+    - "leopard attacking porcupine"
+    - "honey badger fighting lions"
+    single_entity_query_examples:
+    - "saltwater crocodile swimming river"
+    - "bull shark underwater"
+    - "porcupine rattling quills closeup"
+    - "pantanal jaguar hunting river"
+    - "peregrine falcon high speed dive"
+    stock_fallback_examples:
+    - "saltwater crocodile river"
+    - "bull shark underwater"
+    - "porcupine quills closeup"
+    - "leopard hunting savanna"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#vsedits"
+    - "#capcut"
+    - "#alightmotion"
+    - "#aftereffects"
+    - "#phonk"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "who wins"
+    - "who won"
+    - "who is the real king"
+    - "vs edit"
+    - "animal revolt"
+    - "battle simulator"
+    - "power scaling"
+    - "debunked"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aishorts"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "#klingai"
+    - "#hailuo"
+    - "#pika"
+    - "#runwayml"
+    - "ai generated"
+    - "ai video"
+    - "made with ai"
+    - "sora ai"
+    - "kling ai"
+    - "hailuo ai"
   visual_archetypes_and_tool_routing:
-  - archetype: "1. Real Wildlife Ambush, Strike & 1v1 Predator Confrontation"
-    when_to_use: "Use for Scene 1-2 Opening Peak Hook and all action/climax/ending scenes."
+  - archetype: "1. Real Wildlife Ambush, Strike & Dual-Track Predator Confrontation"
+    when_to_use: "Use for Scene 1-2 Opening Peak Hook and Climax/Ending action scenes."
     recommended_tool: "clone_youtube_short_peak_clip"
-    query_formula: "[Exact Animal Species] + [Explosive Physical Verb + Natural Habitat] (e.g. 'jaguar attacking caiman river', 'honey badger fighting lions savanna', 'peregrine falcon high speed dive')"
-  - archetype: "2. Close-Up Anatomical Weapon / Habitat B-Roll"
-    when_to_use: "Use when a middle scene zooms in on claws, fangs, armor scales, or stealth stalking in native biome."
-    recommended_tool: "clone_youtube_short_peak_clip (or search_pexels_pixabay_stock_video)"
-    query_formula: "[Single Species Noun] + [Close Up / Stalking + Biome]"
+    query_formula: "Dual-Track: probe '[Species A] attacking [Species B]' ONLY on direct clash scenes + '[Single Species] + [Explosive Verb + Natural Habitat]' (fast-drop 'A vs B' if not clean)"
+  - archetype: "2. Single-Species Anatomical Weapon & Native Habitat Action"
+    when_to_use: "Use on every body scene focusing on one contender's claws, fangs, quills, stealth stalking, or speed."
+    recommended_tool: "clone_youtube_short_peak_clip (with single-species fallback_broad_query for Stock)"
+    query_formula: "[Single Canonical Species Noun] + [Real Physical Action / Close-Up Feature + Biome] (ZERO 'vs')"
   strictly_forbidden_visuals:
   - "Animals inside zoo cages, behind wire fences, or next to concrete walls"
-  - "Domestic house cats, living-room pets, or clips with burned-in TikTok/Vietnamese subtitles"
+  - "Domestic house cats, living-room pets, comparison #edit split-screens, AI Veo corner watermarks, or burned-in subtitles"

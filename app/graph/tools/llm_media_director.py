@@ -113,16 +113,16 @@ STEP 2 — SELECT THE OPTIMAL `@tool` & CONTEXT-ANCHORED SEARCH QUERY FOR EACH S
         (NEVER call `search_google_cinematic_image` for psychology because open-web Google Images return text quote cards and book covers!).
    - FOR REAL-WORLD WILDLIFE, NATURE, ANIMAL RESCUE, SCIENCE, OR ALTERNATE HISTORY TOPICS:
      -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for all body scenes AND the Final Scene `scene_id={total_scenes}`), only calling `search_google_cinematic_image` on a middle scene when a specific historical map, document, or static artifact has no motion video equivalent (and NEVER on Scene 1, Scene 2, Scene {max(1, total_scenes - 1)}, or Scene {total_scenes}).
-     -> SEARCH-ENGINE-NATIVE DUAL-TRACK QUERY ENGINEERING (CRITICAL — SEARCH BOTH CLASH & SINGLE-ENTITY, FAST-DROP IF NEEDED):
-        * `subject_entity` (Scene-Accurate): Set `subject_entity` to the exact entity physically acting in that specific scene, OR in a 2-entity duel (`Entity A vs Entity B`), set `"Entity A or Entity B"` (e.g., `"Saltwater Crocodile or Bull Shark"`, `"Leopard or African Crested Porcupine"`) so our Vision Auditor accepts valid footage of either contender!
-        * `youtube_search_query` (3–5 words, Dual-Track Strategy):
-          - For individual body scenes describing ONE contender's weapon, movement, anatomy, or habitat: ONLY search **that single entity + real physical action/habitat** (e.g., `"saltwater crocodile swimming river"`, `"bull shark underwater"`, `"porcupine rattling quills closeup"`). Do NOT inject `"A vs B"` into single-entity body scenes (which lures comparison `#edit` and AI Veo videos)!
-          - For direct clash/encounter scenes (e.g., Opening Hook or Climax clash): write a real camera-encounter query (`"leopard attacking porcupine"`, `"crocodile vs bull shark"`). Our engine searches BOTH `"A vs B"` and single-entity queries in parallel, and automatically drops `"A vs B"` immediately if no clean unedited clash footage exists!
-          - NEVER write literary story phrases that nobody titles a video with (FORBIDDEN: `"porcupine walking away savanna"`, `"quill embedded in animal skin macro"`).
-        * `fallback_broad_query` / `primary_stock_query` / `secondary_stock_query` (2–4 words, Strictly Single-Entity — FORBIDDEN `"vs"`): Write the 2–4 word **single canonical species/subject noun + real habitat/action** that Pexels/Pixabay/Documentary libraries actually index (e.g., `"saltwater crocodile river"`, `"bull shark underwater"`, `"porcupine wildlife"`).
+     -> SEARCH-ENGINE-NATIVE DUAL-TRACK QUERY ENGINEERING (STRICTLY FOLLOW THE INJECTED `YAML VIDEO SEARCH & DUAL-TRACK QUERY STRATEGY` ABOVE):
+        * `subject_entity` (Scene-Accurate): Set `subject_entity` to the exact entity physically acting in that specific scene, OR in a 2-entity duel (`Entity A vs Entity B`), set `"Entity A or Entity B"` so our Vision Auditor accepts valid footage of either contender!
+        * `youtube_search_query` (3–5 words, YAML Dual-Track Strategy):
+          - For individual body scenes describing ONE contender's weapon, movement, anatomy, mechanism, or habitat: follow the YAML `Single-Entity Body Scene Rule` and `YAML Clean Single-Entity Real-Action Query Examples` above — ONLY search **`[Single Canonical Entity] + [Real Physical Action / Environment]`** with ZERO `"A vs B"` or `"vs"` (avoiding `#edit` comparison videos and AI Veo clips)!
+          - For direct clash/encounter scenes (Opening Hook or Climax clash, when permitted by the YAML `Dual-Track Clash vs. Single-Entity Rule`): write a genuine camera-encounter query following `YAML Direct-Encounter / Hook Query Examples`. Our engine searches BOTH `"A vs B"` and single-entity queries in parallel, and automatically Fast-Drops `"A vs B"` immediately if no clean unedited clash footage exists!
+          - NEVER write literary storytelling sentences that nobody titles a video with, and NEVER include any marker listed in `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
+        * `fallback_broad_query` / `primary_stock_query` / `secondary_stock_query` (2–4 words, Strictly Single-Entity — FORBIDDEN `"vs"`): Follow the YAML `Stock & Fallback Broad Query Rule` and `YAML Canonical Stock/Fallback Query Examples` above (`[Single Canonical Subject Noun] + [Setting/Action]`).
           - FORBIDDEN #1 (NEVER PUT `"vs"` OR `"A vs B"` IN FALLBACK/STOCK QUERIES): Stock libraries index single subjects; `"vs"` returns 0 relevant results!
-          - FORBIDDEN #2 (NO GENERIC TEXTURES): When a sentence zooms into a body part or microscopic mechanism (`"these needles"`, `"microscopic barbs"`, `"1500 PSI bite"`), NEVER write `"microscopic texture nature"` or `"sharp needle texture macro"`. Always anchor to the real entity (`"porcupine quills closeup"`).
-          - FORBIDDEN #3 (NEVER DROP THE HEAD NOUN): Always keep the core noun (`"porcupine"`, `"crocodile"`, `"shark"`), never regional adjectives alone (`"African Crested"`).
+          - FORBIDDEN #2 (NO GENERIC TEXTURES OR METAPHOR PROPS): When a sentence zooms into a body part, mechanism, or metaphor, NEVER search generic textures or inanimate metaphor objects — always anchor to the real canonical entity + visible feature!
+          - FORBIDDEN #3 (NEVER DROP THE HEAD NOUN): Always keep the core canonical subject noun, never regional/descriptive modifiers alone.
 
 2. DECIDE `search_scope` FOR EACH INDIVIDUAL SCENE (`"SCENE_SPECIFIC"` vs `"SCRIPT_OVERALL"`):
    - `"SCENE_SPECIFIC"`: The split sentence (once pronouns are resolved) describes a clear, standalone visual action of the subject.
@@ -484,6 +484,7 @@ def audit_and_decide_search_scopes_with_llm_sync(
     scenes: List[Dict[str, Any]],
     proposed_decisions: List[Dict[str, Any]],
     primary_entity: Optional[str] = None,
+    channel_niche: str = "general",
     **kwargs,
 ) -> List[Dict[str, Any]]:
     """
@@ -526,9 +527,15 @@ def audit_and_decide_search_scopes_with_llm_sync(
             "overall_script_query": d.get("overall_script_query", ""),
         })
 
+    from app.services.niche_manager import build_video_search_strategy_prompt_block
+    yaml_search_strategy_block = build_video_search_strategy_prompt_block(channel_niche or "general")
+
     audit_prompt = f"""You are the Chief LLM Search Scope Judge & Search-Engine Query Auditor in a LangGraph video pipeline.
 Topic: "{topic}"
 Primary Subject: "{primary_entity or topic}"
+Channel Niche: "{channel_niche or 'general'}"
+
+{yaml_search_strategy_block}
 
 FULL SCRIPT STORY:
 "{full_script_text}"
@@ -536,38 +543,35 @@ FULL SCRIPT STORY:
 PROPOSED SCENE DECISIONS TO AUDIT:
 {json.dumps(review_items, ensure_ascii=False, indent=2)}
 
-YOUR 3-STEP COGNITIVE AUDIT PROTOCOL (ELIMINATE ALL DUMB/UNSEARCHABLE QUERIES):
+YOUR 3-STEP COGNITIVE AUDIT PROTOCOL (STRICTLY GOVERNED BY THE YAML VIDEO SEARCH STRATEGY ABOVE):
 STEP 1 — PRONOUN RESOLUTION & ANATOMY/METAPHOR DECODING ACROSS THE FULL SCRIPT:
-- Read the FULL SCRIPT STORY first. When a `split_sentence` uses pronouns ("It", "The cat", "These needles", "This trap", "They") or omits the subject, substitute the true entity physically acting in that sentence.
-- When a `split_sentence` describes a microscopic body part, weapon, or metaphor (e.g., "microscopic one-way barbs", "these needles", "like biological harpoons", "1,500 PSI hydraulic press"), NEVER allow generic material/texture queries like `"microscopic texture nature"` or `"sharp needle texture macro"` (which return sewing needles, incense sticks, and leaves on Pexels!). Always rewrite to the actual animal/subject + visible anatomical feature (e.g. `"porcupine quills closeup"`, `"leopard roaring fangs"`).
+- Read the FULL SCRIPT STORY first. When a `split_sentence` uses pronouns ("It", "He", "She", "They", "This creature", "These weapons", "This trap") or omits the subject, substitute the true canonical entity physically acting in that sentence.
+- When a `split_sentence` describes a microscopic mechanism, anatomical weapon, or metaphor, NEVER allow generic material/texture queries or literal metaphor props! Always rewrite to the actual canonical subject + visible physical feature/action in its real environment.
 
-STEP 2 — AUDIT & REWRITE `approved_query` (FOR YOUTUBE SHORTS) AND `approved_fallback_stock_query` (FOR PEXELS/PIXABAY):
-1. `approved_query` (3–5 English words, Real YouTube Shorts Title Format):
-   - Must read like a real viral YouTube Shorts title (e.g., `"leopard attacking porcupine"`, `"porcupine rattling quills closeup"`, `"leopard injured by porcupine quills"`, `"porcupine defending against leopard"`).
-   - REWRITE immediately if `proposed_query` is a narrative storytelling phrase that nobody titles a video with (e.g., REWRITE `"African crested porcupine walking away savanna"` -> `"crested porcupine quills defense"`; REWRITE `"porcupine quill embedded in animal skin macro"` -> `"porcupine quills in leopard"`).
-2. `approved_fallback_stock_query` (2–3 English words, Pexels/Pixabay Canonical Index Format):
-   - Must be the **common 1–2 word canonical species/subject noun + habitat/action** that Pexels/Pixabay actually index (e.g., `"porcupine wildlife"`, `"porcupine quills closeup"`, `"leopard hunting savanna"`).
-   - NEVER drop the head noun (never output `"African Crested"` without `"Porcupine"`) and NEVER output generic textures (`"microscopic texture"`, `"needle texture"`).
+STEP 2 — AUDIT & REWRITE `approved_query` (YOUTUBE DUAL-TRACK) AND `approved_fallback_stock_query` (STOCK SINGLE-ENTITY):
+1. `approved_query` (3–5 English words, following the YAML `Dual-Track Clash vs. Single-Entity Rule` & `Single-Entity Body Scene Rule` above):
+   - For single-entity body scenes: REWRITE any `"A vs B"` query into **`[Single Canonical Entity] + [Real Physical Action / Environment]`** matching the `YAML Clean Single-Entity Real-Action Query Examples` above so we avoid `#edit` comparison videos and AI Veo clips!
+   - Keep `"Entity A attacking/vs Entity B"` ONLY on direct 2-entity encounter/clash scenes when permitted by the YAML `Dual-Track Clash vs. Single-Entity Rule`.
+   - REWRITE immediately if `proposed_query` is a literary storytelling phrase that nobody titles a video with, or contains any marker from `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
+2. `approved_fallback_stock_query` (2–4 English words, Strictly Single-Entity — ZERO `"vs"`):
+   - Must follow `YAML Canonical Stock/Fallback Query Examples` (`[Single Canonical Subject Noun] + [Setting/Action]`) with ZERO `"vs"` / `"versus"`, NEVER dropping the head noun, and NEVER outputting generic textures.
 3. `approved_subject_entity` (Scene-Accurate Subject Filter for Vision Auditor):
-   - In a 2-entity duel (`Entity A vs Entity B`), set `approved_subject_entity` to the exact entity shown in that scene OR `"Entity A or Entity B"` (e.g., `"Leopard or African Crested Porcupine"`) so our Vision Auditor accepts valid footage of either contender!
-4. `NICHE-SPECIFIC ANTI-FLOP GUARDRAILS` (MANDATORY):
-   - **Animal Rescue (`animal_rescue` / Paws & Hearts)**: Enforce SINGLE-BREED CONTINUITY across all scenes 1..N! Every scene's `approved_query` and `approved_fallback_stock_query` MUST specify the exact same dog/cat breed and color (e.g. `"white poodle rescue"`, `"golden retriever puppy rescue"`) so the video never stitches 8 different breeds of stray dogs together.
-   - **Psychology (`psychology`)**: NEVER output academic infographic or MRI brain scan queries (`"tactical infographic overlay"`, `"neural mapping silhouette"`, `"amygdala brain spike"`). Always rewrite `approved_query` to real human micro-expressions, interrogation, or body language action (`"detective interrogation nervous suspect"`, `"person avoiding eye contact"`, `"confident handshake body language"`).
-   - **Alternate History (`alternate_history`)**: NEVER output static portraits or utility-wire queries (`"JP Morgan portrait"`, `"telegraph office"`, `"power lines"`). Always rewrite `approved_query` to high-motion cinematic action footage (`"roman empire siege battle"`, `"mongol cavalry charge"`, `"volcano eruption ash cloud"`, `"tesla coil lightning arc"`).
-   - **Intra-Video Uniqueness**: Across all scenes 1..N, NEVER assign the exact same `approved_query` string to two different scenes.
+   - Set to the exact active entity in that scene, OR `"Entity A or Entity B"` in a 2-entity duel, following the YAML `Niche Anti-Flop Scene Continuity Guardrail` above.
+4. ENFORCE THE YAML `Niche Anti-Flop Scene Continuity Guardrail` & INTRA-VIDEO UNIQUENESS:
+   - Strictly enforce the active niche's continuity rule from the YAML block above across all scenes 1..N, and NEVER assign the exact same `approved_query` string to two different scenes.
 
 Return ONLY a valid JSON object in this exact format:
 {{
-  "overall_script_query": "3-5 word core story search query (e.g. 'leopard vs porcupine wildlife')",
-  "subject_entity": "main subject(s) of the story (e.g. 'African Crested Porcupine or Leopard')",
+  "overall_script_query": "3-5 word core story search query following YAML rules",
+  "subject_entity": "main canonical subject(s) of the story",
   "scenes_audit": [
     {{
       "scene_id": 1,
       "approved_scope": "SCENE_SPECIFIC",
-      "approved_subject_entity": "Leopard or African Crested Porcupine",
-      "approved_query": "leopard attacking porcupine savanna",
-      "approved_fallback_stock_query": "leopard hunting savanna",
-      "reason": "Search-engine-native YouTube title query and Pexels canonical fallback"
+      "approved_subject_entity": "Canonical Entity A or Canonical Entity B",
+      "approved_query": "3-5 word YouTube search query following YAML strategy",
+      "approved_fallback_stock_query": "2-4 word single-entity stock fallback query without vs",
+      "reason": "Search-engine-native query aligned with YAML video_search_strategy"
     }}
   ]
 }}"""

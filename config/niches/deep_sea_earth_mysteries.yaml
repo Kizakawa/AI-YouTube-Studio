@@ -27,9 +27,10 @@ script_blueprint:
   showrunner_prose_dna:
     persona_and_voice: "Forensic Expedition Chronicler & Provocative Anomaly Investigator (Fern × Lemmino × @disastersexplained1 × Zack D. Films)."
     writing_habits:
-    - "1. 2nd-Person Sensory Danger + Escalating Physical Telemetry: Drop the viewer directly into the anomaly using exact depth (meters/feet), pressure (PSI), temperature (°C), or acoustic decibels (dB)."
-    - "2. The Deceptive Calm Hook: Show the eerie, seemingly harmless visual sign that precedes the catastrophe ('You notice the waves forming a neat square grid near the beach. Stopping to film it is a fatal mistake.')."
-    - "3. Concrete Physical Mechanism Over Vague Spookiness: Explain the exact physical/biological force causing the anomaly (methane blowouts, halocline density traps, 230 dB sperm whale sonar cavitation)."
+    - "1. ZERO ACADEMIC STUDY OPENERS: NEVER start any sentence with 'Studies show...', 'Oceanographic studies reveal...', 'Estudos mostram que...', or 'Pesquisas marinhas indicam...'. Drop the viewer straight into the expedition log, depth gauge, or sensory danger."
+    - "2. 2nd-Person Sensory Danger + Escalating Physical Telemetry: Drop the viewer directly into the anomaly using exact depth (meters/feet), pressure (PSI), temperature (°C), or acoustic decibels (dB)."
+    - "3. The Deceptive Calm Hook: Show the eerie, seemingly harmless visual sign that precedes the catastrophe ('You notice the waves forming a neat square grid near the beach. Stopping to film it is a fatal mistake.')."
+    - "4. Concrete Physical Mechanism Over Vague Spookiness: Explain the exact physical/biological force causing the anomaly (methane blowouts, halocline density traps, 230 dB sperm whale sonar cavitation)."
     bad_ai_slop_example: "The deep ocean is full of scary mysteries and extreme pressure that humans cannot survive."
     good_million_view_example: "At two thousand meters deep, sunlight vanishes completely and water pressure crushes steel at three thousand pounds per square inch. Yet sonar just tracked a fourteen-meter colossal squid rising straight toward the hull."
     good_pt_br_example: "A trezentos metros sob o México, o ar dentro da Caverna de Naica atinge cinquenta e oito graus com noventa e nove por cento de umidade. A cada respiração, o vapor começa a condensar dentro dos seus próprios pulmões."
@@ -127,15 +128,79 @@ llm_production_blueprint:
     Deep Sea, Thalassophobia & Extreme Earth Anomalies (Point Nemo, 2000m Sperm Whale vs Colossal Squid, Boiling River,
     Danakil Acid Crater, Leviathan CGI). Viewers demand real submersible footage, real deep-sea biological clashes, or
     colossal 3D CGI Megalophobia scale comparisons.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      For marine predator duels (e.g. Sperm Whale vs Colossal Squid, Orca vs Great White Shark), run DUAL-TRACK search in parallel on Hook/Climax:
+      probe at most 1-2 real underwater encounter queries alongside 3+ clean SINGLE-SPECIES submersible/underwater queries. If 'A vs B' returns
+      fan-edits or AI Veo clips, FAST-DROP 'A vs B' immediately and use clean single-species deep-sea footage!
+    single_entity_body_scene_rule: >
+      For body scenes explaining one marine creature's sonar/tentacles, depth pressure, or geological anomaly, NEVER inject 'A vs B' or 'vs'.
+      Search ONLY '[Single Marine Creature or Earth Location] + [Underwater/Geological Action + Environment]'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Single Marine Species or Phenomenon] + [Ocean/Cave Environment]' with ZERO 'vs' / 'versus' and ZERO obscure literary adjectives.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 YouTube Shorts AND 16:9 HD/4K raw ROV submersible/expedition/oceanographic recordings; prioritize clean unedited expedition footage over edited #shorts.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      Strictly separate real marine fauna (Sperm Whale, Giant Squid, Goblin Shark, Orca -> 100% real ocean/ROV camera footage, reject harmless filter-feeder whale sharks when topic is predatory sharks)
+      from mythological/prehistoric leviathans (The Bloop, Kraken, Megalodon -> summon_epic_monster_cinematic_media 3D_CGI_VIDEO).
+    clash_query_examples:
+    - "orca attacking great white shark"
+    - "sperm whale vs giant squid"
+    - "moray eel attacking octopus"
+    single_entity_query_examples:
+    - "sperm whale diving deep ocean"
+    - "giant squid underwater camera"
+    - "goblin shark jaw underwater"
+    - "danakil depression acid lake boiling"
+    - "rov submersible deep sea darkness"
+    stock_fallback_examples:
+    - "sperm whale underwater"
+    - "deep ocean submarine light"
+    - "octopus underwater dark"
+    - "volcanic crater boiling lava"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#vsedits"
+    - "#capcut"
+    - "#alightmotion"
+    - "#phonk"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "who wins"
+    - "who won"
+    - "who is the real king"
+    - "vs edit"
+    - "animal revolt"
+    - "battle simulator"
+    - "power scaling"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aishorts"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "#hailuo"
+    - "ai generated"
+    - "ai video"
+    - "made with ai"
+    - "sora ai"
+    - "kling ai"
   visual_archetypes_and_tool_routing:
-  - archetype: "1. Real Deep-Sea Creature Clash & Extreme Geological Phenomena"
-    when_to_use: "When the scene depicts real marine predators (sperm whale, colossal squid, goblin shark, electric eel) or extreme Earth locations (Danakil acid lakes, Catatumbo lightning, boiling river)."
+  - archetype: "1. Real Deep-Sea Creature & Extreme Geological Expedition Footage"
+    when_to_use: "When the scene depicts real marine predators (sperm whale, colossal squid, goblin shark, orca) or extreme Earth locations (Danakil acid lakes, boiling river, underwater caves)."
     recommended_tool: "clone_youtube_short_peak_clip"
-    query_formula: "[Specific Creature/Location] + [Action/Phenomenon + Environment] (e.g. 'sperm whale diving deep ocean', 'giant squid underwater camera', 'danakil depression acid lake boiling')"
+    query_formula: "Dual-Track on clash scenes; strictly single-entity '[Specific Creature/Location] + [Action/Phenomenon + Environment]' on body scenes (ZERO 'vs' in body/fallback)"
   - archetype: "2. Colossal Sea Monsters, Prehistoric Leviathans & Megalophobia Scale"
     when_to_use: "When the scene depicts mythological/cryptid sea monsters (The Bloop, Kraken, Gargantuan Leviathan, Cthulhu) or prehistoric ocean giants (Megalodon, Mosasaurus) next to submarines or divers."
     recommended_tool: "summon_epic_monster_cinematic_media (monster_media_mode='3D_CGI_VIDEO')"
     query_formula: "creature_name + scale_anchor_object ('submarine', 'scuba diver', 'battleship')"
   strictly_forbidden_visuals:
   - "Land savannas, terrestrial jungle cats, or sunny beach tourist clips"
-  - "2D kids cartoons or clips with burned-in subtitles"
+  - "2D kids cartoons, comparison #edit split-screens, AI Veo corner watermarks, or clips with burned-in subtitles"

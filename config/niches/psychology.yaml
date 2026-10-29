@@ -35,11 +35,12 @@ script_blueprint:
   showrunner_prose_dna:
     persona_and_voice: "Cold, surgical, unapologetically blunt CIA/FBI Behavioral Profiler & Dark Social Dynamics Realist (JCS Criminal Psychology × Chase Hughes × Charisma on Command)."
     writing_habits:
-    - "1. Open With a Micro-Expression or Verbatim Spoken Trap ('Show, Don't Tell'): Never lecture abstractly about manipulation. Quote the exact words a manipulator drops in real life (e.g., '\"You are way too sensitive\" is not an opinion—it is a calculated bait trap.') or point to an involuntary physical reflex ('Watch a suspect's blink rate the exact second you stop nodding.')."
-    - "2. Name the Forensic / Neural Protocol: Cite specific profiling concepts (CIA Elicitation, The 4-Second Silence Audit, Suprasternum Notch Pacifying Touch, 0.2-Second Amygdala Hijack, Intermittent Dopamine Trap) backed by sharp numbers."
-    - "3. Deliver a Word-for-Word Verbal Counter-Move: Always give the viewer the exact spoken sentence in quotation marks to turn the tables on the spot (e.g., 'Hold eye contact for four full seconds, lower your voice, and ask: \"What did you hope I would feel when you said that?\"')."
-    bad_ai_slop_example: "When someone uses silence to manipulate you, it triggers anxiety in your brain. In forensic behavioral analysis, staying calm exposes their leverage."
-    good_million_view_example: "CIA interrogators never argue when a suspect lies—they just go dead silent for four seconds. Without your voice to push against, the liar's amygdala panics and forces them to talk."
+    - "1. ZERO ACADEMIC STUDY OPENERS & ZERO CLINICAL JARGON: NEVER start any sentence with 'Studies show...', 'Psychological studies reveal...', 'Research indicates...', or 'Scientists found...', and NEVER use stiff university jargon like 'submissive compliance' or 'interpersonal hierarchies'. Jump straight into visceral human behavior ('The exact second you apologize first, their brain marks you as easy prey.')."
+    - "2. Open With a Micro-Expression or Verbatim Spoken Trap ('Show, Don't Tell'): Never lecture abstractly about manipulation. Quote the exact words a manipulator drops in real life (e.g., '\"You are way too sensitive\" is not an opinion—it is a calculated bait trap.') or point to an involuntary physical reflex ('Watch a suspect's blink rate the exact second you stop nodding.')."
+    - "3. Name the Concrete Forensic / Neural Mechanism: Cite specific profiling concepts or famous named experiments (1971 Stanford Prison, CIA Elicitation, The 4-Second Silence Audit, 0.2-Second Amygdala Hijack, Intermittent Dopamine Trap) with visceral clarity."
+    - "4. MANDATORY WORD-FOR-WORD VERBAL COUNTER-MOVE IN QUOTES (SCENE 6): Never give vague advice like 'set a visible boundary' or 'be confident'. In Scene 6 (Act 4), you MUST give the viewer an exact, cold 1-sentence spoken counter-line inside quotation marks to say out loud (e.g., 'Next time they test your boundary, hold eye contact for three seconds and ask: \"Are you asking me, or telling me?\"')."
+    bad_ai_slop_example: "Psychological boundary studies reveal that when submissive compliance exceeds eighty percent, manipulators lose respect. To be respected, you must set a visible boundary."
+    good_million_view_example: "The exact second you apologize for something you didn't do, a manipulator's brain marks you as easy prey. Next time they push your limit, hold eye contact for four seconds and ask: 'What did you hope I would feel when you said that?'"
   controversy_comment_bait_engine:
     philosophy: "VIEWS & COMMENT WARS > POLITE TEXTBOOK SAFETY (Cunningham's Law). Safe, polite advice gets 0 comments. Intentionally plant 1 bold, polarizing 'Sacred-Cow Breaker' in Scene 1 or Scene 4-5 that attacks a common polite habit as a weakness/scam so viewers rush into the comments to argue while the video loops in the background!"
     bait_examples:
@@ -156,6 +157,59 @@ llm_production_blueprint:
     JCS Criminal Psychology, Charisma on Command) NEVER use generic corporate/casual Pexels stock clips of people in
     t-shirts or bright offices. Every scene must be routed by the LLM to one of 4 high-retention visual production tools
     based on whether the scene is concrete forensic/character action, 3D brain anatomy, or an abstract psychological trap.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      NEVER stuff 'A vs B' or 'vs' into psychology/forensic video searches (which triggers sigma #edit / phonk fan-edits with heavy flashing text).
+      Search ONLY concrete single-focus forensic interrogation, courtroom reaction, 3D glowing brain anatomy, or dark noir micro-expression footage!
+    single_entity_body_scene_rule: >
+      Translate every psychological/behavioral concept via abstract_to_physical_query_translations into '[Concrete Subject/Setting] + [Observable Micro-Expression or Neural Process]'
+      (3-5 words, ZERO abstract nouns like 'narcissist', 'gaslighting', 'cognitive dissonance', and ZERO 'vs').
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Dark Noir Human Subject or Lab Room] + [Physical Action]' (e.g. 'suspect sweating interrogation', 'dark shadow eye contact') with ZERO 'vs'.
+    format_unlock_rule: >
+      Search BOTH vertical 9:16 Shorts AND 16:9 HD clean courtroom/interrogation archival footage & 3D neuroscience visualizations without burned-in captions.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      NEVER output static academic infographic queries, book covers, or quote cards ('tactical infographic overlay', 'neural mapping chart'),
+      and NEVER use search_google_cinematic_image for psychology scenes — route strictly to real human micro-expression video, 3D glowing brain animation, or render_doodle_2d_explainer_scene!
+    clash_query_examples:
+    - "fbi detective interrogating nervous suspect"
+    single_entity_query_examples:
+    - "fbi interrogation suspect sweating"
+    - "courtroom defendant nervous eye blink"
+    - "3d glowing brain neurons firing"
+    - "polygraph needle trembling paper"
+    - "quietest room anechoic chamber inside"
+    stock_fallback_examples:
+    - "detective dark interrogation room"
+    - "close up eyes dark shadow"
+    - "casino roulette wheel night"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#sigmaedit"
+    - "#capcut"
+    - "#alightmotion"
+    - "#aftereffects"
+    - "#phonk"
+    - "#veo"
+    - "#veo2"
+    - "#veo3"
+    - "google veo"
+    - "who would win"
+    - "vs edit"
+    - "edit audio"
+    forbidden_ai_slop_markers:
+    - "#ai"
+    - "#aivideo"
+    - "#aishorts"
+    - "#aigenerated"
+    - "#sora"
+    - "#kling"
+    - "ai generated"
+    - "ai video"
+    - "made with ai"
   visual_archetypes_and_tool_routing:
   - archetype: "1. Forensic Interrogation, Courtroom & Iconic Character Breakdown (JCS / Charisma on Command style — 2M-32M views)"
     when_to_use: >
