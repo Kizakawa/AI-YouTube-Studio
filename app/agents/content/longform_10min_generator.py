@@ -103,6 +103,112 @@ def _extract_json_dict(raw_text: str) -> Dict[str, Any]:
     return {}
 
 
+def _mine_real_world_research_dossier(topic: str, channel_niche: str) -> str:
+    """
+    Bộ máy Thu thập Hồ sơ Dữ liệu Thật (Real-World Research Dossier) trước khi viết kịch bản:
+    1. Quét trực tiếp Top Video Triệu View trên YouTube (`yt_dlp`) về chủ đề `topic` để lấy cấu trúc góc nhìn,
+       tiêu đề thực tế và từ khóa đang ăn view của các kênh lớn.
+    2. Truy vấn trực tiếp Wikipedia Scientific/Historical API để lấy số liệu khoa học, tên nhà nghiên cứu,
+       năm thí nghiệm và các ca điển hình (Case Studies) có thật 100% — chống hiện tượng AI tự bịa lý thuyết chung chung.
+    """
+    import requests as _req
+
+    yt_lines: List[str] = []
+    wiki_lines: List[str] = []
+
+    def _fetch_yt_outliers() -> None:
+        try:
+            import yt_dlp
+            opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": "in_playlist",
+                "skip_download": True,
+                "socket_timeout": 4,
+                "ignoreerrors": True,
+            }
+            q_str = f"ytsearch5:{topic} documentary explained"
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(q_str, download=False)
+            entries = (info or {}).get("entries") or []
+            ranked = sorted(
+                [e for e in entries if isinstance(e, dict) and e.get("title")],
+                key=lambda x: int(x.get("view_count") or 0),
+                reverse=True,
+            )
+            for item in ranked[:4]:
+                t_val = str(item.get("title") or "").strip()
+                v_cnt = int(item.get("view_count") or 0)
+                ch_name = str(item.get("uploader") or item.get("channel") or "Creator").strip()
+                dur_s = int(item.get("duration") or 0)
+                if t_val:
+                    yt_lines.append(f"  - [{ch_name} | {v_cnt:,} views | {dur_s//60}m{dur_s%60:02d}s]: \"{t_val}\"")
+        except Exception as e_yt_res:
+            logger.debug(f"[ResearchDossier] YouTube outlier scan skip: {e_yt_res}")
+
+    def _fetch_wikipedia_case_studies() -> None:
+        try:
+            import html as _html
+            from urllib.parse import quote as _urlquote
+            headers = {"User-Agent": "AIYouTubeStudio/2.0 (Educational Documentary Research)"}
+            search_url = "https://en.wikipedia.org/w/api.php"
+            params = {
+                "action": "query",
+                "list": "search",
+                "srsearch": f"{topic}",
+                "srlimit": 3,
+                "format": "json",
+            }
+            resp = _req.get(search_url, params=params, headers=headers, timeout=4.0)
+            if resp.status_code == 200:
+                hits = ((resp.json().get("query") or {}).get("search")) or []
+                for idx_h, h in enumerate(hits[:3]):
+                    page_title = str(h.get("title") or "").strip()
+                    snippet_raw = _html.unescape(re.sub(r"<[^>]+>", "", str(h.get("snippet") or ""))).strip()
+                    if idx_h == 0 and page_title:
+                        try:
+                            sum_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{_urlquote(page_title.replace(' ', '_'))}"
+                            s_resp = _req.get(sum_url, headers=headers, timeout=3.0)
+                            if s_resp.status_code == 200:
+                                ext_txt = str(s_resp.json().get("extract") or "").strip()
+                                if len(ext_txt) > 60:
+                                    snippet_raw = ext_txt[:420]
+                        except Exception:
+                            pass
+                    if page_title and snippet_raw:
+                        wiki_lines.append(f"  - [Verified Encyclopedia Entry — {page_title}]: {snippet_raw}")
+        except Exception as e_wk:
+            logger.debug(f"[ResearchDossier] Wikipedia research skip: {e_wk}")
+
+    with ThreadPoolExecutor(max_workers=2) as res_pool:
+        f1 = res_pool.submit(_fetch_yt_outliers)
+        f2 = res_pool.submit(_fetch_wikipedia_case_studies)
+        try:
+            f1.result(timeout=5.5)
+        except Exception:
+            pass
+        try:
+            f2.result(timeout=5.5)
+        except Exception:
+            pass
+
+    dossier_parts = [
+        "=== REAL-WORLD RESEARCH DOSSIER (MANDATORY FACTUAL GROUNDING — DO NOT WRITE GENERIC AI CLICHÉS) ==="
+    ]
+    if yt_lines:
+        dossier_parts.append("1. TOP VIRAL YOUTUBE VIDEOS ON THIS TOPIC (STUDY THEIR ANGLES & STAKES):")
+        dossier_parts.extend(yt_lines)
+    if wiki_lines:
+        dossier_parts.append("2. VERIFIED SCIENTIFIC / HISTORICAL CONCEPTS & CASE STUDIES TO CITE:")
+        dossier_parts.extend(wiki_lines)
+    dossier_parts.append(
+        "3. MANDATORY CASE-STUDY RULE: Every chapter MUST cite a concrete real-world experiment, "
+        "documented historical/forensic case, or named neurological/physical mechanism with exact numbers "
+        "(years, percentages, milliseconds, PSI, meters) rather than vague generic advice!"
+    )
+    return "\n".join(dossier_parts)
+
+
 def generate_10min_longform_documentary(
     agent: Any,
     topic: str,
@@ -117,11 +223,13 @@ def generate_10min_longform_documentary(
     """
     Sinh kịch bản Phim Tài Liệu Dài ~10 Phút (10 Chương / 40 Phân cảnh / ~1,450–1,600 từ).
     """
+    real_world_dossier = _mine_real_world_research_dossier(topic=topic, channel_niche=channel_niche)
     outline_prompt = f"""You are an Executive Showrunner for a 10-Minute Widescreen 16:9 YouTube Documentary on '{channel_niche}'.
 Topic: "{topic}"
 Target Language: {language} ({target_lang_display})
 {lang_instruction}
 {director_block}
+{real_world_dossier}
 {niche_instructions[:2600] if niche_instructions else ""}
 {channel_memory_block[:1800]}
 
@@ -217,6 +325,7 @@ Return ONLY valid JSON:
 Documentary Title: "{doc_title}"
 Topic: "{topic}"
 {lang_instruction}
+{real_world_dossier}
 
 FULL 10-CHAPTER DOCUMENTARY ROADMAP (FOR CONTEXT — DO NOT REPEAT OTHER CHAPTERS):
 {chapter_summary_text}

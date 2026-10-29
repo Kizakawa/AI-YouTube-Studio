@@ -273,10 +273,16 @@ class ScriptGeneratorMixin:
         """
         notes_ctx = f'\nCreator Direction: "{director_notes.strip()}"' if (director_notes and len(director_notes.strip()) > 3) else ""
         niche_ctx = f"\n{niche_instructions[:2200]}\n" if niche_instructions else ""
+        real_world_dossier = ""
+        try:
+            from app.agents.content.longform_10min_generator import _mine_real_world_research_dossier
+            real_world_dossier = "\n" + _mine_real_world_research_dossier(topic=topic, channel_niche=channel_niche) + "\n"
+        except Exception:
+            pass
         blueprint_prompt = f"""You are an Elite YouTube Shorts Showrunner, Documentary Fact Researcher, and Viral Retention Architect for niche '{channel_niche}'.
 Input Topic: "{topic}"
 Target Spoken Language: {language} ({target_lang_display}){notes_ctx}
-{niche_ctx}
+{real_world_dossier}{niche_ctx}
 {channel_memory_block[:2500]}
 
 YOUR MISSION (DEEP PRE-SCRIPT RESEARCH & 3-ANGLE TOURNAMENT):
