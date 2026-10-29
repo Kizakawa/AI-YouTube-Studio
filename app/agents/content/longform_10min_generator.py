@@ -321,11 +321,15 @@ Return ONLY valid JSON:
         ch_a_mq = ch_a.get("chapter_master_query", "tense interrogation dark room")
         ch_b_mq = ch_b.get("chapter_master_query", "close up human eye contact")
 
+        from app.services.niche_manager import build_million_view_showrunner_prose_dna
+        prose_dna_block = build_million_view_showrunner_prose_dna(channel_niche, language=language)
+
         batch_prompt = f"""You are writing Scenes {start_sid} to {end_sid} (Chapters {ch_a_id} and {ch_b_id}) of a 10-Minute Widescreen 16:9 YouTube Documentary in {target_lang_display}.
 Documentary Title: "{doc_title}"
 Topic: "{topic}"
 {lang_instruction}
 {real_world_dossier}
+{prose_dna_block}
 
 FULL 10-CHAPTER DOCUMENTARY ROADMAP (FOR CONTEXT — DO NOT REPEAT OTHER CHAPTERS):
 {chapter_summary_text}
@@ -413,12 +417,10 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                                 narr_txt = " ".join(s1_words[:25]).rstrip(",;:") + "."
                             elif len(s1_words) < 12:
                                 narr_txt = doc_hook.replace("?", ".")
-                        elif len(narr_txt.split()) < 38:
+                        elif len(narr_txt.split()) < 34:
                             extra_premise = str(ch_cur.get("chapter_premise") or "").strip().rstrip(".")
-                            narr_txt = (
-                                f"{narr_txt} In forensic behavioral analysis, {extra_premise[:115].lower()}, "
-                                f"exposing the underlying psychological leverage before the other person can recalibrate their script."
-                            ).strip()
+                            if extra_premise and extra_premise[:25].lower() not in narr_txt.lower():
+                                narr_txt = f"{narr_txt} {extra_premise}."
                         sc_item["narration"] = narr_txt
                         master_q_cur = str(ch_cur.get("chapter_master_query") or "tense business meeting").strip()
                         cur_vk = str(sc_item.get("visual_keyword") or "").strip()
@@ -451,8 +453,8 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
             premise_clean = str(ch_cur.get("chapter_premise") or "behavioral power dynamics in high-stakes negotiation").strip().rstrip(".")
             m_query = str(ch_cur.get("chapter_master_query") or "tense executive boardroom meeting").strip()
             narr_fb = (
-                f"When we examine {premise_clean.lower()}, researchers discovered that ninety percent of people react within two seconds out of pure conditioned habit. "
-                f"By slowing your cadence and holding steady eye contact for four full seconds, you strip away their psychological leverage completely."
+                f"Notice what happens during {premise_clean.lower()}: ninety percent of people react within two seconds out of pure conditioned habit. "
+                f"Hold steady eye contact for four full seconds without speaking, and their entire script falls apart on the spot."
             )
             ch_title_fb = str(ch_cur.get("chapter_title") or f"CHAPTER {ch_cur.get('chapter_id', 1)}").strip().upper()
             ch_badge = f"[ // {ch_title_fb} // ]" if idx_local in (0, 4) else None
