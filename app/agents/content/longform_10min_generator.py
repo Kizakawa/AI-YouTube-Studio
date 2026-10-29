@@ -383,6 +383,44 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
         f"{len(all_scenes)} phân cảnh | Tổng số từ: {total_w} từ (~{total_w / 2.45:.0f}s / ~{total_w / 148.0:.1f} phút)!"
     )
 
+    # Tự động tính toán bảng Mốc Thời Gian 10 Chương (YouTube Key Moments Timestamps bắt đầu từ 00:00)
+    # giúp Google Search & YouTube Search lập chỉ mục từng chương riêng biệt (chống 0 view cho kênh mới)
+    chapter_timestamps_lines: List[str] = []
+    cum_sec = 0.0
+    for ch_idx_0 in range(10):
+        ch_meta = chapters_list[ch_idx_0]
+        mm = int(cum_sec // 60)
+        ss = int(cum_sec % 60)
+        ts_str = "00:00" if ch_idx_0 == 0 else f"{mm:02d}:{ss:02d}"
+        ch_clean_title = str(ch_meta.get("chapter_title") or f"Chapter {ch_idx_0 + 1}").strip()
+        chapter_timestamps_lines.append(f"{ts_str} - {ch_clean_title}")
+        ch_scenes = all_scenes[ch_idx_0 * 4 : (ch_idx_0 + 1) * 4]
+        ch_dur = sum(float(s.get("estimated_seconds") or 15.0) for s in ch_scenes)
+        cum_sec += max(48.0, ch_dur)
+
+    timestamps_block = "\n".join(chapter_timestamps_lines)
+    base_desc = str(outline_data.get("description") or f"{doc_title} — Full 10-Minute Widescreen Forensic Documentary.").strip()
+    if "00:00" not in base_desc:
+        full_seo_description = (
+            f"{doc_title}\n"
+            f"{doc_hook}\n\n"
+            f"{base_desc}\n\n"
+            f"⏱️ CHAPTERS & KEY MOMENTS:\n"
+            f"{timestamps_block}\n\n"
+            f"#Documentary #{re.sub(r'[^a-zA-Z0-9]', '', doc_entity.title()) or 'Psychology'} #BehavioralAnalysis #HumanPsychology"
+        )
+    else:
+        full_seo_description = base_desc
+
+    raw_tags = list(outline_data.get("tags") or [])
+    for ch_m in chapters_list[:8]:
+        mq_tag = str(ch_m.get("chapter_master_query") or "").strip().lower()
+        if mq_tag and mq_tag not in raw_tags:
+            raw_tags.append(mq_tag)
+    for base_t in [topic.lower(), doc_entity.lower(), f"{doc_entity.lower()} explained", f"{channel_niche} documentary"]:
+        if base_t and base_t not in raw_tags:
+            raw_tags.append(base_t)
+
     assembled_json = {
         "video_format": "long",
         "title": doc_title,
@@ -397,8 +435,8 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
         "full_narration": full_narr,
         "thumbnail_text": str(outline_data.get("thumbnail_text") or "4-SECOND SILENCE 🧠"),
         "scenes": all_scenes,
-        "tags": outline_data.get("tags") or ["documentary", "psychology", "viral"],
-        "description": str(outline_data.get("description") or f"{doc_title} — Full 10-Minute Widescreen Documentary."),
+        "tags": raw_tags[:18],
+        "description": full_seo_description,
         "pinned_comment": str(
             outline_data.get("pinned_comment")
             or "In a high-stakes confrontation, which move works better for you: (1) The 4-Second Silence or (2) The Mirror Question? 👇"
