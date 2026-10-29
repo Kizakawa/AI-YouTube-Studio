@@ -1055,7 +1055,7 @@ Return ONLY valid JSON:
                 max_duration=15.0,
             )
             pre_clean_dur = min(max(peak_duration_sec, opening_hook_window_sec + 1.0, 5.2), 9.5)
-            clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_yt_{dl_idx}_{mp4_sub_idx}.mp4")
+            clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_yt_{dl_idx}_{mp4_sub_idx}_{rc_cand['id']}.mp4")
             try:
                 trim_video(
                     input_path=v_str,
@@ -1345,7 +1345,9 @@ Return ONLY valid JSON:
             )
 
             # 3.1b. Cắt riêng đoạn Peak (kèm fair_use_transform để gọt lề chữ trên/dưới) rồi chạy cổng 3 bước (Cắt né -> Delogo/Crop -> Bỏ)
-            clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_ext_{idx}.mp4")
+            _m_ext_yt = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(v_path).name)
+            _ext_yt_sfx = f"_{_m_ext_yt.group(1)}" if _m_ext_yt else ""
+            clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_ext_{idx}{_ext_yt_sfx}.mp4")
             try:
                 trim_video(
                     input_path=v_path,
@@ -1520,7 +1522,9 @@ Return ONLY valid JSON:
                     exclude_ranges=alt_excl_v,
                 )
                 if abs(alt_off2 - peak_offset_sec) >= 2.0:
-                    alt_clean_path = str(hook_cand_dir / f"hook_peak_clean_alt2_{idx}.mp4")
+                    _m_alt_yt = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(v_path).name)
+                    _alt_yt_sfx = f"_{_m_alt_yt.group(1)}" if _m_alt_yt else ""
+                    alt_clean_path = str(hook_cand_dir / f"hook_peak_clean_alt2_{idx}{_alt_yt_sfx}.mp4")
                     trim_video(
                         input_path=v_path,
                         duration_seconds=min(max(alt_dur2, opening_hook_window_sec + 1.0, 5.2), 9.5),
@@ -1944,6 +1948,7 @@ Return ONLY valid JSON:
                 "visual_strategy": "HOOK_DUAL_BEAT_FAST_CUT" if dual_beat_spliced else "HOOK_PEAK_SHORT_VIDEO",
                 "full_peak_path": clean_p_path if use_precleaned else best_v_path,
                 "full_peak_duration_sec": natural_peak_dur,
+                "youtube_id": hook_vid_id,
                 "strategy_rationale": (
                     f"Dual-Beat Fast-Cut ({hook_production_strategy}, Score={best_candidate['overall_score']}/10, ScrollStop={best_candidate.get('scroll_stop_score', 0.0)}/10)"
                     if dual_beat_spliced
@@ -1956,6 +1961,7 @@ Return ONLY valid JSON:
                 scene_1["production_method"] = hook_mode
                 scene_1["full_peak_path"] = clean_p_path if use_precleaned else best_v_path
                 scene_1["full_peak_duration_sec"] = natural_peak_dur
+                scene_1["youtube_id"] = hook_vid_id
                 scenes_media[0] = scene_1
 
         # ── MỞ RỘNG HOOK VIDEO ĐẦU VIDEO TRỌN VẸN 4-6 GIÂY PEAK VIRAL YOUTUBE SHORTS (CẢNH 1 + CẢNH 2) ──
@@ -2037,12 +2043,15 @@ Return ONLY valid JSON:
                                 "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
                                 "full_peak_path": s2_clean_p if s2_use_pre else s2_v_path,
                                 "full_peak_duration_sec": float(cand_s2.get("peak_duration_sec") or 0.0),
+                                "youtube_id": s2_vid_id,
                                 "strategy_rationale": f"Extended 4-5s+ Hook (Scene 2 distinct viral YT Short @{s2_peak_start:.1f}s, {dur_s1 + dur_s2:.1f}s total)",
                             }
                             if len(scenes_media) >= 2 and isinstance(scenes_media[1], dict):
                                 scenes_media[1]["media_path"] = hook_output_clip_s2
                                 scenes_media[1]["media_type"] = "hook_ready_video"
                                 scenes_media[1]["production_method"] = "HOOK_EXTENDED_2ND_VIRAL_VIDEO"
+                                scenes_media[1]["full_peak_path"] = s2_clean_p if s2_use_pre else s2_v_path
+                                scenes_media[1]["youtube_id"] = s2_vid_id
                             logger.info(
                                 f"🔥 [HookVideoNode 4-5s+ YT Short Window] Đã ghép tiếp Video Viral YT Short #2 vào Cảnh 2 ({dur_s2:.2f}s) "
                                 f"-> Tổng thời lượng Hook Video mở đầu = {dur_s1 + dur_s2:.2f}s!"

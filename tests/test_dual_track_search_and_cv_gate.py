@@ -257,10 +257,64 @@ def test_all_14_yaml_niches_video_search_strategy():
     print(f"Verified all {len(profiles)} YAML profiles + dynamic prompt injection + zero Python domain hardcoding! Test 5 PASSED!")
 
 
+def test_stock_fetcher_no_name_error_and_hook_candidate_dedup():
+    print("\n=== Test 6: StockFetcher.search_best_video_clip ('re' import) & Hook Candidate Dedup ===")
+    import tempfile
+    from unittest.mock import patch
+    from app.services.media.stock_fetcher import StockFetcher
+    from app.graph.nodes.media_nodes import (
+        _extract_hook_candidate_vid_id,
+        _collect_active_scene_source_paths,
+    )
+
+    sf = StockFetcher(api_key="dummy_test_key")
+    with patch("app.graph.parallel_search.run_langgraph_5way_stock_video_search", return_value=[]) as mock_5way, \
+         patch.object(StockFetcher, "search_wikimedia_videos", return_value=[]):
+        res = sf.search_best_video_clip(
+            query="honey badger vs african lions",
+            narration="When lions clamp down, the badger twists inside its own hide.",
+            topic="Honey Badger vs African Lions",
+            visual_analysis={"search_queries": ["honey badger vs lions", "honey badger attacking"]},
+            _establishing_pass=True,
+        )
+        assert res is None
+        called_qs = mock_5way.call_args.kwargs.get("candidate_queries") or []
+        print("StockFetcher split candidate_queries:", called_qs)
+        assert called_qs, "candidate_queries must be populated without NameError!"
+        assert all(not has_versus_pattern(q) for q in called_qs), f"'vs' leaked into StockFetcher queries: {called_qs}"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        hc = Path(tmpdir)
+        raw_s2 = hc / "yt_hook_cand_2_LmFxy9yXb34.mp4"
+        clean_legacy_s2 = hc / "hook_peak_clean_yt_2_0.mp4"
+        clean_new_s2 = hc / "hook_peak_clean_yt_2_0_LmFxy9yXb34.mp4"
+        raw_s2.write_bytes(b"0" * 128)
+        clean_legacy_s2.write_bytes(b"0" * 128)
+        clean_new_s2.write_bytes(b"0" * 128)
+
+        assert _extract_hook_candidate_vid_id(clean_new_s2) == "LmFxy9yXb34"
+        assert _extract_hook_candidate_vid_id(clean_legacy_s2) == "LmFxy9yXb34"
+        assert _extract_hook_candidate_vid_id(raw_s2) == "LmFxy9yXb34"
+
+        scenes_media = [
+            {
+                "scene_id": 2,
+                "media_path": str(hc / "hook_motion_002.mp4"),
+                "full_peak_path": str(clean_legacy_s2),
+                "youtube_id": "LmFxy9yXb34",
+            }
+        ]
+        used_paths, used_vids = _collect_active_scene_source_paths(scenes_media, exclude_scene_ids={5})
+        assert str(clean_legacy_s2.resolve()) in used_paths
+        assert "LmFxy9yXb34" in used_vids
+    print("Test 6 PASSED!")
+
+
 if __name__ == "__main__":
     test_dual_track_queries_4_domains()
     test_0ms_edit_and_ai_slop_filter()
     test_cv_natural_ripples_vs_real_captions()
     test_live_dual_track_youtube_search_mix()
     test_all_14_yaml_niches_video_search_strategy()
-    print("\nALL 5 YAML DUAL-TRACK SEARCH & CV GATE TESTS PASSED 100%!")
+    test_stock_fetcher_no_name_error_and_hook_candidate_dedup()
+    print("\nALL 6 YAML DUAL-TRACK SEARCH, STOCK FETCHER & DEDUP TESTS PASSED 100%!")

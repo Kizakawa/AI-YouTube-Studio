@@ -9,8 +9,9 @@ Bao gồm:
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Set, Tuple
 
 from app.schemas.contracts import ScriptContract, SceneContract
 from app.agents.media_agent import MediaAgent, detect_real_entity, match_best_pool_photo, clean_scene_search_query
@@ -23,6 +24,70 @@ from app.graph.evaluators.visual_critic import VisualCritic
 from app.graph.state import VideoWorkflowState
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_hook_candidate_vid_id(src_vp: Path) -> str:
+    """
+    Trích xuất mã định danh gốc (YouTube Video ID 11 ký tự hoặc stem) từ file ứng viên
+    trong `hook_candidates/` (`hook_peak_clean_yt_{idx}_{sub}_{yt_id}.mp4`,
+    `hook_peak_clean_yt_{idx}_{sub}.mp4` ánh xạ ngược về `yt_hook_cand_{idx}_{yt_id}.*`,
+    hoặc `yt_hook_cand_{idx}_{yt_id}.mp4`) để chống dùng trùng cùng 1 video giữa Hook Cảnh 1/2 và Cảnh thân.
+    """
+    stem = src_vp.stem
+    m_direct = re.search(
+        r"(?:yt_hook_cand_\d+|hook_peak_clean_(?:yt_\d+_\d+|ext_\d+|alt2_\d+))_([A-Za-z0-9_-]{11})$",
+        stem,
+    )
+    if m_direct:
+        return m_direct.group(1)
+
+    m_idx = re.match(r"^hook_peak_clean_(?:yt|ext|alt2)_(\d+)(?:_\d+)?$", stem)
+    if m_idx and src_vp.parent.exists():
+        cand_idx = m_idx.group(1)
+        for sib in sorted(src_vp.parent.glob(f"yt_hook_cand_{cand_idx}_*.*")):
+            m_sib = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})$", sib.stem)
+            if m_sib:
+                return m_sib.group(1)
+    return stem
+
+
+def _collect_active_scene_source_paths(
+    scenes_media: List[Dict[str, Any]],
+    exclude_scene_ids: Optional[Set[int]] = None,
+) -> Tuple[Set[str], Set[str]]:
+    """
+    Thu thập tập đường dẫn vật lý (`media_path` + `full_peak_path`) và tập YouTube Video ID
+    đã được các phân cảnh hợp lệ trong Job chiếm giữ để ngăn chặn việc dùng lại cùng một clip.
+    """
+    excl = exclude_scene_ids or set()
+    used_paths: Set[str] = set()
+    used_vid_ids: Set[str] = set()
+    for m in scenes_media or []:
+        if not isinstance(m, dict):
+            continue
+        sid = int(m.get("scene_id") or 0)
+        if sid in excl:
+            continue
+        for pk in ("media_path", "full_peak_path"):
+            p_raw = m.get(pk)
+            if p_raw:
+                p_obj = Path(str(p_raw))
+                if p_obj.exists():
+                    used_paths.add(str(p_obj.resolve()))
+                vid_from_p = _extract_hook_candidate_vid_id(p_obj)
+                if len(vid_from_p) == 11 and vid_from_p != p_obj.stem:
+                    used_vid_ids.add(vid_from_p)
+        for uk in ("youtube_id", "source_url", "media_url", "url"):
+            u_val = str(m.get(uk) or "").strip()
+            if not u_val:
+                continue
+            if re.fullmatch(r"[A-Za-z0-9_-]{11}", u_val):
+                used_vid_ids.add(u_val)
+            else:
+                m_u = re.search(r"(?:v=|/shorts/|youtu\.be/)([A-Za-z0-9_-]{11})", u_val)
+                if m_u:
+                    used_vid_ids.add(m_u.group(1))
+    return used_paths, used_vid_ids
 
 
 def _scene_audio_duration(work_dir: Path, scene_id: int, default: float = 6.0) -> float:
@@ -2071,6 +2136,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         try:
                             from app.graph.evaluators.visual_critic import VisualCritic
                             hc_dir = work_dir / "hook_candidates"
+                            active_paths_r, active_vids_r = _collect_active_scene_source_paths(
+                                scenes_media, exclude_scene_ids={r_sid}
+                            )
                             unused_hook_cands = sorted(
                                 [
                                     *list(hc_dir.glob("hook_peak_clean_*.mp4")),
@@ -2082,9 +2150,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             for src_vp in unused_hook_cands:
                                 if not src_vp.exists() or src_vp.stat().st_size < 25_000:
                                     continue
-                                # Tên file chuẩn: yt_hook_cand_{idx}_{yt_id}.mp4
-                                parts_stem = src_vp.stem.split("_", 4)
-                                cand_yt_id = parts_stem[4] if len(parts_stem) >= 5 else src_vp.stem
+                                if str(src_vp.resolve()) in active_paths_r:
+                                    continue
+                                cand_yt_id = _extract_hook_candidate_vid_id(src_vp)
+                                if cand_yt_id in active_vids_r:
+                                    continue
                                 if not rag.try_claim_in_job_video(
                                     job_id=job_id,
                                     vid_id=cand_yt_id,
@@ -2487,17 +2557,16 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
             work_dir = Path(state.get("work_dir", "storage/cache"))
             media_dir = work_dir / "media"
             failed_set = set(eval_report.failed_scene_ids)
-            used_active_paths = {
-                str(Path(str(m.get("media_path"))).resolve())
-                for m in scenes_media
-                if int(m.get("scene_id") or 0) not in failed_set and m.get("media_path") and Path(str(m.get("media_path"))).exists()
-            }
+            used_active_paths, used_active_vids = _collect_active_scene_source_paths(
+                scenes_media, exclude_scene_ids=failed_set
+            )
             # Ưu tiên tuyệt đối các ứng viên hook_candidates/*.mp4 chưa dùng hoặc *_fullpeak.mp4 dài (> 7s)
             # trước khi dùng clip cảnh khác (để tránh trùng dHash intra-video!)
             clean_donors: List[str] = []
             for cand_hp in sorted((work_dir / "hook_candidates").glob("hook_peak_clean_*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
                 if cand_hp.exists() and cand_hp.stat().st_size > 25_000:
-                    if str(cand_hp.resolve()) not in used_active_paths:
+                    hp_vid = _extract_hook_candidate_vid_id(cand_hp)
+                    if str(cand_hp.resolve()) not in used_active_paths and hp_vid not in used_active_vids:
                         clean_donors.append(str(cand_hp))
             for fp_p in sorted(media_dir.glob("*_fullpeak.mp4"), key=lambda p: p.stat().st_size, reverse=True):
                 if fp_p.exists() and fp_p.stat().st_size > 35_000:
@@ -2961,6 +3030,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     from app.services.video_memory_rag import get_video_memory_rag
                     rag_ref = get_video_memory_rag()
                     out_slice_v = str(media_dir / f"scene_{scene_id:03d}_refined_peak_slice_r{retry_count}.mp4")
+                    active_paths_ref, active_vids_ref = _collect_active_scene_source_paths(
+                        scenes_media, exclude_scene_ids=failed_ids
+                    )
                     cand_vids = sorted(
                         (work_dir / "hook_candidates").glob("hook_peak_clean_*.mp4"),
                         key=lambda p: p.stat().st_size,
@@ -2969,8 +3041,11 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     for src_vp in cand_vids:
                         if not src_vp.exists() or src_vp.stat().st_size < 25_000:
                             continue
-                        parts_stem = src_vp.stem.split("_", 4)
-                        cand_yt_id = parts_stem[4] if len(parts_stem) >= 5 else src_vp.stem
+                        if str(src_vp.resolve()) in active_paths_ref:
+                            continue
+                        cand_yt_id = _extract_hook_candidate_vid_id(src_vp)
+                        if cand_yt_id in active_vids_ref:
+                            continue
                         if not rag_ref.try_claim_in_job_video(
                             job_id=job_id_refine,
                             vid_id=cand_yt_id,
@@ -3132,19 +3207,16 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 out_resc_v = str(media_dir / f"scene_{scene_id:03d}_refined_clean_rescue_r{retry_count}.mp4")
                 clean_video_donors: List[str] = []
                 clean_image_donors: List[str] = []
-                active_used_paths = {
-                    str(Path(m.get("media_path")).resolve())
-                    for m in scenes_media
-                    if isinstance(m, dict)
-                    and m.get("media_path")
-                    and int(m.get("scene_id") or 0) not in failed_ids
-                    and Path(str(m.get("media_path"))).exists()
-                }
+                active_used_paths, active_used_vids = _collect_active_scene_source_paths(
+                    scenes_media, exclude_scene_ids=failed_ids
+                )
                 # Ưu tiên số 1: Các ứng viên video độc lập ĐÃ QUA KIỂM DUYỆT VISION trong hook_candidates/hook_peak_clean_*.mp4 hoặc *_fullpeak.mp4
                 if (work_dir / "hook_candidates").exists():
                     for cand_hp in sorted((work_dir / "hook_candidates").glob("hook_peak_clean_*.mp4"), key=lambda p: p.stat().st_size, reverse=True):
-                        if cand_hp.exists() and cand_hp.stat().st_size > 25_000 and str(cand_hp.resolve()) not in active_used_paths:
-                            clean_video_donors.append(str(cand_hp))
+                        if cand_hp.exists() and cand_hp.stat().st_size > 25_000:
+                            hp_vid = _extract_hook_candidate_vid_id(cand_hp)
+                            if str(cand_hp.resolve()) not in active_used_paths and hp_vid not in active_used_vids:
+                                clean_video_donors.append(str(cand_hp))
                 for fp_cand in sorted(media_dir.glob("*_fullpeak.mp4"), key=lambda p: p.stat().st_size, reverse=True):
                     if fp_cand.exists() and fp_cand.stat().st_size > 25_000 and str(fp_cand.resolve()) not in active_used_paths:
                         clean_video_donors.append(str(fp_cand))
