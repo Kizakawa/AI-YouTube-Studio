@@ -2032,13 +2032,17 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             except Exception as _re_doc:
                                 logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Stock rescue ({sq_try}) skip: {_re_doc}")
 
-                    # 3. Tầng bảo hiểm ứng viên độc lập: CHỈ lấy từ ứng viên `hook_candidates/yt_hook_cand_*.mp4` ĐÃ QUA KIỂM DUYỆT VÀ CHƯA ĐƯỢC CLAIM
-                    # Đồng thời bắt buộc kiểm định VisualCritic (OCR / Watermark / Subtitles) trước khi dùng!
+                    # 3. Tầng bảo hiểm ứng viên độc lập: CHỈ lấy từ ứng viên `hook_candidates/hook_peak_clean_*.mp4` hoặc `s1_stock_rescue_*.mp4` ĐÃ QUA KIỂM DUYỆT VÀ CHƯA ĐƯỢC CLAIM
+                    # Tuyệt đối KHÔNG lấy `yt_hook_cand_*.mp4` thô (có thể đã bị Gemini Vision loại do dính phụ đề/watermark)!
                     if not rescued_ok:
                         try:
-                            from app.services.quality.visual_critic import VisualCritic
+                            from app.graph.evaluators.visual_critic import VisualCritic
+                            hc_dir = work_dir / "hook_candidates"
                             unused_hook_cands = sorted(
-                                (work_dir / "hook_candidates").glob("yt_hook_cand_*.mp4"),
+                                [
+                                    *list(hc_dir.glob("hook_peak_clean_*.mp4")),
+                                    *list(hc_dir.glob("s1_stock_rescue_*.mp4")),
+                                ],
                                 key=lambda p: p.stat().st_size,
                                 reverse=True,
                             )

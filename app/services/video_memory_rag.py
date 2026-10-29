@@ -1095,32 +1095,33 @@ class VideoMemoryRAG:
                     text_rows += 1
 
             # Phát hiện hộp chữ trắng/vàng có viền đen trên nền tối ở nửa dưới, giữa hoặc nửa trên (Infographic / TikTok caption / banner 1-2 dòng):
+            # Dùng cửa sổ 3-pixel ngang để bắt chính xác chữ trắng/vàng có viền đen sau khi thu nhỏ 160x240 (tránh bị làm mờ biên bởi nội suy bilinear)
             bot_white_text_rows = 0
             bot_dense_banner_rows = 0
             for y_r in range(118, 238):
                 wt_trans = sum(
-                    1 for x_c in range(14, 146)
-                    if abs(px_g[x_c, y_r] - px_g[x_c + 1, y_r]) > 105
-                    and max(px_g[x_c, y_r], px_g[x_c + 1, y_r]) >= 205
-                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r]) <= 65
+                    1 for x_c in range(14, 144)
+                    if max(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) >= 198
+                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) <= 74
+                    and (max(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) - min(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r])) >= 115
                 )
                 if wt_trans >= 10:
                     bot_white_text_rows += 1
-                if wt_trans >= 12:
+                if wt_trans >= 13:
                     bot_dense_banner_rows += 1
 
             top_white_text_rows = 0
             top_dense_banner_rows = 0
             for y_r in range(6, 118):
                 wt_trans = sum(
-                    1 for x_c in range(14, 146)
-                    if abs(px_g[x_c, y_r] - px_g[x_c + 1, y_r]) > 105
-                    and max(px_g[x_c, y_r], px_g[x_c + 1, y_r]) >= 205
-                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r]) <= 65
+                    1 for x_c in range(14, 144)
+                    if max(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) >= 198
+                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) <= 74
+                    and (max(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r]) - min(px_g[x_c, y_r], px_g[x_c + 1, y_r], px_g[x_c + 2, y_r])) >= 115
                 )
                 if wt_trans >= 10:
                     top_white_text_rows += 1
-                if wt_trans >= 12:
+                if wt_trans >= 13:
                     top_dense_banner_rows += 1
 
             def _row_white_cnt(y_idx: int) -> int:

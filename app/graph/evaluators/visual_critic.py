@@ -652,9 +652,6 @@ class VisualCritic:
                 if (
                     "DOODLE_2D" in prod_m_cs
                     or "16X9" in prod_m_cs
-                    or "DUAL_BEAT_FAST_CUT" in prod_m_cs
-                    or "HOOK_CONTINUOUS" in prod_m_cs
-                    or Path(mpath).name.lower().startswith("hook_motion_")
                     or mpath.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4", "_16x9.mp4"))
                 ):
                     continue
@@ -718,8 +715,8 @@ Inspect every labeled tile carefully and flag ONLY scenes that have severe visua
 2. Surreal AI Deformities: Frames showing grotesque AI hallucinations (e.g. a human arm/leg grafted onto an animal, gibberish digital meters, or mutated body parts).
 3. Wrong Species / Missing Subject / Unrelated Object (SPECIES-ONLY CHECK — IGNORE HABITAT/ACTION DIFFERENCES):
    - Check ONLY whether the animal/entity species shown in the frame is valid for either "{primary_entity}" OR the species named in that scene's text (e.g., Wolf in Round 1, Tiger in Round 2, Hippo in Round 3, Polar Bear).
-   - MANDATORY PASS OVERRIDE: If the frame clearly shows the CORRECT ANIMAL SPECIES mentioned in that scene (for example: a real Hippo in a Hippo scene, a real Tiger in a Tiger scene, a real Wolf in a Wolf scene, a real Polar Bear in a Polar Bear scene), you MUST PASS IT and NEVER include it in `failed_scenes` — even if the animal is on land/grass instead of river water, walking instead of roaring, or in a different pose/setting than the narration describes!
-   - ONLY flag under Rule 3 if the frame shows a COMPLETELY WRONG SPECIES/OBJECT (e.g. a purple DJ mixer, a human office, a car) OR an empty background texture (e.g. empty cracked mud/ice) where the required animal subject is completely missing.
+   - HABITAT/POSE TOLERANCE (ONLY WHEN RULES 1 & 2 ARE 100% CLEAN): If the frame has ZERO burned-in subtitles/watermarks/mirrored text (Rule 1) and ZERO AI deformities (Rule 2), and clearly shows the CORRECT ANIMAL SPECIES mentioned in that scene, pass it even if the animal is in a different habitat or pose than the narration describes. NEVER pass a frame that violates Rule 1 (burned-in subtitles, mirrored text, channel logos like BBC Earth / @username) even if the animal species is correct!
+   - Flag under Rule 3 if the frame shows a COMPLETELY WRONG SPECIES/OBJECT (e.g. a purple DJ mixer, a human office, a car) OR an empty background texture (e.g. empty sand/mud/ice) where the required animal subject is completely missing.
 
 Return ONLY valid JSON in this exact format:
 {{
@@ -933,8 +930,6 @@ Return ONLY valid JSON in this exact format:
                                     f"Khung hình mở đầu (Cảnh 1) chưa đạt chuẩn độ sắc nét (sharpness={s1_sh_val:.2f} < {req_s1_sh})"
                                 )
                                 failed = True
-                            elif is_pregraded_hook:
-                                aes_score = 9.2
                             else:
                                 clip_gate = self.inspect_clip_before_concat(
                                     str(p),
@@ -942,13 +937,10 @@ Return ONLY valid JSON in this exact format:
                                     min_sharpness=req_s1_sh,
                                     check_watermark=True,
                                 )
-                                aes_score = float(clip_gate.get("score", 8.0))
+                                aes_score = float(clip_gate.get("score", 9.2 if is_pregraded_hook else 8.0))
                                 if not clip_gate.get("passed", True):
                                     issues.extend(clip_gate.get("issues") or ["Clip Cảnh 1 không đạt cổng kiểm duyệt chất lượng/watermark"])
                                     failed = True
-                        elif is_pregraded_hook:
-                            # Clip thân đã vượt qua kiểm duyệt gốc & Gemini Vision trước khi phủ LUT màu tối (niche grading)
-                            aes_score = 9.2
                         else:
                             clip_gate = self.inspect_clip_before_concat(
                                 str(p),
@@ -956,10 +948,10 @@ Return ONLY valid JSON in this exact format:
                                 min_sharpness=5.8,
                                 check_watermark=True,
                             )
-                            aes_score = float(clip_gate.get("score", 8.0))
-                        if not clip_gate.get("passed", True):
-                            issues.extend(clip_gate.get("issues") or ["Clip không đạt cổng kiểm duyệt chất lượng/watermark"])
-                            failed = True
+                            aes_score = float(clip_gate.get("score", 9.2 if is_pregraded_hook else 8.0))
+                            if not clip_gate.get("passed", True):
+                                issues.extend(clip_gate.get("issues") or ["Clip không đạt cổng kiểm duyệt chất lượng/watermark"])
+                                failed = True
                 except Exception as ex_sig:
                     logger.debug(f"[VisualCritic] Lỗi kiểm tra khung hình video cảnh {scene_id}: {ex_sig}")
 

@@ -209,14 +209,28 @@ Return ONLY valid JSON:
             "generationConfig": {"temperature": 0.1},
         }
 
-        for model_name, api_key in rotator.iter_best_model_key_pairs(max_total_attempts=6):
+        for model_name, api_key in rotator.iter_best_model_key_pairs(max_total_attempts=5):
+            if model_name.startswith("gemma-"):
+                continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            gen_cfg = KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1)
+            req_payload = {
+                "contents": payload["contents"],
+                "generationConfig": gen_cfg,
+            }
             try:
-                resp = requests.post(url, json=payload, timeout=12)
+                resp = requests.post(url, json=req_payload, timeout=(3.5, 8.0))
                 if resp.status_code == 200:
                     cands = resp.json().get("candidates") or []
                     if cands:
-                        txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                        parts_list = cands[0].get("content", {}).get("parts", [])
+                        txt = "".join(
+                            str(p.get("text") or "")
+                            for p in parts_list
+                            if isinstance(p, dict) and not p.get("thought")
+                        ).strip()
+                        if not txt and parts_list:
+                            txt = str(parts_list[-1].get("text") or "").strip()
                         m = re.search(r"\{.*\}", txt, re.DOTALL)
                         if m:
                             data = json.loads(m.group(0))
@@ -224,12 +238,31 @@ Return ONLY valid JSON:
                             passed = bool(data.get("passed", False)) and score >= 7.2
                             reason = str(data.get("reason", ""))
                             return passed, score, reason
-                elif resp.status_code in (429, 403, 404, 503):
+                elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                     rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
-            except Exception:
+            except Exception as req_ex:
+                rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(req_ex)[:160])
                 continue
     except Exception as ex:
         logger.debug(f"[YouTubePeakTool] Vision check fallback: {ex}")
+
+    # Khi strict_no_fallback=True (YouTube Shorts dễ dính phụ đề chìm/watermark), BẮT BUỘC phải có xác nhận từ Gemini Vision API
+    # hoặc chỉ cho phép fallback CV khi strict_no_fallback=False (nguồn Stock sạch).
+    try:
+        if (not strict_no_fallback) and pre_gate.get("passed", False) and video_title:
+            from app.services.media.entity_detector import is_incongruent_stock_image
+            if not is_incongruent_stock_image(video_title, topic=topic, narration=narration):
+                anchor_text = f"{subject_entity} {topic} {overall_script_query}".lower()
+                anchor_tokens = {
+                    w for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", anchor_text)
+                    if w not in _YT_QUERY_FILLER_WORDS
+                }
+                title_tokens = set(re.findall(r"[a-zA-ZÀ-ÿ]{4,}", video_title.lower()))
+                if anchor_tokens and len(anchor_tokens.intersection(title_tokens)) >= 1:
+                    cv_score = max(7.4, min(8.2, float(pre_gate.get("score", 7.5))))
+                    return True, cv_score, f"CV VisualCritic + Title Anchor verified ({cv_score}/10 while Gemini Vision API rate-limited)"
+    except Exception:
+        pass
 
     if strict_no_fallback:
         return False, 0.0, "Strict vision gate: rejected unverified clip"
