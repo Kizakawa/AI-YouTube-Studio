@@ -185,8 +185,8 @@ class StockFetcher:
 
     _pixabay_rate_limited_until: float = 0.0
 
-    def search_pixabay_videos(self, query: str, per_page: int = 4) -> List[Dict]:
-        """Tìm kiếm video clip trên Pixabay API (kho video 3D, CGI, chuyển động trừu tượng)."""
+    def search_pixabay_videos(self, query: str, per_page: int = 4, video_type: str = "auto") -> List[Dict]:
+        """Tìm kiếm video clip trên Pixabay API (tự động ưu tiên video quay thật `film` trừ khi truy vấn cần 3D/CGI/khoa học)."""
         import time as _time
         key = self._pixabay_key
         if not key or key == "your_pixabay_api_key_here" or _time.time() < StockFetcher._pixabay_rate_limited_until:
@@ -194,7 +194,27 @@ class StockFetcher:
 
         try:
             clean_q = clean_scene_search_query(query, max_words=3) or query
-            url = f"https://pixabay.com/api/videos/?key={key}&q={urllib.parse.quote(clean_q)}&video_type=all&per_page={max(per_page, 3)}&safesearch=true"
+            q_low = f"{query} {clean_q}".lower()
+            allow_cgi = any(
+                w in q_low
+                for w in (
+                    "neural", "brain", "synapse", "cortex", "neuron", "dna", "molecule",
+                    "atom", "galaxy", "universe", "space", "cosmos", "nebula", "black hole",
+                    "wormhole", "planet", "3d", "cgi", "animation", "network", "cyber",
+                    "matrix", "digital", "particles", "energy", "hourglass", "clock gears",
+                )
+            )
+            resolved_vtype = (
+                ("all" if allow_cgi else "film")
+                if video_type == "auto"
+                else video_type
+            )
+            url = (
+                f"https://pixabay.com/api/videos/?key={key}"
+                f"&q={urllib.parse.quote(clean_q)}"
+                f"&video_type={resolved_vtype}"
+                f"&per_page={max(per_page, 4)}&safesearch=true"
+            )
             res = requests.get(url, timeout=6)
             if res.status_code == 429:
                 StockFetcher._pixabay_rate_limited_until = _time.time() + 180.0
@@ -203,6 +223,13 @@ class StockFetcher:
                 hits = res.json().get("hits", [])
                 results = []
                 for h in hits:
+                    h_type = str(h.get("type") or "film").lower()
+                    h_tags = str(h.get("tags") or "")
+                    if not allow_cgi and (
+                        h_type == "animation"
+                        or any(bad_t in h_tags.lower() for bad_t in ("cartoon", "anime", "comic", "2d", "illustration", "cute heart"))
+                    ):
+                        continue
                     vids = h.get("videos", {})
                     med_v = vids.get("medium") or {}
                     v_info = (
@@ -215,8 +242,11 @@ class StockFetcher:
                             f"https://i.vimeocdn.com/video/{h.get('picture_id', '')}_640x360.jpg" if h.get("picture_id") else ""
                         )
                         results.append({
+                            "id": h.get("id"),
                             "url": v_info["url"],
                             "title": f"Pixabay Video: {h.get('tags', clean_q)}",
+                            "tags": h_tags,
+                            "video_type": h_type,
                             "width": v_info.get("width", 1080),
                             "height": v_info.get("height", 1920),
                             "duration": h.get("duration", 0),
@@ -966,45 +996,117 @@ class StockFetcher:
             if q_short and q_short not in search_q_list:
                 search_q_list.append(q_short)
 
+        _STOP_TOK = {
+            "the", "and", "with", "from", "into", "over", "under", "slow",
+            "motion", "cinematic", "dark", "shot", "view", "close", "wide",
+            "video", "footage", "background", "scene", "high", "quality",
+            "psychological", "abstract", "aesthetic", "lighting", "moody",
+        }
+        _WEAK_VERB_TOK = {
+            "walking", "walk", "standing", "stand", "sitting", "sit",
+            "looking", "look", "talking", "talk", "moving", "move",
+            "running", "run", "holding", "hold", "person", "people",
+        }
+        _OFF_DOMAIN_ANIMALS_AND_ALIENS = (
+            "snake", "python", "cobra", "viper", "lizard", "iguana", "frog", "toad",
+            "turtle", "dog", "puppy", "cat", "kitten", "hamster", "parrot", "monkey",
+            "gorilla", "chimp", "elephant", "giraffe", "zebra", "rhino", "hippo",
+            "lion", "tiger", "leopard", "bear", "wolf", "fox", "deer", "stag", "buck",
+            "roe", "fawn", "elk", "moose", "antler", "gazelle", "antelope", "horse",
+            "stallion", "mare", "camel", "bison", "buffalo", "squirrel", "rabbit",
+            "hare", "hedgehog", "bird", "owl", "eagle", "hawk", "crow", "pigeon",
+            "seagull", "butterfly", "moth", "caterpillar", "snail", "cow", "pig",
+            "sheep", "goat", "chicken", "rooster", "duck", "shark", "whale", "dolphin",
+            "octopus", "squid", "crab", "lobster", "spider", "scorpion", "insect",
+            "beetle", "ant", "bee", "wasp", "alien", "extraterrestrial", "martian",
+            "ufo", "cartoon", "anime", "karate", "taekwondo", "kung fu", "zombie",
+            "green screen", "greenscreen", "chroma key", "chromakey", "blue screen",
+            "sprout", "twig", "flower", "blossom", "gardening", "botany", "agriculture",
+            "farm", "barn", "pasture", "beach", "resort", "marina", "vacation",
+            "tourist", "palm tree", "swimming pool", "bikini",
+        )
+        ctx_all_low = f"{topic} {narration} {' '.join(search_q_list)}".lower()
+        is_animal_or_scifi_ctx = any(
+            w in ctx_all_low
+            for w in (
+                "animal", "wildlife", "predator", "prey", "species", "creature",
+                "nature", "jungle", "forest", "ocean", "sea", "marine", "safari",
+                "alien", "mars", "extraterrestrial", "ufo", "scifi", "sci-fi",
+                "plant", "botany", "beach", "farm",
+            )
+        )
+
+        def _score_candidate_text(desc_text: str, q_try: str) -> int:
+            d_low = str(desc_text or "").lower()
+            if any(gs in d_low for gs in ("green screen", "greenscreen", "chroma key", "chromakey", "blue screen")):
+                return -100
+            if is_incongruent_stock_image(d_low, topic=f"{topic} {q_try}".strip(), narration=narration):
+                return -100
+            if not is_animal_or_scifi_ctx:
+                for bad_w in _OFF_DOMAIN_ANIMALS_AND_ALIENS:
+                    if re.search(rf"\b{re.escape(bad_w)}s?\b", d_low) and bad_w not in q_try.lower():
+                        return -100
+            q_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", q_try) if w.lower() not in _STOP_TOK]
+            strong_q_toks = [t for t in q_toks if t not in _WEAK_VERB_TOK]
+            matched_q = [t for t in q_toks if re.search(rf"\b{re.escape(t)}", d_low)]
+            matched_strong = [t for t in strong_q_toks if re.search(rf"\b{re.escape(t)}", d_low)]
+            if q_toks and not matched_q:
+                return -10
+            if strong_q_toks and not matched_strong and len(matched_q) < 2:
+                return -10
+            return (len(matched_strong) * 30) + (len(matched_q) * 15)
+
         def _try_pixabay_for_q(q_try: str) -> Optional[Dict[str, Any]]:
-            px_vids = self.search_pixabay_videos(q_try, per_page=10)
+            px_vids = self.search_pixabay_videos(q_try, per_page=12)
+            scored_px: List[Tuple[int, Dict[str, Any], str, str, int, int]] = []
             for pv in (px_vids or []):
                 p_url = str(pv.get("url") or "")
                 px_id_key = f"pixabay_vid_{pv.get('id') or p_url}"
                 pw = int(pv.get("width") or 0)
                 ph = int(pv.get("height") or 0)
-                p_title = str(pv.get("title") or "")
-                if is_incongruent_stock_image(p_title, topic=f"{topic} {q_try}".strip(), narration=narration):
+                p_title = f"{pv.get('title') or ''} {pv.get('tags') or ''}"
+                if not p_url or pw <= ph or ph < 720 or px_id_key in used or is_media_already_used(p_url, used):
                     continue
-                if p_url and pw > ph and ph >= 720 and px_id_key not in used and not is_media_already_used(p_url, used):
-                    record_used_media(p_url, query=q_try, source="pixabay_16x9_video")
-                    ids = extract_media_identity(p_url)
-                    used.update(ids)
-                    used.add(p_url)
-                    used.add(px_id_key)
-                    if used_urls is not None:
-                        used_urls.update(ids)
-                        used_urls.add(p_url)
-                        used_urls.add(px_id_key)
-                    return {
-                        "url": p_url,
-                        "title": pv.get("title", f"Pixabay 16:9 HD: {q_try}"),
-                        "width": pw,
-                        "height": ph,
-                        "duration": float(pv.get("duration") or 10.0),
-                        "media_type": "video",
-                        "source": "pixabay_16x9_video",
-                    }
-            return None
+                sc = _score_candidate_text(p_title, q_try)
+                if sc < 0:
+                    continue
+                res_bonus = 15 if ph >= 1080 else 5
+                scored_px.append((sc + res_bonus, pv, p_url, px_id_key, pw, ph))
+            if not scored_px:
+                return None
+            scored_px.sort(key=lambda x: x[0], reverse=True)
+            _, best_pv, best_url, best_px_key, b_pw, b_ph = scored_px[0]
+            record_used_media(best_url, query=q_try, source="pixabay_16x9_video")
+            ids = extract_media_identity(best_url)
+            used.update(ids)
+            used.add(best_url)
+            used.add(best_px_key)
+            if used_urls is not None:
+                used_urls.update(ids)
+                used_urls.add(best_url)
+                used_urls.add(best_px_key)
+            return {
+                "url": best_url,
+                "title": best_pv.get("title", f"Pixabay 16:9 HD: {q_try}"),
+                "width": b_pw,
+                "height": b_ph,
+                "duration": float(best_pv.get("duration") or 10.0),
+                "media_type": "video",
+                "source": "pixabay_16x9_video",
+            }
 
         def _try_pexels_for_q(q_try: str) -> Optional[Dict[str, Any]]:
-            vids = self.search_videos(q_try, per_page=12, orientation="landscape")
+            vids = self.search_videos(q_try, per_page=15, orientation="landscape")
+            scored_pe: List[Tuple[int, Dict[str, Any], Dict[str, Any], str, str]] = []
             for v in (vids or []):
                 v_id_key = f"pexels_vid_{v.get('id') or v.get('url')}"
                 if v_id_key in used:
                     continue
-                v_desc = str(v.get("url") or v.get("title") or "")
-                if is_incongruent_stock_image(v_desc, topic=f"{topic} {q_try}".strip(), narration=narration):
+                raw_v_url = str(v.get("url") or "")
+                m_slug = re.search(r"/video/([a-zA-Z0-9-]+)-\d+/?", raw_v_url)
+                slug_txt = m_slug.group(1).replace("-", " ") if m_slug else str(v.get("title") or raw_v_url)
+                sc = _score_candidate_text(slug_txt, q_try)
+                if sc < 0:
                     continue
                 v_files = v.get("video_files") or []
                 landscape_1080p = [
@@ -1035,25 +1137,30 @@ class StockFetcher:
                 best = landscape_files[0]
                 link = str(best.get("link") or "")
                 if link and not is_media_already_used(link, used):
-                    record_used_media(link, query=q_try, source="pexels_16x9_video")
-                    ids = extract_media_identity(link)
-                    used.update(ids)
-                    used.add(link)
-                    used.add(v_id_key)
-                    if used_urls is not None:
-                        used_urls.update(ids)
-                        used_urls.add(link)
-                        used_urls.add(v_id_key)
-                    return {
-                        "url": link,
-                        "title": f"Pexels 16:9 HD: {v.get('url', q_try)}",
-                        "width": int(best.get("width") or 1920),
-                        "height": int(best.get("height") or 1080),
-                        "duration": float(v.get("duration") or 10.0),
-                        "media_type": "video",
-                        "source": "pexels_16x9_video",
-                    }
-            return None
+                    res_bonus = 15 if int(best.get("height") or 0) >= 1080 else 5
+                    scored_pe.append((sc + res_bonus, v, best, link, v_id_key))
+            if not scored_pe:
+                return None
+            scored_pe.sort(key=lambda x: x[0], reverse=True)
+            _, best_v, best_file, best_link, best_vid_key = scored_pe[0]
+            record_used_media(best_link, query=q_try, source="pexels_16x9_video")
+            ids = extract_media_identity(best_link)
+            used.update(ids)
+            used.add(best_link)
+            used.add(best_vid_key)
+            if used_urls is not None:
+                used_urls.update(ids)
+                used_urls.add(best_link)
+                used_urls.add(best_vid_key)
+            return {
+                "url": best_link,
+                "title": f"Pexels 16:9 HD: {best_v.get('url', q_try)}",
+                "width": int(best_file.get("width") or 1920),
+                "height": int(best_file.get("height") or 1080),
+                "duration": float(best_v.get("duration") or 10.0),
+                "media_type": "video",
+                "source": "pexels_16x9_video",
+            }
 
         for idx_q, q_try in enumerate(search_q_list[:6]):
             use_px_first = prefer_pixabay if idx_q == 0 else ((idx_q % 2 == 1) ^ prefer_pixabay)

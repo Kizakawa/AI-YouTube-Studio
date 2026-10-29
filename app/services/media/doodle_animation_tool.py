@@ -998,11 +998,37 @@ class DoodleAnimationTool:
         )
         badge = m_num.group(1).upper() if m_num else ""
 
-        clean_words = [re.sub(r"[^\w$-]", "", w).upper() for w in narration.split() if len(w) > 2]
+        _HEADLINE_FILLER = {
+            "THE", "AND", "FOR", "WITH", "FROM", "INTO", "ONTO", "UPON", "THAT", "THIS",
+            "THESE", "THOSE", "WHEN", "WHAT", "WHERE", "WHICH", "WHO", "WHY", "HOW",
+            "PEOPLE", "CLAIM", "TELL", "TOLD", "SAY", "SAYS", "SAID", "THINK", "BELIEVE",
+            "MOST", "EXPERTS", "EVERYONE", "SOMEONE", "THEY", "YOU", "YOUR", "THEIR",
+            "OUR", "BEING", "BECOME", "MAKES", "MAKE", "GIVES", "GIVE", "ACTUALLY",
+            "REALLY", "JUST", "ONLY", "ALWAYS", "NEVER", "ABOUT", "BECAUSE", "WHILE",
+            "2D", "DOODLE", "SKETCH", "ANIMATION", "MINIMALIST", "LINE", "ART",
+            "CONCEPT", "PROCESS", "EXPLAINER", "WHITEBOARD", "ILLUSTRATION",
+            "STICKMAN", "VECTOR", "DRAWING", "HAND", "DRAWN", "STYLE", "KEY",
+        }
+        vp_clean_words = [
+            re.sub(r"[^\w$-]", "", w).upper()
+            for w in str(visual_prompt or "").split()
+            if len(w) > 2 and re.sub(r"[^\w$-]", "", w).upper() not in _HEADLINE_FILLER
+            and re.sub(r"[^\w$-]", "", w).upper() not in {"CINEMATIC", "CLOSE", "SHOT", "SLOW", "MOTION", "DARK", "ROOM", "LIGHTING", "CAMERA", "VIDEO"}
+        ]
+        narr_clean_words = [
+            re.sub(r"[^\w$-]", "", w).upper()
+            for w in narration.split()
+            if len(w) > 2 and re.sub(r"[^\w$-]", "", w).upper() not in _HEADLINE_FILLER
+        ]
+        source_words = vp_clean_words[:4] if len(vp_clean_words) >= 3 else narr_clean_words[:4]
+        if not source_words:
+            source_words = [re.sub(r"[^\w$-]", "", w).upper() for w in narration.split() if len(w) > 2][:4]
         acc_words: List[str] = []
-        for cw in clean_words[:5]:
+        for cw in source_words[:4]:
+            if not cw:
+                continue
             cand_h = " ".join(acc_words + [cw])
-            if len(cand_h) <= 34 or not acc_words:
+            if len(cand_h) <= 28 or not acc_words:
                 acc_words.append(cw)
             else:
                 break

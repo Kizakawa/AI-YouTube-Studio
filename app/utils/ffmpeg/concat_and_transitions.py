@@ -154,6 +154,71 @@ def concat_videos_with_xfade(
     n = len(video_paths)
     expected_total_s = max(sum(durations) - (n - 1) * td, 1.0)
 
+    # Khi transition_duration <= 0.01 (Long-Form 16:9 dùng J-Cut + Internal Jump-Cut thay cho xfade),
+    # dùng trực tiếp bộ giải mã tuần tự `-f concat -safe 0 -i list_file` kết hợp Single-Pass `-vf subtitles=...`
+    # để chỉ mở 1 bộ giải mã tại mỗi thời điểm, triệt tiêu 100% lỗi quá tải bộ nhớ 40 luồng `-filter_complex`!
+    if td <= 0.01:
+        list_file = str(Path(output_path).parent / "video_concat_list.txt")
+        with open(list_file, "w", encoding="utf-8") as f:
+            for idx_vp, vp in enumerate(video_paths):
+                abs_path = Path(vp).resolve().as_posix()
+                safe = abs_path.replace("'", "'\\''")
+                clip_target_dur = max(0.5, float(durations[idx_vp]))
+                f.write(f"file '{safe}'\n")
+                f.write("inpoint 0.000\n")
+                f.write(f"outpoint {clip_target_dur:.3f}\n")
+
+        fps_flag = ["-fps_mode", "cfr"] if _supports_fps_mode() else ["-vsync", "cfr"]
+        enc_args = get_video_encoder_args(quality="longform" if len(video_paths) >= 22 else "high")
+        vf_chain_parts = [f"fps={fps}", "format=yuv420p"]
+        if has_sub:
+            srt_escaped = str(subtitle_path).replace("\\", "/").replace(":", "\\:").replace("'", "")
+            is_ass = str(subtitle_path).lower().endswith(".ass")
+            fonts_dir = Path(__file__).resolve().parent.parent.parent.parent / "assets" / "fonts"
+            fontsdir_opt = ""
+            if fonts_dir.exists() and any(fonts_dir.glob("*.[to]tf")):
+                fdir_esc = str(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "")
+                fontsdir_opt = f":fontsdir='{fdir_esc}'"
+            if is_ass:
+                vf_chain_parts.append(f"subtitles='{srt_escaped}'{fontsdir_opt}")
+            else:
+                style = (
+                    "PlayResX=1080,PlayResY=1920,Fontname=Montserrat ExtraBold,FontSize=56,"
+                    "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=3.6,"
+                    "Shadow=1.8,Bold=1,Alignment=2,MarginL=115,MarginR=115,MarginV=420"
+                )
+                vf_chain_parts.append(f"subtitles='{srt_escaped}'{fontsdir_opt}:force_style='{style}'")
+            vf_chain_parts.append("format=yuv420p")
+
+        fast_concat_args = [
+            "-f", "concat",
+            "-safe", "0",
+            "-i", list_file,
+            "-vf", ",".join(vf_chain_parts),
+            *enc_args,
+            *BT709_COLOR_ARGS,
+            "-r", str(fps),
+            *fps_flag,
+            "-an",
+            output_path,
+        ]
+        try:
+            run_ffmpeg_with_gpu_fallback(fast_concat_args, timeout=FFMPEG_TIMEOUT * (2 if has_sub else 1))
+            out_dur_s = get_duration_ms(output_path) / 1000.0
+            if out_dur_s >= expected_total_s * 0.80:
+                logger.info(
+                    f"[concat] ⚡ Ghép tuần tự Single-Pass {n} clips ({out_dur_s:.1f}s)"
+                    f"{' + Subtitles' if has_sub else ''} → {output_path}"
+                )
+                return output_path
+        except Exception as e_fc:
+            logger.warning(f"[concat] Single-Pass concat+sub warning ({e_fc}), chuyển sang 2-pass concat_videos...")
+        if has_sub:
+            tmp_concat = str(Path(output_path).parent / "_concat_fallback_nosub.mp4")
+            concat_videos(video_paths, tmp_concat, fps=fps)
+            return burn_subtitles(tmp_concat, subtitle_path, output_path)
+        return concat_videos(video_paths, output_path, fps=fps)
+
     # Chuẩn bị danh sách chuyển cảnh cho (n - 1) nhát cắt
     if isinstance(transition, list) and transition:
         t_seq = [transition[i % len(transition)] for i in range(n - 1)]

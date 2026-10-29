@@ -345,11 +345,11 @@ YOUR ASSIGNED CHAPTERS TO WRITE RIGHT NOW (8 SCENES TOTAL: SCENES {start_sid} TO
 MANDATORY PACING, VIRAL DOCUMENTARY STORYTELLING & WORD COUNT (~14.5–16.0 SECONDS PER SCENE AT +10% DYNAMIC VOICE SPEED):
 - {'For Scene 1 (scene_id=1): Start with the Cold-Open Hook ("' + doc_hook + '") followed by 1 gripping follow-up sentence (total 24–30 words for Scene 1).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 2 to 3 complete, rich, gripping documentary sentences totaling 38 to 46 WORDS PER SCENE (~14.5–16.0 seconds of spoken narration per scene).'}
 - For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 38 to 46 words of deep, vivid storytelling. NEVER write short 12-word Shorts sentences!
-- VIRAL COMPETITOR 4-BEAT CHAPTER ARCHITECTURE (JCS / Charisma on Command / @IFinity_What / @FossilVideos Formula):
-  * Slot 1 of each Chapter (Scenes {start_sid} & {start_sid+4}): **Case-Study / Verbatim Dialogue Reconstruction ("Show, Don't Tell")** — Open the chapter with a concrete real-world scenario, historical experiment, or exact spoken quote ("Listen to the exact phrase they drop...").
+- VIRAL COMPETITOR 4-BEAT CHAPTER ARCHITECTURE (JCS / Charisma on Command / @IFinity_What / @FossilVideos Formula — ZERO 'Studies show...' ACADEMIC OPENERS):
+  * Slot 1 of each Chapter (Scenes {start_sid} & {start_sid+4}): **Case-Study / Verbatim Dialogue Reconstruction ("Show, Don't Tell")** — NEVER start with "Studies show..." or "Research reveals...". Jump straight into a named historical/forensic case, physical clash, or exact spoken quote ("Listen to the exact phrase they drop...").
   * Slot 2 of each Chapter (Scenes {start_sid+1} & {start_sid+5}): **Forensic / Biological / Physical Mechanism + Concrete Metric** — Explain the hidden neural circuit, cortisol/dopamine shift, or physical force using exact numbers (milliseconds, percentages, PSI, meters).
-  * Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **2D Doodle Visual Metaphor Breakdown** — Illustrate the invisible trap or structural paradox so the viewer sees the exact geometry of the mechanism.
-  * Slot 4 of each Chapter (Scenes {start_sid+3} & {start_sid+7}): **Surgical Counter-Move + Open-Loop Cliffhanger Bridge** — Deliver the actionable counter-strategy, and for Chapters 1–9, end the final sentence with an unresolved paradox or open loop that hooks directly into the next Chapter so viewers never drop off at chapter transitions!
+  * Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **2D Doodle Visual Metaphor + Cunningham's Law Sacred-Cow Breaker** — Illustrate the structural paradox AND drop 1 bold, unapologetically polarizing statement that attacks a common belief so viewers debate in the comments!
+  * Slot 4 of each Chapter (Scenes {start_sid+3} & {start_sid+7}): **Surgical Verbatim Counter-Move + Open-Loop Cliffhanger Bridge** — Deliver the exact actionable counter-move (including a spoken sentence in quotation marks `"..."` for psychology/social topics), and for Chapters 1–9, end the final sentence with an open loop bridging into the next Chapter!
 - ZERO SPOKEN OUTRO CTA: Never say "Subscribe", "Like", or "Leave a comment" in the narration.
 - Self-Contained & Diverse Multi-Source Visual Queries (CRITICAL — NEVER REPEAT THE SAME QUERY WITHIN A CHAPTER):
   * For Scene {start_sid} (Slot 1 of Chapter {ch_a_id}) and Scene {start_sid+4} (Slot 1 of Chapter {ch_b_id}), anchor `visual_keyword` and `stock_query` to the Chapter Master Motif ("{ch_a_mq}" / "{ch_b_mq}").
@@ -404,23 +404,25 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                         if ch_title_cur.lower() not in cur_vr.lower():
                             sc_item["visual_reasoning"] = f"{ch_title_cur} — {cur_vr}" if cur_vr else ch_title_cur
                         narr_txt = str(sc_item.get("narration") or "").strip()
+                        # Khử mở câu kiểu báo cáo học thuật ('Studies show that...', 'Research reveals that...')
+                        narr_txt = re.sub(
+                            r"^(?:(?:[a-zA-ZÀ-ỹ\-]+\s+){0,4}(?:studies|research|scientists|researchers|experiments|estudos|pesquisas)\s+"
+                            r"(?:show|shows|reveal|reveals|indicate|indicates|prove|proves|confirm|confirms|mostram|revelam|indicam)\s+(?:that|que)\s+)",
+                            "",
+                            narr_txt,
+                            flags=re.IGNORECASE,
+                        ).strip()
+                        if narr_txt and narr_txt[0].islower():
+                            narr_txt = narr_txt[0].upper() + narr_txt[1:]
                         if target_id == 1:
-                            # Scene 1 Cold-Open Hook: giữ 14–26 từ sắc bén, có số liệu chữ số (4s / 0.2s), không câu hỏi '?'
+                            # Scene 1 Cold-Open Hook: giữ câu mở đầu sắc bén, không câu hỏi '?'
                             narr_txt = narr_txt.replace("?", ".")
-                            narr_txt = re.sub(r"\bfour\b", "4", narr_txt, flags=re.IGNORECASE)
-                            narr_txt = re.sub(r"\bthree\b", "3", narr_txt, flags=re.IGNORECASE)
-                            narr_txt = re.sub(r"\btwo\b", "2", narr_txt, flags=re.IGNORECASE)
-                            if not re.search(r"\d", narr_txt):
-                                narr_txt = f"Watch their pupils during the first 4 seconds of silence: {narr_txt}"
-                            s1_words = narr_txt.split()
-                            if len(s1_words) > 26:
-                                narr_txt = " ".join(s1_words[:25]).rstrip(",;:") + "."
-                            elif len(s1_words) < 12:
+                            if len(narr_txt.split()) < 8:
                                 narr_txt = doc_hook.replace("?", ".")
-                        elif len(narr_txt.split()) < 34:
+                        elif len(narr_txt.split()) < 6:
                             extra_premise = str(ch_cur.get("chapter_premise") or "").strip().rstrip(".")
-                            if extra_premise and extra_premise[:25].lower() not in narr_txt.lower():
-                                narr_txt = f"{narr_txt} {extra_premise}."
+                            if extra_premise:
+                                narr_txt = f"{extra_premise}."
                         sc_item["narration"] = narr_txt
                         master_q_cur = str(ch_cur.get("chapter_master_query") or "tense business meeting").strip()
                         cur_vk = str(sc_item.get("visual_keyword") or "").strip()

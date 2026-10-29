@@ -534,7 +534,19 @@ _INCONGRUENT_TAG_GROUPS = {
     # Hóa trang / Mặt nạ quái vật giả tạo (tránh lọt vào video tâm lý học / đời sống)
     "costume_monster": [
         "eerie creature", "mask and claws", "halloween mask", "horror mask", "cosplay",
-        "clown mask", "zombie makeup", "monster costume",
+        "clown mask", "zombie makeup", "monster costume", "alien", "extraterrestrial",
+        "martian", "ufo", "zombie", "vampire", "werewolf", "goblin",
+    ],
+    "cartoon_kids_martial_arts": [
+        "cartoon", "anime", "comic", "manga", "2d animation", "cute heart",
+        "valentine heart", "emoji", "emoticon", "mascot", "chibi", "playdough",
+        "claymation", "karate", "taekwondo", "kung fu", "judo", "kickboxing",
+        "playground", "trampoline", "toddler", "kids playing",
+    ],
+    "domestic_pets_reptiles": [
+        "snake", "python", "cobra", "viper", "boa", "lizard", "iguana", "gecko",
+        "chameleon", "turtle", "tortoise", "frog", "toad", "puppy", "kitten",
+        "pet dog", "house cat", "pet cat", "hamster", "guinea pig", "goldfish", "parrot",
     ],
     # Đồ họa / Sơ đồ / Bản đồ / Tiền tệ (Wikimedia)
     "wikimedia_diagrams": [
@@ -554,7 +566,13 @@ def _is_incongruent_stock_heuristic(title_or_alt: str, topic: str = "", narratio
     t_lower = title_or_alt.lower()
     context_lower = f"{topic} {narration}".lower()
 
+    is_modern_human_topic = any(
+        w in context_lower
+        for w in ("manipulat", "psycholog", "narcissist", "silence", "finance", "money", "career", "relationship", "negotiation", "corporate", "empathy")
+    )
     for group_name, bad_words in _INCONGRUENT_TAG_GROUPS.items():
+        if group_name == "office_corporate" and is_modern_human_topic:
+            continue
         matched_bad = [
             bw for bw in bad_words
             if re.search(rf"\b{re.escape(bw)}\b", t_lower)

@@ -248,15 +248,20 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                         else:
                             f_probe = mp_th
                         if Path(f_probe).exists() and Path(f_probe).stat().st_size > 1000:
+                            if mp_th.lower().endswith(("_doodle.mp4", "_doodle_2d.mp4")):
+                                continue
                             with Image.open(f_probe) as im_p:
                                 g_p = im_p.convert("L").resize((180, 320))
+                                luma_mean = float(ImageStat.Stat(g_p).mean[0])
                                 e_p = g_p.filter(ImageFilter.FIND_EDGES)
                                 top_e = float(ImageStat.Stat(e_p.crop((0, 0, 180, 56))).mean[0])
                                 bot_e = float(ImageStat.Stat(e_p.crop((0, 264, 180, 320))).mean[0])
                                 mid_e = float(ImageStat.Stat(e_p.crop((0, 70, 180, 250))).mean[0])
-                                # Ưu tiên clip tràn viền 9:16 thật (top_e & bot_e sắc nét, không bị dải mờ boxblur)
+                                # Ưu tiên clip tràn viền thật (top_e & bot_e sắc nét), phạt các clip hạt/lưới sợi trừu tượng nền đen (mid_e > 44 hoặc luma < 28)
                                 is_full_bleed = 1.0 if (top_e >= 6.5 and bot_e >= 6.5) else 0.35
-                                sc_val = mid_e * is_full_bleed
+                                natural_subject_bonus = 1.35 if (32.0 <= luma_mean <= 185.0 and 12.0 <= mid_e <= 42.0) else 0.35
+                                early_scene_bonus = 1.25 if idx_th < 6 else 1.0
+                                sc_val = mid_e * is_full_bleed * natural_subject_bonus * early_scene_bonus
                                 if sc_val > best_src_score:
                                     best_src_score = sc_val
                                     clean_thumb_source = mp_th

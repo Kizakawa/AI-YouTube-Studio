@@ -250,6 +250,16 @@ def _fetch_longform_16x9_broll_clip_sync(
     slot_in_4 = (int(scene_id) - 1) % 4
     chapter_num = ((int(scene_id) - 1) // 4) + 1
 
+    # Khi gọi từ node_refine_media / rescue (có output_override_path), xóa ngay file cũ bị lỗi trên đĩa
+    # để không đọc nhầm lại file cache lỗi của lần fetch trước!
+    if output_override_path:
+        try:
+            (media_dir / f"scene_{scene_id:03d}_16x9.mp4").unlink(missing_ok=True)
+            (media_dir / "chapter_pool" / f"chapter_{scene_id:02d}_master.mp4").unlink(missing_ok=True)
+            (media_dir / "chapter_pool" / f"chapter_{scene_id:02d}_failed.txt").unlink(missing_ok=True)
+        except Exception:
+            pass
+
     def _try_stock_16x9_landscape(prefer_pixabay: bool = False) -> Optional[Dict[str, Any]]:
         try:
             from app.services.media.longform_chapter_pool import (
@@ -404,7 +414,7 @@ def _fetch_longform_16x9_broll_clip_sync(
     prefer_stock_first = (slot_in_4 == 1) or (slot_in_4 == 3 and chapter_num % 2 == 1)
     prefer_px = (slot_in_4 == 3) or (chapter_num % 2 == 0)
 
-    if prefer_stock_first:
+    if prefer_stock_first or bool(output_override_path):
         st_res = _try_stock_16x9_landscape(prefer_pixabay=prefer_px)
         if st_res:
             return st_res
@@ -828,6 +838,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     character_tag=c_tag,
                     prop_type=p_type,
                     camera_motion=camera_motion,
+                    visual_prompt=str(kw or vp or ""),
                     width=1920 if is_long_form else 1080,
                     height=1080 if is_long_form else 1920,
                 )

@@ -204,8 +204,8 @@ def _search_youtube_16x9_documentary_candidates(
                     continue
 
                 dur = float(entry.get("duration") or 0.0)
-                # Ưu tiên video dài từ 22s đến 600s để đủ cắt 3 phân cảnh liên tiếp trong Chương
-                if dur < 22.0 or dur > 600.0:
+                # Ưu tiên video ngắn-trung bình (22s - 210s) để tải tức thì trong vài giây, tránh tải file bài giảng 10 phút (>100MB)
+                if dur < 22.0 or dur > 210.0:
                     continue
 
                 title = str(entry.get("title") or "")
@@ -408,6 +408,12 @@ def _is_clip_window_clean(video_path: str, sample_offsets: List[float]) -> bool:
                     white_ratio = float(np.mean(gray > 230.0))
                     if dark_ratio > 0.62 or white_ratio > 0.35:
                         return False
+                    rgb_arr = np.asarray(im_chk.convert("RGB"), dtype=np.float32)
+                    chroma_green_ratio = float(
+                        np.mean((rgb_arr[:, :, 1] > 165.0) & (rgb_arr[:, :, 0] < 90.0) & (rgb_arr[:, :, 2] < 90.0))
+                    )
+                    if chroma_green_ratio > 0.16:
+                        return False
             except Exception:
                 pass
         except Exception:
@@ -426,15 +432,16 @@ def _download_youtube_chapter_master(
     used_urls: Set[str],
     url_lock: threading.Lock,
     min_master_dur_sec: float = 24.0,
+    max_master_dur_sec: float = 28.0,
     topic: str = "",
     primary_entity: str = "",
     query: str = "",
 ) -> Optional[Dict[str, Any]]:
     """
-    Tải 1 đoạn Master 16:9 dài `35s–75s` từ ứng viên YouTube tốt nhất cho cả Chương.
-    Dùng `download_ranges` nếu video gốc dài > 95s để chỉ tải đúng khung 65s cần dùng trong vài giây.
+    Tải 1 đoạn Master 16:9 từ ứng viên YouTube tốt nhất.
+    Dùng `download_ranges` nếu video gốc dài > 42s để chỉ tải đúng khung cần dùng trong vài giây.
     Tự động cắt bỏ 6s–14s Intro đầu video và kiểm duyệt qua Multimodal Gemini Vision (`_verify_16x9_master_with_gemini_vision`)
-    để chặn 100% video ghép khung dọc pillarbox / Intro "Subscribe" / Collage.
+    để chặn 100% video ghép khung dọc pillarbox / Intro "Subscribe" / Slide bài giảng / Collage.
     """
     import yt_dlp
     from app.graph.evaluators.visual_critic import VisualCritic
@@ -451,7 +458,7 @@ def _download_youtube_chapter_master(
         cand_dur = float(cand.get("duration") or 60.0)
         used_range_dl = False
         start_s = 10.0 if cand_dur > 50.0 else (5.0 if cand_dur > 28.0 else 1.5)
-        end_s = min(cand_dur - 1.5, start_s + 46.0)
+        end_s = min(cand_dur - 1.5, start_s + max(24.0, max_master_dur_sec + 6.0))
 
         tmp_base = str(Path(master_out_path).with_suffix("")) + "_raw.%(ext)s"
         dl_opts = license_policy.optimize_ytdlp_download_opts({
@@ -466,7 +473,7 @@ def _download_youtube_chapter_master(
             "retries": 1,
             "nopart": True,
         })
-        if cand_dur > 58.0:
+        if cand_dur > 42.0:
             try:
                 from yt_dlp.utils import download_range_func
                 dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s)])
@@ -514,7 +521,7 @@ def _download_youtube_chapter_master(
                         skip_intro_s = cand_off
                         break
 
-        usable_dur = max(10.0, min(72.0, raw_dur - skip_intro_s - 2.0))
+        usable_dur = max(10.0, min(float(max_master_dur_sec), raw_dur - skip_intro_s - 1.5))
         # Chuẩn hóa về 1920x1080 Safe-Crop (cắt 6% viền trái/phải và 8% viền trên/dưới để loại bỏ mọi logo góc hoặc phụ đề dưới đáy)
         vf_master = (
             "crop=iw*0.88:ih*0.84:iw*0.06:ih*0.08,"
@@ -531,7 +538,12 @@ def _download_youtube_chapter_master(
             "-an",
             master_out_path,
         ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
+        except Exception:
+            Path(raw_path).unlink(missing_ok=True)
+            Path(master_out_path).unlink(missing_ok=True)
+            continue
         Path(raw_path).unlink(missing_ok=True)
 
         if Path(master_out_path).exists() and Path(master_out_path).stat().st_size > 60_000:
@@ -548,6 +560,39 @@ def _download_youtube_chapter_master(
                 auto_sanitize=True,
             )
             if gate.get("passed", True):
+                v_ok, trim_off = _verify_16x9_master_with_gemini_vision(
+                    master_path=master_out_path,
+                    topic=topic,
+                    primary_entity=primary_entity,
+                    query=query,
+                    video_title=str(cand.get("title") or vid_id),
+                )
+                if not v_ok:
+                    Path(master_out_path).unlink(missing_ok=True)
+                    continue
+                if trim_off > 0.5 and (m_dur - trim_off) >= 8.0:
+                    tmp_tr = f"{master_out_path}.vtrim.mp4"
+                    try:
+                        subprocess.run(
+                            [
+                                "ffmpeg", "-y", "-v", "error",
+                                "-ss", f"{trim_off:.2f}",
+                                "-i", master_out_path,
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-an",
+                                tmp_tr,
+                            ],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=25,
+                            check=False,
+                        )
+                        if Path(tmp_tr).exists() and Path(tmp_tr).stat().st_size > 45_000:
+                            Path(tmp_tr).replace(master_out_path)
+                            m_dur = get_duration_ms(master_out_path) / 1000.0
+                        else:
+                            Path(tmp_tr).unlink(missing_ok=True)
+                    except Exception:
+                        Path(tmp_tr).unlink(missing_ok=True)
                 return {
                     "master_path": master_out_path,
                     "duration_sec": m_dur,
@@ -753,11 +798,17 @@ def fetch_or_slice_longform_chapter_clip_sync(
                 topic=topic,
                 used_urls=used_urls,
             )
+            req_master_max = (
+                max(18.0, min(28.0, float(target_duration_sec) + 8.0))
+                if int(scenes_per_chapter) <= 1
+                else 56.0
+            )
             yt_master = _download_youtube_chapter_master(
                 candidates=yt_cands,
                 master_out_path=master_file,
                 used_urls=used_urls,
                 url_lock=bvid_lock,
+                max_master_dur_sec=req_master_max,
                 topic=topic,
                 primary_entity=primary_entity,
                 query=query,

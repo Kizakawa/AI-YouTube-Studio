@@ -269,8 +269,7 @@ class VisualCritic:
                         st = ImageStat.Stat(g256)
                         lum_vals.append(float(st.mean[0]))
                         con_vals.append(float(st.stddev[0]))
-                        e256 = g256.filter(ImageFilter.FIND_EDGES)
-                        sharp_vals.append(float(ImageStat.Stat(e256).mean[0]))
+                        sharp_vals.append(cls._measure_sharpness(f_jpg))
 
                         g_small = im.convert("L").resize((180, 320), Image.Resampling.BILINEAR)
                         gray_frames.append(g_small)
@@ -470,9 +469,9 @@ class VisualCritic:
                     for i in range(len(gray_frames) - 1)
                 ]
                 avg_m_diff = sum(pair_diffs) / len(pair_diffs) if pair_diffs else 0.0
-                if pair_diffs and (min(pair_diffs) < 4.5 or avg_m_diff < 6.5):
+                if pair_diffs and (avg_m_diff < 4.5 or (min(pair_diffs) < 1.2 and avg_m_diff < 9.5)):
                     issues.append(
-                        f"Clip bị đứng hình hoặc là ảnh tĩnh giả video (min_motion_diff={min(pair_diffs):.2f}, avg={avg_m_diff:.2f} < 6.5)"
+                        f"Clip bị đứng hình hoặc là ảnh tĩnh giả video (min_motion_diff={min(pair_diffs):.2f}, avg={avg_m_diff:.2f} < 4.5)"
                     )
             except Exception:
                 pass
@@ -851,7 +850,6 @@ Return ONLY valid JSON in this exact format:
                 prod_m_raw == "LONG_PEAK_CONTINUOUS_FLOW"
                 or prod_m_raw.startswith("HOOK_CONTINUOUS")
                 or is_doodle_clip
-                or is_longform_chapter_clip
             )
             if media_type == "image":
                 # Kiểm tra & lọc sạch danh sách pose_images (nếu có) để loại bỏ file phụ lỗi/đen/vỡ hạt/dính chữ trước khi dựng
