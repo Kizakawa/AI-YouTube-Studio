@@ -301,6 +301,7 @@ Do NOT write the full script yet. Spend your full reasoning capacity to deeply u
    - BROAD-APPEAL ENTITY TRANSLATION IN TITLE (NO OBSCURE JARGON HEADERS): If the input topic uses an obscure scientific, geological, or academic psychology term that 90% of broad viewers do not instantly recognize (e.g., "Brinicle", "Pratfall Effect", "Zeigarnik Effect"), NEVER start `winning_title` with that obscure jargon word! Translate it into an instantly recognizable mass-appeal entity or physical confrontation (e.g., instead of "The Antarctic Brinicle", write "Underwater Ice Tornado vs Sea Life: -2°C Death Trap"; instead of "The Pratfall Effect", write "Why One Clumsy Mistake Makes People Trust You Instantly"). Save the technical term for Act 2 (Scene 2-3)!
    - `selected_hook_archetype`: Choose the #1 best high-retention hook archetype for Scene 1 (`1. Direct Scale / Extreme Metric Clash`, `2. Walking Dead / Lethal Paradox with Named Entity`, `3. Concrete Historical / Scientific Shock Event`, or `4. Named Psychological / Behavioral Trap`).
    - `scene_1_hook_0s`: 6–10 words in {target_lang_display} using `selected_hook_archetype`. CRITICAL: Viewers in the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, `scene_1_hook_0s` MUST explicitly name the primary entity/combatants from `winning_title` + a shocking physical metric, clash, or lethal paradox right at 0.0s! NEVER use vague pointers like "Look closely at..." or "Watch the exact moment..." that hide the entity!
+   - `comment_war_bait_claim` (CUNNINGHAM'S LAW CONTROVERSY ENGINE — VIEWS & COMMENTS > POLITE NEUTRALITY): Design 1 bold, provocative, unapologetically polarizing statement or "Sacred-Cow Breaker" to drop in Scene 4–5 (e.g., declaring the fan-favorite predator overrated, calling a polite social habit a scam, or challenging the official explanation) so "armchair experts" rush into the comments to argue while the video loops in the background!
    - `counterfactual_debate_comment`: 12–22 words in {target_lang_display}. Design an unresolved Counterfactual Twist / Escalated 2v1 Odds / Next-Opponent 50-50 Debate Question ending with `(1) ... or (2) ... 👇` that was NOT already answered inside the video (ZERO 'Subscribe/Inscreva-se' spam!).
 
 Return ONLY valid JSON:
@@ -316,6 +317,7 @@ Return ONLY valid JSON:
   "scene_1_hook_0s": "6-10 word hook in {target_lang_display} explicitly naming the primary entity/combatants + shocking metric or paradox at 0.0s (NEVER use vague 'Look closely at...' or 'Watch the exact moment...'; NO '?' questions)",
   "act_2_concrete_proof": "Specific real-world example, quote, or documented event + first hard metric for Scenes 2-3",
   "scene_4_mid_video_15s_twist": "Explosive 15-second Plot Twist / Second Hook for Scene 4 that flips expectations with a 2nd concrete metric",
+  "comment_war_bait_claim": "Bold, polarizing 'Sacred-Cow Breaker' / Cunningham's Law claim in {target_lang_display} to spark fierce debate in the comment section",
   "act_4_ultimate_payoff": "Decisive biomechanical outcome, scientific revelation, or surgical counter-move for Scenes 6-7",
   "scene_8_infinite_echo_loop": "Exact conceptual bridge connecting the end of Scene 8 directly back into Scene 1's opening hook",
   "counterfactual_debate_comment": "12-22 word Counterfactual 50/50 Debate Question in {target_lang_display} (e.g. 2v1 escalation, terrain flip, or next opponent) ending with (1) or (2) 👇 and ZERO Subscribe promo",
@@ -352,6 +354,7 @@ Return ONLY valid JSON:
                     f"- Mandatory Scene 1 Hook (0.0s — explicitly name entity + shock metric/paradox): {bp_data.get('scene_1_hook_0s', '')}\n"
                     f"- Mandatory Act 2 Proof + First Hard Metric (Scenes 2-3): {bp_data.get('act_2_concrete_proof', '')}\n"
                     f"- Mandatory Scene 4 Mid-Video 15s Reversal Twist + Second Metric: {bp_data.get('scene_4_mid_video_15s_twist', '')}\n"
+                    f"- 🔥 Mandatory Comment-War / Cunningham's Law Bait Claim (Weave into Scene 4 or 5 to trigger comment debates): {bp_data.get('comment_war_bait_claim', '')}\n"
                     f"- Mandatory Act 4 Payoff (Scenes 6-7): {bp_data.get('act_4_ultimate_payoff', '')}\n"
                     f"- Mandatory Scene 8 Infinite Echo-Loop Bridge: {bp_data.get('scene_8_infinite_echo_loop', '')}\n"
                     f"- Mandatory Counterfactual 50/50 Debate Comment (pinned_comment): {bp_data.get('counterfactual_debate_comment', '')}\n"

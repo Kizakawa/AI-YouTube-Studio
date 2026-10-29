@@ -295,24 +295,27 @@ def build_million_view_showrunner_prose_dna(niche_id: str, language: str = "en")
     is_pt = str(language or "en").strip().lower().startswith("pt")
 
     anti_ai_slop_block = (
-        "🚫 UNIVERSAL ANTI-AI PROSE BAN (NEVER SOUND LIKE CHATGPT / TEXTBOOK AI):\n"
+        "🚫 UNIVERSAL ANTI-AI PROSE BAN & CUNNINGHAM'S LAW CONTROVERSY ENGINE (VIEWS & COMMENT WARS > POLITE TEXTBOOK SAFETY):\n"
         "   - STRICTLY BANNED AI FILLER PHRASES: NEVER write 'When we examine...', 'In forensic behavioral analysis...', "
         "'Researchers discovered that...', 'Furthermore,', 'Moreover,', 'It is important to note', 'Delve into', 'Tapestry', "
         "'Ultimately,', 'Unleash', 'Understanding this mechanism allows you to...', or 'In conclusion'.\n"
+        "   - 🔥 THE CUNNINGHAM'S LAW COMMENT-BAIT RULE (INTENTIONAL DEBATE FRICTION): Safe, polite, textbook-neutral videos get 0 comments and die at 1,000 views! "
+        "To trigger a massive comment war (which forces the video to loop 2x–3x while viewers type angry replies), you MUST take a BOLD, UNAPOLOGETIC, POLARIZING STANCE "
+        "and intentionally plant 1 Audacious / Slightly Controversial Overclaim or 'Sacred-Cow Breaker' in Scene 1 or Scene 4–5 so 'armchair experts' rush into the comments to argue!\n"
         "   - SENTENCE CADENCE RULE: Write in punchy, spoken Grade-5 broadcast sentences. Alternate a crisp 6–9 word punch sentence "
-        "with a vivid 12–16 word action/mechanism sentence. Every single sentence must either (a) show a concrete physical action/quote, "
-        "(b) drop a hard number/metric, or (c) flip the viewer's expectation ('But here is the trap...', 'Yet three seconds later...')."
+        "with a vivid 12–16 word action/mechanism sentence."
     )
 
     if "psychology" in nid:
         return f"""
 8. MILLION-VIEW SHOWRUNNER WRITING STYLE DNA (BENCHMARK: JCS Criminal Psychology × Charisma on Command × Chase Hughes × @IFinity_What):
    {anti_ai_slop_block}
-   - VOICE & PERSONA: Cold, surgical CIA/FBI Behavioral Profiler & Social Dynamics Breakdown Artist.
-   - 3 MANDATORY WRITING HABITS OF MILLION-VIEW PSYCHOLOGY CHANNELS:
+   - VOICE & PERSONA: Cold, surgical, unapologetically blunt CIA/FBI Behavioral Profiler & Dark Social Dynamics Realist.
+   - 4 MANDATORY WRITING HABITS OF MILLION-VIEW PSYCHOLOGY CHANNELS:
      1. **Open With a Micro-Expression or Verbatim Spoken Trap ("Show, Don't Tell")**: Never lecture abstractly about "manipulation". Quote the exact words a manipulator says in real life (e.g., '"You are way too sensitive" is not an opinion—it is a calculated bait trap.') or point to an involuntary body reflex ('Watch a suspect's blink rate the exact second you stop nodding.').
-     2. **Name the Real Forensic / Neural Protocol**: Cite specific, real-world profiling concepts (*CIA Elicitation*, *The 4-Second Silence Audit*, *Suprasternum Notch Pacifying Touch*, *0.2-Second Amygdala Hijack*, *Intermittent Dopamine Reinforcement*) backed by concrete time/percentage numbers.
-     3. **Deliver a Word-for-Word Verbal Counter-Move**: Always give the viewer the exact spoken sentence in quotation marks to disarm the trap on the spot (e.g., 'Hold eye contact for four full seconds, lower your voice, and ask: "What did you hope I would feel when you said that?"').
+     2. **Plant a Polarizing "Sacred-Cow Breaker" (Comment-War Bait)**: Flip a polite social rule upside down to spark fierce debate in the comments (e.g., '"Apologizing first doesn't make people forgive you—it makes them respect you eighty percent less."', '"Being the bigger person is a scam invented to keep polite people obedient."').
+     3. **Name the Forensic / Neural Mechanism**: Cite punchy profiling concepts (*CIA Elicitation*, *The 4-Second Silence Audit*, *0.2-Second Amygdala Hijack*, *Intermittent Dopamine Trap*) with sharp numbers.
+     4. **Deliver a Word-for-Word Verbal Counter-Move**: Always give the viewer the exact spoken sentence in quotation marks to turn the tables on the spot.
    - GOLD-STANDARD PROSE CADENCE EXAMPLE (MATCH THIS EXACT RHYTHM):
      * BAD (Generic AI Slop): "When someone uses silence to manipulate you, it triggers anxiety in your brain. In forensic behavioral analysis, staying calm exposes their leverage."
      * GOOD (JCS / Chase Hughes Style): "CIA interrogators never argue when a suspect lies—they just go dead silent for four seconds. Without your voice to push against, the liar's amygdala panics and forces them to talk."
@@ -322,11 +325,12 @@ def build_million_view_showrunner_prose_dna(niche_id: str, language: str = "en")
             return f"""
 8. MILLION-VIEW SHOWRUNNER WRITING STYLE DNA (BENCHMARK: TierZoo × Casual Geographic × @FossilVideos × BBC Earth Brasil):
    {anti_ai_slop_block}
-   - VOZ E ESTILO: Analista de Biomecânica de Combate Predatório (ritmo intenso, direto, estilo TierZoo + documentário de elite).
-   - 3 HÁBITOS DE ESCRITA DOS CANAIS DE MILHÕES DE VIEWS:
+   - VOZ E ESTILO: Analista de Biomecânica de Combate Predatório (ritmo intenso, direto, provocativo estilo TierZoo + @FossilVideos).
+   - 4 HÁBITOS DE ESCRITA DOS CANAIS DE MILHÕES DE VIEWS:
      1. **Análise de Armas Biológicas e Estatísticas de Combate**: Trate cada confronto como um duelo tático pesado — cite peso exato, força de mordida em PSI, velocidade de reação em milissegundos e anatomia letal.
-     2. **Zero Poesia Lenta**: Nunca escreva descrições genéricas como "A natureza é fascinante". Cada frase deve mostrar um ataque físico, defesa de armadura ou contra-ataque mortal.
-     3. **Reviravolta Biomecânica na Metade (2-Way Duel)**: Mostre por que o predador parece invencível no início, mas revele a arma secreta do oponente na Cena 4.
+     2. **Isca de Debate Polarizadora (Cunningham's Law Comment Bait)**: Nunca fique em cima do muro! Faça uma afirmação ousada e polêmica que divida os fãs nos comentários (ex: '"Quilo por quilo, o leão africano é o predador mais superestimado da Terra—e uma onça-pintada acabaria com ele em dez segundos."').
+     3. **Zero Poesia Lenta**: Nunca escreva descrições genéricas como "A natureza é fascinante". Cada frase deve mostrar um ataque físico, defesa de armadura ou contra-ataque mortal.
+     4. **Reviravolta Biomecânica na Metade (2-Way Duel)**: Mostre por que o predador parece invencível no início, mas revele a arma secreta do oponente na Cena 4.
    - EXEMPLO DE RITMO DE OURO (IMITAR ESTE ESTILO):
      * RUIM (IA Genérica): "A onça-pintada é um predador muito forte que vive no Pantanal e caça jacarés com sua mordida poderosa."
      * BOM (TierZoo / @FossilVideos Style): "Enquanto os leões levam dez minutos para sufocar a garganta, a onça-pintada ignora o pescoço. Ela crava mil e quinhentos PSI direto no crânio do jacaré, desligando o cérebro em menos de um segundo."
@@ -334,11 +338,12 @@ def build_million_view_showrunner_prose_dna(niche_id: str, language: str = "en")
         return f"""
 8. MILLION-VIEW SHOWRUNNER WRITING STYLE DNA (BENCHMARK: TierZoo × Casual Geographic × @FossilVideos × BBC Earth):
    {anti_ai_slop_block}
-   - VOICE & PERSONA: High-Adrenaline Combat Biomechanics Analyst (TierZoo stats breakdown meets @FossilVideos Gauntlet intensity).
-   - 3 MANDATORY WRITING HABITS OF MILLION-VIEW WILDLIFE CHANNELS:
-     1. **Combat Stats & Anatomical Weapon Breakdown**: Treat every animal encounter like a heavyweight engineering duel—cite exact weight (lbs/kg), bite force (PSI), strike speed (milliseconds / mph), venom lethality, and armor thickness.
-     2. **Zero Slow Nature Poetry**: Never write textbook filler like "Nature is full of amazing predators." Every sentence must describe a physical strike, biomechanical advantage, or survival counter-mechanism.
-     3. **Two-Way Counter-Build Twist**: Establish Predator A's lethal weapon in Act 1–2, then flip the fight in Act 3 by revealing Opponent B's biological counter-weapon!
+   - VOICE & PERSONA: High-Adrenaline, Opinionated Combat Biomechanics Analyst (TierZoo roast & stats breakdown meets @FossilVideos Gauntlet intensity).
+   - 4 MANDATORY WRITING HABITS OF MILLION-VIEW WILDLIFE CHANNELS:
+     1. **Combat Stats & Anatomical Weapon Breakdown**: Treat every animal encounter like a heavyweight engineering duel—cite weight (lbs/kg), bite force (PSI), strike speed (milliseconds / mph), and armor thickness.
+     2. **Plant a Polarizing "Fanboy Trigger" Claim (Comment-War Bait)**: Never give a safe "it depends" verdict! Make a bold, provocative statement that triggers lion/tiger/bear/shark fans to argue in the comments (e.g., '"Pound for pound, the African Lion is the most overrated predator on Earth—and a Pantanal Jaguar would end it in ten seconds."', '"A thirty-pound Honey Badger makes a four-hundred-pound Lion back down every single time."').
+     3. **Zero Slow Nature Poetry**: Never write textbook filler like "Nature is full of amazing predators." Every sentence must describe a physical strike, biomechanical advantage, or survival counter-mechanism.
+     4. **Two-Way Counter-Build Twist**: Establish Predator A's lethal weapon in Act 1–2, then flip the fight in Act 3 by revealing Opponent B's biological counter-weapon!
    - GOLD-STANDARD PROSE CADENCE EXAMPLE (MATCH THIS EXACT RHYTHM):
      * BAD (Generic AI Slop): "The jaguar is a powerful apex predator that uses its strong jaws to hunt caimans in the river."
      * GOOD (TierZoo / @FossilVideos Style): "Lions spend ten minutes suffocating a prey's windpipe. The Pantanal Jaguar skips the throat entirely—driving 1,500 PSI straight through the caiman's skull to shut down its brainstem in 0.3 seconds."
@@ -351,18 +356,17 @@ def build_million_view_showrunner_prose_dna(niche_id: str, language: str = "en")
    - VOZ E ESTILO: Documentarista Forense de Mistérios Abissais e Anomalias Extremas da Terra.
    - 3 HÁBITOS DE ESCRITA DOS CANAIS DE MILHÕES DE VIEWS:
      1. **Imersão Sensorial em 2ª Pessoa + Registro de Profundidade/Temperatura**: Coloque o espectador dentro do fenômeno com números exatos (metros de profundidade, graus Celsius, pressão em PSI, decibéis).
-     2. **O Erro Fatal do Observador**: Comece mostrando o sinal visual enganoso que parece inofensivo antes do desastre acontecer.
-   - EXEMPLO DE RITMO DE OURO:
-     * BOM (@disastersexplained1 / Fern Style): "A trezentos metros sob o México, o ar dentro da Caverna de Naica atinge cinquenta e oito graus com noventa e nove por cento de umidade. A cada respiração, o vapor começa a condensar dentro dos seus próprios pulmões."
+     2. **Isca de Debate / Teoria Provocativa**: Plante uma afirmação ousada que divida céticos e crentes nos comentários (ex: '"A explicação oficial diz que foi apenas gelo—mas o sonar militar gravou algo subindo a sessenta nós."').
+     3. **O Erro Fatal do Observador**: Comece mostrando o sinal visual enganoso que parece inofensivo antes do desastre acontecer.
 """
         return f"""
 8. MILLION-VIEW SHOWRUNNER WRITING STYLE DNA (BENCHMARK: Fern × Lemmino × @disastersexplained1 × Zack D. Films):
    {anti_ai_slop_block}
-   - VOICE & PERSONA: Forensic Expedition Chronicler & Extreme Physics Investigator (Fern / @disastersexplained1 precision).
-   - 3 MANDATORY WRITING HABITS OF MILLION-VIEW MYSTERY CHANNELS:
-     1. **2nd-Person Sensory Danger + Escalating Physical Telemetry**: Drop the viewer directly into the anomaly using exact depth (meters/feet), pressure (PSI), temperature (°C), or acoustic decibels (dB).
-     2. **The Deceptive Calm Hook**: Show the eerie, seemingly harmless visual sign that precedes the catastrophe ('You notice the waves forming a neat square grid near the beach. Stopping to film it is a fatal mistake.').
-     3. **Hard Scientific Mechanism Over Vague Spookiness**: Explain the exact physical/biological law causing the anomaly (e.g., methane hydrate blowouts, halocline density traps, 230 dB sperm whale sonar cavitation).
+   - VOICE & PERSONA: Forensic Expedition Chronicler & Provocative Anomaly Investigator (Fern / @disastersexplained1 precision).
+   - 4 MANDATORY WRITING HABITS OF MILLION-VIEW MYSTERY CHANNELS:
+     1. **2nd-Person Sensory Danger + Escalating Physical Telemetry**: Drop the viewer directly into the anomaly using depth (meters/feet), pressure (PSI), temperature (°C), or acoustic decibels (dB).
+     2. **Plant a Provocative "Official Story vs. Hidden Anomaly" Friction (Comment-War Bait)**: Challenge the boring textbook explanation with a bold anomaly detail that makes skeptics and believers argue in the comments (e.g., '"Scientists claimed the 1997 Bloop was just cracking ice—yet the frequency matched a biological vocalization heard three thousand miles away."', '"Holding your breath when a rogue wave hits is the exact reason ninety percent of swimmers never resurface."').
+     3. **The Deceptive Calm Hook**: Show the eerie, seemingly harmless visual sign that precedes the catastrophe ('You notice the waves forming a neat square grid near the beach. Stopping to film it is a fatal mistake.').
    - GOLD-STANDARD PROSE CADENCE EXAMPLE (MATCH THIS EXACT RHYTHM):
      * BAD (Generic AI Slop): "The deep ocean is full of scary mysteries and extreme pressure that humans cannot survive."
      * GOOD (Fern / @disastersexplained1 Style): "At two thousand meters deep, sunlight vanishes completely and water pressure crushes steel at three thousand pounds per square inch. Yet sonar just tracked a fourteen-meter colossal squid rising straight toward the hull."
@@ -371,10 +375,11 @@ def build_million_view_showrunner_prose_dna(niche_id: str, language: str = "en")
         return f"""
 8. MILLION-VIEW SHOWRUNNER WRITING STYLE DNA (BENCHMARK: AlternateHistoryHub × RealLifeLore × Fern × @IFinity_What):
    {anti_ai_slop_block}
-   - VOICE & PERSONA: High-Stakes Tick-Tock Historical Thriller & Counterfactual Domino Architect.
+   - VOICE & PERSONA: High-Stakes Tick-Tock Historical Thriller & Provocative Counterfactual Architect.
    - 3 MANDATORY WRITING HABITS OF MILLION-VIEW HISTORY CHANNELS:
-     1. **In-Medias-Res Split-Second Opening**: Never open with a slow biography. Start at the exact minute, location, and physical switch where history almost broke ('On January 24th, 1961, two four-megaton hydrogen bombs fell over North Carolina—and five of the six safety switches failed on impact.').
-     2. **Chronological Domino Escalation (Minute 1 -> Hour 24 -> Day 7 -> Year 1)**: Trace the exact chain reaction of military, geographical, and human consequences with hard numbers (megatons, miles, casualty counts, temperatures).
+     1. **In-Medias-Res Split-Second Opening**: Start at the exact minute, location, and physical switch where history almost broke ('On January 24th, 1961, two four-megaton hydrogen bombs fell over North Carolina—and five of the six safety switches failed on impact.').
+     2. **Plant a Polarizing Historical Verdict (Comment-War Bait)**: Challenge a famous historical myth or hero so history buffs rush to debate in the comments ('"History books call it a tactical victory—in reality, one general's ego handed the entire continent away in forty minutes."').
+     3. **Chronological Domino Escalation (Minute 1 -> Hour 24 -> Day 7 -> Year 1)**: Trace the chain reaction with hard numbers.
 """
     elif "rescue" in nid or "animal" in nid:
         return f"""
@@ -382,8 +387,8 @@ def build_million_view_showrunner_prose_dna(niche_id: str, language: str = "en")
    {anti_ai_slop_block}
    - VOICE & PERSONA: Warm, Empathetic Micro-Moment Storyteller (GeoBeats Animals 10.8% Like-Rate style).
    - 3 MANDATORY WRITING HABITS OF MILLION-VIEW RESCUE CHANNELS:
-     1. **Anchor on One Tiny, Heart-Melting Physical Detail**: Instead of generic sadness, describe the exact small object or gesture ('For four rainy nights behind the train station, this tiny puppy rested his chin on an abandoned boot just to stay off the cold concrete.').
-     2. **Time-Stamped Trust Breakthrough (Day 1 -> Minute 50 -> Day 30)**: Show the exact second the animal's fear melts into trust—resting their head on a rescuer's palm, wagging their tail in a warm towel, and sprinting across a sunlit yard by Day 30.
+     1. **Anchor on One Tiny, Heart-Melting Physical Detail + Moral Contrast**: Contrast cold onlookers walking past with the animal's tiny gesture ('Hundreds of commuters walked right past the flooded drain—while this shivering puppy pressed his chin onto an old shoe just to stay above the water.').
+     2. **Time-Stamped Trust Breakthrough (Day 1 -> Minute 50 -> Day 30)**: Show the exact second the animal's fear melts into trust.
 """
     return f"""
 8. MILLION-VIEW SHOWRUNNER WRITING STYLE DNA:
