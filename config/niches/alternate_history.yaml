@@ -6,14 +6,14 @@ description: Khám phá các dòng thời gian song song, những bước ngoặ
 target_audience: Khán giả Mỹ và toàn cầu đam mê lịch sử kịch tính, thảm họa lịch sử có thật, siêu dự án quân sự và câu hỏi giả định (18-45 tuổi).
 script_blueprint:
   tone_of_voice: "Kịch tính, nhịp độ dồn dập, ngôn ngữ Tiếng Anh giao tiếp lớp 5 sắc gọn (HistoryMarche 5.33M / Zack D. Films 51.4M / Historically vibe), nhảy thẳng vào giữa tâm chấn trận đánh hoặc khoảnh khắc sai lầm lịch sử (In Medias Res) ngay ở giây 0.0s."
-  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 cảnh trọn câu, 92 - 118 từ tổng, ~4.5 giây/cảnh). TUÂN THỦ QUY TẮC VÀNG PHÂN VAI: Tiêu đề (title) chứa tên Đế chế/Danh tướng/Thảm họa + Con số để ăn YT_SEARCH, còn Cảnh 1 (0.0s-2.2s, 6-10 từ) nhảy thẳng vào hành động (In Medias Res) mà KHÔNG đọc lặp lại tiêu đề; Cảnh 2-3 tung thông số đầu tiên; Cảnh 4 (giây 14-18) tung Cú Lật Kèo Phục Kích ('But what they didn't know...'); Cảnh cuối bắc cầu Infinite Loop về Cảnh 1."
+  pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 cảnh trọn câu, 92 - 118 từ tổng, ~4.5 giây/cảnh). QUY TẮC VÀNG MỞ ĐẦU 0.0s: Cả Tiêu đề (title) VÀ Cảnh 1 (0.0s-2.2s, 6-10 từ) ĐỀU BẮT BUỘC nêu rõ Đế chế/Danh tướng/Thảm họa + Cú sốc vật lý hoặc Nghịch lý lịch sử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu tên chủ thể ('Look closely at...', 'People woke up to...')!"
   hook_formulas:
-  - 'In Medias Res Battlefield Trap (HistoryMarche 5.33M Hannibal Formula): ''The Roman legions pushed forward, walking straight into a hidden riverbed trap.'''
-  - 'The False Gap / Tactical Feint (HistoryMarche 2.18M Alexander Formula): ''Retreating in the center looked like panic, until the cavalry turned around.'''
-  - 'Split-Second Doomsday Mistake: ''One low-voltage switch was the only thing standing between Carolina and nuclear fire.'''
-  - 'Visual Micro-Observation on Archival Mystery: ''Look closely at the hull of this warship built entirely out of frozen ice.'''
-  - 'Counterfactual Catastrophe Shield: ''Europe survived only because three divers swam into a flooded radioactive basement.'''
-  - '@IFinity_What 2nd-Person Experiential Timeline Hook (493K in 10 Days Formula): ''If you woke up in 1815 when Mount Tambora erupted, Hour One looks like a normal sunset—until the snow turns red.'''
+  - 'Direct Historical Shock Event (Proven Winner `PVoVipDbLt8` 1,115 views — 87.5% APV): ''One hundred thousand Mongol horsemen vanished forty miles from Vienna.'''
+  - 'Catastrophe vs. Shield Paradox (Proven Winner `D_sIws9Buto` 1,349 views — 123.8% APV): ''Earth survived only because the Krakatoa volcano killed thousands.'''
+  - 'Split-Second Doomsday Mistake: ''One low-voltage switch saved North Carolina from two four-megaton nuclear bombs.'''
+  - 'Named Megaproject / Eruption Shock: ''In 1815, Mount Tambora''s eruption buried June under freezing snowstorms.'''
+  - 'Counterfactual Catastrophe Shield: ''Europe survived in 1986 only because three Chernobyl divers swam into radioactive water.'''
+  - '@IFinity_What 2nd-Person Experiential Timeline Hook (493K in 10 Days Formula): ''If you woke up in 1815 when Mount Tambora erupted, the summer snow turns red.'''
   competitor_blueprint:
     benchmark_channel: "@IFinity_What (734K views in 12 days — 'What If You Could Turn Invisible at Will?' 493K, 'What If You Knew Everything in the World?' 89.9K) & @FossilVideos ('How Long You'd Last in Every Prehistoric Era' 12.08M)"
     long_form_archetypes:
