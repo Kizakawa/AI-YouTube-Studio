@@ -313,7 +313,9 @@ class ScriptValidationLinter:
         if title_metric_match:
             has_any_number_in_body = bool(
                 re.search(
-                    r"(?:\b\d+\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|hundred|thousand|million|billion)\b)",
+                    r"(?:\b\d+\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|percent|"
+                    r"um|uma|dois|duas|três|quatro|cinco|seis|sete|oito|nove|dez|vinte|trinta|quarenta|cinquenta|cem|cento|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|mil|milhão|milhões|por\s+cento|"
+                    r"một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|trăm|nghìn|ngàn|triệu|phần\s+trăm)\b)",
                     narration_str,
                     flags=re.IGNORECASE,
                 )

@@ -226,6 +226,19 @@ class ScriptJsonParserMixin:
                 sq = re.sub(r'\s+', ' ', sq).strip(" ,.-:")
                 if not sq:
                     sq = " ".join(vk.split()[:4])
+
+            # Nếu là ngách Tâm lý học con người (psychology), khử bẫy ẩn dụ động vật ('wolf teeth', 'forest predator', 'lion')
+            if str(channel_niche or "").strip().lower() == "psychology":
+                _animal_metaphor_re = re.compile(
+                    r"\b(?:wolf|wolves|lion|lions|tiger|tigers|shark|sharks|snake|snakes|caiman|crocodile|"
+                    r"baring\s+teeth|wolf\s+teeth|forest\s+predator|jungle\s+predator)\b",
+                    re.IGNORECASE,
+                )
+                if _animal_metaphor_re.search(vk):
+                    vk = "confident man cold gaze noir"
+                if _animal_metaphor_re.search(sq):
+                    sq = "confident man intense gaze"
+
             sc["stock_query"] = sq
 
             # Chống trùng lặp visual_keyword giữa các phân cảnh trong cùng 1 kịch bản
@@ -431,6 +444,37 @@ class ScriptJsonParserMixin:
 
         if scenes and isinstance(scenes, list):
             is_long_form_parse = str(raw_data.get("video_format") or video_format or "short").strip().lower() == "long"
+            # Nếu LLM tách nhầm phần dẫn câu thoại ("...by saying out loud.", "...and ask.") và câu thoại trực tiếp sang 2 cảnh liền kề -> Gộp lại thành 1 cảnh hoàn chỉnh!
+            _speech_intro_tail_re = re.compile(
+                r'(?:\bby\s+saying(?:\s+out\s+loud)?|\band\s+(?:ask|say|whisper|reply|tell\s+them)|\brespond\s+with|\bsimply\s+(?:ask|say)|'
+                r'\bdizendo(?:\s+em\s+voz\s+alta)?|\be\s+(?:pergunte|diga|responda))[\.\:\!\,\s]*$',
+                re.IGNORECASE,
+            )
+            merged_pre_scenes: List[Dict[str, Any]] = []
+            i_m = 0
+            while i_m < len(scenes):
+                cur_s = scenes[i_m]
+                if (
+                    isinstance(cur_s, dict)
+                    and i_m + 1 < len(scenes)
+                    and isinstance(scenes[i_m + 1], dict)
+                    and _speech_intro_tail_re.search(str(cur_s.get("narration") or "").strip())
+                ):
+                    nxt_s = scenes[i_m + 1]
+                    intro_txt = str(cur_s.get("narration") or "").strip().rstrip(".,!:")
+                    quote_txt = str(nxt_s.get("narration") or "").strip().strip('"\'')
+                    combined_s = dict(cur_s)
+                    combined_s["narration"] = f'{intro_txt}: "{quote_txt}"'
+                    if not combined_s.get("overlay_badge") and nxt_s.get("overlay_badge"):
+                        combined_s["overlay_badge"] = nxt_s.get("overlay_badge")
+                    merged_pre_scenes.append(combined_s)
+                    i_m += 2
+                else:
+                    if isinstance(cur_s, dict):
+                        merged_pre_scenes.append(cur_s)
+                    i_m += 1
+            scenes = merged_pre_scenes
+
             paced_scenes: List[Dict[str, Any]] = []
             for idx_sc, sc in enumerate(scenes):
                 if not isinstance(sc, dict):
@@ -439,18 +483,19 @@ class ScriptJsonParserMixin:
                 w_list = narr_str.split()
                 w_count = len(w_list)
 
-                # Cảnh 1 ưu tiên tách nhịp nhanh nếu >= 11 từ đối với Shorts; riêng Long-Form 16:9 giữ nguyên đoạn văn hoàn chỉnh của từng cảnh
+                # Chỉ tách Cảnh 1 nếu >= 12 từ, hoặc tách cảnh thân khi tổng số cảnh < 7 (không bao giờ tách cảnh đang có câu thoại trong ngoặc kép!)
+                has_quote_or_colon = ('"' in narr_str or "'" in narr_str or ":" in narr_str)
                 should_split = (
                     not is_long_form_parse
                     and (
-                        (idx_sc == 0 and w_count >= 11)
-                        or (idx_sc > 0 and w_count >= 22 and len(paced_scenes) + (len(scenes) - idx_sc) < 9)
+                        (idx_sc == 0 and w_count >= 12)
+                        or (idx_sc > 0 and w_count >= 25 and len(scenes) < 7 and not has_quote_or_colon)
                     )
                 )
                 target_pref = 6 if idx_sc == 0 else max(8, w_count // 2)
                 split_res = _split_long_narration(narr_str, target_pref) if should_split else None
 
-                if split_res:
+                if split_res and not _speech_intro_tail_re.search(split_res[0]):
                     left_narr, right_narr = split_res
                     sc_first = dict(sc)
                     sc_first["narration"] = left_narr
@@ -465,15 +510,7 @@ class ScriptJsonParserMixin:
                     base_vk = str(sc.get("visual_keyword") or "cinematic scene").strip()
                     base_sq = str(sc.get("stock_query") or base_vk).strip()
                     base_vp = str(sc.get("visual_prompt") or f"Cinematic 8k vertical shot of {base_vk}").strip()
-                    # Trích xuất danh từ dài từ câu thoại thứ 2 để làm mới truy vấn hình ảnh
-                    right_nouns = [
-                        re.sub(r'[^\w]', '', w).lower()
-                        for w in right_narr.split()
-                        if len(re.sub(r'[^\w]', '', w)) >= 5
-                        and re.sub(r'[^\w]', '', w).lower() not in banned_abstract
-                    ]
-                    extra_focus = " ".join(right_nouns[:2]) if right_nouns else ""
-                    sc_second["visual_keyword"] = f"{base_vk} {extra_focus}".strip()[:65] if extra_focus else base_vk
+                    sc_second["visual_keyword"] = base_sq if base_sq != base_vk else f"{base_vk} close up"
                     sc_second["stock_query"] = base_sq
                     sc_second["visual_prompt"] = base_vp
                     sc_second["estimated_seconds"] = round(max(2.4, len(right_narr.split()) / 2.65), 1)
@@ -570,8 +607,15 @@ class ScriptJsonParserMixin:
             _dangling_end_re = re.compile(
                 r'[\s\.\,\-\—\…]+(?:because|which|and|but|or|while|although|though|unless|whereas|'
                 r'the|a|an|his|her|their|its|my|your|our|these|those|'
-                r'porque|pois|mas|embora|enquanto|'
+                r'porque|pois|mas|embora|enquanto|que|'
                 r'bởi vì|nhưng|hoặc|mặc dù)[\s\.\,\-\—\…]*$',
+                re.IGNORECASE,
+            )
+            _academic_opener_re = re.compile(
+                r'^(?:(?:[a-zA-ZÀ-ỹ\-]+\s+){0,4}(?:studies|research|scientists|researchers|data|experiments|'
+                r'estudos|pesquisas|cientistas|experimentos)(?:\s+de\s+[a-zA-ZÀ-ỹ\-]+(?:\s+[a-zA-ZÀ-ỹ\-]+)?)?\s+'
+                r'(?:show|shows|reveal|reveals|indicate|indicates|prove|proves|confirm|confirms|found|demonstrate|demonstrates|'
+                r'mostram|revelam|indicam|provam|confirmam|demonstram)\s+(?:that|que)\s+)(.{24,})$',
                 re.IGNORECASE,
             )
             for idx_s, sc_obj in enumerate(scenes):
@@ -580,6 +624,11 @@ class ScriptJsonParserMixin:
                 s_narr = str(sc_obj.get("narration") or "").strip()
                 s_narr = _stage_tag_re.sub("", s_narr)
                 s_narr = re.sub(r'\s+', ' ', s_narr).strip()
+                m_acad = _academic_opener_re.match(s_narr)
+                if m_acad and len(m_acad.group(1).strip().split()) >= 6:
+                    s_narr = m_acad.group(1).strip()
+                    if s_narr and s_narr[0].islower():
+                        s_narr = s_narr[0].upper() + s_narr[1:]
                 # Chỉ khử các liên từ phụ thuộc / mạo từ / tính từ sở hữu thực sự bị bỏ lửng ở cuối câu
                 # (TUYỆT ĐỐI KHÔNG cắt các từ hợp lệ ở cuối câu tiếng Anh như 'no', 'do', 'in', 'on', 'to', 'is', 'are', 'why')
                 while _dangling_end_re.search(s_narr):
@@ -628,10 +677,30 @@ class ScriptJsonParserMixin:
                     if hc and hc not in hook_candidates:
                         hook_candidates.append(hc)
             if len(hook_candidates) >= 2:
+                _hook_stop = {
+                    "the", "and", "for", "with", "from", "into", "this", "that", "how", "why", "what", "when", "who",
+                    "uma", "uns", "umas", "dos", "das", "nos", "nas", "por", "para", "com", "sem", "sob", "sobre",
+                    "que", "como", "mais", "muito", "este", "esta", "esse", "essa", "isso", "pelo", "pela",
+                    "shorts", "short", "video", "vs", "versus", "contra", "mordida", "letal", "duelo", "ataque", "psi",
+                }
+                _raw_t_clean = re.sub(r"#\w+", " ", str(raw_data.get("title") or "")).strip()
+                _title_ent_tokens = {
+                    w.lower()
+                    for w in re.findall(r"\b[a-zA-ZÀ-ỹ]{4,}\b", _raw_t_clean, flags=re.UNICODE)
+                    if w.lower() not in _hook_stop
+                }
+
                 def _score_hook_retention(h_str: str) -> float:
                     h_score = 50.0
                     words_h = re.findall(r'\b\w+\b', h_str)
                     w_len = len(words_h)
+                    h_toks = {w.lower() for w in re.findall(r"\b[a-zA-ZÀ-ỹ]{4,}\b", h_str, flags=re.UNICODE)}
+                    # Bắt buộc ưu tiên Hook nêu đích danh thực thể chính từ Tiêu đề (chống Entity-Blind Hook bị phạt 5.8 điểm)
+                    if _title_ent_tokens:
+                        if _title_ent_tokens & h_toks:
+                            h_score += 28.0
+                        else:
+                            h_score -= 45.0
                     # Độ dài vàng cho Hook 0.0s từ 343 Shorts triệu view (5 - 8 từ ~ 1.6s - 2.2s): Dứt điểm trước phản xạ vuốt 1.8s!
                     if 5 <= w_len <= 8:
                         h_score += 26.0
@@ -639,17 +708,25 @@ class ScriptJsonParserMixin:
                         h_score += 16.0
                     elif w_len > 11 or w_len < 4:
                         h_score -= 22.0
-                    # Chứa số liệu / tốc độ / lực cắn / thời gian cụ thể
-                    if re.search(r'\d', h_str):
-                        h_score += 18.0
-                    # Thưởng lớn cho Deictic Visual Pointer / Conversational Trigger chuẩn US & Brazil triệu view
+                    # Chứa số liệu / tốc độ / lực cắn / thời gian cụ thể (chữ số hoặc số viết bằng chữ)
                     if re.search(
-                        r'\b(?:look at|watch|see this|this man|this woman|this dog|this puppy|this jaguar|if someone says|when someone|turn any|never answer|'
-                        r'olha|veja|esse|essa|esses|essas|este|esta|nem o|nem a|até o|até a|uma única|um único)\b',
+                        r'(?:\d|\b(?:one|two|three|four|five|ten|forty|fifty|hundred|thousand|million|percent|milliseconds|seconds|psi|degrees|'
+                        r'um|uma|dois|duas|três|quatro|cinco|dez|cem|mil|milissegundos|segundos|quilos|metros)\b)',
                         h_str,
                         flags=re.IGNORECASE,
                     ):
-                        h_score += 16.0
+                        h_score += 28.0
+                    # Phạt các câu chỉ trỏ mơ hồ giấu tên chủ thể ('Look closely at...', 'Watch the exact moment...')
+                    if re.match(r'^(?:look\s+(?:closely\s+)?at|watch\s+(?:the\s+exact\s+moment|how|why)|olhe\s+bem\s+para)\b', h_str.strip(), flags=re.IGNORECASE):
+                        h_score -= 30.0
+                    # Thưởng cho cấu trúc nêu đích danh chủ thể / tình huống đối thoại trực diện
+                    if re.search(
+                        r'\b(?:this man|this woman|this dog|this puppy|this jaguar|if someone says|when someone|turn any|never answer|'
+                        r'esse|essa|esses|essas|este|esta|nem o|nem a|até o|até a|uma única|um único)\b',
+                        h_str,
+                        flags=re.IGNORECASE,
+                    ):
+                        h_score += 14.0
                     # Thưởng lớn cho công thức "A vs B" / Đối đầu bất đối xứng & Nghịch lý sợ hãi (pt-BR & Wild Odyssey Formula)
                     if re.search(r'\b(?:vs\.?|versus|against|contra|outsmart|crushes|destroys|beats|backs down|perfura|esmaga|esmagam|paralisa|recua|recuam|aterroriza|teme|temem|pânico)\b', h_str, flags=re.IGNORECASE):
                         h_score += 18.0
@@ -734,6 +811,20 @@ class ScriptJsonParserMixin:
                     badge_s = str(s.get("overlay_badge") or "")
                     if badge_s and (_vn_excl_re.search(badge_s) or "TỪ IN HOA" in badge_s.upper()):
                         s["overlay_badge"] = ""
+                    elif badge_s and any(c in str(raw_data.get("title") or "").lower() for c in ("ç", "ã", "õ", "onça", "jacaré", "oceano")):
+                        _pt_badge_map = {
+                            "FATAL MECHANISM": "MECANISMO FATAL",
+                            "THE 15-SECOND TWIST": "A REVIRAVOLTA",
+                            "THE REAL TRAP": "A ARMADILHA REAL",
+                            "THE FATAL MISTAKE": "O ERRO FATAL",
+                            "CLASH": "IMPACTO",
+                            "DEADLY DUEL": "DUELO MORTAL",
+                        }
+                        b_up = badge_s.upper()
+                        for en_k, pt_v in _pt_badge_map.items():
+                            if en_k in b_up:
+                                b_up = b_up.replace(en_k, pt_v)
+                        s["overlay_badge"] = b_up
 
         # Cập nhật lại full_narration & hook để đồng bộ 100% với Cảnh 1 đã tối ưu nhịp
         raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))

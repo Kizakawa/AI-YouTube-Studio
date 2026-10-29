@@ -205,11 +205,15 @@ class ScriptCritic:
                 re.IGNORECASE | re.UNICODE,
             )
         )
+        _num_word_re = (
+            r"(?:\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|percent|milliseconds|seconds|psi|"
+            r"um|uma|dois|duas|três|quatro|cinco|seis|sete|oito|nove|dez|cem|duzentos|trezentos|quatrocentos|quinhentos|mil|milissegundos|segundos|quilos|metros|toneladas)\b)"
+        )
         is_entity_blind_hook = bool(
             title_tokens
             and len(title_tokens) >= 2
             and len(title_tokens & s1_clause_tokens) == 0
-            and not re.search(r"\d", s1_first_clause)
+            and not re.search(_num_word_re, s1_first_clause, re.IGNORECASE | re.UNICODE)
         )
         if is_colon_header_echo or is_early_outcome_spoiler:
             score = min(score, 5.8)
@@ -272,12 +276,16 @@ class ScriptCritic:
             and not re.search(r"\d", eff_title)
         )
         # Đánh giá độc lập sức căng của riêng `s1_narr` (không thưởng cho câu chỉ trỏ rỗng 'look closely / watch')
-        s1_has_number = bool(re.search(r"\d", s1_narr))
-        has_number = bool(re.search(r"\d", combined))
+        _num_word_re = (
+            r"(?:\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|percent|milliseconds|seconds|psi|"
+            r"um|uma|dois|duas|três|quatro|cinco|seis|sete|oito|nove|dez|cem|duzentos|trezentos|quatrocentos|quinhentos|mil|milissegundos|segundos|quilos|metros)\b)"
+        )
+        s1_has_number = bool(re.search(_num_word_re, s1_narr, re.IGNORECASE | re.UNICODE))
+        has_number = bool(re.search(_num_word_re, combined, re.IGNORECASE | re.UNICODE))
         _shock_pattern = (
-            r"(?:%|\b(?:vs\.?|versus|against|contra|refused|crushes|destroys|kills|deadly|impossible|instant|second|seconds|minute|minutes|meters|feet|miles|percent|psi|mph|celsius|degrees|decibels|"
-            r"nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|veneno|erro|"
-            r"shocking|terrified|ambush|strike|pierces|boils|paralyzes|never|always|expose|exposes|fail|fails|confess|trap|caught|freeze|freezes|panic|liar|liars|guilty|mistake|vanished|erupted)\b)"
+            r"(?:%|\b(?:vs\.?|versus|against|contra|refused|crushes|destroys|kills|deadly|impossible|instant|instantly|second|seconds|milliseconds|minute|minutes|meters|feet|miles|percent|psi|mph|celsius|degrees|decibels|"
+            r"nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|veneno|erro|emboscad|"
+            r"shocking|terrified|ambush|strike|pierces|boils|paralyzes|never|always|expose|exposes|fail|fails|confess|trap|caught|freeze|freezes|panic|liar|liars|guilty|mistake|vanished|erupted|predator|disrespect|manipulat)\b)"
         )
         s1_has_shock = bool(re.search(_shock_pattern, s1_narr, re.IGNORECASE | re.UNICODE))
         has_confrontation_or_shock = bool(re.search(_shock_pattern, combined, re.IGNORECASE | re.UNICODE))
@@ -307,13 +315,18 @@ class ScriptCritic:
         if isinstance(scenes, list) and len(scenes) >= 5:
             mid_scenes = scenes[2:5]
             mid_text = " ".join(str(ms.get("narration") or "") for ms in mid_scenes if isinstance(ms, dict))
+            mid_badges = " ".join(str(ms.get("overlay_badge") or "") for ms in mid_scenes if isinstance(ms, dict))
             has_mid_twist_or_metric = bool(
-                re.search(r"\d", mid_text)
+                re.search(_num_word_re, mid_text, re.IGNORECASE | re.UNICODE)
                 or re.search(
-                    r"\b(?:but|yet|however|instead|suddenly|actually|until|real\s+weapon|real\s+trap|secret\s+weapon|shockwave|mas|porém|contudo|na\s+verdade|de\s+repente|nhưng|thực\s+ra|bất\s+ngờ)\b",
+                    r"\b(?:but|yet|however|instead|suddenly|actually|until|real\s+weapon|real\s+trap|secret\s+weapon|shockwave|"
+                    r"not\s+a\s+virtue|isn't|aren't|doesn't|don't|does\s+not|do\s+not|never|flaw|trap|glitch|paradox|"
+                    r"mas|porém|contudo|na\s+verdade|de\s+repente|mesmo|enquanto|apesar|não\s+é|nenhuma?|amador|superestimado|falha|"
+                    r"nhưng|thực\s+ra|bất\s+ngờ)\b",
                     mid_text,
                     re.IGNORECASE | re.UNICODE,
                 )
+                or bool(mid_badges.strip())
             )
             if not has_mid_twist_or_metric:
                 score = min(score, 7.6)
