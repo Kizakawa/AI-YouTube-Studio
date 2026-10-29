@@ -189,7 +189,7 @@ Look carefully at all 3 frames in this strip extracted from a candidate video cl
 {scope_note}
 
 REJECT IMMEDIATELY (passed=false, score < 4.0) IF YOU SEE ANY OF THESE IN ANY FRAME:
-1. ANY channel watermark, logo, corner bug, username (@...), credit banner, burned-in TikTok/Shorts subtitle/caption, or mirrored/flipped text anywhere on the frame (e.g., "LatestSightings", "MR. FRIEND", TV logos, social handles, yellow/white captions).
+1. ANY channel watermark, logo, corner bug, AI generator corner badge/sparkle icon (CHECK ALL 4 CORNERS CLOSELY — especially a small white/translucent 4-point diamond/star sparkle icon `✦` in the bottom-right corner from Gemini/Veo, or Sora/Kling/Runway/Pika/CapCut badges), username (@...), credit banner, burned-in TikTok/Shorts subtitle/caption, or mirrored/flipped text anywhere on the frame (e.g., "LatestSightings", "MR. FRIEND", TV logos, social handles, yellow/white captions).
 2. Blurry, pixelated, grainy, low-resolution, or color-shifted/washed-out video quality.
 {cgi_rule}
 4. Habitat or environment mismatch with the script (e.g., an animal in a snowy zoo enclosure, behind cage bars/fences, or indoors when the story takes place in the wild African savanna, jungle, or ocean).
@@ -197,7 +197,7 @@ REJECT IMMEDIATELY (passed=false, score < 4.0) IF YOU SEE ANY OF THESE IN ANY FR
 6. Bad framing / severely cropped subject where only a tiny unrecognizable corner, tail, or cut-off edge of the main subject fits inside the 9:16 vertical frame instead of a clear, well-composed view of the subject.
 
 Return ONLY valid JSON:
-{{"passed": true, "score": 8.5, "reason": "100% clean HD footage with zero watermarks/text matching subject and habitat"}}"""
+{{"passed": true, "score": 8.5, "reason": "100% clean HD footage with zero watermarks/AI corner icons/text matching subject and habitat"}}"""
 
         payload = {
             "contents": [{

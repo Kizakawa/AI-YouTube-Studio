@@ -263,6 +263,7 @@ class SubtitleHelper:
         "WHEN", "WHERE", "WHOSE", "WHICH", "WHAT", "MY", "YOUR", "HIS", "HER", "ITS", "OUR",
         "THEIR", "IS", "ARE", "WAS", "WERE", "BE", "BEEN", "HAS", "HAVE", "HAD", "WILL", "CAN",
         "COULD", "WOULD", "SHOULD", "MAY", "MIGHT", "MUST", "NO", "NOT",
+        "YET", "SO", "NOR", "STILL", "EVEN", "ONCE", "JUST", "ONLY", "ALSO", "THEN", "NOW", "SOON", "THUS",
         # Portuguese (pt-BR)
         "O", "A", "OS", "AS", "UM", "UMA", "UNS", "UMAS", "DE", "DO", "DA", "DOS", "DAS",
         "DESTE", "DESTA", "DESTES", "DESTAS", "DISTO", "DESSE", "DESSA", "DESSES", "DESSAS", "DISSO",
@@ -273,9 +274,11 @@ class SubtitleHelper:
         "ESSE", "ESSA", "ESTE", "ESTA", "AQUELE", "AQUELA", "CADA", "TODO", "TODA", "TODOS", "TODAS",
         "QUE", "SE", "OU", "E", "MAS", "MEU", "MINHA", "MEUS", "MINHAS", "SEU", "SUA", "SEUS", "SUAS",
         "FOI", "ERA", "SÃO", "ESTÁ", "ESTÃO", "NÃO", "MAIS", "MUITO", "TÃO",
+        "PORÉM", "AINDA", "ENTÃO", "AGORA", "LOGO", "POIS", "JÁ", "SÓ", "NEM",
         # Vietnamese
         "CỦA", "TRONG", "TRÊN", "DƯỚI", "VỚI", "CHO", "TỪ", "MỘT", "NHỮNG", "CÁC", "LÀ", "VÀ",
         "ĐỂ", "NHƯ", "BỞI", "TẠI", "VỀ", "MỌI", "MỖI",
+        "NHƯNG", "TUY", "BỖNG", "CHỢT", "NGAY", "CHỈ", "CŨNG", "VẪN", "ĐÃ", "SẼ", "ĐANG",
     })
 
     _ABBREVIATIONS = frozenset({
@@ -442,13 +445,21 @@ class SubtitleHelper:
                             c_chunks.pop(idx_m)
                 idx_m -= 1
 
-            # Nếu chunk đầu mệnh đề chỉ còn 1 từ nối ngắn, gộp sang chunk kế tiếp
-            if len(c_chunks) >= 2 and len(c_chunks[0]) == 1 and cls._is_dangling_proclitic(
-                str(c_chunks[0][0]["word"]),
-                str(c_chunks[1][0]["word"]) if c_chunks[1] else "",
-            ):
-                c_chunks[1].insert(0, c_chunks[0][0])
-                c_chunks.pop(0)
+            # Bước 4: Chống thẻ 1 từ chớp nháy ở đầu mệnh đề (vd: ["YET"] + ["A", "TWO-THOUSAND-POUND"])
+            if len(c_chunks) >= 2 and len(c_chunks[0]) == 1:
+                first_w = str(c_chunks[0][0]["word"])
+                next_first_w = str(c_chunks[1][0]["word"]) if c_chunks[1] else ""
+                merged_head_txt = " ".join(str(x["word"]) for x in (c_chunks[0] + c_chunks[1]))
+                if (
+                    cls._is_dangling_proclitic(first_w, next_first_w)
+                    and len(c_chunks[0]) + len(c_chunks[1]) <= max_words + 1
+                    and len(merged_head_txt) <= max_chars + 10
+                ) or (
+                    len(c_chunks[0]) + len(c_chunks[1]) <= max_words
+                    and len(merged_head_txt) <= max_chars + 8
+                ):
+                    c_chunks[1].insert(0, c_chunks[0][0])
+                    c_chunks.pop(0)
 
             final_chunks.extend([c for c in c_chunks if c])
 

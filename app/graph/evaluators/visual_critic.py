@@ -392,40 +392,71 @@ class VisualCritic:
                 bot_dark = float(bot_st.mean[0]) < 16.0 and float(bot_st.stddev[0]) < 12.0
                 if (top_dark or bot_dark) and float(mid_st.mean[0]) > 35.0:
                     if auto_sanitize and width >= 540 and height >= 540:
-                        if top_dark and bot_dark:
-                            lb_vf = "crop=iw:ih*0.64:0:ih*0.18,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
-                        elif top_dark:
-                            lb_vf = "crop=iw:ih*0.76:0:ih*0.20,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
-                        else:
-                            lb_vf = "crop=iw:ih*0.76:0:ih*0.04,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
-                        tmp_lb = str(p.with_name(f"{p.stem}_nolb{p.suffix}"))
-                        subprocess.run(
-                            [
-                                "ffmpeg", "-v", "error", "-y",
-                                "-i", str(p),
-                                "-vf", lb_vf,
-                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-an",
-                                tmp_lb,
-                            ],
-                            capture_output=True,
-                            timeout=18,
-                            check=False,
-                        )
-                        if Path(tmp_lb).exists() and Path(tmp_lb).stat().st_size > 15000:
-                            shutil.move(tmp_lb, str(p))
-                            logger.info(
-                                f"✂️ [Letterbox Sanitizer] Đã tự động cắt bỏ dải viền đen ngang "
-                                f"(top_dark={top_dark}, bot_dark={bot_dark}) khỏi '{p.name}'!"
+                        # Đo chính xác ranh giới dải viền đen trên tất cả các khung hình mẫu (không đoán tỷ lệ cố định 18%/20%)
+                        scan_frames = gray_frames[:min(4, len(gray_frames))]
+                        y_top_bar = 0
+                        if top_dark:
+                            for ry in range(0, 128, 2):
+                                band_means = [float(ImageStat.Stat(gf.crop((0, ry, 180, ry + 2))).mean[0]) for gf in scan_frames]
+                                band_stds = [float(ImageStat.Stat(gf.crop((0, ry, 180, ry + 2))).stddev[0]) for gf in scan_frames]
+                                if max(band_means) < 20.0 and max(band_stds) < 15.0:
+                                    y_top_bar = ry + 2
+                                else:
+                                    break
+                            y_top_bar = min(132, max(y_top_bar, 26) + 6)
+                        y_bot_bar = 320
+                        if bot_dark:
+                            for ry in range(318, 190, -2):
+                                band_means = [float(ImageStat.Stat(gf.crop((0, ry, 180, ry + 2))).mean[0]) for gf in scan_frames]
+                                band_stds = [float(ImageStat.Stat(gf.crop((0, ry, 180, ry + 2))).stddev[0]) for gf in scan_frames]
+                                if max(band_means) < 20.0 and max(band_stds) < 15.0:
+                                    y_bot_bar = ry
+                                else:
+                                    break
+                            y_bot_bar = max(188, min(y_bot_bar, 294) - 6)
+
+                        clean_rows = y_bot_bar - y_top_bar
+                        # Chỉ cứu khi vùng hình thực chiếm >= 48% chiều cao khung dọc (>= 154/320 hàng);
+                        # nếu là dải ngang 16:9 quá hẹp nhét trong nền đen 9:16 (< 48%), bỏ qua ngay để tránh phóng vỡ hình!
+                        if clean_rows >= 154:
+                            y_ratio = round(y_top_bar / 320.0, 4)
+                            h_ratio = round(clean_rows / 320.0, 4)
+                            lb_vf = (
+                                f"crop=iw:ih*{h_ratio}:0:ih*{y_ratio},"
+                                "scale=1080:1920:force_original_aspect_ratio=increase,"
+                                "crop=1080:1920,setsar=1"
                             )
-                            return cls.inspect_clip_before_concat(
-                                video_path=str(p),
-                                min_short_edge=min_short_edge,
-                                min_sharpness=min_sharpness,
-                                check_watermark=check_watermark,
-                                allow_snow=allow_snow,
-                                auto_sanitize=False,
+                            tmp_lb = str(p.with_name(f"{p.stem}_nolb{p.suffix}"))
+                            subprocess.run(
+                                [
+                                    "ffmpeg", "-v", "error", "-y",
+                                    "-i", str(p),
+                                    "-vf", lb_vf,
+                                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-an",
+                                    tmp_lb,
+                                ],
+                                capture_output=True,
+                                timeout=18,
+                                check=False,
                             )
-                        Path(tmp_lb).unlink(missing_ok=True)
+                            if Path(tmp_lb).exists() and Path(tmp_lb).stat().st_size > 15000:
+                                recheck_lb = cls.inspect_clip_before_concat(
+                                    video_path=tmp_lb,
+                                    min_short_edge=min_short_edge,
+                                    min_sharpness=min_sharpness,
+                                    check_watermark=check_watermark,
+                                    allow_snow=allow_snow,
+                                    auto_sanitize=False,
+                                )
+                                has_residual_lb = any("letterbox" in str(iss).lower() for iss in (recheck_lb.get("issues") or []))
+                                if not has_residual_lb:
+                                    shutil.move(tmp_lb, str(p))
+                                    logger.info(
+                                        f"✂️ [Letterbox Sanitizer] Đã tự động cắt sạch dải viền đen ngang "
+                                        f"(y={y_ratio:.2f}, h={h_ratio:.2f}) khỏi '{p.name}'!"
+                                    )
+                                    return recheck_lb
+                            Path(tmp_lb).unlink(missing_ok=True)
                     issues.append(f"Clip chứa dải viền đen letterbox ở đỉnh/đáy (top_dark={top_dark}, bot_dark={bot_dark})")
             except Exception:
                 pass
@@ -468,6 +499,10 @@ class VisualCritic:
                         ("top_right", (112, 6, 176, 54)),
                         ("bottom_left", (4, 256, 68, 308)),
                         ("bottom_right", (112, 256, 176, 308)),
+                        ("bottom_right_micro", (148, 286, 179, 319)),
+                        ("bottom_left_micro", (1, 286, 32, 319)),
+                        ("top_right_micro", (148, 2, 179, 34)),
+                        ("top_left_micro", (1, 2, 32, 34)),
                         ("top_banner", (22, 10, 158, 52)),
                         ("bottom_banner", (18, 258, 162, 314)),
                     ]
@@ -477,13 +512,14 @@ class VisualCritic:
                                 ImageChops.difference(gray_frames[0].crop(box), gray_frames[-1].crop(box))
                             ).mean[0]
                         )
-                        # Chỉ coi vùng góc có cạnh tĩnh (pers_im) là logo đóng cứng khi cảnh nền tại chính góc đó CÓ chuyển động (c_diff >= 11.5),
+                        is_micro = c_name.endswith("_micro")
+                        # Chỉ coi vùng góc có cạnh tĩnh (pers_im) là logo đóng cứng khi cảnh nền có chuyển động,
                         # tránh báo nhầm cành cây rừng/tảng đá đứng yên khi máy quay đặt trên chân máy (tripod)!
-                        if c_diff < 11.5:
+                        if c_diff < (7.5 if is_micro else 11.5):
                             continue
                         c_mean = float(ImageStat.Stat(pers_im.crop(box)).mean[0])
-                        min_c_thr = 28.0 if "banner" in c_name else 36.0
-                        mult_thr = 1.90 if "banner" in c_name else 2.25
+                        min_c_thr = 22.0 if is_micro else (28.0 if "banner" in c_name else 36.0)
+                        mult_thr = 1.75 if is_micro else (1.90 if "banner" in c_name else 2.25)
                         if c_mean >= min_c_thr and c_mean >= center_mean * mult_thr:
                             detected_corner_zone = (c_name, box)
                             break
@@ -711,12 +747,12 @@ Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ... along with
 {chr(10).join(scene_lines)}
 
 Inspect every labeled tile carefully and flag ONLY scenes that have severe visual defects:
-1. Magazine / Textbook / Infographic / Burned-in Subtitle or Mirrored Text clutter: Frames containing paragraphs of explanatory text, anatomy callout arrows/labels, big channel logos/banners, or burned-in third-party TikTok/Shorts subtitles/mirrored text at the top or bottom.
+1. Magazine / Textbook / Infographic / Burned-in Subtitle, Mirrored Text, or AI Generator Corner Watermark clutter: Frames containing paragraphs of explanatory text, anatomy callout arrows/labels, big channel logos/banners, burned-in third-party TikTok/Shorts subtitles/mirrored text at the top or bottom, OR any AI video generator corner badge/sparkle icon (CHECK ALL 4 CORNERS CLOSELY — especially a small white/translucent 4-point diamond/star sparkle icon `✦` in the bottom-right corner from Gemini/Veo, or Sora/Kling/Runway/Pika/CapCut badges).
 2. Surreal AI Deformities: Frames showing grotesque AI hallucinations (e.g. a human arm/leg grafted onto an animal, gibberish digital meters, or mutated body parts).
-3. Wrong Species / Missing Subject / Unrelated Object (SPECIES-ONLY CHECK — IGNORE HABITAT/ACTION DIFFERENCES):
-   - Check ONLY whether the animal/entity species shown in the frame is valid for either "{primary_entity}" OR the species named in that scene's text (e.g., Wolf in Round 1, Tiger in Round 2, Hippo in Round 3, Polar Bear).
-   - HABITAT/POSE TOLERANCE (ONLY WHEN RULES 1 & 2 ARE 100% CLEAN): If the frame has ZERO burned-in subtitles/watermarks/mirrored text (Rule 1) and ZERO AI deformities (Rule 2), and clearly shows the CORRECT ANIMAL SPECIES mentioned in that scene, pass it even if the animal is in a different habitat or pose than the narration describes. NEVER pass a frame that violates Rule 1 (burned-in subtitles, mirrored text, channel logos like BBC Earth / @username) even if the animal species is correct!
-   - Flag under Rule 3 if the frame shows a COMPLETELY WRONG SPECIES/OBJECT (e.g. a purple DJ mixer, a human office, a car) OR an empty background texture (e.g. empty sand/mud/ice) where the required animal subject is completely missing.
+3. Wrong Animal Family / Missing Subject / Unrelated Object (2-TIER DOCUMENTARY B-ROLL & FAMILY-LEVEL CHECK):
+   - 2-TIER B-ROLL RULE FOR MULTI-ENTITY SCENES: When a scene mentions two entities interacting, a clean wild shot showing AT LEAST ONE of them (EITHER "{primary_entity}" OR any secondary entity named in that scene) is 100% VALID documentary cutaway B-Roll. NEVER fail a scene for "missing the other entity" when "{primary_entity}" or the scene's named entity is clearly visible!
+   - SUB-SPECIES TOLERANCE: Accept closely-related wild sub-species within the exact same ecological predator/prey guild and genus/family (e.g., wild predatory requiem/mackerel sharks like reef/tiger/bull/great white shark for bull shark, or wild crocodile/alligator for saltwater crocodile — but DO NOT substitute gentle filter-feeding whale sharks for apex predatory sharks, or domestic pets for wild predators). Flag ONLY when the frame shows a different animal guild/family (e.g., whale shark for bull shark, lion instead of bear, domestic pet instead of wild predator, human office/DJ mixer/car) OR an empty background texture where NO relevant animal/subject is visible at all.
+   - HABITAT/POSE TOLERANCE (ONLY WHEN RULES 1 & 2 ARE 100% CLEAN): If Rules 1 & 2 are 100% clean (zero watermarks, zero burned-in subtitles, zero AI corner sparkle icons `✦`, zero AI deformities) and a valid entity from the scene or "{primary_entity}" is clearly shown, PASS IT.
 
 Return ONLY valid JSON in this exact format:
 {{
@@ -813,6 +849,7 @@ Return ONLY valid JSON in this exact format:
             )
             is_long_peak_cont = (
                 prod_m_raw == "LONG_PEAK_CONTINUOUS_FLOW"
+                or prod_m_raw.startswith("HOOK_CONTINUOUS")
                 or is_doodle_clip
                 or is_longform_chapter_clip
             )

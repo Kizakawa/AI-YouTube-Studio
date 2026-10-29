@@ -196,14 +196,17 @@ class KeyRotator:
             ):
                 self._global_cooldowns[key] = now + (cooldown_sec or 3600.0)
             else:
-                wait_s = cooldown_sec or 35.0
+                retry_match = _re.search(r"retry in (\d+(?:\.\d+)?)\s*s", err_low)
+                parsed_retry_s = float(retry_match.group(1)) if retry_match else 0.0
+                wait_s = cooldown_sec or max(60.0, min(parsed_retry_s + 2.0, 120.0) if parsed_retry_s > 0 else 60.0)
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
-                # Chỉ khóa toàn cục *:model ngắn hạn (18s) khi TẤT CẢ các key trong pool đều bị 429 trên model này
+                # Khi >= 2 key cùng bị 429 trên một model (hoặc chỉ có 1 key trong pool), khóa toàn cục *:model 60s
+                # để nhảy thẳng sang model khỏe mạnh kế tiếp thay vì thử tuần tự từng key trên cùng project quota.
                 active_key_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_key_locks >= max(len(self.keys), 1):
-                    self._model_cooldowns[f"*:{model}"] = now + min(wait_s, 18.0)
+                if active_key_locks >= min(2, max(len(self.keys), 1)):
+                    self._model_cooldowns[f"*:{model}"] = now + min(wait_s, 60.0)
                     if model in KeyRotator._verified_live_models:
                         KeyRotator._verified_live_models = [
                             m for m in KeyRotator._verified_live_models if m != model

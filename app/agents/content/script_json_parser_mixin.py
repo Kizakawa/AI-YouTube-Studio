@@ -81,7 +81,7 @@ class ScriptJsonParserMixin:
                             return full_text
                 elif r.status_code in (429, 403, 404, 500, 502, 503, 504):
                     err_txt = r.text[:400]
-                    logger.warning(f"⚠️ ({model}) trên key {key[:8]}... gặp mã {r.status_code}. Ngắt mạch 90s & chuyển sang Model khỏe mạnh kế tiếp...")
+                    logger.warning(f"⚠️ ({model}) trên key {key[:8]}... gặp mã {r.status_code}. Ngắt mạch 60s & chuyển sang Model khỏe mạnh kế tiếp...")
                     self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=err_txt)
                     continue
                 else:

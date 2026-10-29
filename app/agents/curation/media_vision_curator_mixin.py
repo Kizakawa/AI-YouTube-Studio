@@ -25,7 +25,7 @@ class MediaVisionCuratorMixin:
         import io as _io
         import requests as _req
         from concurrent.futures import ThreadPoolExecutor
-        from PIL import Image, ImageDraw
+        from PIL import Image, ImageDraw, ImageFilter, ImageStat
 
         def _dl_one(item_pair: Tuple[int, Dict[str, Any]]) -> Optional[Tuple[int, str, str]]:
             idx, cand = item_pair
@@ -43,6 +43,18 @@ class MediaVisionCuratorMixin:
                 with Image.open(_io.BytesIO(r.content)) as im:
                     if im.mode != "RGB":
                         im = im.convert("RGB")
+                    # Lọc bỏ các thumbnail bị hỏng/đen kịt/cháy trắng hoàn toàn trước khi gửi LLM
+                    # (lưu ý: ảnh preview nén web của cảnh dưới nước/đại dương thường có biên cạnh mềm ~2.5-4.5, không lọc quá gắt như frame gốc 1080p)
+                    g256 = im.convert("L").resize((256, 256), Image.Resampling.BILINEAR)
+                    g_st = ImageStat.Stat(g256)
+                    lum_m = float(g_st.mean[0])
+                    con_s = float(g_st.stddev[0])
+                    sh_m = float(ImageStat.Stat(g256.filter(ImageFilter.FIND_EDGES)).mean[0])
+                    cand["_thumb_sharpness"] = round(sh_m, 2)
+                    cand["_thumb_contrast"] = round(con_s, 2)
+                    if lum_m < 12.0 or lum_m > 246.0 or con_s < 8.5 or sh_m < 2.2:
+                        cand["_thumb_low_quality"] = True
+                        return None
                     im.thumbnail((320, 320), Image.Resampling.BILINEAR)
                     try:
                         draw = ImageDraw.Draw(im)
@@ -172,8 +184,13 @@ class MediaVisionCuratorMixin:
         valid_candidates.sort(key=lambda c: 0 if (c["height"] or 0) >= (c["width"] or 0) else 1)
         eval_pool = valid_candidates[:8]
 
-        def _format_winner(winner: Dict[str, Any], score: float, rationale: str) -> Dict[str, Any]:
-            return {
+        def _format_winner(
+            winner: Dict[str, Any],
+            score: float,
+            rationale: str,
+            alternate_urls: Optional[List[str]] = None,
+        ) -> Dict[str, Any]:
+            out_w = {
                 "url": winner["download_link"],
                 "web_url": winner["url"],
                 "title": f"{winner['source']}: {winner['slug']}",
@@ -186,6 +203,9 @@ class MediaVisionCuratorMixin:
                 "curation_score": score,
                 "curation_rationale": rationale,
             }
+            if alternate_urls:
+                out_w["_vision_alternates"] = alternate_urls
+            return out_w
 
         thumb_images, idx_to_img_order = self._fetch_video_thumbnails_for_llm(eval_pool)
 
@@ -202,6 +222,8 @@ class MediaVisionCuratorMixin:
 
         candidates_for_llm = []
         for idx, c in enumerate(eval_pool):
+            if c.get("_thumb_low_quality"):
+                continue
             img_ord = idx_to_img_order.get(idx)
             candidates_for_llm.append({
                 "index": idx,
@@ -217,8 +239,11 @@ class MediaVisionCuratorMixin:
                 ),
             })
 
+        if not candidates_for_llm:
+            return None, 2.5, "Tất cả ứng viên video kho đều quá mờ hoặc thiếu tương phản (< chuẩn VisualCritic).", True
+
         prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Thẩm Định Ngữ Cảnh Kịch Bản Đa Phương Thức (Multimodal Script-Intent Video Auditor).
-Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để chọn ra DUY NHẤT 1 VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản.
+Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để chọn ra VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản (kèm danh sách ứng viên dự phòng đạt chuẩn nếu có).
 
 NGỮ CẢNH KỊCH BẢN CỦA NGƯỜI DÙNG:
 - Chủ đề tổng thể (Topic): "{topic_ctx}"
@@ -231,21 +256,22 @@ NGỮ CẢNH KỊCH BẢN CỦA NGƯỜI DÙNG:
 DANH SÁCH ỨNG VIÊN VIDEO TỪ KHO:
 {json.dumps(candidates_for_llm, ensure_ascii=False, indent=2)}
 
-TIÊU CHUẨN SUY LUẬN & TUYỂN CHỌN THÔNG MINH (KHÔNG ĐẾM TỪ KHÓA MÁY MÓC):
-1. ĐỐI CHIẾU Ý NGHĨA KỊCH BẢN VỚI HÌNH ẢNH THỰC TẾ TRONG `INDEX N` VÀ `returned_url`:
-   - Tự đặt câu hỏi: "Khi khán giả nghe câu thoại `{narration}` trong câu chuyện về `{topic_ctx}`, khung hình của ứng viên `INDEX N` có giúp họ hình dung đúng chủ thể, đúng môi trường và đúng cảm xúc của câu chuyện không?"
-   - Nếu `returned_url` hoặc hình ảnh thực tế quay một loài vật/chủ thể khác hẳn với chủ thể của kịch bản (ví dụ: thú cưng trong nhà khi kịch bản nói về thú săn mồi hoang dã, hoặc động vật lọt vào kịch bản tâm lý học con người), hoặc quay trong lồng sắt/chuồng bê tông sở thú, hoặc sai lệch hoàn toàn môi trường/mùa/thời đại của kịch bản -> BẮT BUỘC TỪ CHỐI!
-2. ƯU TIÊN KHUNG HÌNH SỐNG ĐỘNG & GIÀU CẢM XÚC ĐIỆN ẢNH:
-   - Khi có nhiều ứng viên cùng đúng chủ thể và bối cảnh kịch bản, hãy chọn ứng viên có hành động rõ nét nhất, góc quay cận/trung cảnh giàu kịch tính và sạch chữ/watermark 100%.
-3. QUYẾT ĐỊNH DỨT KHOÁT:
-   - Nếu tìm thấy ứng viên thực sự ăn khớp với ý nghĩa kịch bản (`confidence_score >= 7.0`): trả về đúng `winner_index` (khớp nhãn `INDEX N` trên ảnh), `winner_url` và `"should_fallback_to_ai": false`.
-   - Nếu TẤT CẢ ứng viên đều lệch ý kịch bản, sai chủ thể hoặc sai môi trường (`confidence_score < 7.0`): trả về `"winner_index": -1`, `"winner_url": ""` và `"should_fallback_to_ai": true`.
+TIÊU CHUẨN SUY LUẬN & TUYỂN CHỌN THÔNG MINH 2 TẦNG (KHÔNG ĐẾM TỪ KHÓA MÁY MÓC):
+1. QUY TẮC B-ROLL PHIM TÀI LIỆU 2 TẦNG (2-TIER DOCUMENTARY B-ROLL):
+   - Tầng 1 (`confidence_score: 8.5–9.8`): Ứng viên thể hiện trực tiếp toàn bộ tương tác nhiều thực thể hoặc đúng vi hành động vật lý trong `{narration}`.
+   - Tầng 2 (`confidence_score: 7.4–8.4`): Khi câu thoại mô tả pha va chạm hiếm giữa 2 thực thể hoặc cơ chế vi mô khó có sẵn trong một clip kho miễn phí duy nhất, TUYỆT ĐỐI KHÔNG từ chối (`winner_index: -1`) chỉ vì clip chỉ quay riêng MỘT trong các thực thể chính/phụ của phân cảnh! Nếu ứng viên quay ĐÚNG thực thể/nhân vật/hiện tượng của phân cảnh trong môi trường tự nhiên/lịch sử/bối cảnh chân thực và sạch 100%, BẮT BUỘC DUYỆT (`should_fallback_to_ai: false`) làm cảnh B-Roll điện ảnh hợp lệ.
+2. TIÊU CHUẨN LOẠI BỎ NGHIÊM NGẶT (ĐỒNG BỘ VỚI GIÁM KHẢO CUỐI VISUAL CRITIC):
+   - BẮT BUỘC TỪ CHỐI ứng viên quay sai hẳn loài/chủ thể (ví dụ: thú cưng/gia súc thuần hóa có vòng mũi/dây xích khi kịch bản nói về thú săn mồi hoang dã, hoặc động vật lọt vào kịch bản tâm lý học con người), quay trong lồng sắt/bể bê tông sở thú, có bóng khách du lịch/người đứng chụp ảnh ở góc xa trong cảnh thiên nhiên hoang dã, lệch hoàn toàn thời đại/hệ sinh thái/mùa của kịch bản, hoặc dính chữ/watermark/biểu tượng sao 4 cánh AI (`✦`) ở góc khung hình.
+3. ƯU TIÊN KHUNG HÌNH SỐNG ĐỘNG & GIỮ ỨNG VIÊN DỰ PHÒNG SẠCH:
+   - Chọn ứng viên có hành động rõ nét nhất, góc quay cận/trung cảnh giàu kịch tính làm `winner_index`, đồng thời liệt kê các ứng viên sạch đạt chuẩn còn lại (`>= 7.2`) vào `approved_alternate_indices` để làm phương án dự phòng tức thì.
+   - Chỉ khi TẤT CẢ ứng viên đều vi phạm mục 2 hoặc lạc đề hoàn toàn (`confidence_score < 7.0`), mới trả về `"winner_index": -1`, `"winner_url": ""` và `"should_fallback_to_ai": true`.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
   "winner_index": -1,
   "winner_url": "",
   "confidence_score": 2.0,
+  "approved_alternate_indices": [],
   "rationale": "Giải thích ngắn gọn vì sao ứng viên INDEX N khớp (hoặc không khớp) với ý nghĩa kịch bản của người dùng",
   "should_fallback_to_ai": true
 }}"""
@@ -264,11 +290,19 @@ TRẢ VỀ JSON DUY NHẤT:
 
             if 0 <= w_idx < len(eval_pool) and score >= 7.0 and not fallback_ai:
                 winner = eval_pool[w_idx]
+                alt_urls = [
+                    eval_pool[int(a_i)]["download_link"]
+                    for a_i in (agent_dec.get("approved_alternate_indices") or [])
+                    if isinstance(a_i, (int, float))
+                    and 0 <= int(a_i) < len(eval_pool)
+                    and int(a_i) != w_idx
+                    and eval_pool[int(a_i)].get("download_link")
+                ]
                 logger.info(
                     f"🎬 [LLM Link & Vision Audit] ✅ Đã chọn Video #{winner['raw_video'].get('id')} "
-                    f"(INDEX {w_idx}: '{winner['url']}') | Điểm: {score}/10 | {rationale}"
+                    f"(INDEX {w_idx}: '{winner['url']}', backups={len(alt_urls)}) | Điểm: {score}/10 | {rationale}"
                 )
-                return _format_winner(winner, score, rationale), score, rationale, False
+                return _format_winner(winner, score, rationale, alternate_urls=alt_urls), score, rationale, False
 
             logger.info(
                 f"🚫 [LLM Link & Vision Audit] Từ chối toàn bộ ứng viên video lệch kịch bản "
