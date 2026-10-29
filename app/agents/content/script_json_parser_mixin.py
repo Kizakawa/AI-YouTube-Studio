@@ -568,10 +568,10 @@ class ScriptJsonParserMixin:
                 re.IGNORECASE,
             )
             _dangling_end_re = re.compile(
-                r'[\s\.\,\-\—\…]+(?:because|which|and|so|that|but|with|or|while|as|if|since|although|though|where|'
-                r'of|to|for|from|in|on|at|by|into|onto|until|his|her|their|its|my|your|our|these|this|those|the|a|an|is|are|was|were|why|how|what|when|'
-                r'que|de|do|da|dos|das|pois|porque|para|com|em|no|na|nos|nas|mas|ou|quando|onde|'
-                r'bởi vì|cho nên|nhưng|hoặc|của|với| tại|trong)[\s\.\,\-\—\…]*$',
+                r'[\s\.\,\-\—\…]+(?:because|which|and|but|or|while|although|though|unless|whereas|'
+                r'the|a|an|his|her|their|its|my|your|our|these|those|'
+                r'porque|pois|mas|embora|enquanto|'
+                r'bởi vì|nhưng|hoặc|mặc dù)[\s\.\,\-\—\…]*$',
                 re.IGNORECASE,
             )
             for idx_s, sc_obj in enumerate(scenes):
@@ -580,13 +580,13 @@ class ScriptJsonParserMixin:
                 s_narr = str(sc_obj.get("narration") or "").strip()
                 s_narr = _stage_tag_re.sub("", s_narr)
                 s_narr = re.sub(r'\s+', ' ', s_narr).strip()
-                # Khử các từ nối/giới từ/tính từ sở hữu bị cắt cụt ở cuối câu
+                # Chỉ khử các liên từ phụ thuộc / mạo từ / tính từ sở hữu thực sự bị bỏ lửng ở cuối câu
+                # (TUYỆT ĐỐI KHÔNG cắt các từ hợp lệ ở cuối câu tiếng Anh như 'no', 'do', 'in', 'on', 'to', 'is', 'are', 'why')
                 while _dangling_end_re.search(s_narr):
                     s_narr = _dangling_end_re.sub("", s_narr).strip()
-                if idx_s == len(scenes) - 1:
-                    s_narr = s_narr.rstrip(".,-—…")
-                    if s_narr and not s_narr.endswith((".", "!", "?")):
-                        s_narr += "."
+                s_narr = s_narr.rstrip(",-—…")
+                if s_narr and not s_narr.endswith((".", "!", "?", '"', "'", "”")):
+                    s_narr += "."
                 sc_obj["narration"] = s_narr
 
         # ── 2.85. VIRAL HOOK RETENTION TOURNAMENT (ĐẤU TRƯỜNG HOOK 0.0s TỐI ƯU STAY-TO-WATCH >= 75%) ──

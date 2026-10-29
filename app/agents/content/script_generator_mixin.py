@@ -319,7 +319,7 @@ Return ONLY valid JSON:
   "scene_4_mid_video_15s_twist": "Explosive 15-second Plot Twist / Second Hook for Scene 4 that flips expectations with a 2nd concrete metric",
   "comment_war_bait_claim": "Bold, polarizing 'Sacred-Cow Breaker' / Cunningham's Law claim in {target_lang_display} to spark fierce debate in the comment section",
   "act_4_ultimate_payoff": "Decisive biomechanical outcome, scientific revelation, or surgical counter-move for Scenes 6-7",
-  "scene_8_infinite_echo_loop": "Exact conceptual bridge connecting the end of Scene 8 directly back into Scene 1's opening hook",
+  "scene_8_infinite_echo_loop": "A 100% grammatically COMPLETE, self-contained closing punchline sentence in {target_lang_display} that conceptually echoes Scene 1's theme (STRICTLY FORBIDDEN: NEVER write an unfinished half-sentence ending with 'because...', 'ensure that...', 'which is why...', or 'and that is why')",
   "counterfactual_debate_comment": "12-22 word Counterfactual 50/50 Debate Question in {target_lang_display} (e.g. 2v1 escalation, terrain flip, or next opponent) ending with (1) or (2) 👇 and ZERO Subscribe promo",
   "hot_yt_shorts_peak_queries": [
     "concrete English query 1 for 0s peak action YouTube Short (3-5 words)",
@@ -356,7 +356,7 @@ Return ONLY valid JSON:
                     f"- Mandatory Scene 4 Mid-Video 15s Reversal Twist + Second Metric: {bp_data.get('scene_4_mid_video_15s_twist', '')}\n"
                     f"- 🔥 Mandatory Comment-War / Cunningham's Law Bait Claim (Weave into Scene 4 or 5 to trigger comment debates): {bp_data.get('comment_war_bait_claim', '')}\n"
                     f"- Mandatory Act 4 Payoff (Scenes 6-7): {bp_data.get('act_4_ultimate_payoff', '')}\n"
-                    f"- Mandatory Scene 8 Infinite Echo-Loop Bridge: {bp_data.get('scene_8_infinite_echo_loop', '')}\n"
+                    f"- Mandatory Scene 8 Complete Closing Punchline (100% grammatically complete standalone sentence — NEVER leave an unfinished half-sentence!): {bp_data.get('scene_8_infinite_echo_loop', '')}\n"
                     f"- Mandatory Counterfactual 50/50 Debate Comment (pinned_comment): {bp_data.get('counterfactual_debate_comment', '')}\n"
                     f"- Hot YouTube Shorts Peak Search Queries: {json.dumps(bp_data.get('hot_yt_shorts_peak_queries', []), ensure_ascii=False)}\n"
                     "═══════════════════════════════════════════════════════════\n"
@@ -570,9 +570,9 @@ YouTube rewards TWO metrics simultaneously:
          * For Psychology: Give the exact calm verbal/behavioral counter-move that disarms the trap on the spot.
          * For Wildlife / Rescue / Mysteries: Deliver the decisive biomechanical outcome, joyful transformation, or scientific revelation that resolves the twist.
 
-     * ACT 5 — NATURAL PUNCHY FINALE & SEAMLESS BRIDGE (Final Scene 7 or 8 -> Loops into Scene 1):
+     * ACT 5 — NATURAL PUNCHY FINALE & COMPLETE CLOSING PUNCHLINE (Final Scene 7 or 8):
        - ZERO SPOKEN OUTRO CTA: NEVER say "Subscribe", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in the narration!
-       - Craft the final complete sentence as a natural, punchy conclusion that bridges back into Scene 1's opening premise (NEVER write robotic sentences like "that is why you should look closely at...").
+       - Craft the final scene as a 100% grammatically COMPLETE, self-contained closing punchline sentence with a full subject, verb, and object! STRICTLY FORBIDDEN: NEVER write an unfinished half-sentence loop (e.g., NEVER end with "...which is why", "...ensure that", "...because", or "that is why you should look closely at").
 
 2. HIGH-CTR SEARCHABLE TITLE VS. SCENE 1 HOOK RULES (PROVEN BY OUR OWN TOP ANALYTICS WINNERS):
    - The first 1.5 - 2.2 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
