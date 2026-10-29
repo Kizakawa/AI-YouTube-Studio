@@ -187,6 +187,8 @@ def _fetch_longform_16x9_broll_clip_sync(
         try:
             from app.services.media.longform_chapter_pool import (
                 extract_longform_scene_with_internal_jumpcut,
+                is_clip_visually_unique_in_job,
+                stitch_two_16x9_clips_no_loop,
                 _is_clip_window_clean,
             )
             q_parts = [p.strip() for p in str(query or "").split("|||") if p.strip()]
@@ -227,13 +229,41 @@ def _fetch_longform_16x9_broll_clip_sync(
                     raw_stock = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw.mp4")
                     dl_ok = media_agent.download_file(cand_u, raw_stock)
                     if dl_ok and Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 40_000 and get_duration_ms(raw_stock) >= 1500:
-                        cut_ok = extract_longform_scene_with_internal_jumpcut(
-                            master_path=raw_stock,
-                            output_path=out_path,
-                            start_offset_sec=0.0,
-                            target_duration_sec=max(2.5, float(target_duration_sec)),
-                            scene_id=scene_id,
-                        )
+                        raw_dur_s = get_duration_ms(raw_stock) / 1000.0
+                        req_dur_s = max(2.5, float(target_duration_sec))
+                        cut_ok = False
+                        # Chống lặp cảnh nội bộ (-stream_loop -1): Nếu clip Stock ngắn hơn thời lượng lời thoại >= 0.8s (VD: clip 7s cho cảnh 15s),
+                        # tự động tải thêm 1 clip Stock thứ 2 khác hoàn toàn và nối mượt 2 cú máy (Shot A + Shot B)!
+                        if req_dur_s >= 8.5 and raw_dur_s < (req_dur_s - 0.8):
+                            with bvid_lock:
+                                second_vid = media_agent._stock.search_landscape_16x9_video_clip(
+                                    queries=q_parts[1:] + q_parts[:1],
+                                    used_urls=used_urls,
+                                    topic=topic,
+                                    narration=narration,
+                                    prefer_pixabay=not (prefer_pixabay ^ (try_idx == 1)),
+                                )
+                            if second_vid and second_vid.get("url"):
+                                raw_stock_b = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw_b.mp4")
+                                if media_agent.download_file(str(second_vid["url"]), raw_stock_b):
+                                    cut_ok = stitch_two_16x9_clips_no_loop(
+                                        clip_a=raw_stock,
+                                        clip_b=raw_stock_b,
+                                        output_path=out_path,
+                                        target_duration_sec=req_dur_s,
+                                        scene_id=scene_id,
+                                    )
+                                    if cut_ok:
+                                        prod_lbl = f"{prod_lbl}_MULTI_SHOT"
+                                Path(raw_stock_b).unlink(missing_ok=True)
+                        if not cut_ok:
+                            cut_ok = extract_longform_scene_with_internal_jumpcut(
+                                master_path=raw_stock,
+                                output_path=out_path,
+                                start_offset_sec=0.0,
+                                target_duration_sec=req_dur_s,
+                                scene_id=scene_id,
+                            )
                         if not cut_ok and get_duration_ms(raw_stock) >= 2500:
                             Path(raw_stock).replace(out_path)
                         else:
@@ -243,6 +273,7 @@ def _fetch_longform_16x9_broll_clip_sync(
                             and Path(out_path).stat().st_size > 35_000
                             and get_duration_ms(out_path) >= 1200
                             and _is_clip_window_clean(out_path, [0.8, 2.2])
+                            and is_clip_visually_unique_in_job(out_path, job_id)
                         ):
                             if scene_id == 1:
                                 try:
@@ -281,7 +312,7 @@ def _fetch_longform_16x9_broll_clip_sync(
                 bvid_lock=bvid_lock,
                 media_agent=media_agent,
                 is_scifi=is_scifi,
-                scenes_per_chapter=2,
+                scenes_per_chapter=1,
             )
             if pool_res and pool_res.get("media_path"):
                 if output_override_path and str(Path(pool_res["media_path"]).resolve()) != str(Path(output_override_path).resolve()):

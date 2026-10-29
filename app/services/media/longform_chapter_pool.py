@@ -30,6 +30,99 @@ logger = logging.getLogger(__name__)
 _chapter_locks_guard = threading.Lock()
 _chapter_locks: Dict[str, threading.Lock] = {}
 _yt_longform_dl_sem = threading.BoundedSemaphore(6)
+_job_dhash_lock = threading.Lock()
+_JOB_SCENE_DHASHES: Dict[int, List[int]] = {}
+
+
+def is_clip_visually_unique_in_job(video_path: str, job_id: int, max_hamming: int = 10) -> bool:
+    """
+    Kiểm tra Perceptual dHash (64-bit) trên khung hình giữa của video cảnh:
+    Đảm bảo trong cùng 1 Job không bao giờ có 2 phân cảnh dùng trùng/gần trùng cảnh quay (Hamming distance <= 10).
+    """
+    if not job_id or not video_path or not Path(video_path).exists():
+        return True
+    try:
+        import cv2
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            return True
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        if total_frames > 4:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(total_frames * 0.45))
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            return True
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        resized = cv2.resize(gray, (9, 8), interpolation=cv2.INTER_AREA)
+        dhash_val = 0
+        for r in range(8):
+            for c in range(8):
+                dhash_val = (dhash_val << 1) | (1 if int(resized[r, c + 1]) > int(resized[r, c]) else 0)
+        with _job_dhash_lock:
+            existing = _JOB_SCENE_DHASHES.setdefault(int(job_id), [])
+            for prev_h in existing:
+                if bin(dhash_val ^ prev_h).count("1") <= max_hamming:
+                    return False
+            existing.append(dhash_val)
+        return True
+    except Exception:
+        return True
+
+
+def stitch_two_16x9_clips_no_loop(
+    clip_a: str,
+    clip_b: str,
+    output_path: str,
+    target_duration_sec: float,
+    scene_id: int = 1,
+) -> bool:
+    """
+    Khi một phân cảnh Long-Form dài 14s–16s nhưng clip Stock Pexels/Pixabay chỉ dài 6s–8s,
+    TUYỆT ĐỐI KHÔNG dùng `-stream_loop -1` lặp lại 1 clip 2 lần!
+    Hàm này nối mượt 2 clip 16:9 khác nhau (`Shot A` nửa đầu + `Shot B` nửa sau) chuẩn 1920x1080 @ 30fps.
+    """
+    if not (Path(clip_a).exists() and Path(clip_b).exists()):
+        return False
+    req_dur = max(4.0, float(target_duration_sec))
+    dur_a = get_duration_ms(clip_a) / 1000.0
+    dur_b = get_duration_ms(clip_b) / 1000.0
+    if dur_a < 2.0 or dur_b < 2.0:
+        return False
+    half_a = min(max(2.5, dur_a - 0.15), round(req_dur * 0.50, 2))
+    half_b = max(2.5, round(req_dur - half_a + 0.10, 2))
+    crf_val = "17" if scene_id == 1 else "18"
+    filter_complex = (
+        f"[0:v]trim=start=0.00:duration={half_a:.2f},setpts=PTS-STARTPTS,"
+        f"scale=1980:1114:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop=1920:1080,eq=contrast=1.04:saturation=1.06,fps=30,format=yuv420p[v0];"
+        f"[1:v]trim=start=0.00:duration={half_b:.2f},setpts=PTS-STARTPTS,"
+        f"scale=2040:1148:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop=1920:1080,eq=contrast=1.05:saturation=1.07,vignette=PI/7,fps=30,format=yuv420p[v1];"
+        f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
+    )
+    tmp_stitch = f"{output_path}.stitch2.mp4"
+    cmd = [
+        "ffmpeg", "-y", "-v", "error",
+        "-i", clip_a,
+        "-i", clip_b,
+        "-filter_complex", filter_complex,
+        "-map", "[vout]",
+        "-t", f"{req_dur:.2f}",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", crf_val,
+        "-an",
+        tmp_stitch,
+    ]
+    try:
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
+    except Exception:
+        Path(tmp_stitch).unlink(missing_ok=True)
+        return False
+    if Path(tmp_stitch).exists() and Path(tmp_stitch).stat().st_size > 35_000 and get_duration_ms(tmp_stitch) >= 2500:
+        Path(tmp_stitch).replace(output_path)
+        return True
+    Path(tmp_stitch).unlink(missing_ok=True)
+    return False
 
 LANDSCAPE_16X9_YTDLP_FORMAT = (
     "best[protocol=https][aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
@@ -620,16 +713,12 @@ def fetch_or_slice_longform_chapter_clip_sync(
     bvid_lock: threading.Lock,
     media_agent: Any,
     is_scifi: bool = False,
-    scenes_per_chapter: int = 3,
+    scenes_per_chapter: int = 1,
 ) -> Optional[Dict[str, Any]]:
     """
     Hàm điều phối trung tâm cho từng phân cảnh của Video Dài 16:9 (`1920x1080`):
-    - Gom nhóm `scenes_per_chapter` (mặc định 3 cảnh / 1 Chương) dùng chung 1 file Master `chapter_XX_master.mp4`.
-    - Nếu Chương chưa có file Master trên đĩa:
-        1. Tìm và tải 1 video nguồn YouTube 16:9 HD dài `35s–72s` (`YOUTUBE_16X9_CHAPTER_MASTER`).
-        2. Nếu không có trên YouTube -> tải 1 video nguồn Bilibili 16:9 Safe-Crop dài `35s–60s` (`BILIBILI_16X9_CHAPTER_MASTER`).
-    - Sau khi có file Master của Chương trên ổ cứng, mỗi cảnh trong Chương (`slot = 0, 1, 2`) cắt trực tiếp
-      phân đoạn của mình (cách nhau bởi bước nhảy Jump-Cut `+3.5s` và có Jump-Cut nội bộ giữa cảnh) chỉ trong `0.3s`!
+    - Mặc định `scenes_per_chapter = 1` để mỗi phân cảnh sở hữu 1 video nguồn Master độc lập,
+      tuyệt đối không dùng chung hay lặp cảnh giữa các phân cảnh!
     """
     out_path = str(media_dir / f"scene_{scene_id:03d}_16x9.mp4")
     if Path(out_path).exists():
@@ -763,6 +852,10 @@ def fetch_or_slice_longform_chapter_clip_sync(
             target_duration_sec=max(2.5, float(target_duration_sec)),
             scene_id=scene_id,
         ):
+            if not is_clip_visually_unique_in_job(out_path, job_id):
+                Path(out_path).unlink(missing_ok=True)
+                logger.info(f"Scene {scene_id}: 🚫 [dHash Dedup] Loại bỏ clip trùng lặp hình ảnh từ {master_source_label}")
+                return None
             logger.info(
                 f"Scene {scene_id}: ⚡ [ChapterPool Local Cut] Cắt tức thì từ Master Chương #{chapter_idx} "
                 f"(slot {slot_in_chapter + 1}/{scenes_per_chapter}, offset={offset_s:.1f}s, Jump-Cut 16:9)"
