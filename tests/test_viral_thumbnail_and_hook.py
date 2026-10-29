@@ -103,9 +103,9 @@ def test_anti_lazy_ai_face_rules():
     
     # Verify macro eye dilation was removed from camera angles
     assert "macro eye dilation" not in camera_angles.lower(), "Macro eye dilation still in camera_angles!"
-    # Verify negative prompts include macro eye and dark muddy face
-    assert "macro eye" in neg_prompts.lower(), "macro eye not in negative_prompts!"
-    assert "dark muddy face" in neg_prompts.lower(), "dark muddy face not in negative_prompts!"
+    # Verify negative prompts include anti-stock/anti-distortion guardrails
+    assert "distorted faces" in neg_prompts.lower(), "distorted faces not in negative_prompts!"
+    assert "smiling stock photo" in neg_prompts.lower(), "smiling stock photo not in negative_prompts!"
     
     print(f"  Psychology camera_angles: {camera_angles}")
     print(f"  Psychology negative_prompts: {neg_prompts}")

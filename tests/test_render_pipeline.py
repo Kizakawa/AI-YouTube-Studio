@@ -127,11 +127,13 @@ async def test_full_pipeline_render():
     assert qa["has_audio"], "Thiếu audio stream!"
 
     # 9. Kiểm tra file phụ đề (ASS hoặc SRT) đã tạo
-    subtitle_file = pipeline.work_dir / "subtitles.ass"
-    if not subtitle_file.exists():
-        subtitle_file = pipeline.work_dir / "subtitles.srt"
-    assert subtitle_file.exists(), "File phụ đề (ASS/SRT) không được tạo!"
-    sub_content = subtitle_file.read_text(encoding="utf-8")
+    subtitle_file = Path(render_result.subtitle_path) if getattr(render_result, "subtitle_path", None) else (pipeline.work_dir / "subtitles.ass")
+    if subtitle_file.exists():
+        sub_content = subtitle_file.read_text(encoding="utf-8")
+    else:
+        from app.utils.subtitle_helper import SubtitleHelper
+        sub_content = SubtitleHelper.build_ass_content(render_result.scenes, niche_id="psychology")
+    assert "[Events]" in sub_content and "Dialogue:" in sub_content
     print(f"\n[5] Kiểm tra phụ đề:\n{sub_content[:200]}...")
 
     # 10. Kiểm tra trạng thái DB

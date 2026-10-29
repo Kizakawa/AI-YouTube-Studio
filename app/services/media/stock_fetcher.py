@@ -15,7 +15,7 @@ import urllib.parse
 import itertools
 import logging
 import requests
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 
 from app.utils.langsmith_tracer import trace_custom_span
 from config.settings import settings

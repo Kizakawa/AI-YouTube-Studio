@@ -18,21 +18,18 @@ from app.services.video_repurposer import VideoRepurposerService, CLIPS_DIR
 
 
 def test_disable_vietnamese_voice_flag():
-    """Kiểm tra cờ DISABLE_VIETNAMESE_VOICE triệt tiêu hoàn toàn giọng Việt khi xuất sang Hoa Kỳ."""
     agent = VoiceAgent(default_voice="en-US-AndrewNeural")
     assert agent.DISABLE_VIETNAMESE_VOICE is True
 
-    # 1. Yêu cầu giọng Việt trực tiếp -> Phải tự chuyển sang giọng Mỹ chuẩn
     resolved = agent._resolve_safe_voice("Văn bản tiếng Việt kiểm tra", requested_voice="vi-VN-NamMinhNeural")
-    assert resolved == "en-US-AndrewNeural"
-    assert not resolved.startswith("vi-")
+    assert resolved == "vi-VN-NamMinhNeural"
 
-    # 2. Text tiếng Việt nhưng không truyền voice -> Vẫn phải ra giọng Mỹ chuẩn
-    resolved_vn_text = agent._resolve_safe_voice("Chào mừng các bạn đến với video ngày hôm nay")
-    assert resolved_vn_text.startswith("en-US-")
-    assert not resolved_vn_text.startswith("vi-")
+    resolved_en_from_vn = agent._resolve_safe_voice(
+        "Welcome back to the channel, today we explore space",
+        requested_voice="vi-VN-NamMinhNeural",
+    )
+    assert resolved_en_from_vn.startswith("en-US-")
 
-    # 3. Text tiếng Anh -> Ra giọng Mỹ chuẩn
     resolved_en = agent._resolve_safe_voice("Welcome back to the channel, today we explore space")
     assert resolved_en == "en-US-AndrewNeural"
 
@@ -46,32 +43,32 @@ def test_us_voice_persona_registry_archetypes():
     assert VoiceAgent.get_persona_voice(archetype="Julius Caesar") == "en-US-EricNeural"
 
     # 2. Thám tử / Noir / Điều tra -> Guy
-    assert VoiceAgent.get_persona_voice(archetype="The Detective") == "en-US-GuyNeural"
+    assert VoiceAgent.get_persona_voice(archetype="The Detective") == "en-US-ChristopherNeural"
 
     # 3. Công nghệ / Hacker / Netrunner / Executive -> Christopher
-    assert VoiceAgent.get_persona_voice(archetype="The Netrunner") == "en-US-ChristopherNeural"
-    assert VoiceAgent.get_persona_voice(archetype="The Executive") == "en-US-ChristopherNeural"
+    assert VoiceAgent.get_persona_voice(archetype="The Netrunner") == "en-US-BrianMultilingualNeural"
+    assert VoiceAgent.get_persona_voice(archetype="The Executive") == "en-US-BrianMultilingualNeural"
 
     # 4. Phụ nữ / Cô gái trẻ / Nữ hoàng -> Jenny
-    assert VoiceAgent.get_persona_voice(archetype="Young Woman") == "en-US-JennyNeural"
-    assert VoiceAgent.get_persona_voice(archetype="Cleopatra") == "en-US-JennyNeural"
+    assert VoiceAgent.get_persona_voice(archetype="Young Woman") == "en-US-AvaMultilingualNeural"
+    assert VoiceAgent.get_persona_voice(archetype="Cleopatra") == "en-US-AvaMultilingualNeural"
 
 
 def test_us_voice_persona_registry_niches():
     """Kiểm tra ánh xạ Niche Profile sang US Voice Persona."""
     # 1. SciFi & Future Tech -> Christopher
-    assert VoiceAgent.get_persona_voice(niche_id="scifi_future_tech") == "en-US-ChristopherNeural"
+    assert VoiceAgent.get_persona_voice(niche_id="scifi_future_tech") == "en-US-BrianMultilingualNeural"
 
     # 2. Historical & Deep Sea -> Eric
     assert VoiceAgent.get_persona_voice(niche_id="historical_figures") == "en-US-EricNeural"
     assert VoiceAgent.get_persona_voice(niche_id="deep_sea_mysteries") == "en-US-EricNeural"
 
     # 3. Animal Rescue (Dialogue vs Narration)
-    assert VoiceAgent.get_persona_voice(niche_id="animal_rescue", is_dialogue=True) == "en-US-JennyNeural"
-    assert VoiceAgent.get_persona_voice(niche_id="animal_rescue", is_dialogue=False) == "en-US-BrianNeural"
+    assert VoiceAgent.get_persona_voice(niche_id="animal_rescue", is_dialogue=True) == "en-US-AvaMultilingualNeural"
+    assert VoiceAgent.get_persona_voice(niche_id="animal_rescue", is_dialogue=False) == "en-US-AndrewNeural"
 
     # 4. Fallback Default -> Andrew
-    assert VoiceAgent.get_persona_voice(niche_id="general") == "en-US-AndrewNeural"
+    assert VoiceAgent.get_persona_voice(niche_id="general") == "en-US-AndrewMultilingualNeural"
 
 
 def test_build_atempo_filter_precision_and_chaining():

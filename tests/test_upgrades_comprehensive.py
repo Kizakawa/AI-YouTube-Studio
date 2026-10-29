@@ -385,6 +385,10 @@ def test_tc_sb_01_storyboard_unassigned_scenes():
         db.refresh(job)
         job_id = job.id
 
+    job_media_dir = mgr.get_job_media_dir(job_id)
+    for leftover in job_media_dir.glob("scene_*"):
+        leftover.unlink(missing_ok=True)
+
     sb = mgr.get_storyboard(job_id)
     assert sb["job_id"] == job_id
     assert sb["scene_count"] == 2

@@ -153,7 +153,7 @@ class QuotaManager:
     def record_consumption(project_id: str, units: int = COST_FULL_SHORTS, is_upload: bool = True) -> int:
         """Ghi nhận số units đã tiêu hao vào database."""
         import sys
-        if os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+        if (os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules) and not str(project_id).startswith("test_"):
             return 0
         cycle = get_current_cycle_id()
         with get_db() as db:
@@ -189,7 +189,7 @@ class QuotaManager:
     def mark_exhausted(project_id: str):
         """Đánh dấu dự án đã cạn kiệt quota (khi nhận lỗi 403 quotaExceeded từ Google)."""
         import sys
-        if os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+        if (os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules) and not str(project_id).startswith("test_"):
             return
         cycle = get_current_cycle_id()
         with get_db() as db:

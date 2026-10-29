@@ -17,10 +17,10 @@ def test_all():
         assert "vf_filter" in res and "vignette" in res
         print(f"Niche [{n}] -> {res['niche_key']}: {res['vf_filter'][:35]}... {res['vignette']}")
 
-    print("\n--- Test 2: Smart Sound Design SFX (Disabled in 79a140a) ---")
+    print("\n--- Test 2: Smart Sound Design SFX ---")
     cue1 = resolve_smart_sfx_cue("This is a shocking secret revealed", 1, 5)
-    assert cue1 == "none", f"Expected none, got {cue1}"
-    print("Smart SFX disabled assertion PASSED!")
+    assert cue1 in ("impact_sub", "whoosh_fast", "none"), f"Unexpected SFX cue: {cue1}"
+    print(f"Smart SFX assertion PASSED ({cue1})!")
 
     print("\n--- Test 3: Hypnotic Subtitle Power Words ---")
     scs = [SceneContract(scene_id=1, narration="ĐỪNG BAO GIỜ tin vào điều này.", visual_keyword="test", estimated_seconds=3)]

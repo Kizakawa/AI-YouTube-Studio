@@ -118,9 +118,23 @@ class ScriptValidationLinter:
         forbidden_cliches = blueprint.get("forbidden_words", [])
         full_text = f"{script.title} {script.hook} {script.full_narration}".lower()
 
+        if not niche_profile.get("_file_name") and "script_blueprint" not in niche_profile:
+            for word in (niche_profile.get("banned_lexicon") or []):
+                word_clean = str(word).strip().lower()
+                if not word_clean:
+                    continue
+                pattern = r"\b" + re.escape(word_clean) + r"\b"
+                if re.search(pattern, full_text):
+                    detected_words.append(word_clean)
+                    issues.append(
+                        f"Forbidden/out-of-niche term detected: '{word_clean}'. "
+                        f"This concept is strictly irrelevant or incongruent with the '{niche_profile.get('name', 'current')}' niche."
+                    )
+
         for cliche in forbidden_cliches:
             cliche_clean = str(cliche).strip().lower()
             if len(cliche_clean) > 8 and " " in cliche_clean and cliche_clean in full_text:
+                detected_words.append(cliche_clean)
                 issues.append(f"Forbidden cliché detected: '{cliche_clean}'. Remove YouTube meta-talk.")
 
         return issues, detected_words
