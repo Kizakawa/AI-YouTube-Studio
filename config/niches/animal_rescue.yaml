@@ -26,16 +26,16 @@ script_blueprint:
   - 'Day 1 vs Day 30: The Stray Dog Nobody Wanted To Touch'
   narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Hoàn cảnh bị bỏ rơi + địa điểm/thời gian cụ thể (KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 (Act 2) - Đêm đầu tiên có chiếc giường êm / bữa ăn ấm áp đầu tiên -> Cảnh 4-5 (Act 3 - Mid-Video 15s Trust Breakthrough) - Khoảnh khắc trong 5 phút đầu tiên bước vào nhà mới, con vật ngừng run và chủ động xin ôm/vẫy đuôi -> Cảnh 6-7 (Act 4 Payoff) - Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng xuân -> Cảnh 8 - Cầu nối Infinite Loop quay về ánh mắt ở Cảnh 1 (Zero Spoken Subscribe CTA)."
   showrunner_prose_dna:
-    persona_and_voice: "Warm, Empathetic Micro-Moment Storyteller (The Dodo × GeoBeats Animals 10.8% Like-Rate Formula × Rocky Kanaka)."
+    persona_and_voice: "Genuine, warm, grounded Human Rescuer Storyteller (The Dodo 801K × GeoBeats Animals 786K real-spoken warmth—zero melodramatic AI purple prose)."
     writing_habits:
-    - "1. Anchor on One Tiny, Heart-Melting Physical Detail: Instead of generic sadness, describe the exact small object or gesture ('For four rainy nights behind the train station, this tiny puppy rested his chin on an abandoned boot just to stay off the cold concrete.')."
-    - "2. Time-Stamped Trust Breakthrough (Day 1 -> Minute 50 -> Day 30): Show the exact second the animal's fear melts into trust—resting their head on a rescuer's palm, wagging their tail in a warm towel, and sprinting across a sunlit yard by Day 30."
-    bad_ai_slop_example: "The stray puppy was very sad and cold in the rain until a kind person rescued him."
-    good_million_view_example: "For four rainy nights behind the train station, this tiny puppy rested his chin on an abandoned boot just to stay off the freezing concrete."
+    - "1. RAW, PLAIN SPOKEN ENGLISH WITH CONTRACTIONS — ZERO MORALIZING 'MOST PEOPLE ASSUME' LECTURES (The Dodo 801K & GeoBeats Formula): Scene 1 MUST name the animal ('this stray dog', 'this tiny kitten') in a warm, urgent spoken sentence using natural contractions ('wouldn't', 'didn't', 'wasn't', 'couldn't') and zero exclamation marks ('Someone dumped this little dog at a busy park right beside his own bed.'). STRICTLY BAN preachy moralizing interruptions ('Most people assume stray dogs only look out for themselves...', 'The dog who had nothing gave everything') and literary purple prose ('silent vigil', 'shivering vigil', 'desperate cry', 'acting like a...')."
+    - "2. TINY REAL BEHAVIORS & GROUNDED RECOVERY PAYOFF: Show 100% observable actions a real rescuer sees on camera—no narrator sermons! ('Every time a car pulled in, he trotted up wagging his tail to check the driver's window. When a volunteer sat on the pavement with warm food, he climbed straight into her lap—and now he greets her at the front door every single afternoon.')."
+    bad_ai_slop_example: "Amidst the torrential downpour of despair, a shivering canine soul kept a silent vigil awaiting benevolent salvation."
+    good_million_view_example: "Nobody knew why this little dog wouldn't move from his spot at the park—until someone noticed his old bed sitting right beside him on the grass. Every time a car pulled in, he didn't bark or run; he just trotted up to check the driver's window. When a volunteer finally sat on the pavement with warm food, he climbed straight into her lap—and now he's waiting at her front door every single afternoon."
   controversy_comment_bait_engine:
     philosophy: "MORAL CONTRAST & EMPATHY TRIGGER: Highlight the stark contrast between hundreds of indifferent passersby walking past and the one rescuer who stopped, sparking massive comment engagement!"
     bait_examples:
-    - "Hundreds of commuters in expensive coats walked right past the flooded drain without looking down once—until one stranger got on his knees in the mud."
+    - "Dozens of cars pulled into that parking lot all afternoon without stopping once—until one stranger finally got out in the rain."
   forbidden_words:
   - Chào mừng các bạn đến với kênh yêu thú cưng
   - Hôm nay mình sẽ kể cho các bạn nghe

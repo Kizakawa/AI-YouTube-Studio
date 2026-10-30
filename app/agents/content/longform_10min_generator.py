@@ -23,68 +23,35 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_10_CHAPTER_BLUEPRINT = [
-    {
-        "chapter_id": 1,
-        "chapter_title": "CHAPTER 1: THE 4-SECOND ANOMALY",
-        "chapter_premise": "Cold-open confrontation exposing the hidden micro-expression and the first 4-second silence anomaly.",
-        "chapter_master_query": "tense boardroom meeting eye contact",
-    },
-    {
-        "chapter_id": 2,
-        "chapter_title": "CHAPTER 2: THE AMYGDALA HIJACK",
-        "chapter_premise": "How covert gaslighting and sudden guilt-tripping bypass rational prefrontal cortex defenses in 0.2 seconds.",
-        "chapter_master_query": "neuroscience brain scan laboratory monitor",
-    },
-    {
-        "chapter_id": 3,
-        "chapter_title": "CHAPTER 3: THE BAIT-AND-SWITCH TRAP",
-        "chapter_premise": "Forensic breakdown of how manipulators weaponize polite smiles and fake concern to force defensive over-explaining.",
-        "chapter_master_query": "fbi detective interrogation suspect table",
-    },
-    {
-        "chapter_id": 4,
-        "chapter_title": "CHAPTER 4: CASE STUDY — THE BOARDROOM GAMBIT",
-        "chapter_premise": "Real-world high-stakes negotiation case study where a 4-second pause dismantled an aggressive power play.",
-        "chapter_master_query": "corporate executive negotiation glass office",
-    },
-    {
-        "chapter_id": 5,
-        "chapter_title": "CHAPTER 5: THE DOPAMINE APPROVAL LOOP",
-        "chapter_premise": "Why chronic people-pleasers fall into intermittent reinforcement and cortisol exhaustion when seeking validation.",
-        "chapter_master_query": "person walking alone night city rain",
-    },
-    {
-        "chapter_id": 6,
-        "chapter_title": "CHAPTER 6: MICRO-EXPRESSIONS OF DECEPTION",
-        "chapter_premise": "The three involuntary physical tells—frozen feet, rapid blinking, and vocal pitch shifts—that expose hidden hostility.",
-        "chapter_master_query": "close up human eye pupil dark lighting",
-    },
-    {
-        "chapter_id": 7,
-        "chapter_title": "CHAPTER 7: THE MIRROR QUESTION PROTOCOL",
-        "chapter_premise": "Surgical verbal counter-move: how asking a calm, slow clarifying question forces the manipulator to audit their own words.",
-        "chapter_master_query": "chess grandmaster moving king dark board",
-    },
-    {
-        "chapter_id": 8,
-        "chapter_title": "CHAPTER 8: THE DOUBLE-BIND ESCAPE",
-        "chapter_premise": "Dismantling false binary choices and guilt traps without raising your voice or surrendering emotional control.",
-        "chapter_master_query": "businessman looking out window night skyline",
-    },
-    {
-        "chapter_id": 9,
-        "chapter_title": "CHAPTER 9: ARCHITECTING UNSHAKEABLE BOUNDARIES",
-        "chapter_premise": "Replacing reactive defensiveness with sovereign body language, low vocal cadence, and zero-justification detachment.",
-        "chapter_master_query": "confident leader walking modern corridor",
-    },
-    {
-        "chapter_id": 10,
-        "chapter_title": "CHAPTER 10: THE SOVEREIGN MINDSET",
-        "chapter_premise": "Final synthesis of the 10-minute behavioral protocol and seamless conceptual loop back to the opening 4-second silence.",
-        "chapter_master_query": "cinematic silhouette man sunrise horizon",
-    },
+# Khung 10 chương DỰ PHÒNG trung lập theo chủ đề (chỉ dùng khi LLM outline trả thiếu chương).
+# Tuyệt đối không chứa nội dung của một ngách cụ thể — mọi premise/query đều suy ra từ `{topic}`.
+DEFAULT_10_CHAPTER_ROLES = [
+    ("THE COLD OPEN", "The single most shocking real moment or fact about {topic}, shown before any explanation."),
+    ("THE ORIGIN", "Where {topic} comes from: the setting, era, or environment that makes it possible."),
+    ("THE HIDDEN MECHANISM", "How {topic} actually works, explained through one concrete, visual everyday comparison."),
+    ("THE FIRST CASE", "A documented real-world case or encounter that proves the mechanism of {topic}."),
+    ("THE MID-POINT TWIST", "The counter-intuitive detail about {topic} that overturns what most viewers assumed."),
+    ("THE ESCALATION", "The most extreme recorded instance or highest-stakes version of {topic}."),
+    ("THE WEAK POINT", "The limit, vulnerability, or counter-move that defeats or explains {topic}."),
+    ("THE SECOND CASE", "A contrasting real case that shows a different outcome of {topic}."),
+    ("THE AFTERMATH", "What {topic} changed afterwards — consequences for people, nature, or history."),
+    ("THE VERDICT", "Final synthesis that answers the cold-open question and loops back to its opening image."),
 ]
+
+
+def build_default_chapter_blueprint(topic: str) -> List[Dict[str, Any]]:
+    """Sinh khung 10 chương dự phòng trung lập, neo hoàn toàn vào chủ đề người dùng."""
+    t = (topic or "this story").strip()
+    base_query = " ".join(re.findall(r"[A-Za-z0-9]+", t)[:4]) or "documentary footage"
+    return [
+        {
+            "chapter_id": i + 1,
+            "chapter_title": f"CHAPTER {i + 1}: {role}",
+            "chapter_premise": premise.format(topic=t),
+            "chapter_master_query": base_query,
+        }
+        for i, (role, premise) in enumerate(DEFAULT_10_CHAPTER_ROLES)
+    ]
 
 
 def _extract_json_dict(raw_text: str) -> Dict[str, Any]:
@@ -99,7 +66,16 @@ def _extract_json_dict(raw_text: str) -> Dict[str, Any]:
     s = text.find("{")
     e = text.rfind("}")
     if s != -1 and e != -1 and e > s:
-        return json.loads(text[s : e + 1])
+        candidate = text[s : e + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            try:
+                obj, _ = json.JSONDecoder().raw_decode(text[s:])
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                pass
     return {}
 
 
@@ -277,8 +253,9 @@ Return ONLY valid JSON:
 
     raw_chapters = outline_data.get("chapters") or []
     merged_ch: List[Dict[str, Any]] = []
+    default_chapters = build_default_chapter_blueprint(topic)
     for idx_c in range(10):
-        base_c = dict(DEFAULT_10_CHAPTER_BLUEPRINT[idx_c])
+        base_c = dict(default_chapters[idx_c])
         if isinstance(raw_chapters, list) and idx_c < len(raw_chapters) and isinstance(raw_chapters[idx_c], dict):
             rc = raw_chapters[idx_c]
             for k_c, v_c in rc.items():
@@ -324,6 +301,19 @@ Return ONLY valid JSON:
 
         from app.services.niche_manager import build_million_view_showrunner_prose_dna
         prose_dna_block = build_million_view_showrunner_prose_dna(channel_niche, language=language)
+        is_doodle_niche = str(channel_niche or "").strip().lower() in (
+            "psychology", "satirical_psychology_animation", "doodle", "philosophy", "finance_wealth"
+        )
+        slot_3_rule = (
+            f"* Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **2D Doodle Visual Metaphor + Cunningham's Law Sacred-Cow Breaker** — Illustrate the structural paradox AND drop 1 bold, unapologetically polarizing statement that attacks a common belief so viewers debate in the comments!"
+            if is_doodle_niche
+            else f"* Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **Forensic / Archival / Physical Evidence Deep-Dive + Counter-Intuitive Myth-Breaker** — Reveal a specific physical mechanism, archival log detail, or anatomical twist that shatters a popular assumption about {topic} (NEVER mention '2D doodle', 'symbolic hourglass', or 'brain scan' in non-psychology documentaries)!"
+        )
+        slot_3_visual_rule = (
+            f"* For Scene {start_sid+2} and Scene {start_sid+6} (Slot 3 of each Chapter), write a symbolic / conceptual 3–4 word query for our 2D Doodle Explainer animation."
+            if is_doodle_niche
+            else f"* For Scene {start_sid+2} and Scene {start_sid+6} (Slot 3 of each Chapter), write a concrete 3–5 word archival, technical instrument, or close-up physical action query in English (e.g. '{ch_a_mq} closeup', 'submarine sonar gauge closeup', 'deep ocean pressure hull') — STRICTLY FORBIDDEN: NEVER write '2D doodle', 'diagram', 'icon', or 'hourglass'!"
+        )
 
         batch_prompt = f"""You are writing Scenes {start_sid} to {end_sid} (Chapters {ch_a_id} and {ch_b_id}) of a 10-Minute Widescreen 16:9 YouTube Documentary in {target_lang_display}.
 Documentary Title: "{doc_title}"
@@ -332,8 +322,12 @@ Topic: "{topic}"
 {real_world_dossier}
 {prose_dna_block}
 
-FULL 10-CHAPTER DOCUMENTARY ROADMAP (FOR CONTEXT — DO NOT REPEAT OTHER CHAPTERS):
+FULL 10-CHAPTER DOCUMENTARY ROADMAP (FOR CONTEXT — STRICT ANTI-REPETITION FIREWALL ACROSS PARALLEL BATCHES):
 {chapter_summary_text}
+CRITICAL CROSS-BATCH ANTI-REPETITION FIREWALL:
+- 5 parallel writers are expanding Chapters 1-2, 3-4, 5-6, 7-8, and 9-10 simultaneously!
+- You are ONLY writing Chapter {ch_a_id} ("{ch_a_title}") and Chapter {ch_b_id} ("{ch_b_title}").
+- NEVER repeat or re-dramatize quotes, dialogue lines, or climax moments that belong to other chapters in the roadmap above! Keep 100% of your 8 scenes strictly focused on the unique facts, timeline phase, and mechanisms of Chapter {ch_a_id} and Chapter {ch_b_id}!
 
 YOUR ASSIGNED CHAPTERS TO WRITE RIGHT NOW (8 SCENES TOTAL: SCENES {start_sid} TO {end_sid}):
 1. Chapter {ch_a_id} ({ch_a_title}) — Scenes {start_sid}, {start_sid+1}, {start_sid+2}, {start_sid+3}:
@@ -344,19 +338,19 @@ YOUR ASSIGNED CHAPTERS TO WRITE RIGHT NOW (8 SCENES TOTAL: SCENES {start_sid} TO
    - Chapter 16:9 Visual Motif: "{ch_b_mq}"
 
 MANDATORY PACING, VIRAL DOCUMENTARY STORYTELLING & WORD COUNT (~14.5–16.0 SECONDS PER SCENE AT +10% DYNAMIC VOICE SPEED):
-- {'For Scene 1 (scene_id=1): Start with the Cold-Open Hook ("' + doc_hook + '") followed by 1 gripping follow-up sentence (total 24–30 words for Scene 1).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 2 to 3 complete, rich, gripping documentary sentences totaling 38 to 46 WORDS PER SCENE (~14.5–16.0 seconds of spoken narration per scene).'}
-- For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 38 to 46 words of deep, vivid storytelling. NEVER write short 12-word Shorts sentences!
+- {'For Scene 1 (scene_id=1): Start with a gripping, visceral In-Medias-Res Cold-Open Hook ("' + doc_hook + '") followed by 1 high-stakes sentence (total 22–30 words for Scene 1, ZERO "?" questions).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 2 to 3 complete, rich, gripping documentary sentences totaling 36 to 44 WORDS PER SCENE (~14.5–16.0 seconds of spoken narration per scene).'}
+- For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 36 to 44 words of deep, vivid storytelling. NEVER write short 12-word Shorts sentences!
 - VIRAL COMPETITOR 4-BEAT CHAPTER ARCHITECTURE (JCS / Charisma on Command / @IFinity_What / @FossilVideos Formula — ZERO 'Studies show...' ACADEMIC OPENERS):
-  * Slot 1 of each Chapter (Scenes {start_sid} & {start_sid+4}): **Case-Study / Verbatim Dialogue Reconstruction ("Show, Don't Tell")** — NEVER start with "Studies show..." or "Research reveals...". Jump straight into a named historical/forensic case, physical clash, or exact spoken quote ("Listen to the exact phrase they drop...").
-  * Slot 2 of each Chapter (Scenes {start_sid+1} & {start_sid+5}): **Hidden Mechanism Translated Into Visceral Everyday Analogy** — Explain WHY it works inside the brain, body, or physical world using a crystal-clear everyday comparison or bodily sensation that any viewer can picture immediately (STRICTLY FORBIDDEN: NEVER dump dry textbook physics/lab units like PSI, Newtons, kPa, Joules, LD50, or stiff university jargon!).
-  * Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **2D Doodle Visual Metaphor + Cunningham's Law Sacred-Cow Breaker** — Illustrate the structural paradox AND drop 1 bold, unapologetically polarizing statement that attacks a common belief so viewers debate in the comments!
-  * Slot 4 of each Chapter (Scenes {start_sid+3} & {start_sid+7}): **Surgical Verbatim Counter-Move + Open-Loop Cliffhanger Bridge** — Deliver the exact actionable counter-move (including a spoken sentence in quotation marks `"..."` for psychology/social topics), and for Chapters 1–9, end the final sentence with an open loop bridging into the next Chapter!
+  * Slot 1 of each Chapter (Scenes {start_sid} & {start_sid+4}): **Case-Study / Verbatim Reconstruction ("Show, Don't Tell")** — NEVER start with "Studies show..." or "Research reveals...". Jump straight into the specific chronological event, physical clash, or documented record assigned to this specific chapter.
+  * Slot 2 of each Chapter (Scenes {start_sid+1} & {start_sid+5}): **Hidden Mechanism Translated Into Visceral Everyday Analogy** — Explain WHY it works using a crystal-clear everyday comparison or physical sensation that any viewer can picture immediately (STRICTLY FORBIDDEN: NEVER dump dry textbook physics/lab units like PSI, Newtons, kPa, Joules, LD50, or stiff university jargon!).
+  {slot_3_rule}
+  * Slot 4 of each Chapter (Scenes {start_sid+3} & {start_sid+7}): **Decisive Turning Point / Counter-Move + Open-Loop Cliffhanger Bridge** — Deliver the chapter's concrete turning point or counter-move, and for Chapters 1–9, end the final sentence with a smooth causal bridge into the next Chapter!
 - ZERO SPOKEN OUTRO CTA: Never say "Subscribe", "Like", or "Leave a comment" in the narration.
 - Self-Contained & Diverse Multi-Source Visual Queries (CRITICAL — NEVER REPEAT THE SAME QUERY WITHIN A CHAPTER):
   * For Scene {start_sid} (Slot 1 of Chapter {ch_a_id}) and Scene {start_sid+4} (Slot 1 of Chapter {ch_b_id}), anchor `visual_keyword` and `stock_query` to the Chapter Master Motif ("{ch_a_mq}" / "{ch_b_mq}").
-  * For Scene {start_sid+1} and Scene {start_sid+5} (Slot 2 of each Chapter), write a DIFFERENT 3–4 word close-up physical / neurological / micro-expression query (e.g. close-up eyes, hands, brain scan, heartbeat, body language) that does NOT repeat Slot 1's words!
-  * For Scene {start_sid+2} and Scene {start_sid+6} (Slot 3 of each Chapter), write a symbolic / conceptual 3–4 word query for our 2D Doodle Explainer animation.
-  * For Scene {start_sid+3} and Scene {start_sid+7} (Slot 4 of each Chapter), write a DIFFERENT 3–5 word wide environmental or counter-move action query (e.g. walking night city, chess move, calm negotiation, horizon) completely distinct from Slots 1 & 2!
+  * For Scene {start_sid+1} and Scene {start_sid+5} (Slot 2 of each Chapter), write a DIFFERENT 3–4 word close-up physical / anatomical / instrument query that does NOT repeat Slot 1's words!
+  {slot_3_visual_rule}
+  * For Scene {start_sid+3} and Scene {start_sid+7} (Slot 4 of each Chapter), write a DIFFERENT 3–5 word wide environmental or action query completely distinct from Slots 1 & 2!
 
 Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`scene_id` {start_sid} through {end_sid}):
 {{
@@ -364,7 +358,7 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
     {{
       "scene_id": {start_sid},
       "visual_reasoning": "Chapter {ch_a_id} visual intent",
-      "narration": "2 to 3 complete documentary sentences in {target_lang_display} totaling 38 to 46 words...",
+      "narration": "2 to 3 complete documentary sentences in {target_lang_display} totaling 36 to 44 words...",
       "visual_keyword": "{ch_a_mq}",
       "visual_prompt": "Cinematic 16:9 widescreen shot of {ch_a_mq}",
       "stock_query": "{' '.join(str(ch_a_mq).split()[:3])}",
@@ -379,9 +373,9 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
 }}"""
         slot_angle_suffixes = [
             "",
-            "close up face eyes expression",
-            "psychological mechanism diagram",
-            "cinematic wide environment motion",
+            "close up detail",
+            "psychological mechanism diagram" if is_doodle_niche else "archival close up footage",
+            "cinematic wide environment",
         ]
         for attempt_b in range(2):
             try:
@@ -415,6 +409,19 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                         ).strip()
                         if narr_txt and narr_txt[0].islower():
                             narr_txt = narr_txt[0].upper() + narr_txt[1:]
+                        # Khử các cụm từ sáo rỗng $10 kiểu văn mẫu Wikipedia/AI trong phim tài liệu
+                        _lf_cliche_subs = [
+                            (r"\bglobal\s+catastrophe\b", "total disaster"),
+                            (r"\b(?:global\s+nuclear\s+nightmare|nuclear\s+holocaust|nuclear\s+apocalypse|global\s+nuclear\s+exchange|full-scale\s+atomic\s+retaliation)\b", "all-out nuclear war"),
+                            (r"\bunanimous\s+agreement\b", "all three officers' approval"),
+                            (r"\bunanimous\b", "complete"),
+                            (r"\bheld\s+absolute\s+veto\s+power\b", "had the final vote"),
+                            (r"\bMost\s+people\s+assume(?:\s+that)?\b", "You'd think"),
+                            (r"\bMuita\s+gente\s+acha\s+que\b", "Você pensaria que"),
+                            (r"\bNo\s+fim\s+das\s+contas\s*,\s*", "Na prática, "),
+                        ]
+                        for pat_c, rep_c in _lf_cliche_subs:
+                            narr_txt = re.sub(pat_c, rep_c, narr_txt, flags=re.IGNORECASE)
                         if target_id == 1:
                             # Scene 1 Cold-Open Hook: giữ câu mở đầu sắc bén, không câu hỏi '?'
                             narr_txt = narr_txt.replace("?", ".")
@@ -428,12 +435,25 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                         master_q_cur = str(ch_cur.get("chapter_master_query") or "tense business meeting").strip()
                         cur_vk = str(sc_item.get("visual_keyword") or "").strip()
                         cur_sq = str(sc_item.get("stock_query") or "").strip()
+                        if not is_doodle_niche:
+                            _bad_non_doodle_re = re.compile(
+                                r"\b(?:2d|doodle|diagram|icon|hourglass|symbolic|brain\s+scan|stickman|cartoon)\b",
+                                re.IGNORECASE,
+                            )
+                            if _bad_non_doodle_re.search(cur_vk):
+                                cur_vk = f"{master_q_cur} {slot_angle_suffixes[slot_in_ch]}".strip()
+                            if _bad_non_doodle_re.search(cur_sq):
+                                cur_sq = " ".join(master_q_cur.split()[:3])
                         if slot_in_ch == 0 or not cur_vk:
                             sc_item["visual_keyword"] = master_q_cur if slot_in_ch == 0 else f"{master_q_cur} {slot_angle_suffixes[slot_in_ch]}".strip()
                         elif cur_vk.lower() == master_q_cur.lower() and slot_in_ch in (1, 3):
                             sc_item["visual_keyword"] = f"{cur_vk} {slot_angle_suffixes[slot_in_ch]}".strip()
+                        else:
+                            sc_item["visual_keyword"] = cur_vk
                         if slot_in_ch == 0 or not cur_sq:
                             sc_item["stock_query"] = " ".join(sc_item["visual_keyword"].split()[:4])
+                        else:
+                            sc_item["stock_query"] = cur_sq
                         if not sc_item.get("visual_prompt"):
                             sc_item["visual_prompt"] = f"Cinematic 16:9 widescreen documentary shot of {sc_item['visual_keyword']}"
                         sc_item["media_type"] = "video"

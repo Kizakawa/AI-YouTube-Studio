@@ -312,24 +312,31 @@ def build_million_view_showrunner_prose_dna(niche_id_or_profile: Any, language: 
     bad_ex = prose_dna.get("bad_ai_slop_example") or ""
     good_ex = (prose_dna.get("good_pt_br_example") if is_pt and prose_dna.get("good_pt_br_example") else prose_dna.get("good_million_view_example")) or ""
     bait_phil = bait_engine.get("philosophy") or (
-        "VIEWS & COMMENT WARS > POLITE TEXTBOOK SAFETY (Cunningham's Law). "
-        "Intentionally plant 1 bold, polarizing 'Sacred-Cow Breaker' or debatable claim in Scene 1 or Scene 4–5 "
-        "so viewers rush into the comments to argue while the video loops in the background!"
+        "ORGANIC MYTH-FLIPPING OVER ROBOTIC HOT-TAKES: Spark curiosity and comment debates naturally by shattering a popular assumption "
+        "('You'd probably think X... But here's what actually happens' / 'Você pensaria que... Só que na prática...') "
+        "paired with a sharp 50/50 counterfactual pinned comment—NEVER break story immersion with robotic 'X is overrated/inferior' thesis lines!"
     )
     bait_examples = bait_engine.get("bait_examples") or []
 
     lines: List[str] = [
-        f"8. MILLION-VIEW SHOWRUNNER WRITING STYLE, VISCERAL EVERYDAY ANALOGIES & CONTROVERSY DNA (FROM YAML — BENCHMARK: {bench_label}):",
-        "   - 🚫 UNIVERSAL ANTI-AI PROSE BAN: NEVER write 'When we examine...', 'In forensic behavioral analysis...', "
-        "'Researchers discovered that...', 'Studies show...', 'Furthermore,', 'Moreover,', 'It is important to note', "
-        "'Delve into', 'Tapestry', 'Ultimately,', or 'In conclusion'.",
-        "   - 🧠 ENTITY-FIRST MECHANISM PROFILING & INTUITIVE IMAGERY (ZERO ABSTRACT LAB JARGON & ZERO RECYCLED CLICHÉS): "
-        "Before writing, analyze the SPECIFIC entities in the topic—their exact anatomy, physical structure, environment, historical setting, "
-        "or human psychological behavior. Ordinary viewers cannot picture abstract textbook/engineering units (like raw pressure, force, or clinical ratios). "
-        "Instead of citing unexplained laboratory units OR recycling generic stock metaphors across different videos, derive fresh, tactile, "
-        "everyday physical imagery directly from HOW THIS SPECIFIC ENTITY ACTUALLY WORKS so anyone can instantly see, hear, and feel it!",
-        "   - SENTENCE CADENCE RULE: Write in punchy, spoken Grade-5 broadcast sentences. Alternate a crisp 6–9 word punch sentence "
-        "with a vivid 12–16 word sensory action/analogy sentence.",
+        f"8. MILLION-VIEW HUMAN CREATOR SPOKEN VOICE, ACTION-FIRST FLOW & EVERYDAY CLARITY (FROM YAML — BENCHMARK: {bench_label}):",
+        "   - 🗣️ THE KITCHEN-TABLE READ-ALOUD RULE (SOUND LIKE A REAL YOUTUBER, NEVER AN AI ESSAY OR HYPE BOT): "
+        "Write every line as if a charismatic human creator (Zack D. Films, Casual Geographic, Charisma on Command, The Dodo, Fatos Desconhecidos) "
+        "is telling one friend an unbelievable true story. Use $1 everyday spoken words instead of $10 academic, clinical, or poetic words!",
+        "   - 💬 NATURAL CONTRACTIONS & ACTION-FIRST FLOW (ZERO RUBBER-STAMPED HYPE FILLER): "
+        "In English, ALWAYS use natural spoken contractions ('it's', 'doesn't', 'can't', 'you'd', 'that's', 'won't', 'they're', 'didn't', 'would've', 'hadn't' — NEVER write 7-8 uncontracted Wikipedia textbook sentences!). "
+        "Drop straight into concrete crisis/action and crisp contrasts ('Most predators go for the throat. Not this one.', 'And that's actually on purpose.', 'You'd think... except...'). "
+        "STRICTLY BAN rubber-stamped AI hype transitions: NEVER write 'But here's the crazy part:', 'Here's the crazy part:', 'You see, it was...', or start multiple scenes with 'You see,'. "
+        "In Brazilian Portuguese (pt-BR), speak colloquial Brazilian YouTuber Portuguese ('pra', 'pro', 'tá', 'bicho', 'na hora', 'num piscar de olhos', 'só que', 'em vez de') — NEVER write stiff TV-documentary dub Portuguese, formal enclitics ('imobilizá-lo', 'matá-lo'), clinical textbook lines ('desligando o sistema nervoso', 'mordida precisa'), school-essay fillers ('Muita gente acha que', 'No fim das contas'), or fake moralizing nature proverbs ('O Pantanal pune quem falha', 'a natureza não perdoa', 'o rei da floresta reina')!",
+        "   - 🚫 STRICT ANTI-AI ESSAY, ANTI-WIKIPEDIA SPOILER, ANTI-CLINICAL & ANTI-CLICHÉ BAN: "
+        "NEVER start Scene 1 with a dry Wikipedia newspaper summary that spoils the final resolution ('In October 1962, Officer X blocked Y', 'In 1961, a switch prevented an explosion') — drop the viewer inside the split-second crisis BEFORE the outcome is decided! "
+        "NEVER start sentences with front-loaded participial essay clauses ('Equipped with...', 'Armed with...', 'Boasting...', 'Lurking in...', 'Equipado com...', 'Ostentando...'). "
+        "NEVER drop clinical, chemistry-hand-waving, bureaucratic, pop-psych, or documentary clichés into spoken Shorts ('amygdala', 'prefrontal cortex', 'social conditioning', 'calculated strike', 'self-image', 'test your submission', 'designed to keep you guessing', 'reveal their game', 'Under ... rules, ... required unanimous agreement', 'held absolute veto power', 'averting a nuclear holocaust', 'History books call it...', 'We're all here today only because...', 'air was thick with sweat', 'silent vigil', 'special molecules', 'organic molecules', 'permeates', 'structural differential', 'elapid', 'the hunter becomes the meal', 'the predator becomes the prey', 'Most people assume...'). "
+        "NEVER force cheesy literary similes ('acting like...', 'vibrating like a taut string', 'gentle embrace', 'calls the abyss home') — use a quick everyday comparison ONLY when explaining an invisible macroscopic physical mechanism, otherwise let concrete verbs do the work!",
+        "   - 🧠 ENTITY-FIRST MECHANISM PROFILING & ZERO DRY LAB UNITS: "
+        "Analyze how THIS specific entity's anatomy, physical structure, environment, or human behavior actually works. "
+        "Never dump raw physics/lab units (PSI, Newtons, kPa, Joules, LD50), and never insert preachy 'Most people assume...' sermons or robotic 'X is overrated/inferior' rants.",
+        "   - 🎵 CONCRETE MAIN-CLAUSE MIC-DROP ENDING: End RIGHT on a concrete physical aftermath, awkward room reaction, or factual irony — NEVER tack on self-help guru fortune cookies ('Real social power belongs to...'), NEVER write essay conclusions ('That is how a...', 'That's why X belongs to...'), NEVER repeat Scene 1 concepts, and NEVER end on a subordinate 'While...' fragment.",
         f"   - YAML SHOWRUNNER VOICE & PERSONA: {persona}",
     ]
     if habits:
@@ -703,22 +710,25 @@ def build_llm_production_overview_prompt(
     prose_dna_dir = script_bp.get("showrunner_prose_dna") or gen_prose_dir or {}
     bait_dir = script_bp.get("controversy_comment_bait_engine") or {}
     if prose_dna_dir or bait_dir:
-        lines.append("\n🧠 YAML SHOWRUNNER PROSE, VISCERAL ANALOGIES & CONTROVERSY ENGINE FOR DIRECTOR NODE:")
+        lines.append("\n🧠 YAML SHOWRUNNER SPOKEN CREATOR VOICE, EVERYDAY IMAGERY & MYTH-FLIP ENGINE:")
         if prose_dna_dir.get("persona_and_voice"):
             lines.append(f"  * Showrunner Persona & Voice: {prose_dna_dir.get('persona_and_voice')}")
         lines.append(
-            "  * Visceral Everyday Analogy Rule (ZERO Dry Science Units): NEVER output abstract textbook physics units "
-            "(PSI, Newtons, kPa, Joules, LD50, Hz). Translate every force/pressure/speed/brain mechanism into an everyday "
-            "physical comparison & bodily sensation viewers can immediately picture!"
+            "  * Kitchen-Table Spoken Creator Voice Rule: Sound 100% like a real human YouTube storyteller (Zack D. Films / Casual Geographic / Charisma on Command / Fatos Desconhecidos). "
+            "Use natural contractions ('it's', 'doesn't', 'you'd'), conversational glue ('You see,', 'But', 'So,', 'Turns out,', 'Só que', 'Por outro lado,'), and $1 everyday spoken words. "
+            "STRICTLY BAN stiff AI essay syntax ('Equipped with...', 'Armed with...', 'Boasting...', 'Ostentando...'), $10 academic vocabulary ('elapid', 'permeates', 'structural differential'), "
+            "dry physics units (PSI, Newtons, kPa, Joules, LD50), robotic 'X is overrated/inferior' interruptions, and verbatim copy-pasting of Scene 1 in the final scene!"
         )
         if prose_dna_dir.get("visceral_analogy_rules"):
             lines.append("  * Niche Analogy Translations (YAML): " + " | ".join(str(x) for x in list(prose_dna_dir.get("visceral_analogy_rules"))[:3]))
         if prose_dna_dir.get("good_million_view_example"):
-            lines.append(f"  * Gold-Standard Narration Cadence: \"{prose_dna_dir.get('good_million_view_example')}\"")
+            lines.append(f"  * Gold-Standard EN Creator Voice Benchmark: \"{prose_dna_dir.get('good_million_view_example')}\"")
+        if prose_dna_dir.get("good_pt_br_example"):
+            lines.append(f"  * Gold-Standard pt-BR Creator Voice Benchmark: \"{prose_dna_dir.get('good_pt_br_example')}\"")
         if bait_dir.get("philosophy"):
-            lines.append(f"  * Controversy / Comment-Bait Philosophy: {bait_dir.get('philosophy')}")
+            lines.append(f"  * Organic Myth-Flip & Debate Philosophy: {bait_dir.get('philosophy')}")
         if bait_dir.get("bait_examples"):
-            lines.append("  * Proven Controversy / Sacred-Cow Breaker Hooks (YAML): " + " | ".join(f'"{x}"' for x in list(bait_dir.get("bait_examples"))[:3]))
+            lines.append("  * Proven Organic Myth-Flip / Curiosity Angles (YAML): " + " | ".join(f'"{x}"' for x in list(bait_dir.get("bait_examples"))[:3]))
 
     archetypes = bp.get("visual_archetypes_and_tool_routing") or []
     if isinstance(archetypes, list) and archetypes:

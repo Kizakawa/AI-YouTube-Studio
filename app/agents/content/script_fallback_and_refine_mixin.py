@@ -337,56 +337,154 @@ class ScriptFallbackAndRefineMixin:
         if director_notes and len(director_notes.strip()) > 3:
             director_block = f"\nCREATOR DIRECTOR NOTES (MUST PRESERVE):\n\"{director_notes.strip()}\"\n"
 
+        from app.services.niche_manager import build_million_view_showrunner_prose_dna, get_niche
+        from app.services.content_linter import ScriptValidationLinter
+        prose_dna_block = build_million_view_showrunner_prose_dna(channel_niche, language=language)
+        niche_profile = get_niche(channel_niche)
+
+        # Nếu là kịch bản Phim Tài Liệu 10 Chương (Long-Form >= 28 cảnh), thực hiện Tinh Chỉnh Phẫu Thuật Theo Cảnh (Surgical Scene Patch)
+        # để giữ nguyên cấu trúc 40 cảnh / ~1,500 từ, tuyệt đối không làm co rút kịch bản xuống 16 cảnh!
+        if is_long_form and len(getattr(current_script, "scenes", []) or []) >= 28:
+            patch_prompt = f"""You are an Executive Showrunner for a 10-Minute Widescreen 16:9 YouTube Documentary in {target_lang_display}.
+We have a 40-scene (10-Chapter) documentary script for Topic: "{getattr(current_script, 'topic', '') or current_script.title}" (Niche: '{channel_niche}').
+Our Quality Critic flagged specific surgical improvements needed:
+"{feedback}"
+{director_block}
+{lang_instruction}
+{prose_dna_block}
+
+CURRENT SCENE 1 HOOK & KEY SCENES SUMMARY:
+- Title: "{current_script.title}"
+- Thumbnail Text: "{current_script.thumbnail_text}"
+- Scene 1 (Cold-Open Hook): "{current_script.scenes[0].narration if current_script.scenes else current_script.hook}"
+- Sample Scenes (1 to 20):
+{chr(10).join(f'  Scene {s.scene_id} [vk={s.visual_keyword}]: "{s.narration}"' for s in current_script.scenes[:20])}
+
+SURGICAL PATCH INSTRUCTIONS:
+1. Keep the 40-scene documentary structure intact! Provide an upgraded `hook` (and `scene_id: 1` narration, 18-28 words, declarative, vivid in-medias-res Cold Open, ZERO '?' questions) and any 2 to 6 specific `scene_patches` (`scene_id`, `narration`, `visual_keyword`, `stock_query`) needed to fix repetition, pacing, or visual queries flagged in the critique above.
+2. For non-psychology niches (`history_mystery`, `wildlife_predators`, `deep_sea_earth_mysteries`, `alternate_history`), NEVER use "2D doodle", "symbolic hourglass", or "brain scan animation" in `visual_keyword` or `stock_query`—use 100% authentic archival, historical, or wildlife 16:9 documentary queries!
+3. `thumbnail_text` MUST be 2 to 3 ALL-CAPS words with ZERO emojis.
+
+Return ONLY valid JSON:
+{{
+  "title": "{current_script.title}",
+  "thumbnail_text": "2-3 ALL-CAPS WORDS NO EMOJI",
+  "hook": "Upgraded 18-28 word declarative Cold-Open Hook for Scene 1 in {target_lang_display}",
+  "scene_patches": [
+    {{
+      "scene_id": 1,
+      "narration": "Upgraded 18-28 word declarative Cold-Open Hook for Scene 1 in {target_lang_display}",
+      "visual_keyword": "concrete 3-5 word English 16:9 documentary query",
+      "stock_query": "2-4 word English stock query"
+    }}
+  ]
+}}"""
+            try:
+                raw_patch = self._call_api(patch_prompt, json_mode=True, timeout=30, max_total_seconds=45)
+                s_idx = raw_patch.find("{")
+                e_idx = raw_patch.rfind("}")
+                if s_idx != -1 and e_idx != -1 and e_idx > s_idx:
+                    p_data = json.loads(raw_patch[s_idx : e_idx + 1])
+                    updated_dump = current_script.model_dump()
+                    if p_data.get("title"):
+                        updated_dump["title"] = str(p_data["title"]).strip()
+                    if p_data.get("thumbnail_text"):
+                        updated_dump["thumbnail_text"] = re.sub(r"[^\w\s\?\!\.\,\-\'\"À-ỹ]", "", str(p_data["thumbnail_text"])).strip().upper()
+                    patches_by_id = {
+                        int(sp.get("scene_id")): sp
+                        for sp in (p_data.get("scene_patches") or [])
+                        if isinstance(sp, dict) and sp.get("scene_id")
+                    }
+                    for sc_dict in updated_dump.get("scenes", []):
+                        sid = int(sc_dict.get("scene_id") or 0)
+                        if sid in patches_by_id:
+                            sp = patches_by_id[sid]
+                            if sp.get("narration") and len(str(sp["narration"]).split()) >= 12:
+                                sc_dict["narration"] = str(sp["narration"]).strip().replace("?", ".") if sid == 1 else str(sp["narration"]).strip()
+                            if sp.get("visual_keyword"):
+                                sc_dict["visual_keyword"] = str(sp["visual_keyword"]).strip()
+                            if sp.get("stock_query"):
+                                sc_dict["stock_query"] = str(sp["stock_query"]).strip()
+                    if p_data.get("hook") and len(str(p_data["hook"]).split()) >= 10 and 1 not in patches_by_id:
+                        clean_h = str(p_data["hook"]).strip().replace("?", ".")
+                        updated_dump["hook"] = clean_h
+                        if updated_dump.get("scenes"):
+                            updated_dump["scenes"][0]["narration"] = clean_h
+                    elif updated_dump.get("scenes"):
+                        updated_dump["hook"] = updated_dump["scenes"][0]["narration"]
+                    updated_dump["full_narration"] = " ".join(s.get("narration", "") for s in updated_dump.get("scenes", []))
+                    return self._parse_json_script(
+                        json.dumps(updated_dump, ensure_ascii=False),
+                        channel_niche=channel_niche,
+                        topic=getattr(current_script, "topic", "") or current_script.title,
+                        video_format="long",
+                    )
+            except Exception as e_lp:
+                logger.warning(f"[ContentAgent] Long-form surgical patch fallback: {e_lp}")
+                return current_script
+
         prompt = f"""
-You are an elite viral YouTube {'Widescreen 16:9 Documentary' if is_long_form else 'Shorts'} Master Showrunner and Behavioral Storyteller.
+You are an elite viral YouTube {'Widescreen 16:9 Documentary' if is_long_form else 'Shorts'} Master Showrunner and Human Creator Voice Specialist.
 We have an existing script (format: {vf.upper()}), and our Quality Critic / Creator provided specific surgical revisions:
 
 CRITIQUE & REVISION FEEDBACK:
 "{feedback}"
 {director_block}
+{prose_dna_block}
 CURRENT SCRIPT:
 {current_script.model_dump_json(indent=2)}
 
-SURGICALLY REFINE the script strictly addressing the feedback above while preserving the strengths, core entity, and narrative soul of the existing script.
+SURGICALLY REFINE the script strictly addressing the feedback above while matching the YAML `GOLD-STANDARD PROSE CADENCE EXAMPLE` above!
 Target Language: {language} ({target_lang_display})
 {lang_instruction}
 
-HARD RETENTION & FULL-BODIED STORYTELLING RULES:
-0. GOLDEN SEPARATION OF DUTY & VISCERAL EVERYDAY ANALOGY RULE (ZERO DRY PHYSICS UNITS):
-   - TITLE RULE (NEVER VIOLATE): Keep exact, high-search-volume entity names in `title` (`[Entity A] vs [Entity B]: [Visceral Clash/Stakes]`, 28-55 chars, e.g., `Jaguar vs Black Caiman: The Skull-Piercing Bite 🐆🐊 #Shorts`). NEVER drop a primary entity from `title`, AND NEVER put dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) in `title`!
-   - SCENE 1 HOOK (0.0s) RULE: Explicitly name the primary entity/combatants AND paint a vivid physical clash, everyday sensory image, or lethal paradox ({'8-14 words' if is_long_form else '6-10 words'}) that NEVER repeats the `title` verbatim and NEVER dumps dry physics units!
-   - VISCERAL ANALOGY RULE FOR BODY SCENES: Replace any abstract scientific/physics unit (`1,500 PSI`, `195 Newtons`, `kPa`, `Joules`, `LD50`, clinical jargon) with an everyday physical comparison that any viewer can picture and feel immediately (e.g., punching through an armored skull like an empty soda can, slamming down five times its body weight faster than an eye blink, crushing steel like a tin can under fifty passenger jets)!
+HARD RETENTION & AUTHENTIC VIRAL CREATOR SPOKEN VOICE RULES:
+0. GOLDEN SEPARATION OF DUTY, KITCHEN-TABLE SPOKEN VOICE & EVERYDAY CLARITY (ZERO DRY PHYSICS UNITS & ZERO AI ESSAY PROSE):
+   - TITLE RULE (NEVER VIOLATE): Keep exact, high-search-volume entity names in `title` (28-55 chars, ZERO `#hashtags`, e.g., `Sea Turtle vs Box Jellyfish: Why Deadly Tentacles Don't Faze It 🐢🪼`). NEVER drop a primary entity from `title`, AND NEVER put dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) in `title`!
+   - SCENE 1 HOOK (0.0s) HARD RULE (ZERO '?' QUESTIONS & NAME BOTH ENTITIES IN 'A VS B'):
+     * Explicitly name the primary entity/combatants in complete spoken grammar ({'8-14 words' if is_long_form else '6-14 words'}) AND drop the viewer straight into a split-second physical clash, sharp spoken contrast with contractions, or staged real-life spoken moment!
+     * MANDATORY 2-ENTITY RULE: Whenever `title` or the topic pits two entities against each other (`Entity A vs Entity B`), Scene 1 (`hook` and `scenes[0].narration`) MUST explicitly name BOTH `Entity A` AND `Entity B` right in Scene 1 (e.g., `"You'd think swallowing a venomous box jellyfish would kill a sea turtle instantly."`, `"Encarar uma mamba-negra de frente é morte certa—menos pro mangusto."`)! NEVER hide the second entity until Scene 2!
+     * ZERO '?' QUESTIONS IN SCENE 1: Scene 1 MUST be a declarative statement or warning—NEVER use a question mark `?` in Scene 1, and NEVER start with `"Have you ever seen..."`, `"Did you know..."`, `"Você já viu..."`, or `"Você sabia..."`!
+   - STRICT SCENE COUNT & WORD COUNT LOCK:
+     * For SHORTS (`video_format="short"`): You MUST output **STRICTLY 7 OR 8 COMPLETE SCENES** (total 95 to 132 words across all 7-8 scenes: Scene 1 = 6-14 words; Scenes 2-7/8 = 12-18 words each). NEVER output 6 scenes or 9 scenes!
+   - THUMBNAIL TEXT HARD RULE: `thumbnail_text` MUST be strictly 2 to 3 ALL-CAPS words in {target_lang_display} with **ZERO EMOJIS** (e.g. `"BOTE FATAL!"`, `"ZERO AIR"`, `"STAY SILENT."`).
+   - 🗣️ KITCHEN-TABLE SPOKEN CREATOR VOICE (ZACK D. FILMS / CASUAL GEOGRAPHIC / CHARISMA ON COMMAND / IFINITY WHAT / THE DODO / VOCÊ SABIA?):
+     * CRITICAL: Read `CRITIQUE & REVISION FEEDBACK` above carefully! Every single phrase quoted after `VIRAL CREATOR VOICE CHECK FAILED` MUST be 100% DELETED and rewritten into effortless spoken human YouTuber language!
+     * In English, ALWAYS use **at least 3–5 natural spoken contractions** (`it's`, `doesn't`, `don't`, `can't`, `you'd`, `didn't`, `would've`, `hadn't`, `wasn't`, `that's`, `they're`, `he'd`) and plain `$1` everyday words!
+     * In `pt-BR`, speak raw, natural Brazilian YouTuber `"conversa de bar"` Portuguese (`pra`, `pro`, `tá`, `bicho`, `na hora`, `só que`, `em vez de`, `olha só`, `dentro d'água` — NEVER overuse clichés like `num piscar de olhos`, NEVER use formal written enclitics like `imobilizá-lo` or `matá-lo`, and NEVER use stiff TV-documentary dub clichés like `golpe cirúrgico`, `alicate hidráulico`, `Enquanto outros felinos...`, `Felinos comuns`, `desligando o sistema nervoso`, or `deixando só o silêncio... pra trás`!).
+     * STRICTLY FORBIDDEN AI TELLS: Front-loaded participial openers (`"Equipped with..."`, `"Armed with..."`, `"Boasting..."`, `"Ostentando..."`), generic encyclopedia setups (`"Most predators go for..."`, `"Enquanto outros..."`, `"Most people assume..."`, `"Muita gente acha que..."`, `"No fim das contas"`, `"Studies show..."`), hardware/medical clichés on animals (`"surgical strike"`, `"golpe cirúrgico"`, `"movimento cirúrgico"`, `"almoço rápido"`, `"hydraulic pliers / press"`, `"alicate hidráulico"`, `"It's a high-stakes game of..."`, `"It's a brutal, silent..."`), clinical/biochemistry hand-waving (`"air bladders"`, `"molecules"`, `"proteins"`, `"chemical buffers"`, `"elapid"`, `"permeates"` — say `"trapped air pockets"` instead of `"air bladders"`!), bureaucratic rulebook transitions & `$10` history words (`"Under ... rules"`, `"required agreement"`, `"leaving ... as the final roadblock"`, `"held absolute veto power"`, `"dissent"`, `"unanimous"`, `"vessel"`, `"full-scale atomic retaliation"`, `"nuclear apocalypse"`, `"nuclear holocaust"`, `"vigil"` — tell rules through active human keys/votes with contractions!), forced `"acting like..."` similes, and essay/proverb endings (`"Real social power belongs to..."`, `"That is how a..."`, `"That's why X belongs to..."`, `"domina o terreno porque..."`, `"They never fight the crushing abyss"`, `"the hunter becomes the meal"`, `"O Pantanal pune quem falha"`).
+     * SAVE THE SHARPEST IRONIC TWIST OR CONCRETE PHYSICAL AFTERMATH FOR THE VERY LAST SCENE! Never bury the surface-pressure/ironic twist in Scene 5 and end Scene 8 on generic description!
 1. SCENE 1 PATTERN INTERRUPT HOOK (CRITICAL TO PREVENT SWIPING):
-   - Scene 1 spoken text must use an urgent warning, 1v1 apex duel, elite interrogation tactic, dark law, or counter-intuitive shock ({'8-14 words' if is_long_form else '6-10 words'}).
-2. SMOOTH, COMPLETE NARRATIVE ({'360-560 words total across 16-22 scenes (5 Chapters), 18-26 words per body scene' if is_long_form else '85-120 words total across 7-9 scenes, flexible 8-16 words per body scene'} — NEVER write choppy or truncated sentences!):
-   - Act 1 (Scene 1): Hook ({'8-14 words' if is_long_form else '5-9 words'}).
-   - Act 2: Smooth context + concrete real-life verbal quote/example or specific historical/scientific proof.
-   - Act 3: Thorough explanation of the hidden neurological/psychological/biomechanical mechanism + Mid-Video Twist.
-   - Act 4: Complete climax or concrete word-for-word Counter-Move that viewers will Save & Share.
-   - Act 5: Satisfying conclusion + Seamless Loop Bridge back to Scene 1 (ZERO spoken Subscribe CTA).
+   - Scene 1 spoken text must establish immediate high stakes, a sharp 2-entity clash/contrast, or a staged real-life spoken moment ({'8-14 words' if is_long_form else '6-11 words, ZERO "?" questions'}).
+2. SMOOTH, COMPLETE CONVERSATIONAL NARRATIVE ({'360-560 words total across 16-22 scenes (5 Chapters), 18-26 words per body scene' if is_long_form else '92-116 words total across STRICTLY 7 OR 8 SCENES (NEVER 6 SCENES), dynamic 12-16 words per body scene'} — NEVER write choppy or truncated sentences!):
+   - Act 1 (Scene 1): Sharp declarative spoken 0.0s Hook ({'8-14 words' if is_long_form else '6-11 words, ZERO "?"'}).
+   - Act 2 (Scenes 2-3): Direct action, sharp contrast, or exact real-life spoken quote + plain `$1` mechanism.
+   - Act 3 (Scenes 4-5): 15-Second Plot Twist (or `"What If"` counterfactual domino chain if topic asks `"What If"`) + natural assumption-flip.
+   - Act 4 (Scenes 6-7): Concrete physical payoff or exact spoken Comeback in quotation marks (`"..."`).
+   - Act 5 (Scene 7 or 8): Fresh, concrete, or ironic main-clause closing realization without copying Scene 1 (ZERO spoken Subscribe CTA).
 3. CONTEXT-ANCHORED, SEARCH-ENGINE-NATIVE `visual_keyword` & `stock_query` (ZERO PRONOUNS, ZERO GENERIC TEXTURES, ZERO METAPHOR PROPS):
    - Resolve all pronouns ("It", "He", "They") in every scene's `visual_keyword` (3-5 English words formatted like real YouTube Shorts titles, e.g. `"leopard attacking porcupine"`, `"porcupine quills closeup"`, NEVER unsearchable narrative phrases like `"porcupine walking away"`) and `stock_query` (2-3 English words using common canonical noun + habitat for Pexels/Pixabay, e.g. `"porcupine wildlife"`, `"leopard hunting"`, NEVER generic textures like `"sharp needle texture"` or `"microscopic texture"`).
-4. Return ONLY valid JSON:
+4. Return ONLY valid JSON with STRICTLY {'16 to 22' if is_long_form else '7 or 8'} scene objects in `"scenes"`:
 {{
   "video_format": "{vf}",
   "title": "Viral YouTube {'Documentary' if is_long_form else 'Shorts'} Title with Emojis",
-  "primary_entity": "Full official name of main person/figure or null",
-  "hook": "The opening hook sentence ({'8-14 words' if is_long_form else '5-9 words'})",
-  "hook_visual_mode": "video | scene",
+  "primary_entity": "Full official name of main person/figure/species",
+  "hook": "The opening declarative hook sentence ({'8-14 words' if is_long_form else '6-11 words, ZERO ? questions, naming both entities if A vs B'})",
+  "hook_visual_mode": "video",
   "is_abstract_keyword": false,
-  "climax_scene_id": {8 if is_long_form else 3},
-  "hook_search_queries": ["concrete short search query 1", "concrete short search query 2"],
-  "full_narration": "The full, smooth, well-developed spoken story without stage directions ({'360-560 words across 16-22 scenes' if is_long_form else '85-120 words, 30-40s full 5-Act story'} with Real-Life Example, Mechanism, Counter-Move, and zero spoken Subscribe CTA)",
-  "thumbnail_text": "2-4 BOLD ALL-CAPS CURIOSITY WORDS IN {target_lang_display} FOR THUMBNAIL",
+  "climax_scene_id": {8 if is_long_form else 4},
+  "hook_search_queries": ["concrete short search query 1", "concrete short search query 2", "concrete short search query 3"],
+  "full_narration": "The full, smooth, well-developed spoken story without stage directions ({'360-560 words across 16-22 scenes' if is_long_form else '92-116 words across 7-8 scenes'} with Real-Life Example, Mechanism, Counter-Move, and zero spoken Subscribe CTA)",
+  "thumbnail_text": "2-3 BOLD ALL-CAPS WORDS IN {target_lang_display} WITH ZERO EMOJIS",
   "scenes": [
     {{
       "scene_id": 1,
       "visual_reasoning": "Narrative and visual intent of this scene",
-      "narration": "Complete, natural sentence spoken in this scene ({'18-26 words per body scene, 16-22 scenes total' if is_long_form else 'Scene 1: 5-9 words; Body scenes: 8-16 words flowing naturally, 7-9 scenes total'})",
+      "narration": "Complete, natural declarative sentence spoken in this scene ({'18-26 words per body scene, 16-22 scenes total' if is_long_form else 'Scene 1: 6-11 words declarative with ZERO ?; Body scenes 2 through 7/8: 12-16 words each, STRICTLY 7 OR 8 SCENES TOTAL'})",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic visual description fitting the overall story mood",
       "stock_query": "simple subject/mood query for stock video (2-4 English words)",
-      "media_type": "video | ai_image | photo | documentary",
+      "media_type": "video",
       "camera_motion": "zoom_in_fast | ken_burns_zoom_out | pan_right | ken_burns_zoom_in | pan_left",
       "sfx_cue": "impact_boom | whoosh_heavy | riser_tension | heartbeat_thump | glitch | reveal",
       "highlight_words": ["WORD1", "WORD2"],
@@ -396,17 +494,45 @@ HARD RETENTION & FULL-BODIED STORYTELLING RULES:
   ],
   "tags": ["tag1", "tag2", "{'documentary' if is_long_form else 'shorts'}"],
   "description": "Engaging description with hashtags",
-  "pinned_comment": "Provocative engagement bait question for pinned comment in {target_lang_display}",
+  "pinned_comment": "12-22 word Counterfactual 50/50 Debate Question ending with (1) ... or (2) ... 👇 in {target_lang_display}",
   "viral_formula": "Seamless Infinite Loop | Micro-Hook Escalation | Pattern Interrupt"
 }}
 """
-        raw_text = self._call_api(prompt, json_mode=False, timeout=45 if is_long_form else 30)
-        return self._parse_json_script(
+        raw_text = self._call_api(prompt, json_mode=True, timeout=45 if is_long_form else 30)
+        refined = self._parse_json_script(
             raw_text,
             channel_niche=channel_niche,
             topic=getattr(current_script, "topic", "") or getattr(current_script, "title", ""),
             video_format=vf,
         )
+        lint_res = ScriptValidationLinter.lint(
+            script=refined,
+            niche_profile=niche_profile,
+            target_wpm=niche_profile.get("target_wpm", 170),
+        )
+        if not lint_res.is_valid:
+            logger.warning(
+                f"⚠️ [ContentAgent.refine_script] Bản tinh chỉnh vi phạm Linter ({'; '.join(lint_res.issues)}) -> Chạy 1 lượt sửa lỗi Linter tức thì..."
+            )
+            fix_prompt = (
+                f"{prompt}\n\n🚨 CRITICAL LINTER VIOLATIONS TO FIX IMMEDIATELY:\n"
+                f"{'; '.join(lint_res.issues)}\n"
+                f"{lint_res.retry_prompt_hint or ''}\n"
+                f"Output ONLY the corrected JSON with STRICTLY {'16-22' if is_long_form else '7 or 8'} scenes and ZERO '?' in Scene 1!"
+            )
+            try:
+                raw_fix = self._call_api(fix_prompt, json_mode=True, timeout=30)
+                refined_fix = self._parse_json_script(
+                    raw_fix,
+                    channel_niche=channel_niche,
+                    topic=getattr(current_script, "topic", "") or getattr(current_script, "title", ""),
+                    video_format=vf,
+                )
+                if ScriptValidationLinter.lint(script=refined_fix, niche_profile=niche_profile).is_valid:
+                    return refined_fix
+            except Exception as e_rf:
+                logger.debug(f"[ContentAgent.refine_script] Linter retry skip: {e_rf}")
+        return refined
 
     def chat_brainstorm(
         self,

@@ -22,12 +22,12 @@ def build_language_integrity_instruction(language: str) -> str:
     if is_vi:
         return """
 ═══════════════════════════════════════════════════════════════════
-🌐 CRITICAL LANGUAGE INTEGRITY: 100% TIẾNG VIỆT (VIETNAMESE)
+🌐 CRITICAL LANGUAGE INTEGRITY: 100% TIẾNG VIỆT ĐỜI THƯỜNG CUỐN HÚT (SPOKEN VIETNAMESE YOUTUBER VOICE)
 ═══════════════════════════════════════════════════════════════════
 - TARGET SCRIPT LANGUAGE: VIETNAMESE ('vi').
 - SPOKEN NARRATION REQUIREMENT:
-  * 'hook', 'full_narration', and 'narration' in EVERY scene MUST be written 100% in natural, dramatic, conversational VIETNAMESE.
-  * Even if the topic, director notes, or instructions are in English, you MUST TRANSLATE and write all narration in VIETNAMESE.
+  * 'hook', 'full_narration', and 'narration' in EVERY scene MUST be written 100% in natural, vivid, spoken VIETNAMESE like a top million-view creator talking directly to a friend across the table—NEVER stiff translated textbook prose or generic AI clichés.
+  * Even if the topic, director notes, or instructions are in English, you MUST TRANSLATE and write all narration in natural spoken VIETNAMESE.
   * STRICTLY FORBIDDEN: Do NOT output English spoken narration.
 - TITLE REQUIREMENT:
   * 'title' MUST be in VIETNAMESE (click-through optimized, CTR > 10%, under 60 chars with emojis).
@@ -38,32 +38,35 @@ def build_language_integrity_instruction(language: str) -> str:
     elif is_pt:
         return """
 ═══════════════════════════════════════════════════════════════════
-🌐 CRITICAL LANGUAGE INTEGRITY: 100% PORTUGUÊS BRASILEIRO (pt-BR)
+🌐 CRITICAL LANGUAGE INTEGRITY: 100% PORTUGUÊS BRASILEIRO FALADO (VOZ REAL DE YOUTUBER BRASILEIRO)
 ═══════════════════════════════════════════════════════════════════
 - TARGET SCRIPT LANGUAGE: BRAZILIAN PORTUGUESE ('pt-BR').
 - SPOKEN NARRATION & ON-SCREEN HUD REQUIREMENT:
-  * 'hook', 'full_narration', 'narration', 'overlay_badge', 'thumbnail_text', 'description', and 'pinned_comment' in EVERY scene MUST be written 100% in natural, dramatic, colloquial BRAZILIAN PORTUGUESE (português do Brasil).
-  * Even if the topic, director notes, or niche instructions are in English, you MUST TRANSLATE and write ALL narration and badges in BRAZILIAN PORTUGUESE.
-  * Use vocabulary and expressions natural to Brazil: 'onça-pintada', 'sucuri', 'jacaré', 'incrível', 'absurdo', 'impressionante', 'jamais', NOT European Portuguese.
-  * STRICTLY FORBIDDEN: Do NOT output English or European Portuguese spoken narration.
-  * ZERO SPOKEN OUTRO CTA: NEVER say 'Inscreva-se', 'Curta', or 'Deixe nos comentários' inside any scene's spoken `narration`! Put engagement questions ONLY in `pinned_comment`, and end the final scene's `narration` with a seamless Infinite Loop Bridge back to Scene 1!
+  * 'hook', 'full_narration', 'narration', 'overlay_badge', 'thumbnail_text', 'description', and 'pinned_comment' in EVERY scene MUST sound 100% like a real million-view Brazilian YouTuber speaking out loud at a café table (Você Sabia? / Biólogo Henrique / Fatos Desconhecidos spoken rhythm)—NEVER stiff written newspaper/biology-textbook Portuguese!
+  * MANDATORY SPOKEN BRAZILIAN CADENCE ('CONVERSA DE BAR'): Speak with the gritty, street-smart, colloquial Brazilian YouTuber rhythm (`dentro d'água`, `pra`, `pro`, `tá`, `bicho`, `na hora`, `só que`, `em vez de`—do NOT overuse `num piscar de olhos`).
+  * STRICTLY BANNED STIFF / AI PHRASES IN pt-BR:
+    - NEVER use formal written enclitics (`imobilizá-lo`, `matá-lo`, `esmagá-lo`, `perfurá-lo`)—say `imobilizar o bicho`, `matar na hora`, `esmagar`!
+    - NEVER use TV-documentary dub clichés or hardware metaphors (`golpe cirúrgico`, `alicate hidráulico`, `Enquanto outros felinos...`, `Felinos comuns`, `desligando o sistema nervoso`, `atravessa o osso como papel`, `deixando só o silêncio... pra trás`, `Muita gente acha que`, `No fim das contas`) or moralizing proverbs (`a natureza não perdoa`, `pune quem falha`).
+  * Even if the topic, director notes, or niche instructions are in English, you MUST write ALL narration and badges in 100% colloquial BRAZILIAN PORTUGUESE.
+  * ZERO SPOKEN OUTRO CTA: NEVER say 'Inscreva-se', 'Curta', or 'Deixe nos comentários' inside any scene's spoken `narration`! Put engagement questions ONLY in `pinned_comment`.
 - VISUAL SEARCH & AI PROMPT REQUIREMENT (CRITICAL FOR PEXELS / PIXABAY / FLUX):
-  * 'visual_keyword', 'visual_prompt', and 'stock_query' MUST ALWAYS BE IN CONCRETE ENGLISH (e.g., "jaguar hunting caiman river", "deep ocean sonar submarine", "giant river otter amazon") so stock video APIs (Pexels/Pixabay) and AI image generators return 100% accurate visuals!
+  * 'visual_keyword', 'visual_prompt', and 'stock_query' MUST ALWAYS BE IN CONCRETE ENGLISH (e.g., "mongoose fighting cobra desert", "deep ocean sonar submarine", "giant river otter amazon") so stock video APIs and AI image generators return 100% accurate visuals!
 - TITLE REQUIREMENT:
   * 'title' MUST be 100% in BRAZILIAN PORTUGUESE (click-through optimized, CTR > 10%, under 60 chars with emojis).
   * DO NOT add suffixes like '- PT', '- BR', '(Brasil)'.
-- thumbnail_text MUST also be in PORTUGUÊS BRASILEIRO (3-5 words ALL CAPS + 1 emoji).
+- thumbnail_text MUST also be in PORTUGUÊS BRASILEIRO (2-3 words ALL CAPS, ZERO emojis).
 ═══════════════════════════════════════════════════════════════════
 """
     else:
         return """
 ═══════════════════════════════════════════════════════════════════
-🌐 CRITICAL LANGUAGE INTEGRITY: 100% ENGLISH (AMERICAN)
+🌐 CRITICAL LANGUAGE INTEGRITY: 100% CONVERSATIONAL SPOKEN AMERICAN ENGLISH (REAL YOUTUBER VOICE)
 ═══════════════════════════════════════════════════════════════════
 - TARGET SCRIPT LANGUAGE: ENGLISH ('en').
 - SPOKEN NARRATION REQUIREMENT:
-  * 'hook', 'full_narration', and 'narration' in EVERY scene MUST be written 100% in natural, punchy, conversational AMERICAN ENGLISH.
-  * Even if the topic, director notes, or niche instructions are in Vietnamese, you MUST TRANSLATE and write all narration in ENGLISH.
+  * 'hook', 'full_narration', and 'narration' in EVERY scene MUST sound 100% like a real multi-million-view American YouTube creator speaking into a mic (Zack D. Films / Casual Geographic / Charisma on Command / The Dodo)—NEVER stiff essay/Wikipedia prose!
+  * MANDATORY SPOKEN CONTRACTIONS & $1 EVERYDAY WORDS: Always use natural spoken contractions (`it's`, `doesn't`, `don't`, `can't`, `you'd`, `didn't`, `would've`, `hadn't`, `wasn't`, `they're`, `that's`, `he'd`)—include at least 2–4 natural contractions in every Short! Always pick plain $1 everyday words over $10 academic/corporate/melodramatic words (never write `Equipping/Equipped with`, `acting like...`, `Most people assume...`, `the hunter becomes the meal`, `It's a high-stakes game of...`, `It's a brutal, silent end`, `dissent`, `global nuclear exchange`, `vessel`, `chemical buffers`, or `Real social power belongs to...`).
+  * Even if the topic, director notes, or niche instructions are in Vietnamese, you MUST write all narration in natural spoken AMERICAN ENGLISH.
   * STRICTLY FORBIDDEN: Do NOT output Vietnamese spoken narration.
 - TITLE REQUIREMENT:
   * 'title' MUST be in ENGLISH (click-through optimized, CTR > 10%, under 60 chars with emojis).
@@ -121,13 +124,13 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 🇧🇷 REGIONAL HOOK MASTERY — MERCADO BRASILEIRO (pt-BR | META: STAYED-TO-WATCH >= 70% & APV >= 100%)
 ═══════════════════════════════════════════════════════════════════
 1. REGRA DE OURO: ENTIDADE EXPLÍCITA + IMPACTO VISCERAL IMAGINÁVEL OU PARADOXO MORTAL NO SEGUNDO 0,0s (6 A 10 PALAVRAS):
-   - TÍTULO (`title`): DEVE conter os nomes exatos das entidades de alto volume de busca + ação física visceral ou confronto fácil de imaginar (`[Entidade A] vs [Entidade B]: [Impacto Visceral]`, ex: "Mamba-Negra vs Mangusto: Golpe Mais Rápido Que um Piscar! 🐍🥊", "Onça-Pintada vs Jacaré: A Mordida Que Fura o Crânio! 🐆🐊"). PROIBIDO usar unidades científicas secas como PSI, Newtons, kPa ou Joules!
-   - HOOK DA CENA 1 (0,0s a 2,2s | 6 A 10 PALAVRAS): No feed do Shorts, o público NÃO lê o título antes de ouvir os 2 primeiros segundos! Por isso, a Cena 1 DEVE nomear explicitamente a Entidade/Predador principal (ou o confronto A vs B) + uma imagem física brutal, comparação do dia a dia ou paradoxo mortal logo na primeira frase (SEM unidades físicas abstratas como PSI ou Newtons que o público não consegue visualizar)!
-   - PROIBIDO USAR APONTAMENTOS VAGOS QUE ESCONDEM O SUJEITO ("Olhe bem para este pequeno crânio...", "Veja o momento exato em que este predador...") — dados reais provam que esconder o nome do animal na Cena 1 derruba a retenção para <17%!
+   - TÍTULO (`title`): DEVE conter os nomes exatos das entidades de alto volume de busca + ação física visceral ou confronto fácil de imaginar (`[Entidade A] vs [Entidade B]: [Impacto Visceral]`, ex: "Mamba-Negra vs Mangusto: Golpe Mais Rápido Que um Piscar! 🐍🥊", "Sucuri-Verde vs Capivara: O Bote Invisível no Rio! 🐍🌊"). PROIBIDO usar unidades científicas secas como PSI, Newtons, kPa ou Joules!
+   - HOOK DA CENA 1 (0,0s a 2,2s | 6 A 11 PALAVRAS — ZERO PERGUNTAS '?'): No feed do Shorts, o público NÃO lê o título antes de ouvir os 2 primeiros segundos! Por isso, a Cena 1 DEVE nomear explicitamente a Entidade/Predador principal (e se o tema for um duelo `Entidade A vs Entidade B`, DEVE nomear AMBAS as entidades na Cena 1!) + uma imagem física brutal, comparação do dia a dia ou paradoxo mortal logo na primeira frase afirmativa (PROIBIDO usar ponto de interrogação `?`, PROIBIDO começar com "Você já viu...?", e SEM unidades físicas abstratas como PSI ou Newtons)!
+   - PROIBIDO USAR APONTAMENTOS VAGOS QUE ESCONDEM O SUJEITO ("Olhe bem para este pequeno crânio...", "Veja o momento exato em que este predador...", "Você já viu uma armadura...") — dados reais provam que esconder o nome do animal ou fazer pergunta na Cena 1 derruba a retenção para <17%!
 2. AS 4 FÓRMULAS COMPROVADAS DE HOOK (>50% STAYED & >75% APV NO NOSSO CANAL):
    - [Arquétipo 1 — Confronto Direto / Paradoxo Letal (Vencedor 40.225 views `TXPjVAIaKWw` — 51,4% Stay, 79,1% APV)]:
      * "Esta mamba-negra mata em segundos, mas o mangusto ri do veneno!"
-     * "Trinta mil espinhos afiados contra a mordida mais letal da África."
+     * "A onça-pintada não sufoca o jacaré-açu—ela fura o crânio blindado dele na hora."
    - [Arquétipo 2 — Escala Física / Impacto Brutal Imediato]:
      * "Setecentos quilos de músculo esmagam um leão de duzentos quilos."
      * "A trezentos metros sob o México, essa caverna de cristal ferve a 58 graus."
@@ -139,7 +142,7 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 3. PROIBIDO NO MERCADO BRASILEIRO:
    - NUNCA use frases vagas como "Olhe bem para..." ou "Veja o momento exato..." sem dizer o nome da espécie/fenômeno na Cena 1.
    - NUNCA divida um Short de 35 segundos em "Round 1, Round 2, Round 3" trocando para um terceiro animal que não está no título.
-   - NUNCA faça perguntas passivas ("Você sabia que...?").
+   - NUNCA faça perguntas ("Você sabia que...?", "Você já viu...?") na Cena 1 (ZERO `?` na Cena 1).
 4. REGRA DE ALTERNÂNCIA VISUAL 1-1 & ANTI-FADIGA DE TEMA (QUEBRA DO TETO DE ~1.000 VIEWS):
    - Dados reais da YouTube Analytics API v2 provam que repetir o mesmo animal/sujeito principal no início do Título e na paleta visual das primeiras cenas em vídeos consecutivos causa fadiga imediata no público do canal (Stayed-to-Watch cai de ~48,5% para ~32,8%, travando o vídeo no lote inicial de ~1.000 views).
    - NUNCA inicie o Título (`title`) ou a Cena 1 com o mesmo sujeito/espécie que já liderou os últimos 2-3 vídeos recentes do canal! Se o tema envolver um fenômeno extremo (vulcão a 100°C, cratera a 1.000°C, lago tóxico, anomalia acústica) + um animal já usado recentemente, destaque SEMPRE o fenômeno extremo inédito ou o oponente novo na abertura do Título e na cor/visual da Cena 1!
@@ -156,7 +159,7 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 1. QUY TẮC VÀNG MỞ ĐẦU 0.0s: NÊU ĐÍCH DANH THỰC THỂ + HÌNH ẢNH VA CHẠM SỐNG ĐỘNG DỄ TƯỞNG TƯỢNG / NGHỊCH LÝ SINH TỬ NGAY Ở CẢNH 1:
    - TIÊU ĐỀ (`title`): Bắt buộc nêu đích danh thực thể + hành động/hệ quả trực quan dễ hình dung (`[Thực thể A] vs [Thực thể B]: [Cú sốc trực quan]`). CẤM nhồi đơn vị vật lý khô khan như PSI, Newton, kPa!
-   - CÂU HOOK CẢNH 1 (6–10 từ): Bắt buộc nêu đích danh Thực thể chính (hoặc cặp đấu A vs B) + hình ảnh so sánh đời thường sống động hoặc nghịch lý sinh tử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu tên chủ thể kiểu "Hãy nhìn kỹ vào..." và CẤM dùng số liệu khoa học khô khan khó mường tượng.{bench_block}
+   - CÂU HOOK CẢNH 1 (6–11 từ, câu khẳng định 100% KHÔNG dấu chấm hỏi `?`): Bắt buộc nêu đích danh Thực thể chính (nếu chủ đề là cặp đấu `A vs B` thì BẮT BUỘC nêu tên CẢ 2 thực thể A và B ngay ở Cảnh 1!) + hình ảnh so sánh đời thường sống động hoặc nghịch lý sinh tử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu tên chủ thể kiểu "Hãy nhìn kỹ vào..." và CẤM dùng số liệu khoa học khô khan khó mường tượng.{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """
     else:
@@ -164,19 +167,19 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇺🇸 REGIONAL HOOK MASTERY — US / GLOBAL ENGLISH MARKET (en-US | TARGET: STAYED-TO-WATCH >= 70%)
 ═══════════════════════════════════════════════════════════════════
-1. GOLDEN 0.0s RETENTION RULE: EXPLICIT ENTITY + VISCERAL EVERYDAY IMAGE OR LETHAL PARADOX IN SCENE 1 (6 TO 10 WORDS | GRADE-5 ENGLISH):
-   - TITLE (`title`): MUST explicitly name the high-search-volume primary entities + visceral, instantly imaginable physical clash or stakes (`[Entity A] vs [Entity B]: [Visceral Stakes]`, e.g., "Jaguar vs Black Caiman: The Skull-Piercing Ambush 🐆🐊", "Komodo Dragon vs Water Buffalo: One Bite Seals Its Fate 🦎🐃"). STRICTLY BAN dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) that ordinary viewers cannot picture!
-   - SCENE 1 HOOK (0.0s–2.2s, 6–10 words): Viewers scrolling the Shorts Feed DO NOT read the bottom title before hearing the first 2 seconds of voiceover! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND paint an immediate, visceral physical action or lethal paradox right at 0.0s—NEVER dry science units!
-   - STRICTLY FORBIDDEN VAGUE POINTERS: NEVER start Scene 1 with vague entity-blind pointers like `"Look closely at why you cannot find the exit"`, `"Look closely at these deadly floating blue tentacles"`, or `"Watch the exact moment this massive predator feels pain"`! Real YouTube Analytics proves that hiding the subject behind `"Look closely at..."` causes 70%–94% Swipe-Away in the first 2 seconds!
-2. THE 4 PROVEN HIGH-RETENTION US HOOK ARCHETYPES (CHOOSE THE #1 BEST FIT FOR SCENE 1 IN 6–10 WORDS):
-   - [Archetype 1 — Direct Scale / Extreme Metric Clash (Proven Winner `A-oNKdpL0rM` 1,146 views & `w7iUy-8hjVo` 47.7% Stay)]:
-     * "Fifteen hundred pounds of muscle crushes a four-hundred-pound lion."
-     * "Thirty thousand razor quills versus the deadliest jaws in Africa."
+1. GOLDEN 0.0s RETENTION RULE: EXPLICIT ENTITY + VISCERAL EVERYDAY IMAGE OR LETHAL PARADOX IN SCENE 1 (6 TO 11 WORDS | GRADE-5 ENGLISH):
+   - TITLE (`title`): MUST explicitly name the high-search-volume primary entities + visceral, instantly imaginable physical clash or stakes (`[Entity A] vs [Entity B]: [Visceral Stakes]`, e.g., "Sea Turtle vs Box Jellyfish: Why Deadly Tentacles Don't Faze It 🐢🪼", "Komodo Dragon vs Water Buffalo: One Bite Seals Its Fate 🦎🐃"). STRICTLY BAN dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) that ordinary viewers cannot picture!
+   - SCENE 1 HOOK (0.0s–2.2s, 6–11 words — ZERO '?' QUESTIONS): Viewers scrolling the Shorts Feed DO NOT read the bottom title before hearing the first 2 seconds of voiceover! Therefore, Scene 1 MUST explicitly name the primary entity/combatants (and if the topic is `Entity A vs Entity B`, Scene 1 MUST explicitly name BOTH `Entity A` AND `Entity B` right in Scene 1!) AND paint an immediate, visceral physical action or lethal paradox right at 0.0s—NEVER hide the second entity behind `"You'd think a massive whale wouldn't fear anything!"` and NEVER use dry science units!
+   - STRICTLY FORBIDDEN VAGUE POINTERS: NEVER start Scene 1 with vague entity-blind pointers like `"Look closely at why you cannot find the exit"`, `"Look closely at these deadly floating blue tentacles"`, `"You'd think a massive whale wouldn't fear anything"`, or `"Watch the exact moment this massive predator feels pain"`! Real YouTube Analytics proves that hiding a combatant in Scene 1 causes 70%–94% Swipe-Away in the first 2 seconds!
+2. THE 4 PROVEN HIGH-RETENTION US HOOK ARCHETYPES (CHOOSE THE #1 BEST FIT FOR SCENE 1 IN 6–11 WORDS):
+   - [Archetype 1 — Direct Scale / 2-Entity Extreme Clash (Proven Winner `A-oNKdpL0rM` 1,146 views & `w7iUy-8hjVo` 47.7% Stay)]:
+     * "Two miles down, a colossal squid's rotating hooks rip straight into a hunting sperm whale."
+     * "A jaguar doesn't choke an armored caiman—it punches straight through its skull."
      * "A fifteen-hundred-pound polar bear charges a six-hundred-pound Siberian tiger."
-   - [Archetype 2 — Walking Dead / Lethal Paradox with Named Entity (Proven Winner `1NeB0Qe6_t4` 1,325 views in 12h & `D_sIws9Buto` 123.8% APV)]:
+   - [Archetype 2 — Walking Dead / Lethal Paradox Naming Both Entities (Proven Winner `1NeB0Qe6_t4` 1,325 views in 12h & `D_sIws9Buto` 123.8% APV)]:
      * "This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead."
      * "Earth survived only because the Krakatoa volcano killed thousands."
-     * "The Jaguar doesn't hunt like lions—it targets skull kill-switches."
+     * "Swallowing a venomous box jellyfish is instant death—unless you're a sea turtle."
    - [Archetype 3 — Concrete Historical / Scientific Shock Event (Proven Winner `PVoVipDbLt8` 87.5% APV)]:
      * "One hundred thousand Mongol horsemen vanished forty miles from Vienna."
      * "In 1815, Mount Tambora's eruption buried June under freezing snowstorms."

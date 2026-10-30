@@ -18,19 +18,26 @@ from app.schemas.contracts import ScriptContract, SceneContract
 
 logger = logging.getLogger(__name__)
 
-# Danh sách từ nối / giới từ / đại từ sở hữu lửng lơ (EN + PT + VI) tuyệt đối không được đứng cuối câu/kịch bản
+# Danh sách từ nối / mạo từ / tính từ sở hữu lửng lơ thực sự bị cắt cụt (tách riêng EN và PT để động từ tiếng Anh 'do' không bị bắt nhầm là giới từ Bồ Đào Nha 'do')
 TRAILING_ENGLISH_CONNECTORS = [
-    "because", "which", "and", "so", "that", "but", "with",
-    "or", "while", "as", "if", "since", "although", "though", "where",
-    "of", "to", "for", "from", "in", "on", "at", "by", "into", "onto", "until",
-    "his", "her", "their", "its", "my", "your", "our", "the", "a", "an",
-    "que", "de", "do", "da", "dos", "das", "pois", "porque", "para", "com",
-    "em", "no", "na", "nos", "nas", "mas", "ou", "quando", "onde",
+    "because", "which", "and", "but",
+    "or", "although",
+    "of", "into", "onto", "until",
+    "his", "their", "its", "my", "your", "our", "the", "a", "an",
 ]
 
-# Regex nhận diện đuôi câu kết thúc bằng từ nối đơn độc hoặc dấu ba chấm lửng
+TRAILING_PORTUGUESE_CONNECTORS = [
+    "que", "de", "do", "da", "dos", "das", "pois", "porque",
+    "mas", "ou",
+]
+
 TRAILING_CONNECTOR_PATTERN = re.compile(
     r'\b(?:' + '|'.join(TRAILING_ENGLISH_CONNECTORS) + r')\s*(?:[\.\,\-\—\…]+|\.{2,})*$',
+    re.IGNORECASE
+)
+
+TRAILING_PT_CONNECTOR_PATTERN = re.compile(
+    r'\b(?:' + '|'.join(TRAILING_PORTUGUESE_CONNECTORS) + r')\s*(?:[\.\,\-\—\…]+|\.{2,})*$',
     re.IGNORECASE
 )
 
@@ -74,14 +81,21 @@ class ScriptValidationLinter:
                     f"Never include bracketed stage tags like [LOOP] or [HOOK] in spoken narration."
                 )
 
+        full_blob_low = f"{script.title or ''} {' '.join((s.narration or '') for s in scenes)}".lower()
+        is_pt_text = any(
+            pt_marker in full_blob_low
+            for pt_marker in (" não ", " você", " então", " mas ", " porque ", " para ", " uma ", " dos ", " das ", "ção", "ões", " d'água", " pra ", " pro ")
+        )
+        active_trailing_re = TRAILING_PT_CONNECTOR_PATTERN if is_pt_text else TRAILING_CONNECTOR_PATTERN
+
         # 1. Kiểm tra cảnh cuối cùng (quan trọng nhất đối với Infinite Shorts Loop)
         last_scene = scenes[-1]
         last_text = STAGE_TAG_PATTERN.sub("", (last_scene.narration or "")).strip()
         
         # Bỏ dấu chấm than, chấm hỏi cuối câu nếu có
         cleaned_last = re.sub(r'[\s\.\!\?]+$', '', last_text)
-        if TRAILING_CONNECTOR_PATTERN.search(cleaned_last):
-            match = TRAILING_CONNECTOR_PATTERN.search(cleaned_last).group(0).strip(" .,-—…")
+        if active_trailing_re.search(cleaned_last):
+            match = active_trailing_re.search(cleaned_last).group(0).strip(" .,-—…")
             errors.append(
                 f"Scene {last_scene.scene_id} (Final Scene) ends abruptly on an incomplete word '{match}'. "
                 f"Full sentences are required. Do NOT leave trailing prepositions, possessives, or conjunctions."
@@ -91,8 +105,8 @@ class ScriptValidationLinter:
         for sc in scenes[:-1]:
             sc_text = STAGE_TAG_PATTERN.sub("", (sc.narration or "")).strip()
             cleaned_sc = re.sub(r'[\s\.\!\?]+$', '', sc_text)
-            if TRAILING_CONNECTOR_PATTERN.search(cleaned_sc):
-                match = TRAILING_CONNECTOR_PATTERN.search(cleaned_sc).group(0).strip(" .,-—…")
+            if active_trailing_re.search(cleaned_sc):
+                match = active_trailing_re.search(cleaned_sc).group(0).strip(" .,-—…")
                 errors.append(
                     f"Scene {sc.scene_id} narration ends on a dangling word '{match}'. "
                     f"Each scene must be a grammatically complete clause."
@@ -152,7 +166,8 @@ class ScriptValidationLinter:
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
-        words = re.findall(r'\b\w+\b', all_narrations)
+        # Đếm từ nói thực tế (contractions như "doesn't", "would've" và danh từ ghép "onça-pintada" tính là 1 từ thay vì bị cắt đôi)
+        words = re.findall(r"\b[\w'-]+\b", all_narrations, flags=re.UNICODE)
         total_words = len(words)
 
         is_long_form = str(getattr(script, "video_format", "short") or "short").strip().lower() == "long"
@@ -163,9 +178,9 @@ class ScriptValidationLinter:
             min_scenes = 12
             max_scenes = 60
         else:
-            min_words = 82
-            max_words = 128
-            target_range_str = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 smooth, complete scenes)"
+            min_words = 80
+            max_words = 142
+            target_range_str = "92 to 120 words (34-44s High-APV Golden Duration across 7-8 smooth, complete scenes)"
             min_scenes = 7
             max_scenes = 9
 
@@ -219,9 +234,9 @@ class ScriptValidationLinter:
         if script.scenes:
             s1 = script.scenes[0]
             s1_narr = (s1.narration or "").strip()
-            s1_words = re.findall(r'\b\w+\b', s1_narr)
+            s1_words = re.findall(r"\b[\w'-]+\b", s1_narr, flags=re.UNICODE)
             is_long_form = str(getattr(script, "video_format", "short") or "short").strip().lower() == "long"
-            max_s1_words = 32 if is_long_form else 14
+            max_s1_words = 34 if is_long_form else 22
             if len(s1_words) > max_s1_words:
                 issues.append(
                     f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 6 and {max_s1_words} punchy words for an instant thumb-stopper."
@@ -244,6 +259,58 @@ class ScriptValidationLinter:
                     f"Scene 1 hook uses a weak question ('{s1_narr}'). "
                     f"100% of Scene 1 hooks MUST be a sharp declarative statement or warning (NO '?' or Yes/No questions like 'Have you ever...' / 'Do you...')."
                 )
+
+            # Kiểm tra cấu trúc 2-Entity Matchup (`Entity A vs Entity B`): Nếu tiêu đề/chủ đề là cặp đối đầu `A vs B`,
+            # Cảnh 1 của Shorts BẮT BUỘC phải nêu tên CẢ 2 thực thể (tránh câu mù thực thể kiểu "You'd think a massive whale wouldn't fear anything!" giấu mất đối thủ).
+            if not is_long_form:
+                vs_source = raw_title if re.search(r"\b(?:vs\.?|versus|contra)\b", raw_title, re.I) else str(getattr(script, "topic", "") or "")
+                m_vs = re.search(
+                    r"^([^:|\-–—#]{3,42}?)\s+\b(?:vs\.?|versus|contra)\b\s+([^:|\-–—#!?]{3,42})",
+                    vs_source.strip(),
+                    flags=re.IGNORECASE,
+                )
+                if m_vs:
+                    _vs_stop = {
+                        "the", "and", "for", "with", "from", "into", "this", "that", "how", "why", "what",
+                        "uma", "uns", "umas", "dos", "das", "nos", "nas", "por", "para", "com", "sem",
+                        "deadly", "giant", "massive", "extreme", "ultimate", "battle", "duel", "duelo", "mortal",
+                    }
+                    side_a_raw = m_vs.group(1).strip()
+                    side_b_raw = m_vs.group(2).strip()
+                    toks_a = [
+                        w.lower() for w in re.findall(r"[a-zA-ZÀ-ỹ]{3,}", side_a_raw)
+                        if w.lower() not in _vs_stop
+                    ]
+                    toks_b = [
+                        w.lower() for w in re.findall(r"[a-zA-ZÀ-ỹ]{3,}", side_b_raw)
+                        if w.lower() not in _vs_stop
+                    ]
+                    opening_two_low = " ".join((sc.narration or "") for sc in script.scenes[:2]).lower()
+                    _syn_groups = (
+                        {"navy", "warships", "destroyers", "fleet", "american"},
+                        {"submarine", "sub"},
+                        {"soviet", "russian"},
+                        {"creature", "creatures", "fish", "snailfish"},
+                    )
+                    def _matches_side(toks: List[str], blob: str) -> bool:
+                        if not toks:
+                            return True
+                        for t in toks:
+                            if t[:4] in blob:
+                                return True
+                            for grp in _syn_groups:
+                                if t in grp and any(g in blob for g in grp):
+                                    return True
+                        return False
+
+                    has_a = _matches_side(toks_a, opening_two_low)
+                    has_b = _matches_side(toks_b, opening_two_low)
+                    if toks_a and toks_b and (not has_a or not has_b):
+                        missing_side = side_b_raw if not has_b else side_a_raw
+                        issues.append(
+                            f"Opening hook hides one of the combatants ('{missing_side}') in a 2-entity matchup ('{side_a_raw} vs {side_b_raw}'). "
+                            f"In an 'A vs B' Short, name BOTH '{side_a_raw}' AND '{side_b_raw}' immediately in Scene 1!"
+                        )
 
             # CẤM đọc câu xin Subscribe / Comment ở BẤT KỲ cảnh nào (đặc biệt là cảnh cuối)
             cta_regex = re.compile(

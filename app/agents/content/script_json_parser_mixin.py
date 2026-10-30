@@ -171,6 +171,10 @@ class ScriptJsonParserMixin:
                 raw_data["title"],
                 flags=re.IGNORECASE
             ).strip()
+            while len(cleaned_title) > 95 and "#" in cleaned_title:
+                cleaned_title = re.sub(r"\s*#\S+\s*$", "", cleaned_title).strip()
+            if len(cleaned_title) > 99:
+                cleaned_title = cleaned_title[:99].rsplit(" ", 1)[0].strip()
             if cleaned_title:
                 raw_data["title"] = cleaned_title
 
@@ -405,15 +409,16 @@ class ScriptJsonParserMixin:
                     scenes[0]["narration"] = cleaned_h1
                     raw_data["hook"] = cleaned_h1
 
-        # ── 2.5. TỰ ĐỘNG CHIA NHỊP CẮT CẢNH SIÊU TỐC (ULTRA-FAST SCENE PACING SPLITTER: 1.8s - 2.5s/CẢNH) ──
-        # Đảm bảo Cảnh 1 Hook <= 7 từ (~1.5s - 2.0s) và các cảnh thân <= 10 từ (~1.8s - 2.5s), triệt tiêu cảm giác dài lê thê
+        # ── 2.5. TỰ ĐỘNG TÁCH CẢNH CHỈ KHI CẢNH QUÁ DÀI CÓ NHIỀU CÂU ĐỘC LẬP (NON-DESTRUCTIVE SENTENCE SPLITTER) ──
+        # TUYỆT ĐỐI KHÔNG cắt đôi câu đối lập Cảnh 1 (", but ", ", yet ", " — ") và gắn dấu "!" giả tạo
+        # (vì sẽ chặt cụt Thực thể B sang Cảnh 2 và phá hỏng nhịp nói tự nhiên của YouTuber).
         def _split_long_narration(text: str, prefer_word_idx: int) -> Optional[tuple]:
             text_clean = text.strip()
             words = text_clean.split()
-            if len(words) < 8:
+            if len(words) < 14:
                 return None
 
-            # Ưu tiên 1: Tách theo ranh giới câu (. ! ?) nếu có >= 2 câu và mỗi vế >= 3 từ
+            # Chỉ tách theo ranh giới câu hoàn chỉnh (. ! ?) nếu có >= 2 câu và mỗi vế >= 5 từ
             sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text_clean) if s.strip()]
             if len(sents) >= 2:
                 acc = []
@@ -421,25 +426,8 @@ class ScriptJsonParserMixin:
                     acc.append(s_part)
                     left_str = " ".join(acc).strip()
                     right_str = " ".join(sents[i_s + 1:]).strip()
-                    if len(left_str.split()) >= 4 and len(right_str.split()) >= 4:
+                    if len(left_str.split()) >= 5 and len(right_str.split()) >= 5:
                         return left_str, right_str
-
-            # Riêng với Cảnh 1 (prefer_word_idx <= 7) nếu câu ghép dài (>= 10 từ) có dấu phẩy / gạch ngang / liên từ
-            # (", yet ", ", but ", ", mas ", " — ", " - ") -> Tách gọn để Cảnh 1 luôn dứt điểm trong 5-8 từ (1.6s-2.2s)!
-            if prefer_word_idx <= 7 and len(words) >= 10:
-                import re as _re
-                m_conj = _re.search(
-                    r'^([^,;\—\-]{15,65})(?:[,;\—\-]+\s*(?:yet|but|and|while|until|mas|porém|contudo|enquanto|até)\s+|\s+[\—\-]+\s+)(.{14,})$',
-                    text_clean,
-                    flags=_re.IGNORECASE,
-                )
-                if m_conj:
-                    l_part = m_conj.group(1).strip().rstrip(",;.-—") + "!"
-                    r_part = m_conj.group(2).strip()
-                    if r_part and r_part[0].islower():
-                        r_part = r_part[0].upper() + r_part[1:]
-                    if 4 <= len(l_part.split()) <= 9 and len(r_part.split()) >= 4:
-                        return l_part, r_part
             return None
 
         if scenes and isinstance(scenes, list):
@@ -483,13 +471,14 @@ class ScriptJsonParserMixin:
                 w_list = narr_str.split()
                 w_count = len(w_list)
 
-                # Chỉ tách Cảnh 1 nếu >= 12 từ, hoặc tách cảnh thân khi tổng số cảnh < 7 (không bao giờ tách cảnh đang có câu thoại trong ngoặc kép!)
-                has_quote_or_colon = ('"' in narr_str or "'" in narr_str or ":" in narr_str)
+                # Chỉ tách khi cảnh gộp nhiều câu quá dài (> 22 từ) và tổng số cảnh đang thiếu (< 7 cảnh)
+                has_quote_or_colon = ('"' in narr_str or ":" in narr_str)
                 should_split = (
                     not is_long_form_parse
+                    and len(scenes) < 7
                     and (
-                        (idx_sc == 0 and w_count >= 12)
-                        or (idx_sc > 0 and w_count >= 25 and len(scenes) < 7 and not has_quote_or_colon)
+                        (idx_sc == 0 and w_count > 22)
+                        or (idx_sc > 0 and w_count >= 24 and not has_quote_or_colon)
                     )
                 )
                 target_pref = 6 if idx_sc == 0 else max(8, w_count // 2)
@@ -523,6 +512,48 @@ class ScriptJsonParserMixin:
                     wps_div = 2.45 if is_long_form_parse else 2.75
                     sc["estimated_seconds"] = round(max(min_dur, min(max_est_dur, w_count / wps_div)), 1)
                     paced_scenes.append(sc)
+
+            # Nếu kịch bản Shorts chỉ có 6 cảnh (do LLM gộp 2 ý vào 1 cảnh thân dài >= 14 từ),
+            # tự động tách cảnh thân dài nhất thành 2 cảnh hoàn chỉnh để luôn đảm bảo >= 7 cảnh chuẩn Linter!
+            if not is_long_form_parse and len(paced_scenes) == 6:
+                best_split_idx = -1
+                best_split_pair = None
+                best_w_len = 0
+                for idx_cand in range(1, len(paced_scenes)):
+                    cand_narr = str(paced_scenes[idx_cand].get("narration") or "").strip()
+                    cand_words = cand_narr.split()
+                    if len(cand_words) >= 13 and len(cand_words) > best_w_len:
+                        sp_pair = _split_long_narration(cand_narr, max(6, len(cand_words) // 2))
+                        if not sp_pair:
+                            m_mid = re.search(
+                                r'^([^,;\—\-]{18,95})(?:[,;\—\-]+\s*(?:and|but|yet|so|while|where|mas|só\s+que|e|enquanto|onde|nhưng|và)\s+|[,;\—\-]+\s+)(.{18,})$',
+                                cand_narr,
+                                flags=re.IGNORECASE,
+                            )
+                            if m_mid:
+                                l_p = m_mid.group(1).strip().rstrip(",;.-—") + "."
+                                r_p = m_mid.group(2).strip()
+                                if r_p and r_p[0].islower():
+                                    r_p = r_p[0].upper() + r_p[1:]
+                                if len(l_p.split()) >= 5 and len(r_p.split()) >= 5:
+                                    sp_pair = (l_p, r_p)
+                        if sp_pair and not _speech_intro_tail_re.search(sp_pair[0]):
+                            best_w_len = len(cand_words)
+                            best_split_idx = idx_cand
+                            best_split_pair = sp_pair
+                if best_split_idx != -1 and best_split_pair:
+                    orig_sc = paced_scenes[best_split_idx]
+                    l_n, r_n = best_split_pair
+                    sc_a = dict(orig_sc)
+                    sc_a["narration"] = l_n
+                    sc_a["estimated_seconds"] = round(max(2.5, len(l_n.split()) / 2.75), 1)
+                    sc_b = dict(orig_sc)
+                    sc_b["narration"] = r_n
+                    sc_b["overlay_badge"] = None
+                    base_vk = str(orig_sc.get("visual_keyword") or "cinematic scene").strip()
+                    sc_b["visual_keyword"] = f"{base_vk} closeup" if "closeup" not in base_vk.lower() else f"{base_vk} angle"
+                    sc_b["estimated_seconds"] = round(max(2.5, len(r_n.split()) / 2.75), 1)
+                    paced_scenes = paced_scenes[:best_split_idx] + [sc_a, sc_b] + paced_scenes[best_split_idx + 1:]
 
             # Đánh lại số thứ tự scene_id chuẩn xác 1..N và làm giàu highlight_words / camera_motion / sfx_cue
             _motion_cycle = ["zoom_in_fast", "ken_burns_zoom_out", "pan_right", "ken_burns_zoom_in", "pan_left"]
@@ -629,6 +660,23 @@ class ScriptJsonParserMixin:
                     s_narr = m_acad.group(1).strip()
                     if s_narr and s_narr[0].islower():
                         s_narr = s_narr[0].upper() + s_narr[1:]
+                # Khử các cụm mở đầu/kết câu kiểu văn mẫu AI ('Muita gente acha/pensa que', 'No fim das contas', 'Most people assume')
+                s_narr = re.sub(r"\bMuita\s+gente\s+(?:acha|pensa|acredita|imagina)\s+que\b", "Você pensaria que", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\bNo\s+fim\s+das\s+contas\s*,\s*", "Na prática, ", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\batravessa\s+o\s+osso(?:\s+como\s+papel)?\b", "fura o crânio direto", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\bdeixa\s+o\s+rio\s+em\s+(?:completo\s+)?silêncio\b", "arrasta a presa direto pro mato", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\bMost\s+people\s+(?:assume|think|believe)(?:\s+that)?\b", "You'd think", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\bWhat\s+most\s+people\s+miss\s+is(?:\s+that)?\b", "Turns out,", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\bIt's\s+a\s+high-stakes\s+game\s+of\s+[^.!?]+[.!?]\s*", "", s_narr, flags=re.IGNORECASE).strip()
+                s_narr = re.sub(r"\bIt's\s+a\s+brutal,\s+silent\s+end[.!?]*", "", s_narr, flags=re.IGNORECASE).strip()
+                s_narr = re.sub(r"\blocked\s+in\s+a\s+deadly\s+fight\b", "tearing into each other", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\b(?:global\s+catastrophe)\b", "total disaster", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(
+                    r"\b(?:global\s+nuclear\s+nightmare|nuclear\s+holocaust|nuclear\s+apocalypse|global\s+nuclear\s+exchange|full-scale\s+atomic\s+retaliation)\b",
+                    "all-out nuclear war",
+                    s_narr,
+                    flags=re.IGNORECASE,
+                )
                 # Chỉ khử các liên từ phụ thuộc / mạo từ / tính từ sở hữu thực sự bị bỏ lửng ở cuối câu
                 # (TUYỆT ĐỐI KHÔNG cắt các từ hợp lệ ở cuối câu tiếng Anh như 'no', 'do', 'in', 'on', 'to', 'is', 'are', 'why')
                 while _dangling_end_re.search(s_narr):
@@ -677,12 +725,35 @@ class ScriptJsonParserMixin:
             if scenes[0].get("narration"):
                 scenes[0]["narration"] = _strip_variant_prefix(str(scenes[0]["narration"]))
             # Tôn trọng hoàn toàn tư duy ngữ nghĩa của LLM Showrunner ở Cảnh 1 (KHÔNG dùng bảng đếm từ khóa regex để ghi đè);
-            # chỉ fallback sang `raw_data["hook"]` khi `scenes[0].narration` bị rỗng hoặc quá ngắn (< 3 từ).
+            # chỉ fallback sang `raw_data["hook"]` khi `scenes[0].narration` bị rỗng hoặc quá ngắn (< 3 từ),
+            # hoặc khi Cảnh 1 vô tình chứa dấu chấm hỏi '?' (câu hỏi Yes/No yếu) trong khi hook_variants/hook có câu khẳng định sạch.
             current_sc1 = str(scenes[0].get("narration") or "").strip()
             fallback_hook = _strip_variant_prefix(str(raw_data.get("hook") or ""))
             if len(re.findall(r"\b\w+\b", current_sc1)) < 3 and 4 <= len(re.findall(r"\b\w+\b", fallback_hook)) <= 12:
                 scenes[0]["narration"] = fallback_hook
                 scenes[0]["highlight_words"] = _auto_extract_scene_highlights(fallback_hook)
+            elif "?" in current_sc1 and not current_sc1.lower().startswith("what if"):
+                decl_cand = ""
+                for hv in ([fallback_hook] + list(raw_data.get("hook_variants") or [])):
+                    hv_c = _strip_variant_prefix(str(hv or "")).strip()
+                    if hv_c and "?" not in hv_c and 5 <= len(hv_c.split()) <= 14:
+                        decl_cand = hv_c
+                        break
+                if decl_cand:
+                    scenes[0]["narration"] = decl_cand
+                    raw_data["hook"] = decl_cand
+                else:
+                    fixed_q = re.sub(
+                        r"^(?:você\s+já\s+viu(?:\s+como)?|você\s+sabia\s+que|have\s+you\s+ever\s+seen(?:\s+how)?|did\s+you\s+know(?:\s+that)?)\s+",
+                        "",
+                        current_sc1,
+                        flags=re.IGNORECASE,
+                    ).strip().rstrip("?") + "!"
+                    if fixed_q and fixed_q[0].islower():
+                        fixed_q = fixed_q[0].upper() + fixed_q[1:]
+                    if len(fixed_q.split()) >= 4:
+                        scenes[0]["narration"] = fixed_q
+                        raw_data["hook"] = fixed_q
 
 
         # ── 2.86. KHỬ NHIỄM NGÔN NGỮ TỰ ĐỘNG (CROSS-LANGUAGE LEAKAGE SANITIZER) ──
@@ -866,6 +937,11 @@ class ScriptJsonParserMixin:
         )
         is_vn = bool(_vn_excl_re.search(comb_all)) and not is_pt_lang and not (scenes and _is_non_vn_script)
         raw_thumb_txt = str(raw_data.get("thumbnail_text") or "").strip()
+        if raw_thumb_txt:
+            # Khử sạch mọi ký tự Emoji khỏi thumbnail_text (chỉ giữ chữ cái, chữ số và dấu câu cơ bản ? ! . - ')
+            raw_thumb_txt = re.sub(r"[^\w\s\?\!\.\-\'\"À-ỹ]", "", raw_thumb_txt, flags=re.UNICODE)
+            raw_thumb_txt = re.sub(r"\s+", " ", raw_thumb_txt).strip().upper()
+            raw_data["thumbnail_text"] = raw_thumb_txt
         if (
             not raw_thumb_txt
             or (not is_vn and (_vn_excl_re.search(raw_thumb_txt) or "TỪ IN HOA" in raw_thumb_txt.upper() or "SỰ THẬT" in raw_thumb_txt.upper()))
@@ -875,7 +951,7 @@ class ScriptJsonParserMixin:
                 derived_thumb = ThumbnailService().derive_curiosity_text(topic=raw_data.get("topic", ""), viral_title=raw_data.get("title", ""))
                 if not is_vn and _vn_excl_re.search(str(derived_thumb or "")):
                     derived_thumb = "VERDADE BRUTAL!" if is_pt_lang else "SHOCKING TRUTH!"
-                raw_data["thumbnail_text"] = derived_thumb
+                raw_data["thumbnail_text"] = re.sub(r"[^\w\s\?\!\.\-\'\"À-ỹ]", "", str(derived_thumb or ""), flags=re.UNICODE).strip().upper()
             except Exception:
                 raw_data["thumbnail_text"] = "SỰ THẬT TÀN KHỐC!" if is_vn else ("VERDADE BRUTAL!" if is_pt_lang else "SHOCKING TRUTH!")
 

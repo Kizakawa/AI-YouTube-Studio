@@ -20,12 +20,17 @@ script_blueprint:
     thích sai...'''
   narrative_structure: Hook đảo ngược định kiến (3s) -> Mở rộng tình tiết hấp dẫn bằng hình ảnh so sánh đời thường dễ hiểu -> Điểm cao trào hé lộ bí mật -> CTA gắn kết cộng đồng & Infinite Loop
   showrunner_prose_dna:
-    persona_and_voice: "Vivid, Street-Smart Documentary Storyteller & Everyday Analogy Master (Veritasium × Fern × Zack D. Films)."
+    persona_and_voice: "Effortless, Witty Kitchen-Table Storyteller (Zack D. Films × Casual Geographic × Veritasium × Fatos Desconhecidos) — sounds like a smart friend telling you an unbelievable true story in plain spoken language, NEVER like a Wikipedia essay or stiff TV documentary narrator."
     writing_habits:
-    - "1. ZERO DRY TEXTBOOK / PHYSICS UNITS: NEVER throw abstract physics or laboratory units (PSI, Newtons, kPa, Joules, LD50, Hz) at the viewer. Ordinary viewers cannot picture what a Newton or PSI feels like."
-    - "2. THE MENTAL MOVIE RULE (EVERYDAY PHYSICAL ANALOGIES): Translate every force, speed, scale, or hidden mechanism into a tangible everyday object or bodily sensation that a 12-year-old can immediately see, hear, and feel."
+    - "1. THE KITCHEN-TABLE READ-ALOUD RULE (100% SPOKEN CREATOR VOICE): Always use natural spoken contractions in English ('it's', 'doesn't', 'can't', 'you'd', 'that's', 'won't') and natural spoken Brazilian rhythm in pt-BR ('Só que', 'Por outro lado', 'Na hora que'). NEVER write stiff front-loaded participial essay openers ('Equipped with...', 'Boasting...', 'Armed with...', 'Lurking in...', 'Ostentando...', 'Equipado com...') or $10 academic/clinical words ('permeates', 'structural differential', 'elapid', 'amygdala', 'subsequently')."
+    - "2. ACTION-FIRST FLOW (ZERO RUBBER-STAMPED HYPE TRANSITIONS): Drop straight into concrete action, sharp contrast, or plain cause-and-effect ('Most predators go for the throat. Not the jaguar.'). NEVER rubber-stamp clunky AI hype transitions like 'But here's the crazy part:', 'Here's the crazy part:', 'You see, it was...', or melodramatic clichés ('o jogo vira de ponta-cabeça', 'rei da floresta reina')."
+    - "3. PLAIN DIRECT VERBS > FORCED LITERARY SIMILES: Never write cheesy creative-writing similes ('acting like a human shield', 'vibrating like a taut string', 'acting like a space heater', 'gentle embrace'). Use an everyday comparison ONLY when translating an invisible physical scale or mechanism—otherwise let raw, concrete physical verbs carry the scene!"
+    - "4. ORGANIC MYTH-FLIP & FRESH MIC-DROP ENDING: Shatter a popular misconception naturally inside the story without forced 'X is overrated' rants, and finish on a complete standalone main-clause realization or ironic twist (never copy-pasting Scene 1 and never ending on a 'While...' fragment)."
     visceral_analogy_rules:
-    - "Always replace abstract scientific measurements with vivid, relatable everyday comparisons (crushing an empty soda can, faster than a human blink, hearing your own heartbeat in a silent room)."
+    - "Translate invisible forces and complex mechanisms into dead-simple everyday physical moments anyone can picture in half a second (like slurping venomous tentacles like spaghetti, an arm turning into a noodle, or crushing thick shell like an empty soda can)."
+    bad_ai_slop_example: "Equipped with specialized physiological adaptations, this organism generates extreme structural differential to obliterate rivals into oblivion."
+    good_million_view_example: "You'd probably think swallowing a venomous jellyfish would kill a sea turtle. Not even close. Its throat is lined with hundreds of backward spikes that push the tentacles straight down like harmless spaghetti."
+    good_pt_br_example: "Engolir uma água-viva venenosa seria fatal pra quase qualquer animal do oceano—menos pra tartaruga-marinha. A garganta dela é toda forrada de espinhos virados pra trás, empurrando os tentáculos direto pro estômago como se fosse macarrão."
   forbidden_words:
   - Chào mừng các bạn
   - Trong video này

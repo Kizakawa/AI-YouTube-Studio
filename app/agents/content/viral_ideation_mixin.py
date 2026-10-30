@@ -74,73 +74,99 @@ class ViralIdeationMixin:
                 raise RuntimeError(f"🚫 [HardBlock QA] Không thể thẩm định chất lượng kịch bản: {e}")
             return best_script, None
 
-        # Nếu ngay vòng 1 đã đạt chuẩn xuất sắc (cả overall lẫn hook_strength) -> Trả về ngay
+        from app.services.niche_manager import get_niche
+        from app.services.content_linter import ScriptValidationLinter
+        niche_profile = get_niche(channel_niche)
+        best_lint = ScriptValidationLinter.lint(
+            script=best_script,
+            niche_profile=niche_profile,
+            cooldown_entities=cooldown_entities,
+            target_wpm=niche_profile.get("target_wpm", 170),
+        )
+
+        vf_init = "long" if str(kwargs.get("video_format") or getattr(best_script, "video_format", "short")).lower() in ("long", "16:9", "documentary") else "short"
+        min_pace_gate = 8.0 if vf_init == "long" else 8.5
+
+        # Nếu ngay vòng 1 đã đạt chuẩn xuất sắc (cả Linter Valid, Critic Passed, overall, hook_strength VÀ story_pacing >= min_pace_gate) -> Trả về ngay
         if (
-            best_eval.overall_score >= effective_min_overall
+            best_lint.is_valid
+            and best_eval.overall_score >= effective_min_overall
             and best_eval.hook_strength.score >= effective_min_hook
+            and best_eval.story_pacing.score >= min_pace_gate
             and best_eval.passed
         ):
             logger.info(
                 f"✅ [ContentAgent] Kịch bản đạt chuẩn ngay vòng 1: "
                 f"Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f} | "
-                f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}"
+                f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f} | "
+                f"Pacing={best_eval.story_pacing.score:.1f}"
             )
             return best_script, best_eval
 
-        # 2. Vòng lặp tự động tái tạo & hoàn thiện cho đến khi đạt điểm chuẩn
+        # 2. Vòng lặp tự động tinh chỉnh & tự chấm văn phong cho đến khi đạt chuẩn YouTuber triệu view
         logger.info(
             f"⚠️ [ContentAgent] Kịch bản sơ bộ chưa đạt "
             f"(Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f}, "
             f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
+            f"Pacing={best_eval.story_pacing.score:.1f}/{min_pace_gate:.1f}, "
+            f"LinterValid={best_lint.is_valid}, "
             f"Channel Avg Swipe-Away={avg_swipe}%). "
-            f"Bắt đầu quy trình tự động tái tạo (Tối đa {max_attempts} lần thử)..."
+            f"Bắt đầu quy trình tự động tinh chỉnh văn phong (Tối đa {max_attempts} lần thử)..."
         )
 
         lang_low = str(language or "en").lower()
         if lang_low.startswith("vi"):
-            target_lang_note = "QUAN TRỌNG: NGÔN NGỮ KỊCH BẢN BẮT BUỘC LÀ 100% TIẾNG VIỆT. Toàn bộ lời thoại và tiêu đề phải viết bằng Tiếng Việt chuẩn."
+            target_lang_note = "QUAN TRỌNG: NGÔN NGỮ KỊCH BẢN BẮT BUỘC LÀ 100% TIẾNG VIỆT ĐỜI THƯỜNG TỰ NHIÊN. Toàn bộ lời thoại và tiêu đề phải viết bằng Tiếng Việt nói tự nhiên."
         elif lang_low.startswith("pt"):
-            target_lang_note = "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% BRAZILIAN PORTUGUESE (PORTUGUÊS DO BRASIL). All rewritten narration, hook, and title MUST be in natural Brazilian Portuguese."
+            target_lang_note = "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% COLLOQUIAL SPOKEN BRAZILIAN PORTUGUESE (conversa de bar / YouTuber brasileiro real). All rewritten narration, hook, and title MUST sound like a real Brazilian YouTuber speaking out loud."
         else:
-            target_lang_note = "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% ENGLISH. All rewritten narration, hook, and title MUST be in natural English."
+            target_lang_note = "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% CONVERSATIONAL SPOKEN AMERICAN ENGLISH (use natural contractions and $1 everyday words). All rewritten narration, hook, and title MUST sound like a real American YouTuber speaking out loud."
+
+        working_script = best_script
+        working_eval = best_eval
+        working_lint = best_lint
 
         for attempt in range(1, max_attempts + 1):
-            critiques_list = list(best_eval.actionable_critiques) if best_eval.actionable_critiques else []
+            critiques_list = list(working_eval.actionable_critiques) if working_eval.actionable_critiques else []
+            if not working_lint.is_valid and working_lint.issues:
+                for l_iss in reversed(working_lint.issues):
+                    if l_iss not in critiques_list:
+                        critiques_list.insert(0, f"LINTER VIOLATION: {l_iss}")
 
             # Thêm chỉ đạo chuyên sâu theo các tiêu chí bị điểm kém (đặc biệt là ngưỡng Hook theo swipe_away_pct)
-            if best_eval.hook_strength.score < effective_min_hook:
+            if working_eval.hook_strength.score < effective_min_hook:
                 critiques_list.insert(
                     0,
-                    f"Scene 1 Hook is below the anti-swipe threshold ({best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
-                    f"channel swipe_away={avg_swipe}%): {best_eval.hook_strength.feedback}. "
-                    f"MUST explicitly name the primary entity/combatants and open with a visceral physical clash, everyday sensory analogy, or lethal paradox in 6-9 words at 0.0s (ZERO dry physics units like PSI or Newtons!)."
+                    f"Scene 1 Hook is below the anti-swipe threshold ({working_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
+                    f"channel swipe_away={avg_swipe}%): {working_eval.hook_strength.feedback}. "
+                    f"MUST explicitly name ALL primary entities/combatants from the title (if A vs B, name BOTH A and B in Scene 1!) and open with a punchy spoken clash, active crisis, or staged real-room quote in 6-14 spoken words at 0.0s (ZERO '?' questions, ZERO dry physics units like PSI or Newtons!)."
                 )
-            vf_mode = "long" if str(kwargs.get("video_format") or getattr(best_script, "video_format", "short")).lower() in ("long", "16:9", "documentary") else "short"
-            if best_eval.story_pacing.score < 8.0:
+            vf_mode = "long" if str(kwargs.get("video_format") or getattr(working_script, "video_format", "short")).lower() in ("long", "16:9", "documentary") else "short"
+            if working_eval.story_pacing.score < min_pace_gate:
                 if vf_mode == "long":
                     critiques_list.append(
-                        f"Long-Form 16:9 pacing needs adjustment ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. "
-                        f"Target 380-650 words across 16-22 scenes (8-14s/scene) in 5 Chapters."
+                        f"Long-Form 16:9 voice & pacing needs upgrade ({working_eval.story_pacing.score:.1f}/10): {working_eval.story_pacing.feedback}. "
+                        f"Eliminate any cross-chapter repetition and keep 100% authentic archival/cinematic 16:9 visual queries."
                     )
                 else:
                     critiques_list.append(
-                        f"Pacing needs adjustment ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. "
-                        f"Target 88-118 words across 7-8 complete scenes (3.5-4.5s/scene)."
+                        f"Viral Creator Spoken Voice needs upgrade ({working_eval.story_pacing.score:.1f}/10): {working_eval.story_pacing.feedback}. "
+                        f"Delete EVERY flagged AI/textbook phrase, use natural spoken contractions/$1 everyday words, and keep STRICTLY 7 OR 8 SCENES (95-132 words total)."
                     )
-            if getattr(best_eval, "visual_direction", None) and best_eval.visual_direction.score < 8.0:
-                critiques_list.append(f"Weak visual direction ({best_eval.visual_direction.score:.1f}/10): visual_keyword and stock_query MUST be concrete English physical nouns/actions.")
+            if getattr(working_eval, "visual_direction", None) and working_eval.visual_direction.score < 8.0:
+                critiques_list.append(f"Weak visual direction ({working_eval.visual_direction.score:.1f}/10): visual_keyword and stock_query MUST be concrete English physical nouns/actions.")
 
             directive = (
-                f"PREVIOUS DRAFT SCORED BELOW THRESHOLD (Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f}, "
-                f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}). {target_lang_note} "
+                f"PREVIOUS DRAFT SCORED BELOW THRESHOLD (Overall={working_eval.overall_score:.1f}/{effective_min_overall:.1f}, "
+                f"Hook={working_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, VoicePacing={working_eval.story_pacing.score:.1f}/{min_pace_gate:.1f}). {target_lang_note} "
                 f"MANDATORY VIRAL REVISIONS: " + " | ".join(critiques_list)
             )
 
             try:
-                if attempt < max_attempts:
-                    # Tinh chỉnh sâu kịch bản hiện tại với các chỉ đạo sửa lỗi
+                if len(getattr(working_script, "scenes", None) or []) >= 6 and working_eval.overall_score >= 5.5:
+                    # Tinh chỉnh phẫu thuật lũy tiến trực tiếp trên bản nháp đang cải thiện để khử sạch từng cụm từ mùi AI/sách giáo khoa
                     candidate_script = self.refine_script(
-                        current_script=best_script,
+                        current_script=working_script,
                         feedback=directive,
                         channel_niche=channel_niche,
                         language=language,
@@ -148,11 +174,10 @@ class ViralIdeationMixin:
                         video_format=vf_mode,
                     )
                 else:
-                    # Lần thử cuối cùng: Tái tạo kịch bản từ đầu với góc nhìn sốc và sắc bén hơn
-                    refreshed_topic = f"{topic} (A vs B confrontation, shocking physical claim hook)"
+                    # Chỉ tái tạo từ đầu khi kịch bản gốc gãy cấu trúc nặng (< 6 cảnh hoặc < 5.5 điểm)
                     merged_notes = f"{director_notes or ''}\nMUST FIX: {'; '.join(critiques_list[:3])}".strip()
                     candidate_script = self.generate_script(
-                        topic=refreshed_topic,
+                        topic=topic,
                         channel_niche=channel_niche,
                         language=language,
                         director_notes=merged_notes,
@@ -161,6 +186,12 @@ class ViralIdeationMixin:
                         **kwargs,
                     )
 
+                cand_lint = ScriptValidationLinter.lint(
+                    script=candidate_script,
+                    niche_profile=niche_profile,
+                    cooldown_entities=cooldown_entities,
+                    target_wpm=niche_profile.get("target_wpm", 170),
+                )
                 candidate_eval = critic.evaluate_script(
                     script_data=candidate_script.model_dump(),
                     topic=topic,
@@ -173,25 +204,45 @@ class ViralIdeationMixin:
                     f"🔄 [ContentAgent Auto-Retry {attempt}/{max_attempts}] "
                     f"Overall: {candidate_eval.overall_score:.1f}/{effective_min_overall:.1f} | "
                     f"Hook: {candidate_eval.hook_strength.score:.1f}/{effective_min_hook:.1f} | "
-                    f"Passed: {candidate_eval.passed}"
+                    f"Pacing: {candidate_eval.story_pacing.score:.1f} | "
+                    f"LinterValid: {cand_lint.is_valid} | Passed: {candidate_eval.passed}"
                 )
 
-                # Cập nhật ứng viên tốt nhất (ưu tiên kịch bản passed hoặc có tổng điểm + hook cao hơn)
-                cand_rank = (1 if candidate_eval.passed else 0, candidate_eval.hook_strength.score * 0.5 + candidate_eval.overall_score * 0.5)
-                best_rank = (1 if best_eval.passed else 0, best_eval.hook_strength.score * 0.5 + best_eval.overall_score * 0.5)
-                if cand_rank > best_rank:
+                # Tiến hóa lũy tiến trên working_script mỗi khi bản sửa vượt qua Linter để lượt refine tiếp theo xử lý nốt cụm từ còn sót
+                if cand_lint.is_valid or not working_lint.is_valid:
+                    working_script = candidate_script
+                    working_eval = candidate_eval
+                    working_lint = cand_lint
+
+                # Cập nhật ứng viên tốt nhất: BẮT BUỘC ưu tiên kịch bản vượt qua Linter (cand_lint.is_valid) + Critic (candidate_eval.passed)
+                cand_rank = (
+                    1 if (cand_lint.is_valid and candidate_eval.passed) else 0,
+                    1 if cand_lint.is_valid else 0,
+                    1 if candidate_eval.passed else 0,
+                    candidate_eval.story_pacing.score * 0.40 + candidate_eval.hook_strength.score * 0.30 + candidate_eval.overall_score * 0.30,
+                )
+                best_rank = (
+                    1 if (best_lint.is_valid and best_eval.passed) else 0,
+                    1 if best_lint.is_valid else 0,
+                    1 if best_eval.passed else 0,
+                    best_eval.story_pacing.score * 0.40 + best_eval.hook_strength.score * 0.30 + best_eval.overall_score * 0.30,
+                )
+                if cand_rank >= best_rank:
                     best_script = candidate_script
                     best_eval = candidate_eval
+                    best_lint = cand_lint
 
                 # Kiểm tra nếu đã vượt qua ngưỡng chuẩn
                 if (
-                    candidate_eval.overall_score >= effective_min_overall
+                    cand_lint.is_valid
+                    and candidate_eval.overall_score >= effective_min_overall
                     and candidate_eval.hook_strength.score >= effective_min_hook
+                    and candidate_eval.story_pacing.score >= min_pace_gate
                     and candidate_eval.passed
                 ):
                     logger.info(
                         f"🎉 [ContentAgent] Kịch bản đã đạt chuẩn xuất sắc "
-                        f"(Overall={candidate_eval.overall_score:.1f}, Hook={candidate_eval.hook_strength.score:.1f}) ở lần thử {attempt}!"
+                        f"(Overall={candidate_eval.overall_score:.1f}, Hook={candidate_eval.hook_strength.score:.1f}, Pacing={candidate_eval.story_pacing.score:.1f}) ở lần thử {attempt}!"
                     )
                     return candidate_script, candidate_eval
 

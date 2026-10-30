@@ -123,7 +123,7 @@ class ScriptCritic:
             s1_narr = str(scenes[0].get("narration") or "").strip() if scenes and isinstance(scenes[0], dict) else ""
         combined = f"{eff_title} {s1_narr}".strip()
 
-        words = re.findall(r"\b\w+\b", s1_narr, flags=re.UNICODE)
+        words = re.findall(r"\b[\w'-]+\b", s1_narr, flags=re.UNICODE)
         w_cnt = len(words)
 
         # 0. Kiểm tra rò rỉ Tiếng Việt trong kịch bản Tiếng Anh / Tiếng Bồ Đào Nha (chặn triệt để lỗi phụ đề Tiếng Việt ở đầu video)
@@ -209,11 +209,19 @@ class ScriptCritic:
             r"(?:\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|percent|milliseconds|seconds|psi|"
             r"um|uma|dois|duas|três|quatro|cinco|seis|sete|oito|nove|dez|cem|duzentos|trezentos|quatrocentos|quinhentos|mil|milissegundos|segundos|quilos|metros|toneladas)\b)"
         )
+        is_staged_social_hook = bool(
+            (
+                re.search(r'["“”]', s1_narr)
+                or re.search(r"\b(?:says?|said|smiles?|smirks?|asks?|laughs?|tells?|told|diz|sorri|pergunta|fala)\b", s1_narr, re.IGNORECASE | re.UNICODE)
+            )
+            and re.search(r"\b(?:you|your|you're|someone|they|coworker|friend|boss|você|alguém|pessoa)\b", s1_narr, re.IGNORECASE | re.UNICODE)
+        )
         is_entity_blind_hook = bool(
             title_tokens
             and len(title_tokens) >= 2
             and len(title_tokens & s1_clause_tokens) == 0
             and not re.search(_num_word_re, s1_first_clause, re.IGNORECASE | re.UNICODE)
+            and not is_staged_social_hook
         )
         if is_colon_header_echo or is_early_outcome_spoiler:
             score = min(score, 5.8)
@@ -228,13 +236,13 @@ class ScriptCritic:
                 f"Scene 1 MUST explicitly name the primary entity/combatants from the title + a vivid physical clash or shocking paradox right at 0.0s!"
             )
 
-        # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-14 từ cho Shorts, 4-34 từ cho Long-Form Documentary)
+        # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-22 từ cho Shorts, 4-46 từ cho Long-Form Documentary)
         is_lf_hook = str(s_data.get("video_format") or "short").strip().lower() == "long" or len(scenes) >= 14
-        max_hook_w = 46 if is_lf_hook else 14
+        max_hook_w = 46 if is_lf_hook else 22
         if w_cnt > max_hook_w or w_cnt < 3:
             score = max(1.0, score - 1.2)
             extra_critiques.append(
-                f"Scene 1 hook length ({w_cnt} words) is suboptimal. Condense to 6-9 words (max {max_hook_w} words) to match the opening cut."
+                f"Scene 1 hook length ({w_cnt} words) is suboptimal. Condense to 7-16 spoken words (max {max_hook_w} words) to match the opening cut."
             )
 
         # 2B. Chặn nhồi nhét nhiều vòng đấu (Round 1 / Round 2 / Round 3) vào Shorts 35s gây rớt view ở giây 14 (như Job #623)
@@ -331,11 +339,20 @@ class ScriptCritic:
 
         min_hook_req = calibration.get("min_hook_score", 8.2)
         avg_swipe_pct = calibration.get("avg_swipe_away_pct", 31.0)
-        is_long_form = str(script_data.get("video_format") or "short").strip().lower() == "long"
-        pacing_criterion_desc = (
-            "2. story_pacing (Target Long-Form 16:9 Documentary: 8.0 - 11.0 min, 1,200 - 1,700 words, 36 - 48 scenes across 8-10 Chapters — NEVER ABRUPT):"
+        is_long_form = str(script_data.get("video_format") or "short").strip().lower() == "long" or len(scenes) >= 14
+        hook_criterion_desc = (
+            f"1. hook_strength (Hard gate >= {min_hook_req}/10 — Target Long-Form 16:9 Cold-Open Retention > 75%):\n"
+            "   - Scene 1 Cold-Open Hook (12-34 spoken words) MUST jump straight into an active split-second crisis, high-stakes confrontation, or vivid historical/scientific tension naming the primary subject (ZERO '?' questions).\n"
+            "   - Fails (< 6.0) if it opens with generic 'Welcome back' greetings, weak Yes/No questions ('Did you know...'), or leaked foreign/Vietnamese words."
             if is_long_form
-            else "2. story_pacing (Target Shorts 9:16: Smooth, complete 5-Act story of 30 - 40s, 85 - 120 words, 7 - 9 scenes — NEVER ABRUPT):"
+            else f"1. hook_strength (Hard gate >= {min_hook_req}/10 — Target: Viewed > 75%, Swipe-Away < 25%):\n"
+            "   - Scene 1 (6-13 spoken words) MUST jump straight into a spoken paradox, active split-second crisis, visceral physical clash/strike, or staged real-room quote (`\"...\"`). Reward (>= 8.8/10) whenever Scene 1 explicitly names the primary entity (or BOTH entities in an 'Entity A vs Entity B' matchup) + an immediate physical action, anatomical weapon strike, or life-or-death contrast with ZERO '?' questions!\n"
+            "   - Fails (< 6.0) ONLY if it hides the second entity in an A vs B matchup ('You'd think a massive whale wouldn't fear anything!'), opens with passive background scenery, dry textbook units (`PSI`, `Newtons`, `kPa`), weak Yes/No questions (`\"Did you know...\"`, `\"Você já viu...\"`), or leaked foreign/Vietnamese words."
+        )
+        pacing_criterion_desc = (
+            "2. story_pacing & spoken_creator_voice (Target Long-Form 16:9 Documentary: 8.0 - 11.0 min, 1,200 - 1,750 words, 32 - 48 scenes across 8-10 Chapters — AUTHENTIC SPOKEN YOUTUBER VOICE, NEVER ABRUPT):"
+            if is_long_form
+            else "2. story_pacing & spoken_creator_voice (Target Shorts 9:16: Smooth, complete 5-Act story of 30 - 42s, 90 - 135 words, 7 - 8 scenes — MUST SOUND 100% LIKE A REAL MILLION-VIEW HUMAN YOUTUBER SPEAKING OUT LOUD):"
         )
 
         from app.services.niche_manager import build_llm_production_overview_prompt
@@ -344,45 +361,55 @@ class ScriptCritic:
             include_all_niches_map=False,
         )
 
-        prompt = f"""You are a World-Class YouTube {'16:9 Documentary & ' if is_long_form else ''}Shorts Creative Director and Retention Script Critic.
-Your task: Semantically evaluate and critique the following script based on REAL RETENTION DATA and the YAML NICHE BLUEPRINT of the channel (use contextual intelligence — never apply rigid keyword censorship to valid scientific, historical, psychological, or wildlife vocabulary).
+        prompt = f"""You are a World-Class YouTube {'16:9 Documentary & ' if is_long_form else ''}Shorts Creative Director, Viral Voice Judge (Zack D. Films / Casual Geographic / Charisma on Command / IFinity What / The Dodo / Você Sabia?), and Retention Script Critic.
+Your task: Semantically evaluate and critique the following script based on REAL RETENTION DATA, AUTHENTIC HUMAN YOUTUBER SPOKEN PROSE DNA, and the YAML NICHE BLUEPRINT of the channel.
 
 Topic: {topic}
 Proposed Title: {title}
-Format Mode: {'LONG-FORM DOCUMENTARY 16:9 (36-48 scenes, 1,200-1,700 words, ~10 minutes)' if is_long_form else 'SHORTS 9:16 (7-9 scenes, 85-120 words)'}
+Format Mode: {'LONG-FORM DOCUMENTARY 16:9 (32-48 scenes, 1,200-1,750 words, ~10 minutes across 10 Chapters)' if is_long_form else 'SHORTS 9:16 (7-8 scenes, 90-135 words)'}
 Channel Style: {channel_style}
 Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for hook_strength >= {min_hook_req}/10.
 {entity_instruction}{winners_block}
 
 {niche_yaml_blueprint}
 
---- SCRIPT CONTENT ---
+--- SCRIPT CONTENT ({len(scenes)} scenes) ---
 {scenes_formatted}
 
---- 5-ACT RETENTION EVALUATION RUBRIC (Scale 1 - 10) ---
-1. hook_strength (Hard gate >= {min_hook_req}/10 — Target: Viewed > 75%, Swipe-Away < 25%):
-   - Scene 1 (6-10 words) MUST explicitly name the primary entity/combatants and open with a concrete physical action, entity-specific sensory image, or sharp paradox.
-   - Fails (< 6.0) if it dumps unexplained textbook/laboratory units that ordinary viewers cannot visualize, opens with a weak Yes/No question ("Did you know...", "Have you ever..."), textbook definition, repeats a Loser hook pattern, or contains any leaked foreign/Vietnamese words that do not match the script's language.
+--- 5-ACT RETENTION & AUTHENTIC VIRAL CREATOR VOICE RUBRIC (Scale 1 - 10) ---
+{hook_criterion_desc}
 {pacing_criterion_desc}
-   - Reward (>= 8.5) smooth, vivid 5-Act storytelling that deeply understands the specific entity's real anatomy, physical mechanism, environment, or human behavior, translating complex mechanics into fresh, intuitive, tailor-made everyday imagery rather than abstract textbook units.
-   - Penalize (< 6.5) scripts that read like a dry science lecture citing raw physics/lab units without visualizable human-scale context, OR scripts that lazily paste generic recycled clichés onto entities without explaining how that specific entity actually works.
+   - Reward (>= 9.0) effortless kitchen-table spoken creator prose: natural spoken contractions in English (`it's`, `doesn't`, `you'd`, `didn't`, `would've`, `hadn't`), colloquial spoken Brazilian YouTuber cadence in `pt-BR` (`pra`, `pro`, `tá`, `bicho`, `na hora`, `num piscar de olhos`, `só que`, `em vez de`), plain `$1` everyday words, and concrete macroscopic imagery.
+   - STRICT AI-SMELL & TEXTBOOK AUDIT (`sounds_like_real_youtuber` & `ai_smell_phrases_detected`):
+     * ONLY flag a phrase in `ai_smell_phrases_detected` if that EXACT phrase appears verbatim inside `--- SCRIPT CONTENT ---` above AND is a genuine robotic AI/textbook cliché:
+       - Front-loaded participial essay clauses (`"Equipped with..."`, `"Armed with..."`, `"Boasting..."`, `"Ostentando..."`)
+       - Preachy sermon or academic openers (`"Most people assume..."`, `"What most people miss..."`, `"Muita gente acha que..."`, `"Muita gente pensa que..."`, `"Studies show..."`, `"No fim das contas"`)
+       - Clunky `"acting like..."` similes or cellular biochemistry hand-waving (`"special molecules"`, `"chemical buffers"`, `"permeates every cell"`)
+       - Self-help guru slogans or moralizing nature proverbs (`"Real social power belongs to..."`, `"the hunter becomes the meal"`, `"O Pantanal pune quem falha"`, `"deixando só o silêncio"`)
+       - Formal written Portuguese enclitics (`"imobilizá-lo"`, `"matá-lo"`, `"esmagá-lo"`).
+     * NEVER copy example phrases from this prompt into `ai_smell_phrases_detected` or `actionable_critiques` if they do NOT appear verbatim in `--- SCRIPT CONTENT ---`! If the script uses natural spoken language and contractions, set `sounds_like_real_youtuber: true`, `ai_smell_phrases_detected: []`, and score `story_pacing >= 8.8`.
 3. entity_coherence:
-   - Evaluate how deeply and accurately the script characterizes the specific entity/phenomenon (its unique weapon, vulnerability, tactic, or psychological mechanism) rather than generic interchangeable filler.
-4. visual_direction: `visual_keyword` and `stock_query` are concrete English physical nouns/actions matching the topic (>= 8.5).
-5. viral_loop (ZERO spoken Subscribe CTA at the end):
-   - Final scene delivers a satisfying payoff and bridges seamlessly back to Scene 1.
+   - Deeply characterizes the exact entity/phenomenon's real macroscopic mechanism, human room dynamic, or `"What If"` 60-minute physical chain reaction rather than generic filler.
+4. visual_direction: `visual_keyword` and `stock_query` are concrete, everyday English nouns/actions matching the primary subject (>= 8.5).
+5. viral_loop (ZERO spoken Subscribe CTA; Concrete Mic-Drop Finale):
+   - Final scene lands RIGHT on a concrete physical action, quiet room reaction, or the sharpest ironic physical twist (NEVER burying the twist in Scene 6 and ending Scene 7 on vague poetic wrap-ups!).
 
 --- OUTPUT REQUIREMENT ---
-CRITICAL LANGUAGE RULE: Write all `feedback` and `actionable_critiques` in ENGLISH, and if you suggest any example hook/narration phrasing, write that example strictly in the EXACT SAME LANGUAGE as the script above (NEVER suggest Vietnamese sentences for an English or Portuguese script!).
+CRITICAL LANGUAGE & 2-ENTITY HOOK RULE:
+- Write all `feedback` and `actionable_critiques` in ENGLISH, and if you suggest any example hook/narration phrasing, write that example strictly in the EXACT SAME LANGUAGE as the script above (NEVER suggest Vietnamese sentences for an English or Portuguese script!).
+- Whenever the script or `Proposed Title` is a 2-entity matchup (`Entity A vs Entity B`), ANY Scene 1 hook rewrite you suggest in `actionable_critiques` MUST explicitly include the names of BOTH `Entity A` AND `Entity B` right in Scene 1 (6–13 words, ZERO '?' questions)! NEVER suggest a Scene 1 rewrite that drops the second entity!
+- In `ai_smell_phrases_detected`, ONLY list exact verbatim substrings that ACTUALLY APPEAR inside `--- SCRIPT CONTENT ---` above AND violate the banned AI/textbook rules in Section 2. NEVER copy example phrases from this prompt if they do not appear verbatim in the script!
 Return ONLY a single valid JSON object (no markdown) with this schema:
 {{
-  "hook_strength": {{"score": 8.5, "feedback": "Detailed feedback on Scene 1 Hook..."}},
-  "story_pacing": {{"score": 8.8, "feedback": "Feedback on smooth 5-Act flow (85-120 words)..."}},
+  "sounds_like_real_youtuber": true,
+  "ai_smell_phrases_detected": [],
+  "hook_strength": {{"score": 9.0, "feedback": "Detailed feedback on Scene 1 spoken creator hook..."}},
+  "story_pacing": {{"score": 9.0, "feedback": "Feedback on spoken creator cadence, contractions, $1 words & 5-Act flow..."}},
   "entity_coherence": {{"score": 9.0, "feedback": "Detailed feedback..."}},
-  "visual_direction": {{"score": 8.8, "feedback": "Feedback on visual context..."}},
-  "viral_loop": {{"score": 8.8, "feedback": "Feedback on final scene payoff & loop bridge..."}},
+  "visual_direction": {{"score": 9.0, "feedback": "Feedback on visual context..."}},
+  "viral_loop": {{"score": 9.0, "feedback": "Feedback on final concrete mic-drop payoff..."}},
   "actionable_critiques": [
-    "Specific surgical instructions in English on how to improve Scene 1 Hook or pacing..."
+    "Specific surgical instructions in English quoting any stiff/AI phrase and showing how to rewrite it in effortless spoken YouTuber voice..."
   ]
 }}"""
 
@@ -390,8 +417,12 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
         for model, key in self.rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=6):
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                gen_cfg: Dict[str, Any] = {"temperature": 0.1}
+                if not model.startswith("gemma-"):
+                    gen_cfg["responseMimeType"] = "application/json"
                 payload = {
-                    "contents": [{"parts": [{"text": prompt}]}]
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": gen_cfg,
                 }
                 req_timeout = 14 if model.startswith("gemma-") else 20
                 r = requests.post(url, json=payload, timeout=req_timeout)
@@ -413,6 +444,8 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
                         end = raw.rfind("}")
                         if start != -1 and end != -1:
                             raw = raw[start:end+1]
+                        raw = re.sub(r"\\'", "'", raw)
+                        raw = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", raw)
                         parsed = json.loads(raw)
                         return self._build_report(parsed, script_data=script_data, calibration=calibration, channel_style=channel_style)
             except Exception as e:
@@ -448,25 +481,59 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
         vis_s = float(v.get("score", 7.5))
         loop_s = float(l.get("score", 7.5))
 
-        # Trọng số chuẩn hóa: Hook 30%, Pacing 25%, Entity 25%, Visual 10%, Loop 10%
+        full_script_lower = " ".join(
+            str(s.get("narration") or "")
+            for s in ((script_data or {}).get("scenes") or [])
+            if isinstance(s, dict)
+        ).lower()
+        raw_ai_smells = [str(x).strip() for x in (parsed.get("ai_smell_phrases_detected") or []) if str(x).strip()]
+        ai_smells = [
+            x for x in raw_ai_smells
+            if x.lower().strip(".'\"!?,;") in full_script_lower
+        ]
+        # Nếu LLM Critic nhìn nhầm ví dụ trong prompt (raw_ai_smells > 0 nhưng 0 cụm từ nào thực sự tồn tại trong kịch bản),
+        # khôi phục điểm Pacing & Hook bị trừ oan do ảo giác của Critic.
+        if raw_ai_smells and not ai_smells:
+            pace_s = max(pace_s, 8.8)
+            if not hook_extra_critiques:
+                hook_s = max(hook_s, 8.6)
+        raw_sounds_human = bool(parsed.get("sounds_like_real_youtuber", True))
+        sounds_human = (raw_sounds_human and len(ai_smells) < 3) or len(ai_smells) == 0
+        voice_critique = ""
+        if not sounds_human:
+            pace_s = min(pace_s, 6.8)
+            smell_str = "; ".join(f"'{s}'" for s in ai_smells[:6]) if ai_smells else "stiff textbook/essay phrasing or missing spoken contractions"
+            voice_critique = (
+                f"VIRAL CREATOR VOICE CHECK FAILED — Rewrite these AI/textbook phrases into effortless spoken YouTuber prose "
+                f"(use natural contractions, $1 everyday words, and end on a concrete physical action/irony with ZERO essay slogans): {smell_str}"
+            )
+        elif ai_smells:
+            pace_s = round(max(8.2, pace_s - 0.15 * len(ai_smells)), 1)
+
+        # Trọng số chuẩn hóa: Hook 30%, Pacing/Voice 25%, Entity 25%, Visual 10%, Loop 10%
         overall = (hook_s * 0.30) + (pace_s * 0.25) + (ent_s * 0.25) + (vis_s * 0.10) + (loop_s * 0.10)
         overall = round(overall, 1)
 
         critiques = list(parsed.get("actionable_critiques", []) or [])
+        if voice_critique and voice_critique not in critiques:
+            critiques.insert(0, voice_critique)
         for hc in reversed(hook_extra_critiques):
             if hc not in critiques:
                 critiques.insert(0, hc)
 
+        s_data = script_data or {}
+        is_lf = str(s_data.get("video_format") or "short").strip().lower() == "long" or len(s_data.get("scenes") or []) >= 14
+        min_pace_req = 8.0 if is_lf else 8.5
         min_hook = float(cal.get("min_hook_score", 8.0))
         min_overall = float(cal.get("min_overall_score", 8.0))
-        # CHẶN CỨNG: Bắt buộc tổng điểm, điểm Hook Cảnh 1 VÀ nhịp điệu Pacing (>= 7.5) đều phải vượt qua ngưỡng chuẩn!
-        passed = (overall >= min_overall) and (hook_s >= min_hook) and (pace_s >= 7.5)
+        # CHẶN CỨNG: Bắt buộc tổng điểm, điểm Hook Cảnh 1, nhịp điệu Spoken Voice Pacing (>= 8.5) VÀ sounds_human đều phải đạt chuẩn!
+        passed = (overall >= min_overall) and (hook_s >= min_hook) and (pace_s >= min_pace_req) and sounds_human
         if not passed and hook_s < min_hook:
             msg = f"Scene 1 Hook ({hook_s:.1f}/10) is below the channel anti-swipe threshold ({min_hook:.1f}/10 — Avg Swipe-Away: {cal.get('avg_swipe_away_pct', 31.0):.1f}%)."
             if msg not in critiques:
                 critiques.insert(0, msg)
-        if not passed and pace_s < 7.5:
-            msg_p = f"Story Pacing ({pace_s:.1f}/10) is too flat or mechanical (< 7.5/10). Inject a dramatic 2-way escalation and mid-video reversal twist at Scene 4!"
+        if not passed and pace_s < min_pace_req:
+            msg_p = f"Spoken Creator Voice & Pacing ({pace_s:.1f}/10) is below {min_pace_req}/10. Scrub all AI/textbook phrasing, add natural spoken contractions/$1 words, and end on a concrete physical mic-drop!"
             if msg_p not in critiques:
                 critiques.insert(0, msg_p)
 
