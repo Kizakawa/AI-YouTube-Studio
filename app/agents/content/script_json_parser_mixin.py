@@ -676,111 +676,13 @@ class ScriptJsonParserMixin:
         if scenes and isinstance(scenes[0], dict):
             if scenes[0].get("narration"):
                 scenes[0]["narration"] = _strip_variant_prefix(str(scenes[0]["narration"]))
-            hook_candidates: List[str] = []
-            for h_cand in [scenes[0].get("narration"), raw_data.get("hook"), *(raw_data.get("hook_variants") or [])]:
-                if h_cand and isinstance(h_cand, str):
-                    hc = _strip_variant_prefix(h_cand)
-                    if hc and hc not in hook_candidates:
-                        hook_candidates.append(hc)
-            if len(hook_candidates) >= 2:
-                _hook_stop = {
-                    "the", "and", "for", "with", "from", "into", "this", "that", "how", "why", "what", "when", "who",
-                    "uma", "uns", "umas", "dos", "das", "nos", "nas", "por", "para", "com", "sem", "sob", "sobre",
-                    "que", "como", "mais", "muito", "este", "esta", "esse", "essa", "isso", "pelo", "pela",
-                    "shorts", "short", "video", "vs", "versus", "contra", "mordida", "letal", "duelo", "ataque", "psi",
-                }
-                _raw_t_clean = re.sub(r"#\w+", " ", str(raw_data.get("title") or "")).strip()
-                _title_ent_tokens = {
-                    w.lower()
-                    for w in re.findall(r"\b[a-zA-ZÀ-ỹ]{4,}\b", _raw_t_clean, flags=re.UNICODE)
-                    if w.lower() not in _hook_stop
-                }
-
-                def _score_hook_retention(h_str: str) -> float:
-                    h_score = 50.0
-                    words_h = re.findall(r'\b\w+\b', h_str)
-                    w_len = len(words_h)
-                    h_toks = {w.lower() for w in re.findall(r"\b[a-zA-ZÀ-ỹ]{4,}\b", h_str, flags=re.UNICODE)}
-                    # Bắt buộc ưu tiên Hook nêu đích danh thực thể chính từ Tiêu đề (chống Entity-Blind Hook bị phạt 5.8 điểm)
-                    if _title_ent_tokens:
-                        if _title_ent_tokens & h_toks:
-                            h_score += 28.0
-                        else:
-                            h_score -= 45.0
-                    # Độ dài vàng cho Hook 0.0s từ 343 Shorts triệu view (5 - 8 từ ~ 1.6s - 2.2s): Dứt điểm trước phản xạ vuốt 1.8s!
-                    if 5 <= w_len <= 8:
-                        h_score += 26.0
-                    elif 9 <= w_len <= 10:
-                        h_score += 16.0
-                    elif w_len > 11 or w_len < 4:
-                        h_score -= 22.0
-                    # Phạt nặng nếu dùng đơn vị vật lý sách giáo khoa khô khan (PSI, Newton, kPa, Joule, LD50) khiến người xem không tưởng tượng được
-                    if re.search(
-                        r'\b(?:psi|newtons?|kpa|kilopascals?|joules?|ld50|mmhg|pounds\s+per\s+square\s+inch)\b',
-                        h_str,
-                        flags=re.IGNORECASE,
-                    ):
-                        h_score -= 26.0
-                    # Thưởng cho so sánh vật lý đời thường trực quan, quy mô gần gũi dễ hiểu hoặc va chạm giác quan mạnh
-                    if re.search(
-                        r'(?:\b(?:like\s+a|like\s+an|como\s+uma?|como\s+papel|faster\s+than\s+a\s+blink|piscar\s+de\s+olhos|soda\s+can|latinha|eggshell|casca\s+de\s+ovo|punch(?:es|ing)?\s+straight|shatters?|snaps?|crushes|fura\s+o\s+crânio|already\s+dead|já\s+está\s+morto)\b|'
-                        r'\b(?:one|two|three|four|five|ten|thirty|forty|fifty|hundred|thousand|seconds|minutes|hours|days|miles|pounds|'
-                        r'um|uma|dois|duas|três|quatro|cinco|dez|cem|mil|segundos|minutos|quilos|metros)\b|\d)',
-                        h_str,
-                        flags=re.IGNORECASE,
-                    ):
-                        h_score += 22.0
-                    # Phạt các câu chỉ trỏ mơ hồ giấu tên chủ thể ('Look closely at...', 'Watch the exact moment...')
-                    if re.match(r'^(?:look\s+(?:closely\s+)?at|watch\s+(?:the\s+exact\s+moment|how|why)|olhe\s+bem\s+para)\b', h_str.strip(), flags=re.IGNORECASE):
-                        h_score -= 30.0
-                    # Thưởng cho cấu trúc nêu đích danh chủ thể / tình huống đối thoại trực diện
-                    if re.search(
-                        r'\b(?:this man|this woman|this dog|this puppy|this jaguar|if someone says|when someone|turn any|never answer|'
-                        r'esse|essa|esses|essas|este|esta|nem o|nem a|até o|até a|uma única|um único)\b',
-                        h_str,
-                        flags=re.IGNORECASE,
-                    ):
-                        h_score += 14.0
-                    # Thưởng lớn cho công thức "A vs B" / Đối đầu bất đối xứng & Nghịch lý sợ hãi (pt-BR & Wild Odyssey Formula)
-                    if re.search(r'\b(?:vs\.?|versus|against|contra|outsmart|crushes|destroys|beats|backs down|perfura|esmaga|esmagam|paralisa|recua|recuam|aterroriza|teme|temem|pânico)\b', h_str, flags=re.IGNORECASE):
-                        h_score += 18.0
-                    # Phạt nếu mở đầu kiểu nhãn từ điển khô khan ("Lagosta-Boxeadora: um soco...") thiếu động từ đầu câu
-                    if re.match(r'^[A-Za-zÀ-ỹçãõáéíóúâêô\-\s]{2,26}:\s', h_str.strip()):
-                        h_score -= 20.0
-                    # Chứa động từ hành động mạnh / nghịch lý / sinh tồn (EN / VI / PT)
-                    power_hook_words = (
-                        "never", "deadly", "crush", "swallow", "silent", "seconds", "freeze", "blind", "strike", "bite",
-                        "venom", "paradox", "impossible", "mistake", "alive", "shivering", "refused", "terror", "abyss",
-                        "weapon", "trap", "manipulat", "narcissist", "toxic", "lie", "liar", "secret", "warning", "insult", "respect",
-                        "tử thần", "ngay lập tức", "nghịch lý", "cắn", "nuốt", "đóng băng", "run rẩy", "tuyệt đối", "bí mật",
-                        "jamais", "mortal", "esmagar", "engolir", "silêncio", "segundos", "erro", "impossível", "veneno", "abismo", "ferve"
-                    )
-                    h_low = h_str.lower().strip()
-                    if any(pw in h_low for pw in power_hook_words):
-                        h_score += 16.0
-                    # Phạt nặng nếu mở đầu bằng câu hỏi thụ động Yes/No hoặc câu hỏi sáo rỗng làm tụt Stayed-to-Watch
-                    if re.match(
-                        r'^(?:stop scrolling|did you know|have you ever|did they|did you|do you|why did|what did|what roared|what made|is it|are you|can you|bạn có biết|você sabia)\b',
-                        h_low,
-                    ):
-                        h_score -= 38.0
-                    if h_str.strip().endswith("?"):
-                        h_score -= 18.0
-                    return h_score
-
-                current_sc1 = str(scenes[0].get("narration") or "").strip()
-                best_hook = max(hook_candidates, key=_score_hook_retention)
-                if (
-                    best_hook != current_sc1
-                    and 4 <= len(re.findall(r'\b\w+\b', best_hook)) <= 10
-                    and _score_hook_retention(best_hook) >= _score_hook_retention(current_sc1) + 6.0
-                ):
-                    logger.info(
-                        f"[ContentAgent] 🔥 Hook Retention Tournament chọn Hook 0.0s mạnh nhất: "
-                        f"'{best_hook}' (thay cho '{current_sc1}')"
-                    )
-                    scenes[0]["narration"] = best_hook
-                    scenes[0]["highlight_words"] = _auto_extract_scene_highlights(best_hook)
+            # Tôn trọng hoàn toàn tư duy ngữ nghĩa của LLM Showrunner ở Cảnh 1 (KHÔNG dùng bảng đếm từ khóa regex để ghi đè);
+            # chỉ fallback sang `raw_data["hook"]` khi `scenes[0].narration` bị rỗng hoặc quá ngắn (< 3 từ).
+            current_sc1 = str(scenes[0].get("narration") or "").strip()
+            fallback_hook = _strip_variant_prefix(str(raw_data.get("hook") or ""))
+            if len(re.findall(r"\b\w+\b", current_sc1)) < 3 and 4 <= len(re.findall(r"\b\w+\b", fallback_hook)) <= 12:
+                scenes[0]["narration"] = fallback_hook
+                scenes[0]["highlight_words"] = _auto_extract_scene_highlights(fallback_hook)
 
 
         # ── 2.86. KHỬ NHIỄM NGÔN NGỮ TỰ ĐỘNG (CROSS-LANGUAGE LEAKAGE SANITIZER) ──

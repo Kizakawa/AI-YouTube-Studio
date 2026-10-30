@@ -318,23 +318,9 @@ class ScriptValidationLinter:
         title_str = (script.title or "").strip()
         narration_str = " ".join((s.narration or "") for s in (script.scenes or [])) or (script.full_narration or "")
 
-        # 0. Chặn đơn vị vật lý/phòng thí nghiệm khô khan (PSI, Newton, kPa, Joule, LD50) làm người xem không tưởng tượng được
-        dry_units = re.findall(
-            r"\b(?:\d[\d.,]*\s*(?:psi|newtons?|kpa|kilopascals?|joules?|pascals?|mmhg)\b|pounds\s+per\s+square\s+inch\b|ld50\b)",
-            f"{title_str} {narration_str}",
-            flags=re.IGNORECASE,
-        )
-        if dry_units:
-            bad_u = ", ".join(dict.fromkeys(u.strip() for u in dry_units[:3]))
-            issues.append(
-                f"Dry Physics/Lab Unit Detected ({bad_u}): Viewers cannot picture abstract units like PSI, Newtons, kPa, Joules, or LD50! "
-                f"Remove the dry unit and translate the force/pressure/toxin into a vivid everyday physical analogy "
-                f"(e.g., punching fangs straight through bone like an empty soda can, slamming down five times its body weight faster than an eye blink, crushing steel like a tin can under fifty passenger jets)."
-            )
-
-        # 1. Kiểm tra nếu Title có con số kèm đơn vị quen thuộc (km/h, m, °C...) nhưng toàn bộ kịch bản bỏ quên hoàn toàn
+        # 1. Kiểm tra tính nhất quán toán học tổng quát: nếu Title hứa hẹn con số cụ thể thì phần lời dẫn không được bỏ quên hoàn toàn
         title_metric_match = re.findall(
-            r"\b(\d+(?:[.,]\d+)?)\s*(m|km|ft|mph|km/h|°c|°f|kg|lbs)\b",
+            r"\b(\d+(?:[.,]\d+)?)\s*([a-zA-Z°%]+)\b",
             title_str,
             flags=re.IGNORECASE,
         )

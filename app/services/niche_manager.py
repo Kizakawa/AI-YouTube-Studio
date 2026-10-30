@@ -323,14 +323,11 @@ def build_million_view_showrunner_prose_dna(niche_id_or_profile: Any, language: 
         "   - 🚫 UNIVERSAL ANTI-AI PROSE BAN: NEVER write 'When we examine...', 'In forensic behavioral analysis...', "
         "'Researchers discovered that...', 'Studies show...', 'Furthermore,', 'Moreover,', 'It is important to note', "
         "'Delve into', 'Tapestry', 'Ultimately,', or 'In conclusion'.",
-        "   - 🚫 ZERO DRY PHYSICS / LABORATORY TEXTBOOK UNITS (NO PSI / NO NEWTONS / NO kPa / NO JOULES / NO LD50 / NO Hz): "
-        "Ordinary viewers scrolling YouTube have ZERO mental picture of what '1,500 PSI', '195 Newtons', '16,000 PSI', '300 kPa', "
-        "or 'LD50' feels like! Dropping raw science-class units makes the script sound cold, dry, and impossible to visualize. "
-        "NEVER use naked physics/engineering units in your Title, Scene 1 Hook, Thumbnail Text, or Narration!",
-        "   - 🎬 MANDATORY '12-YEAR-OLD MENTAL MOVIE' ANALOGY RULE: Translate every force, bite, strike, pressure, speed, toxin, "
-        "or brain mechanism into a VISCERAL EVERYDAY PHYSICAL COMPARISON & BODILY SENSATION that anyone can instantly see, hear, "
-        "and feel (e.g., punching fangs straight through a skull like an empty soda can, slamming down five times its body weight "
-        "faster than an eye blink, fifty passenger jets stacked on your chest, hearing your own blood rushing in a dead-silent room).",
+        "   - 🧠 ENTITY-FIRST MECHANISM PROFILING & INTUITIVE IMAGERY (ZERO ABSTRACT LAB JARGON & ZERO RECYCLED CLICHÉS): "
+        "Before writing, analyze the SPECIFIC entities in the topic—their exact anatomy, physical structure, environment, historical setting, "
+        "or human psychological behavior. Ordinary viewers cannot picture abstract textbook/engineering units (like raw pressure, force, or clinical ratios). "
+        "Instead of citing unexplained laboratory units OR recycling generic stock metaphors across different videos, derive fresh, tactile, "
+        "everyday physical imagery directly from HOW THIS SPECIFIC ENTITY ACTUALLY WORKS so anyone can instantly see, hear, and feel it!",
         "   - SENTENCE CADENCE RULE: Write in punchy, spoken Grade-5 broadcast sentences. Alternate a crisp 6–9 word punch sentence "
         "with a vivid 12–16 word sensory action/analogy sentence.",
         f"   - YAML SHOWRUNNER VOICE & PERSONA: {persona}",

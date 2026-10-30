@@ -57,23 +57,17 @@ class ThumbnailService:
         niche_id: str = "general",
     ) -> str:
         """
-        Chuẩn hóa text trên Thumbnail về ĐÚNG 2–3 từ khóa giật gân, dễ hình dung nhất (ALL CAPS, không emoji),
-        cấm dùng đơn vị vật lý khô khan (PSI, Newton, kPa, dB, Hz), ưu tiên cụm động từ/ẩn dụ thị giác mạnh
+        Chuẩn hóa text trên Thumbnail về ĐÚNG 2–3 từ khóa ngắn gọn do LLM đề xuất (ALL CAPS, không emoji),
         chuẩn @FossilVideos ('TOO EASY?'), @IFinity_What ('TURN INVISIBLE.'), @disastersexplained1 ('EVERY RECORD').
         """
-        banned_lab_units = {
-            "PSI", "NEWTON", "NEWTONS", "KPA", "MPA", "JOULE", "JOULES",
-            "DB", "DBA", "HZ", "KHZ", "LD50", "VEI", "VOLT", "VOLTS", "MEGATON", "MEGATONS",
-        }
         cleaned = re.sub(r"#\S+", " ", str(raw_text or "")).strip()
         cleaned = re.sub(r"[^\w\s%$!?.,°:-]", "", cleaned).strip()
         words = [w for w in cleaned.upper().split() if w]
         if 2 <= len(words) <= 3:
-            if not any(w.rstrip("!?.,:") in banned_lab_units for w in words):
-                return " ".join(words)
+            return " ".join(words)
 
-        # Nếu câu quá dài (> 3 từ) hoặc dính đơn vị vật lý khô khan, rút trích cụm động từ/danh từ giàu hình ảnh hoặc số đo đời thường
-        if len(words) >= 2:
+        # Nếu câu quá dài (> 3 từ), rút gọn bỏ giới từ/mạo từ phụ để giữ 2–3 từ khóa chính
+        if len(words) > 3:
             raw_up = " ".join(words)
             if raw_up.startswith("WHAT IF YOU"):
                 after_wiy = re.sub(r"^WHAT\s+IF\s+YOU\s+(?:COULD\s+|NEVER\s+|HAD\s+TO\s+|WERE\s+)?", "", raw_up).strip()
@@ -85,21 +79,10 @@ class ThumbnailService:
                 "THE", "A", "AN", "IN", "ON", "AT", "OF", "TO", "FOR", "WITH", "FROM", "BY", "THIS", "THAT", "HOW", "WHY",
                 "WHAT", "IF", "YOU", "COULD", "WOULD", "O", "OS", "AS", "DE", "DO", "DA", "DOS", "DAS", "NO", "NA", "EM", "UM", "UMA",
             }
-            for idx_w in range(len(words) - 1):
-                if any(ch.isdigit() for ch in words[idx_w]):
-                    unit_w = words[idx_w + 1].rstrip("!?.,:")
-                    if unit_w not in stop_fillers and unit_w not in banned_lab_units:
-                        return f"{words[idx_w]} {unit_w}!"
-            core_words = [
-                w.rstrip("!?.,:") for w in words
-                if w.rstrip("!?.,:") not in stop_fillers
-                and w.rstrip("!?.,:") not in banned_lab_units
-                and not any(ch.isdigit() for ch in w)
-            ]
+            core_words = [w.rstrip("!?.,:") for w in words if w.rstrip("!?.,:") not in stop_fillers]
             if len(core_words) >= 2:
                 return " ".join(core_words[:3])
-            if len(words) > 3:
-                return " ".join(words[:3])
+            return " ".join(words[:3])
 
         return self.derive_curiosity_text(topic=topic, viral_title=viral_title, niche_id=niche_id)
 

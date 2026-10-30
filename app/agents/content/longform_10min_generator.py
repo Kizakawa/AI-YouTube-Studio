@@ -202,9 +202,10 @@ def _mine_real_world_research_dossier(topic: str, channel_niche: str) -> str:
         dossier_parts.append("2. VERIFIED SCIENTIFIC / HISTORICAL CONCEPTS & CASE STUDIES TO CITE:")
         dossier_parts.extend(wiki_lines)
     dossier_parts.append(
-        "3. MANDATORY CASE-STUDY & VISCERAL ANALOGY RULE: Every chapter MUST ground its story in a real-world experiment, "
-        "documented historical/forensic case, or real biological/physical mechanism, AND translate every abstract force or statistic "
-        "into a vivid everyday physical analogy viewers can immediately picture (STRICTLY BAN dry physics units like PSI, Newtons, kPa, Joules, or LD50)!"
+        "3. DEEP ENTITY PROFILING & INTUITIVE SENSORY STORYTELLING RULE: Every chapter MUST analyze the specific entity's real anatomy, "
+        "documented historical/forensic case, or physical/psychological mechanism, and express how it works through fresh, entity-specific "
+        "human-scale imagery that ordinary viewers can immediately picture and feel—never rely on unexplained textbook/laboratory physics units "
+        "and never recycle generic stock metaphors across chapters!"
     )
     return "\n".join(dossier_parts)
 

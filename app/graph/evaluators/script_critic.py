@@ -157,23 +157,7 @@ class ScriptCritic:
             score = min(score, 5.5)
             extra_critiques.append(
                 f"HOOK BLOCKED: Scene 1 uses a weak Yes/No question or abstract metaphor ('{s1_narr}') which causes >70% swipe-away. "
-                f"Immediately name the primary entity/combatants + a visceral physical action or lethal paradox in 6-10 words!"
-            )
-
-        # 1A. Chặn đơn vị vật lý/phòng thí nghiệm khô khan (PSI, Newton, kPa, Joules, LD50) làm người xem không tưởng tượng được
-        full_narr_all = " ".join(str(sc.get("narration") or "") for sc in (scenes if isinstance(scenes, list) else []) if isinstance(sc, dict))
-        dry_physics_match = re.findall(
-            r"\b(?:\d[\d.,]*\s*(?:psi|newtons?|kpa|kilopascals?|joules?|pascals?|mmhg)\b|pounds\s+per\s+square\s+inch\b|ld50\b|\d+\s*newtons?\b)",
-            f"{eff_title} {full_narr_all}",
-            flags=re.IGNORECASE,
-        )
-        if dry_physics_match:
-            score = min(score, 6.4)
-            bad_units_preview = ", ".join(dict.fromkeys(m.strip() for m in dry_physics_match[:3]))
-            extra_critiques.append(
-                f"DRY SCIENTIFIC UNIT BLOCKED ({bad_units_preview}): Ordinary viewers have zero mental picture of textbook physics/lab units like PSI, Newtons, kPa, Joules, or LD50! "
-                f"Remove those dry units from Title and Narration, and translate the force/pressure/toxin into a vivid everyday physical analogy anyone can instantly picture and feel "
-                f"(e.g., punching fangs straight through bone like an empty soda can, slamming down five times its body weight faster than an eye blink, crushing steel like a tin can under fifty passenger jets)."
+                f"Immediately name the primary entity/combatants + a concrete physical action or paradox in 6-10 words!"
             )
 
         # 1B. Chặn Đọc Nhãn Tiêu Đề Có Dấu Hai Chấm ("A vs B: ...") VÀ Chặn Hook Mơ Hồ Giấu Chủ Thể ("Look closely at..." / "Watch the exact moment...")
@@ -279,7 +263,7 @@ class ScriptCritic:
                     )
                     break
 
-        # 4. Thưởng/Phạt theo công thức "A vs B" & thông số định lượng gây sốc (EN & PT-BR) + Chặn tiêu đề mơ hồ giấu chủ thể
+        # 4. Kiểm tra cấu trúc Tiêu đề không giấu thực thể ("This Beast / This Creature") — phần đánh giá ngữ nghĩa & độ hấp dẫn giao hoàn toàn cho LLM Critic
         vague_title_match = bool(
             eff_title
             and re.search(
@@ -289,65 +273,13 @@ class ScriptCritic:
                 eff_title,
                 re.IGNORECASE,
             )
-            and not re.search(r"\d", eff_title)
-        )
-        # Đánh giá độc lập sức căng của riêng `s1_narr` (không thưởng cho câu chỉ trỏ rỗng 'look closely / watch')
-        _num_word_re = (
-            r"(?:\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|percent|milliseconds|seconds|"
-            r"um|uma|dois|duas|três|quatro|cinco|seis|sete|oito|nove|dez|cem|duzentos|trezentos|quatrocentos|quinhentos|mil|milissegundos|segundos|quilos|metros)\b)"
-        )
-        s1_has_number = bool(re.search(_num_word_re, s1_narr, re.IGNORECASE | re.UNICODE))
-        has_number = bool(re.search(_num_word_re, combined, re.IGNORECASE | re.UNICODE))
-        _shock_pattern = (
-            r"(?:%|\b(?:vs\.?|versus|against|contra|refused|crushes|crush|punches|shatters|snaps|rips|folds|destroys|kills|deadly|impossible|instant|instantly|blink|skull|bone|soda\s+can|eggshell|second|seconds|minute|minutes|meters|feet|miles|percent|mph|celsius|degrees|"
-            r"nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmaga|esmagam|fura|perfura|crânio|osso|latinha|piscar|ferve|choque|veneno|erro|emboscad|"
-            r"shocking|terrified|ambush|strike|pierces|boils|paralyzes|never|always|expose|exposes|fail|fails|confess|trap|caught|freeze|freezes|panic|liar|liars|guilty|mistake|vanished|erupted|predator|disrespect|manipulat|hijack|prey)\b)"
-        )
-        s1_has_shock = bool(re.search(_shock_pattern, s1_narr, re.IGNORECASE | re.UNICODE))
-        has_confrontation_or_shock = bool(re.search(_shock_pattern, combined, re.IGNORECASE | re.UNICODE))
-        has_hook_violation = bool(
-            weak_q or abstract_metaphor or is_colon_header_echo or is_early_outcome_spoiler
-            or is_vague_pointer_prefix or is_entity_blind_hook or bool(dry_physics_match)
         )
         if vague_title_match:
             score = min(score, 6.5)
             extra_critiques.append(
                 f"VAGUE TITLE BLOCKED: Title hides the primary entity ('{eff_title}'). "
-                f"Explicitly name the exact species/entity/location + vivid physical clash or 'Entity A vs Entity B' in the title!"
+                f"Explicitly name the exact species/entity/location in the title!"
             )
-        elif not has_hook_violation and s1_has_shock and 3 <= w_cnt <= max_hook_w:
-            score = max(score, 8.8)
-            if s1_has_number or has_number:
-                score = min(9.8, score + 0.2)
-        elif not has_hook_violation and not has_number and not has_confrontation_or_shock:
-            score = max(1.0, score - 0.8)
-            if score < cal.get("min_hook_score", 8.0):
-                extra_critiques.append(
-                    "Scene 1 Hook and Title lack a vivid physical clash, everyday sensory image, or direct 'A vs B' confrontation."
-                )
-
-        # 5. Kiểm tra Cao Trào Giữa Video (Mid-Video Climax / Twist ở Cảnh 3-5) để ngăn tụt APV ở giây 14-20
-        if isinstance(scenes, list) and len(scenes) >= 5:
-            mid_scenes = scenes[2:5]
-            mid_text = " ".join(str(ms.get("narration") or "") for ms in mid_scenes if isinstance(ms, dict))
-            mid_badges = " ".join(str(ms.get("overlay_badge") or "") for ms in mid_scenes if isinstance(ms, dict))
-            has_mid_twist_or_metric = bool(
-                re.search(_num_word_re, mid_text, re.IGNORECASE | re.UNICODE)
-                or re.search(
-                    r"\b(?:but|yet|however|instead|suddenly|actually|until|real\s+weapon|real\s+trap|secret\s+weapon|shockwave|like\s+a|like\s+an|"
-                    r"not\s+a\s+virtue|isn't|aren't|doesn't|don't|does\s+not|do\s+not|never|flaw|trap|glitch|paradox|"
-                    r"mas|porém|contudo|na\s+verdade|de\s+repente|mesmo|enquanto|apesar|não\s+é|nenhuma?|amador|superestimado|falha|como\s+uma?|"
-                    r"nhưng|thực\s+ra|bất\s+ngờ)\b",
-                    mid_text,
-                    re.IGNORECASE | re.UNICODE,
-                )
-                or bool(mid_badges.strip())
-            )
-            if not has_mid_twist_or_metric:
-                score = min(score, 7.6)
-                extra_critiques.append(
-                    "MID-VIDEO FLATLINE BLOCKED: Scenes 3-5 (Seconds 14-20) lack a Mid-Video Climax Twist ('But...', 'Mas...', 'However...') + vivid counter-mechanism or everyday analogy, causing mid-video drop-off."
-                )
 
         return round(score, 1), extra_critiques
 
@@ -429,12 +361,13 @@ Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for
 
 --- 5-ACT RETENTION EVALUATION RUBRIC (Scale 1 - 10) ---
 1. hook_strength (Hard gate >= {min_hook_req}/10 — Target: Viewed > 75%, Swipe-Away < 25%):
-   - Scene 1 (6-10 words) MUST explicitly name the primary entity/combatants and open with a visceral physical action, everyday sensory comparison, or sharp lethal/behavioral paradox.
-   - Fails (< 6.0) if it dumps dry textbook physics units that viewers cannot visualize (PSI, Newtons, kPa, Joules, LD50), opens with a weak Yes/No question ("Did you know...", "Have you ever..."), textbook definition, repeats a Loser hook pattern, or contains any leaked foreign/Vietnamese words that do not match the script's language.
+   - Scene 1 (6-10 words) MUST explicitly name the primary entity/combatants and open with a concrete physical action, entity-specific sensory image, or sharp paradox.
+   - Fails (< 6.0) if it dumps unexplained textbook/laboratory units that ordinary viewers cannot visualize, opens with a weak Yes/No question ("Did you know...", "Have you ever..."), textbook definition, repeats a Loser hook pattern, or contains any leaked foreign/Vietnamese words that do not match the script's language.
 {pacing_criterion_desc}
-   - Reward (>= 8.5) smooth, vivid 5-Act storytelling that translates complex forces, pressures, or brain mechanisms into crystal-clear everyday physical analogies (e.g. punching through bone like an empty soda can, fifty passenger jets stacked on a submarine, faster than an eye blink) rather than dry textbook physics units.
-   - Penalize (< 6.5) scripts that sound like a dry science lecture citing PSI, Newtons, kPa, Joules, or LD50 without relatable imagery, or abrupt/choppy sentences.
-3. entity_coherence: The script naturally stays focused on the core subject/entity.
+   - Reward (>= 8.5) smooth, vivid 5-Act storytelling that deeply understands the specific entity's real anatomy, physical mechanism, environment, or human behavior, translating complex mechanics into fresh, intuitive, tailor-made everyday imagery rather than abstract textbook units.
+   - Penalize (< 6.5) scripts that read like a dry science lecture citing raw physics/lab units without visualizable human-scale context, OR scripts that lazily paste generic recycled clichés onto entities without explaining how that specific entity actually works.
+3. entity_coherence:
+   - Evaluate how deeply and accurately the script characterizes the specific entity/phenomenon (its unique weapon, vulnerability, tactic, or psychological mechanism) rather than generic interchangeable filler.
 4. visual_direction: `visual_keyword` and `stock_query` are concrete English physical nouns/actions matching the topic (>= 8.5).
 5. viral_loop (ZERO spoken Subscribe CTA at the end):
    - Final scene delivers a satisfying payoff and bridges seamlessly back to Scene 1.

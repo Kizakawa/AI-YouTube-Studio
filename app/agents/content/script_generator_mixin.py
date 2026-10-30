@@ -203,8 +203,8 @@ class ScriptGeneratorMixin:
             """🔥 MANDATORY CEILING-BREAKER & VISCERAL ANALOGY ARCHITECTURE (APPLY STRICTLY TO ALL EN & pt-BR CHANNELS):
 1. GOLDEN 0.0s RETENTION LOCK: EXPLICIT ENTITY + VISCERAL EVERYDAY IMAGE OR LETHAL PARADOX IN SCENE 1:
    - `title`: MUST explicitly name high-search-volume entities + vivid, easy-to-picture clash or stakes ("Lula-Colossal vs Cachalote: O Duelo Mortal No Fundo Do Mar 🦑🐋", "Komodo Dragon vs Water Buffalo: One Bite Seals Its Fate 🦎🐃"). NEVER hide the entity in the title, AND NEVER put dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) in the title!
-   - `Scene 1 (0.0s–2.2s, 6–10 words)`: Viewers scrolling the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND paint an immediate visceral physical action, everyday comparison, or lethal paradox right at 0.0s!
-   - 🚫 STRICT ANTI-SCIENCE-LECTURE BAN: NEVER use abstract physics or laboratory units (`1,500 PSI`, `195 Newtons`, `kPa`, `Joules`, `LD50`, `Hz`) anywhere in the script! Viewers have zero mental picture of a Newton or PSI—always translate forces/pressures/mechanisms into everyday physical comparisons (e.g., punching through an armored skull like an empty soda can, fifty jumbo jets stacked on a submarine, faster than an eye blink)!
+   - `Scene 1 (0.0s–2.2s, 6–10 words)`: Viewers scrolling the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND paint an immediate entity-specific physical action or paradox right at 0.0s!
+   - 🧠 DEEP ENTITY PROFILING OVER DRY UNITS OR CLICHÉS: Understand what makes THIS specific entity's anatomy, physical structure, environment, or psychological mechanism unique, and express its real power in intuitive everyday imagery that viewers instantly picture—never dump unexplained laboratory/physics units that ordinary viewers cannot visualize, and never copy-paste the same generic stock metaphor across different videos!
    - STRICTLY FORBIDDEN VAGUE POINTERS: NEVER start Scene 1 with vague entity-blind pointers like "Look closely at why...", "Watch the exact moment...", or "Olhe bem para..." that hide the subject! Real YouTube Analytics proves hiding the entity in Scene 1 causes 70%–94% Swipe-Away!
    - STRICTLY FORBIDDEN IN SHORTS: NEVER split a 35-second Short into "Round 1, Round 2, Round 3" or switch to a 3rd unannounced opponent! Keep 100% of all 7–8 scenes focused on the exact entities promised in the `title`!"""
         )
@@ -291,9 +291,10 @@ Do NOT write the full script yet. Spend your full reasoning capacity to deeply u
 0. DEEP USER INTENT & SUBTEXT COMPREHENSION (ZERO KEYWORD DEPENDENCE):
    - Analyze what the user truly wants to convey in "{topic}" (and Creator Direction if provided), even if the input is brief, conversational, or a raw script idea.
    - Deduce the hidden curiosity gap, emotional core, canonical `primary_entity`, and authentic physical environment/era of the story.
-1. DEEP FACT MINING & VISCERAL EVERYDAY ANALOGY TRANSLATION (ZERO DRY PHYSICS UNITS):
-   - Uncover 3 real, jaw-dropping mechanisms or facts about "{topic}", AND IMMEDIATELY TRANSLATE any raw scientific force/pressure/speed/neurology into a **visceral everyday physical analogy** that a 12-year-old can instantly picture and feel in their body!
-   - STRICT BAN ON DRY UNITS: NEVER output naked physics/lab units like `PSI`, `pounds per square inch`, `Newtons`, `kPa`, `Joules`, `LD50`, or `Hz`! (Example: instead of "1,500 PSI bite", write "punching two fangs straight through a caiman's armored skull like an empty soda can"; instead of "195 Newtons", write "slamming down five times its own weight faster than a human blink, shattering bone like dry glass"; instead of "16,000 PSI", write "crushing steel like a tin can under fifty passenger jets").
+1. DEEP ENTITY ANATOMY / MECHANISM PROFILING & TAILOR-MADE INTUITIVE IMAGERY:
+   - First, deeply profile the specific entity/phenomenon in "{topic}": What is its exact biological structure, physical engineering, habitat, historical setting, or psychological trigger? How does Entity A's specific weapon/mechanism physically interact with Entity B's specific defense/body/mind?
+   - Uncover 3 real, verifiable mechanisms unique to THIS entity, and translate each one into **fresh, tailor-made everyday physical imagery** derived directly from how this entity actually works so a viewer with zero science background immediately sees and feels it!
+   - NEVER dump unexplained laboratory/textbook physics units that viewers cannot picture, AND NEVER paste recycled generic stock clichés onto unrelated subjects!
 2. 3-ANGLE VIRAL TOURNAMENT:
    - Angle A (Asymmetric 1v1 Clash / Direct Confrontation): Frame around "Entity A vs Entity B" with a visceral, easy-to-picture physical clash.
    - Angle B (Counter-Intuitive Paradox / Hidden Lethal Mechanism): Expose why what 99% of people believe about this topic is dead wrong.
@@ -308,7 +309,8 @@ Do NOT write the full script yet. Spend your full reasoning capacity to deeply u
 
 Return ONLY valid JSON:
 {{
-  "mined_hard_metrics": ["visceral everyday analogy 1 (ZERO PSI/Newtons)", "visceral everyday analogy 2", "visceral everyday analogy 3"],
+  "entity_mechanism_profile": "Deep profile of the specific entity's unique anatomy, physical structure, vulnerability, or psychological dynamic (what makes THIS entity physically/behaviorally distinct from all others)",
+  "mined_hard_metrics": ["entity-specific intuitive mechanism/imagery 1", "entity-specific intuitive mechanism/imagery 2", "entity-specific intuitive mechanism/imagery 3"],
   "angle_a_clash": "1-sentence pitch for Angle A",
   "angle_b_paradox": "1-sentence pitch for Angle B",
   "angle_c_visceral": "1-sentence pitch for Angle C",
@@ -348,7 +350,8 @@ Return ONLY valid JSON:
                 return (
                     "\n═══════════════════════════════════════════════════════════\n"
                     "🔥 STAGE-1 SHOWRUNNER WINNING VIRAL BLUEPRINT (MANDATORY EXECUTION):\n"
-                    f"- Mined Verifiable Metrics: {json.dumps(bp_data.get('mined_hard_metrics', []), ensure_ascii=False)}\n"
+                    f"- Entity Anatomy & Mechanism Profile: {bp_data.get('entity_mechanism_profile', '')}\n"
+                    f"- Mined Entity-Specific Intuitive Mechanisms: {json.dumps(bp_data.get('mined_hard_metrics', []), ensure_ascii=False)}\n"
                     f"- Winning Angle: {bp_data.get('winning_angle', '')}\n"
                     f"- Primary Entity: {bp_data.get('primary_entity', '')}\n"
                     f"- Recommended High-CTR Searchable Title: {bp_data.get('winning_title', '')}\n"
@@ -402,7 +405,7 @@ YOUR EXECUTIVE PUNCH-UP MANDATE (UPGRADE EVERY WEAK LINK WHILE PRESERVING 7-8 SC
 1. GOLDEN 0.0s RETENTION LOCK IN `SCENE 1 HOOK` (0.0s–2.2s | 6 TO 10 WORDS) & ZERO DRY PHYSICS UNITS:
    - Keep `title` razor-sharp for `YT_SEARCH` + CTR (explicitly naming the primary entities + visceral clash/stakes — ZERO dry physics units like `PSI`, `Newtons`, `kPa`, `Joules`, or `LD50`!).
    - Check Scene 1 (`scenes[0].narration` and `hook`): Scene 1 MUST explicitly name the primary entity/combatants from `title` AND paint an immediate visceral physical clash, everyday sensory image, or lethal paradox right at 0.0s (e.g., "One jaguar bite punches straight through a caiman's armored skull.", "This giant buffalo walked away from a Komodo dragon, already dead.", "Las Vegas casinos remove every clock to hijack your brain's sense of time.")!
-   - 🚫 ERADICATE ALL DRY SCIENCE/PHYSICS UNITS: Scan every single scene's `narration`, `title`, and `thumbnail_text` — if you see ANY dry textbook unit like `PSI`, `pounds per square inch`, `Newtons`, `kPa`, `Joules`, `LD50`, `Hz`, or clinical jargon, REWRITE IT IMMEDIATELY into a vivid everyday physical analogy that anyone can picture (e.g. crushing a bowling ball, folding steel like an empty soda can, slamming down five times its body weight faster than an eye blink)!
+   - 🧠 ENTITY-AUTHENTIC IMAGERY CHECK: Scan every scene's `narration`, `title`, and `thumbnail_text` — if any sentence relies on dry textbook/laboratory physics units that ordinary viewers cannot visualize OR generic recycled stock clichés, REWRITE IT into fresh, tactile imagery grounded directly in THAT specific entity's real anatomy, structure, habitat, or psychological mechanism!
    - STRICTLY BAN VAGUE POINTERS: If Scene 1 starts with a vague entity-blind pointer like "Look closely at...", "Watch the exact moment...", or "Olhe bem para..." that hides the subject, REWRITE Scene 1 immediately so it explicitly names the primary entity + visceral impact or paradox! NEVER use '?' questions in Scene 1.
    - ZERO MULTI-ROUND BAIT-AND-SWITCH: If any scene in this Short mentions "Round One / Round Two / Round Three" or switches to a 3rd animal not in `title`, REWRITE those scenes so 100% of the Short stays focused on the exact 1v1 duel or phenomenon promised in `title`!
 2. CAUSAL STORYTELLING FLOW ("BUT / THEREFORE" TRANSITIONS):
@@ -548,9 +551,9 @@ YouTube rewards TWO metrics simultaneously:
 ═══════════════════════════════════════════════════════════
 1. THE MANDATORY 5-ACT DUAL-PEAK STORYTELLING BLUEPRINT (target: {word_range_en}):
    - DURATION & SCENE COUNT: {duration_spec}.
-   - UPSTREAM TOPIC & VISCERAL ANALOGY ELEVATION (CRITICAL FIRST STEP — ZERO DRY PHYSICS UNITS):
-     * Before writing Scene 1, NEVER leave the story as a dry science report! Anchor the story around a **visceral "A vs B" confrontation or counter-intuitive survival/behavioral paradox**, AND translate every force, bite, pressure, speed, or brain reaction into a **vivid everyday physical comparison** that a 12-year-old can immediately see, hear, and feel in their body!
-     * 🚫 STRICT BAN ON DRY SCIENCE/TEXTBOOK UNITS: NEVER write `PSI`, `pounds per square inch`, `Newtons`, `kPa`, `Joules`, `LD50`, `Hz`, or dry clinical metrics in your Title, Scene 1 Hook, Thumbnail Text, or Narration! Viewers cannot visualize a Newton or a PSI—always show what it DOES to bone, steel, glass, a soda can, or the human body!
+   - DEEP ENTITY PROFILING & INTUITIVE STORYTELLING (CRITICAL FIRST STEP):
+     * Before writing Scene 1, analyze the specific entity/phenomenon in Depth (using `Entity Anatomy & Mechanism Profile` from Stage 1): What makes THIS specific entity's physical structure, anatomical weapon, habitat, historical setting, or human psychology unique?
+     * Express every force, strike, pressure, speed, or mental reaction through **tailor-made, tactile everyday imagery derived directly from that entity's real mechanism**—never leave unexplained laboratory/physics units that viewers cannot visualize, and never copy-paste generic stock clichés across unrelated topics!
    - YOU MUST EXECUTE ALL 5 ACTS SMOOTHLY IN ORDER across {'16 to 22 scenes (5 Documentary Chapters)' if is_long_form else '7 to 8 scenes'}:
 
      * ACT 1 — THE 1.8-SECOND ENTITY + VISCERAL SHOCK / PARADOX HOOK (Scene 1 | 6 to 10 words MAX):
@@ -565,8 +568,8 @@ YouTube rewards TWO metrics simultaneously:
        - STRICT BAN ON ACADEMIC STUDY OPENERS: NEVER start Scene 2 or 3 with "Studies show...", "Psychological studies reveal...", "Research indicates...", or "Estudos de biomecânica mostram que..."! Drop the viewer directly into the action, contrast, or named real-world event ("While a lion spends ten minutes choking the throat, the jaguar...", "Enquanto o leão tenta sufocar a garganta, a onça...").
        - Smoothly build the context and explain the **first real weapon or mechanism through a vivid everyday analogy** (ZERO dry physics units):
          * For Psychology / Manipulation / Relationships / Stoicism: Describe the observable everyday trap or spoken line ('Right after crossing your boundary, they smile and say, "You are overreacting again."').
-         * For Mysteries / Deep Sea / History: Paint what the human body, eyes, lungs, or steel hull actually experiences in that place or historical moment ('pressing in like fifty passenger jets stacked on your chest').
-         * For Wildlife / Animal Rescue: Make the viewer feel the physical weapon ('jaws built to punch fangs through thick bone like teeth piercing an empty soda can') or emotional turning point.
+         * For Mysteries / Deep Sea / History: Paint what the human body, eyes, lungs, or vessel structure specifically undergoes in that exact environment or historical moment.
+         * For Wildlife / Animal Rescue: Describe how that animal's specific anatomical structure (jaw hinge, talon curvature, quill barbs, loose hide, venom pathway) physically operates on its opponent, or show the exact emotional turning point.
 
      * ACT 3 — THE 15-SECOND MID-VIDEO CLIMAX TWIST (Scene 4) & CUNNINGHAM'S LAW COMMENT-BAIT CLAIM (Scene 5):
        - CRITICAL FOR APV > 95% & MASSIVE COMMENT VOLUME:
