@@ -288,7 +288,10 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
             if (
                 not is_mandatory_video_scene
-                and str(s.get("visual_strategy") or "").strip().upper() in ("DOODLE_2D_EXPLAINER", "DOODLE_2D_EXPLAINER_VIDEO")
+                and (
+                    str(s.get("visual_strategy") or "").strip().upper() in ("DOODLE_2D_EXPLAINER", "DOODLE_2D_EXPLAINER_VIDEO")
+                    or "render_doodle_2d_explainer_scene" in str(s.get("visual_keyword") or "").lower()
+                )
                 and str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy")
             ):
                 t_chosen = "render_doodle_2d_explainer_scene"

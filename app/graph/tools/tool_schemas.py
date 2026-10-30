@@ -395,6 +395,12 @@ def _clean_yt_search_phrase(
       và giữ danh từ chính ở cuối cụm danh từ tiếng Anh (`core[-max_words:]`, VD: `'Crested Porcupine'` / `'Porcupine'` thay vì `'African Crested'`).
     """
     raw_q = str(q or "").strip()
+    raw_q = re.sub(
+        r"\b(?:render_doodle_2d_explainer_scene|clone_youtube_short_peak_clip|fetch_clean_cinematic_portrait_or_broll|summon_epic_monster_cinematic_media|search_pexels_pixabay_stock_video|search_google_cinematic_image)\b",
+        " ",
+        raw_q,
+        flags=re.IGNORECASE,
+    ).strip()
     if strip_distractor_props and max_words <= 3 and raw_q:
         raw_q = re.split(r"[:—–\-]\s+", raw_q, maxsplit=1)[0].strip()
         if max_words <= 3:
