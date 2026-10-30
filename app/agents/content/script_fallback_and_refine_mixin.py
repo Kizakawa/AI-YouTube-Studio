@@ -110,19 +110,19 @@ class ScriptFallbackAndRefineMixin:
                 }
             else:
                 raw_data = {
-                    "title": "Onça-Pintada vs Caimão: A Mordida de 1.500 PSI no Pantanal 🐆🐊 #Shorts",
+                    "title": "Onça-Pintada vs Jacaré: A Mordida Que Fura o Crânio no Pantanal 🐆🐊 #Shorts",
                     "topic": topic,
                     "primary_entity": "Jaguar",
                     "hook": "A onça-pintada mata um jacaré com uma única mordida no crânio!",
                     "hook_visual_mode": "video",
                     "hook_search_queries": ["jaguar hunting caiman pantanal", "jaguar swimming river wild"],
-                    "thumbnail_text": "1.500 PSI DE FORÇA! 🐆",
-                    "pinned_comment": "A onça-pintada é o felino mais completo do planeta? Deixe sua opinião! 👇",
+                    "thumbnail_text": "FURA O CRÂNIO!",
+                    "pinned_comment": "Honestamente: se fossem dois jacarés adultos na água funda, a onça ainda venceria? (1) Sim ou (2) Sem chance? 👇",
                     "tags": ["shorts", "animais", "oncapintada", "pantanal", "natureza", "predadores"],
                     "scenes": [
                         {"scene_id": 1, "narration": "A onça-pintada mata um jacaré com uma única mordida no crânio!", "visual_keyword": "jaguar hunting caiman river", "stock_query": "jaguar river", "visual_prompt": "Powerful jaguar leaping into Pantanal river water", "estimated_seconds": 4.2},
                         {"scene_id": 2, "narration": "Enquanto leões e tigres atacam a garganta para sufocar a presa, o maior felino das Américas usa outra tática.", "visual_keyword": "jaguar walking jungle closeup", "stock_query": "jaguar walking", "visual_prompt": "Muscular jaguar stalking silently along a muddy riverbank", "estimated_seconds": 4.8},
-                        {"scene_id": 3, "narration": "Sua mandíbula compacta gera impressionantes mil e quinhentos PSI de pressão direta nos dentes caninos.", "visual_keyword": "jaguar roaring sharp teeth", "stock_query": "jaguar closeup", "visual_prompt": "Closeup of jaguar jaws and massive canine teeth", "estimated_seconds": 4.7},
+                        {"scene_id": 3, "narration": "Sua mandíbula compacta funciona como um alicate hidráulico, capaz de furar ossos duros como se fossem uma lata vazia.", "visual_keyword": "jaguar roaring sharp teeth", "stock_query": "jaguar closeup", "visual_prompt": "Closeup of jaguar jaws and massive canine teeth", "estimated_seconds": 4.7},
                         {"scene_id": 4, "narration": "No Pantanal, ela nada em silêncio absoluto sem criar uma única ondulação na superfície da água.", "visual_keyword": "jaguar swimming water stealth", "stock_query": "jaguar swimming", "visual_prompt": "Jaguar swimming stealthily through dark river water", "estimated_seconds": 4.6},
                         {"scene_id": 5, "narration": "Antes que o jacaré perceba a sombra, a onça salta do barranco direto sobre o dorso blindado do réptil.", "visual_keyword": "caiman resting river bank", "stock_query": "caiman crocodile", "visual_prompt": "Caiman basking on a sandy riverbank in the Pantanal", "estimated_seconds": 4.8},
                         {"scene_id": 6, "narration": "Em vez de lutar contra a couraça, ela crava os caninos exatamente entre as orelhas e perfura o cérebro instantaneamente.", "visual_keyword": "jaguar biting prey river", "stock_query": "big cat hunting", "visual_prompt": "Jaguar clamping down with lethal precision in shallow water", "estimated_seconds": 5.0},
@@ -227,15 +227,15 @@ class ScriptFallbackAndRefineMixin:
                     "hook": "One jaguar bite crushes a caiman's skull straight through bone!",
                     "hook_visual_mode": "video",
                     "hook_search_queries": ["jaguar hunting caiman river", "jaguar swimming pantanal"],
-                    "thumbnail_text": "1,500 PSI SKULL CRUSH! 🐆",
-                    "pinned_comment": "Could any river predator survive a stealth ambush from a 300-pound Jaguar? Drop your vote 👇",
+                    "thumbnail_text": "CRUSHES SKULLS!",
+                    "pinned_comment": "Be honest: if two adult caimans attacked in deep water, could the Jaguar still win? (1) Yes or (2) No chance? 👇",
                     "tags": ["shorts", "wildlife", "jaguar", "predators", "bigcats", "nature"],
                     "scenes": [
                         {"scene_id": 1, "narration": "One jaguar bite crushes a caiman's skull straight through bone!", "visual_keyword": "jaguar hunting caiman river", "stock_query": "jaguar river", "visual_prompt": "Powerful jaguar leaping into a river to ambush a caiman", "estimated_seconds": 4.3},
                         {"scene_id": 2, "narration": "In the flooded jungles of the Pantanal, eight-foot caimans should be the undisputed rulers of the water.", "visual_keyword": "caiman crocodile swimming river", "stock_query": "caiman river", "visual_prompt": "Large caiman floating silently in dark river water", "estimated_seconds": 4.7},
                         {"scene_id": 3, "narration": "Instead, they flee onto muddy banks the moment a jaguar steps into the river.", "visual_keyword": "jaguar walking riverbank jungle", "stock_query": "jaguar walking", "visual_prompt": "Muscular jaguar prowling along a tropical riverbank", "estimated_seconds": 4.5},
-                        {"scene_id": 4, "narration": "Unlike lions or tigers that suffocate prey by the throat, the jaguar evolved a stockier jaw built like a hydraulic press.", "visual_keyword": "jaguar roaring fangs closeup", "stock_query": "jaguar closeup", "visual_prompt": "Extreme closeup of a jaguar's massive jaws and canine teeth", "estimated_seconds": 5.0},
-                        {"scene_id": 5, "narration": "Its bite delivers fifteen hundred pounds per square inch, twice the crushing force of an African lion.", "visual_keyword": "big cat predator eyes intense", "stock_query": "jaguar eyes", "visual_prompt": "Golden eyes of a jaguar locked onto its target", "estimated_seconds": 4.8},
+                        {"scene_id": 4, "narration": "Unlike lions or tigers that choke prey by the throat, the jaguar evolved a stocky jaw built like bolt cutters.", "visual_keyword": "jaguar roaring fangs closeup", "stock_query": "jaguar closeup", "visual_prompt": "Extreme closeup of a jaguar's massive jaws and canine teeth", "estimated_seconds": 5.0},
+                        {"scene_id": 5, "narration": "Its fangs punch straight through thick bone and turtle shells as easily as teeth piercing an empty soda can.", "visual_keyword": "big cat predator eyes intense", "stock_query": "jaguar eyes", "visual_prompt": "Golden eyes of a jaguar locked onto its target", "estimated_seconds": 4.8},
                         {"scene_id": 6, "narration": "Swimming silently without a single ripple, the big cat lunges onto the reptile's armored back.", "visual_keyword": "jaguar swimming water stealth", "stock_query": "jaguar swimming", "visual_prompt": "Jaguar gliding silently through deep river water", "estimated_seconds": 4.6},
                         {"scene_id": 7, "narration": "Its thick canines punch directly between the caiman's ears, piercing the brain and ending the fight in one second.", "visual_keyword": "jaguar splashing river ambush", "stock_query": "jaguar hunting", "visual_prompt": "Explosive water splash as the jaguar secures its prey", "estimated_seconds": 4.9},
                         {"scene_id": 8, "narration": "Then the apex cat drags the two-hundred-pound reptile straight up a vertical riverbank into the jungle.", "visual_keyword": "jaguar resting jungle tree", "stock_query": "jaguar jungle", "visual_prompt": "Dominant jaguar in the dense South American rainforest", "estimated_seconds": 4.6},
@@ -352,9 +352,10 @@ Target Language: {language} ({target_lang_display})
 {lang_instruction}
 
 HARD RETENTION & FULL-BODIED STORYTELLING RULES:
-0. GOLDEN SEPARATION OF DUTY (TITLE FOR `YT_SEARCH` vs. SCENE 1 HOOK 0.0s FOR `SHORTS FEED`):
-   - TITLE RULE (NEVER VIOLATE): Keep exact, high-search-volume entity names in `title` (`[Entity A] vs [Entity B]: [Extreme Physical Metric]`, 28-55 chars, e.g., `Leopard vs Porcupine: 30,000 Quills 🦔🐆 #Shorts`). NEVER drop a primary entity from `title` or replace it with a vague pronoun/curiosity phrase!
-   - SCENE 1 HOOK (0.0s) RULE: Open with 1 of the 4 Million-View Psychological-Visual Hook Archetypes (Visual Micro-Observation, The Fatal Mistake, 2nd-Person Survival Scenario, or Illusion Breaker, {'8-14 words' if is_long_form else '6-10 words'}) that NEVER repeats the `title` verbatim!
+0. GOLDEN SEPARATION OF DUTY & VISCERAL EVERYDAY ANALOGY RULE (ZERO DRY PHYSICS UNITS):
+   - TITLE RULE (NEVER VIOLATE): Keep exact, high-search-volume entity names in `title` (`[Entity A] vs [Entity B]: [Visceral Clash/Stakes]`, 28-55 chars, e.g., `Jaguar vs Black Caiman: The Skull-Piercing Bite 🐆🐊 #Shorts`). NEVER drop a primary entity from `title`, AND NEVER put dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) in `title`!
+   - SCENE 1 HOOK (0.0s) RULE: Explicitly name the primary entity/combatants AND paint a vivid physical clash, everyday sensory image, or lethal paradox ({'8-14 words' if is_long_form else '6-10 words'}) that NEVER repeats the `title` verbatim and NEVER dumps dry physics units!
+   - VISCERAL ANALOGY RULE FOR BODY SCENES: Replace any abstract scientific/physics unit (`1,500 PSI`, `195 Newtons`, `kPa`, `Joules`, `LD50`, clinical jargon) with an everyday physical comparison that any viewer can picture and feel immediately (e.g., punching through an armored skull like an empty soda can, slamming down five times its body weight faster than an eye blink, crushing steel like a tin can under fifty passenger jets)!
 1. SCENE 1 PATTERN INTERRUPT HOOK (CRITICAL TO PREVENT SWIPING):
    - Scene 1 spoken text must use an urgent warning, 1v1 apex duel, elite interrogation tactic, dark law, or counter-intuitive shock ({'8-14 words' if is_long_form else '6-10 words'}).
 2. SMOOTH, COMPLETE NARRATIVE ({'360-560 words total across 16-22 scenes (5 Chapters), 18-26 words per body scene' if is_long_form else '85-120 words total across 7-9 scenes, flexible 8-16 words per body scene'} — NEVER write choppy or truncated sentences!):

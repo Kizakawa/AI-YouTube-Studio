@@ -8,32 +8,36 @@ script_blueprint:
   tone_of_voice: Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập đánh trực diện vào giác quan và
     nỗi sợ nguyên thủy của người xem, khiến họ lạnh gáy nhưng không thể rời mắt.
   pacing: "Thời lượng vàng 34 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu bí ẩn cuốn hút chuẩn Zack D. Films (10.27M views avg) & Você Sabia? (47.3M subs). QUY TẮC VÀNG MỞ ĐẦU 0.0s: Cả Tiêu đề (title) VÀ Cảnh 1 (0.0s-2.2s, 6-10 từ) ĐỀU BẮT BUỘC nêu rõ Thực thể/Địa danh + Cú sốc vật lý hoặc Nghịch lý sinh tử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu chủ thể ('Look closely at...', 'Watch what happens...')."
-  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Nêu đích danh Thực thể/Địa danh + Cú sốc vật lý hoặc Cảnh báo sinh tồn ngôi thứ 2 ngay ở 0.0s (CẤM dùng 'Look closely at...' giấu chủ thể) -> Cảnh 2-3 - Dẫn chứng khoa học & thông số vật lý thứ nhất (độ sâu, nhiệt độ, áp suất) -> Cảnh 4-5 (Mid-Video 15s Twist) - Bằng chứng thực nghiệm lật ngược dự đoán kèm thông số thứ 2 -> Cảnh 6-7 (Payoff) - Giải mã cơ chế khoa học chấn động -> Cảnh 8 - Cú chốt tự nhiên nối mượt về Cảnh 1"
+  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Nêu đích danh Thực thể/Địa danh + Cảm giác rùng mình trực quan hoặc Cảnh báo sinh tồn ngôi thứ 2 ngay ở 0.0s (CẤM dùng 'Look closely at...' giấu chủ thể và CẤM nêu đơn vị vật lý khô khan như PSI, kPa, Hz) -> Cảnh 2-3 - Mô tả sức ép/nhiệt độ/độ sâu bằng hình ảnh so sánh đời thường ai cũng tưởng tượng ra ngay -> Cảnh 4-5 (Mid-Video 15s Twist) - Chi tiết thực tế lật ngược dự đoán của người xem -> Cảnh 6-7 (Payoff) - Giải mã hiện tượng bằng hình ảnh sống động -> Cảnh 8 - Cú chốt tự nhiên nối mượt về Cảnh 1"
   hook_formulas:
-  - 'Direct Speed / Scale Shock (Proven Winner `ud5FkqRebQM` 1,009 views): ''Great White Shark breaches at 25 mph, seeing you first.'''
+  - 'Direct Speed / Scale Shock (Proven Winner `ud5FkqRebQM` 1,009 views): ''Great White Shark launches out of black water before you even see a shadow.'''
   - '2nd-Person Survival Warning with Named Entity (Proven Winner `M9xL2Qfv1eU` 1,286 views): ''Se esse pequeno polvo-de-anéis-azuis tocar sua pele, você para de respirar.'''
-  - 'Extreme Thermal / Geological Record (Proven Winner `JC6N20GwHHc` 10,598 views — 91.8% APV): ''A trezentos metros sob o México, a Caverna de Naica ferve a 58 graus.'''
+  - 'Extreme Thermal / Geological Sensory Trap (Proven Winner `JC6N20GwHHc` 10,598 views — 91.8% APV): ''Inside Mexico''s Crystal Cave, every breath you take turns to boiling water inside your lungs.'''
   - 'Diver Forbidden Rule Hook: ''If you ever see square waves forming at the beach, get out immediately.'''
-  - 'Abyssal Duel Paradox: ''Two thousand meters deep, a sperm whale dives straight into a colossal squid ambush.'''
+  - 'Abyssal Duel Paradox: ''Two miles down in pitch-black water, a sperm whale dives straight into a giant squid ambush.'''
   competitor_blueprint:
     benchmark_channel: "@disastersexplained1 (8.93M views — 'Every Tornado Shape Explained' 1.54M, 'Every Tornado Record Explained' Ud7TKMKQrHo) & @FossilVideos ('Would Orcas Dominate Every Prehistoric Ocean?' 3.73M)"
     long_form_archetypes:
-    - "Archetype A — Every X Record Explained ('Every [Deep Ocean / Tsunami / Abyssal Trench / Deadly Lake / Hydrophone] Record Explained'): Break down the most extreme verified scientific records from the strangest warning sign to the deadliest historical catastrophe."
-    - "Archetype B — Every Type/Zone Explained ('Every [Ocean Depth Zone / Rogue Wave Type / Underwater Anomaly] Explained'): Escalate chapter-by-chapter from the sunlit surface (0m) down to the crushing abyssal floor (4,000m-6,000m) with concrete PSI, °C, and dB metrics."
+    - "Archetype A — Every X Record Explained ('Every [Deep Ocean / Tsunami / Abyssal Trench / Deadly Lake] Record Explained'): Break down the most extreme real-world records from the strangest warning sign to the deadliest catastrophe using vivid sensory comparisons."
+    - "Archetype B — Every Type/Zone Explained ('Every [Ocean Depth Zone / Rogue Wave Type / Underwater Anomaly] Explained'): Escalate chapter-by-chapter from the sunlit surface down to the pitch-black abyssal floor by describing what happens to a human body or steel submarine at each level (ZERO dry PSI/kPa textbook units)."
     shorts_archetypes:
-    - "2nd-Person Sensory Deception Hook + Extreme Record Reveal: Open with what the viewer sees/hears right before disaster strikes ('You notice a calm square pattern on the waves... That's the mistake.'), then reveal the hidden physical force."
-    round_or_chapter_progression: "0:00 2nd-Person Sensory Danger Intro -> Chapter 1 (The Deceptive Warning Sign) -> Chapter 2 (The Speed/Pressure Record) -> Chapter 3 (The Deadliest Historical Event) -> Chapter 4 (The Scientific Anomaly Nobody Expected) -> Chapter 5 (The Unbroken Abyssal Record)"
-    thumbnail_hook_rule: "2-3 words MAX in massive White + Red/Yellow two-tone typography (e.g., 'EVERY RECORD', 'DEADLIEST DEPTH', 'DO NOT SWIM', '2,000M DUEL')"
+    - "2nd-Person Sensory Deception Hook + Visceral Reveal: Open with what the viewer sees/hears/feels right before disaster strikes ('You notice a calm square pattern on the waves... That's the mistake.'), then reveal the hidden force through an unforgettable physical comparison."
+    round_or_chapter_progression: "0:00 2nd-Person Sensory Danger Intro -> Chapter 1 (The Deceptive Warning Sign) -> Chapter 2 (The Crushing Force Test) -> Chapter 3 (The Deadliest Real Event) -> Chapter 4 (The Anomaly Nobody Expected) -> Chapter 5 (The Unbroken Abyssal Limit)"
+    thumbnail_hook_rule: "2-3 words MAX in massive White + Red/Yellow two-tone typography (e.g., 'EVERY RECORD', 'CRUSHES STEEL!', 'DO NOT SWIM', 'NO ESCAPE')"
   showrunner_prose_dna:
-    persona_and_voice: "Forensic Expedition Chronicler & Provocative Anomaly Investigator (Fern × Lemmino × @disastersexplained1 × Zack D. Films)."
+    persona_and_voice: "Visceral Sensory Expedition Storyteller & Thalassophobia Master (Fern × MrBallen sensory dread × @disastersexplained1 × Zack D. Films)."
     writing_habits:
-    - "1. ZERO ACADEMIC STUDY OPENERS: NEVER start any sentence with 'Studies show...', 'Oceanographic studies reveal...', 'Estudos mostram que...', or 'Pesquisas marinhas indicam...'. Drop the viewer straight into the expedition log, depth gauge, or sensory danger."
-    - "2. 2nd-Person Sensory Danger + Escalating Physical Telemetry: Drop the viewer directly into the anomaly using exact depth (meters/feet), pressure (PSI), temperature (°C), or acoustic decibels (dB)."
-    - "3. The Deceptive Calm Hook: Show the eerie, seemingly harmless visual sign that precedes the catastrophe ('You notice the waves forming a neat square grid near the beach. Stopping to film it is a fatal mistake.')."
-    - "4. Concrete Physical Mechanism Over Vague Spookiness: Explain the exact physical/biological force causing the anomaly (methane blowouts, halocline density traps, 230 dB sperm whale sonar cavitation)."
-    bad_ai_slop_example: "The deep ocean is full of scary mysteries and extreme pressure that humans cannot survive."
-    good_million_view_example: "At two thousand meters deep, sunlight vanishes completely and water pressure crushes steel at three thousand pounds per square inch. Yet sonar just tracked a fourteen-meter colossal squid rising straight toward the hull."
-    good_pt_br_example: "A trezentos metros sob o México, o ar dentro da Caverna de Naica atinge cinquenta e oito graus com noventa e nove por cento de umidade. A cada respiração, o vapor começa a condensar dentro dos seus próprios pulmões."
+    - "1. ZERO ACADEMIC OPENERS & ZERO DRY PHYSICS UNITS (NO PSI / NO kPa / NO Hz): NEVER start with 'Studies show...' or 'Estudos mostram que...', and NEVER bore viewers with raw physics units like '3,000 PSI', '16,000 pounds per square inch', '52 Hz', or '230 dB' without translating what it actually feels like!"
+    - "2. MANDATORY BODILY & EVERYDAY SCALE ANALOGIES: Always translate deep-sea pressure, heat, depth, or sound into something the viewer can immediately feel in their chest or picture with everyday objects (e.g., 'like fifty passenger jets stacked on every inch of your body—folding a steel submarine like an empty soda can', 'deep enough to stack six Eiffel Towers on top of each other and still leave everything in pitch-black darkness')."
+    - "3. The Deceptive Calm Hook: Show the eerie, seemingly harmless visual sign that precedes disaster ('You notice the waves forming a neat chessboard pattern near the beach. Stopping to take a photo is a fatal mistake.')."
+    - "4. Visceral Cause-and-Effect Over Textbook Jargon: Instead of naming chemical formulas or physics equations, show what happens to human lungs, steel hulls, or ocean predators in real time."
+    visceral_analogy_rules:
+    - "Deep-Sea Water Pressure -> NEVER say '4,000 PSI' or '16,000 PSI'. Say: 'like stacking fifty jumbo jets onto a single postage stamp—crushing a thick steel submarine like an empty tin can faster than your brain can feel pain' (pt-BR: 'como empilhar cinquenta aviões em cima do seu peito, amassando um submarino de aço como uma latinha vazia')."
+    - "Sonar / Acoustic Blast -> NEVER just say '230 dB' or 'Hz'. Say: 'a sound wave underwater so violent it vibrates your organs from the inside and stuns giant prey like an invisible shotgun blast' (pt-BR: 'um disparo sonoro debaixo d'água tão forte que faz seus pulmões vibrarem por dentro e paralisa a presa na hora')."
+    - "Extreme Heat / Humidity / Gas -> Show what happens to a human breath: 'the air is wetter and hotter than your own lungs, so every breath turns into scalding water inside your chest—drowning you while standing on dry rock'."
+    bad_ai_slop_example: "At two thousand meters deep, hydrostatic pressure reaches three thousand PSI and acoustic signals measure 230 decibels."
+    good_million_view_example: "Two miles beneath the waves, the ocean presses in like fifty passenger jets stacked on your chest—ready to fold a steel submarine like an empty soda can. Yet in that pitch-black void, a giant squid the length of a school bus is hunting."
+    good_pt_br_example: "Dentro da Caverna de Naica, no México, o ar é mais quente que o interior do seu próprio corpo. A cada inspiração, o vapor ferve e vira água dentro dos seus pulmões—fazendo você se afogar mesmo pisando em rocha seca."
   controversy_comment_bait_engine:
     philosophy: "VIEWS & COMMENT WARS > TEXTBOOK SAFETY (Cunningham's Law). Challenge the boring textbook explanation with a bold anomaly detail or counter-intuitive survival rule in Scene 4-5 so skeptics and believers argue in the comments!"
     bait_examples:

@@ -120,9 +120,9 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇧🇷 REGIONAL HOOK MASTERY — MERCADO BRASILEIRO (pt-BR | META: STAYED-TO-WATCH >= 70% & APV >= 100%)
 ═══════════════════════════════════════════════════════════════════
-1. REGRA DE OURO: ENTIDADE EXPLÍCITA + CHOQUE FÍSICO OU PARADOXO MORTAL NO SEGUNDO 0,0s (6 A 10 PALAVRAS):
-   - TÍTULO (`title`): DEVE conter os nomes exatos das entidades de alto volume de busca + métrica física extrema (`[Entidade A] vs [Entidade B]: [Métrica Extrema]`, ex: "Mamba-Negra vs Mangusto: O Reflexo de 15ms! 🐍🥊", "Onça-Pintada vs Jacaré: A Mordida de 1.500 PSI 🐆🐊").
-   - HOOK DA CENA 1 (0,0s a 2,2s | 6 A 10 PALAVRAS): No feed do Shorts, o público NÃO lê o título antes de ouvir os 2 primeiros segundos! Por isso, a Cena 1 DEVE nomear explicitamente a Entidade/Predador principal (ou o confronto A vs B) + um paradoxo mortal ou número extremo logo na primeira frase!
+1. REGRA DE OURO: ENTIDADE EXPLÍCITA + IMPACTO VISCERAL IMAGINÁVEL OU PARADOXO MORTAL NO SEGUNDO 0,0s (6 A 10 PALAVRAS):
+   - TÍTULO (`title`): DEVE conter os nomes exatos das entidades de alto volume de busca + ação física visceral ou confronto fácil de imaginar (`[Entidade A] vs [Entidade B]: [Impacto Visceral]`, ex: "Mamba-Negra vs Mangusto: Golpe Mais Rápido Que um Piscar! 🐍🥊", "Onça-Pintada vs Jacaré: A Mordida Que Fura o Crânio! 🐆🐊"). PROIBIDO usar unidades científicas secas como PSI, Newtons, kPa ou Joules!
+   - HOOK DA CENA 1 (0,0s a 2,2s | 6 A 10 PALAVRAS): No feed do Shorts, o público NÃO lê o título antes de ouvir os 2 primeiros segundos! Por isso, a Cena 1 DEVE nomear explicitamente a Entidade/Predador principal (ou o confronto A vs B) + uma imagem física brutal, comparação do dia a dia ou paradoxo mortal logo na primeira frase (SEM unidades físicas abstratas como PSI ou Newtons que o público não consegue visualizar)!
    - PROIBIDO USAR APONTAMENTOS VAGOS QUE ESCONDEM O SUJEITO ("Olhe bem para este pequeno crânio...", "Veja o momento exato em que este predador...") — dados reais provam que esconder o nome do animal na Cena 1 derruba a retenção para <17%!
 2. AS 4 FÓRMULAS COMPROVADAS DE HOOK (>50% STAYED & >75% APV NO NOSSO CANAL):
    - [Arquétipo 1 — Confronto Direto / Paradoxo Letal (Vencedor 40.225 views `TXPjVAIaKWw` — 51,4% Stay, 79,1% APV)]:
@@ -154,9 +154,9 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇻🇳 REGIONAL HOOK MASTERY — THỊ TRƯỜNG VIỆT NAM (vi-VN | MỤC TIÊU: STAYED-TO-WATCH >= 70%)
 ═══════════════════════════════════════════════════════════════════
-1. QUY TẮC VÀNG MỞ ĐẦU 0.0s: NÊU ĐÍCH DANH THỰC THỂ + CÚ SỐC VẬT LÝ / NGHỊCH LÝ SINH TỬ NGAY Ở CẢNH 1:
-   - TIÊU ĐỀ (`title`): Bắt buộc nêu đích danh thực thể + con số cực hạn (`[Thực thể A] vs [Thực thể B]: [Con số]`).
-   - CÂU HOOK CẢNH 1 (6–10 từ): Bắt buộc nêu đích danh Thực thể chính (hoặc cặp đấu A vs B) + thông số gây sốc hoặc nghịch lý sinh tử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu tên chủ thể kiểu "Hãy nhìn kỹ vào..." khiến người xem không biết video nói về cái gì trong 3 giây đầu.{bench_block}
+1. QUY TẮC VÀNG MỞ ĐẦU 0.0s: NÊU ĐÍCH DANH THỰC THỂ + HÌNH ẢNH VA CHẠM SỐNG ĐỘNG DỄ TƯỞNG TƯỢNG / NGHỊCH LÝ SINH TỬ NGAY Ở CẢNH 1:
+   - TIÊU ĐỀ (`title`): Bắt buộc nêu đích danh thực thể + hành động/hệ quả trực quan dễ hình dung (`[Thực thể A] vs [Thực thể B]: [Cú sốc trực quan]`). CẤM nhồi đơn vị vật lý khô khan như PSI, Newton, kPa!
+   - CÂU HOOK CẢNH 1 (6–10 từ): Bắt buộc nêu đích danh Thực thể chính (hoặc cặp đấu A vs B) + hình ảnh so sánh đời thường sống động hoặc nghịch lý sinh tử ngay ở giây 0.0s! TUYỆT ĐỐI CẤM dùng câu chỉ trỏ mơ hồ giấu tên chủ thể kiểu "Hãy nhìn kỹ vào..." và CẤM dùng số liệu khoa học khô khan khó mường tượng.{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """
     else:
@@ -164,9 +164,9 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇺🇸 REGIONAL HOOK MASTERY — US / GLOBAL ENGLISH MARKET (en-US | TARGET: STAYED-TO-WATCH >= 70%)
 ═══════════════════════════════════════════════════════════════════
-1. GOLDEN 0.0s RETENTION RULE: EXPLICIT ENTITY + EXTREME METRIC OR LETHAL PARADOX IN SCENE 1 (6 TO 10 WORDS | GRADE-5 ENGLISH):
-   - TITLE (`title`): MUST explicitly name the high-search-volume primary entities + extreme physical metric or confrontation (`[Entity A] vs [Entity B]: [Extreme Metric]`, e.g., "Komodo Dragon vs 1,200lb Water Buffalo: Venom Ambush 🦎🐃", "1,500lb Cape Buffalo vs 400lb Lion: The Ultimate Revenge 🐃🦁").
-   - SCENE 1 HOOK (0.0s–2.2s, 6–10 words): Viewers scrolling the Shorts Feed DO NOT read the bottom title before hearing the first 2 seconds of voiceover! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND deliver an immediate shocking physical metric, clash, or lethal paradox right at 0.0s!
+1. GOLDEN 0.0s RETENTION RULE: EXPLICIT ENTITY + VISCERAL EVERYDAY IMAGE OR LETHAL PARADOX IN SCENE 1 (6 TO 10 WORDS | GRADE-5 ENGLISH):
+   - TITLE (`title`): MUST explicitly name the high-search-volume primary entities + visceral, instantly imaginable physical clash or stakes (`[Entity A] vs [Entity B]: [Visceral Stakes]`, e.g., "Jaguar vs Black Caiman: The Skull-Piercing Ambush 🐆🐊", "Komodo Dragon vs Water Buffalo: One Bite Seals Its Fate 🦎🐃"). STRICTLY BAN dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) that ordinary viewers cannot picture!
+   - SCENE 1 HOOK (0.0s–2.2s, 6–10 words): Viewers scrolling the Shorts Feed DO NOT read the bottom title before hearing the first 2 seconds of voiceover! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND paint an immediate, visceral physical action or lethal paradox right at 0.0s—NEVER dry science units!
    - STRICTLY FORBIDDEN VAGUE POINTERS: NEVER start Scene 1 with vague entity-blind pointers like `"Look closely at why you cannot find the exit"`, `"Look closely at these deadly floating blue tentacles"`, or `"Watch the exact moment this massive predator feels pain"`! Real YouTube Analytics proves that hiding the subject behind `"Look closely at..."` causes 70%–94% Swipe-Away in the first 2 seconds!
 2. THE 4 PROVEN HIGH-RETENTION US HOOK ARCHETYPES (CHOOSE THE #1 BEST FIT FOR SCENE 1 IN 6–10 WORDS):
    - [Archetype 1 — Direct Scale / Extreme Metric Clash (Proven Winner `A-oNKdpL0rM` 1,146 views & `w7iUy-8hjVo` 47.7% Stay)]:

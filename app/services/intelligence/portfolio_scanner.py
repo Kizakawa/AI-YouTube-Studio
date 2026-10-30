@@ -276,7 +276,7 @@ def _get_global_trends_directive(niche_id: str, channel_id: Optional[str] = None
         return f"""
 🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (DEEP SEA & OCEAN MYSTERIES ONLY — 100% MARINE / UNDERWATER):
 1. Deep Ocean & Marine Anomalies ONLY ("Entity A vs Entity B" or "Submarine/Diver vs Abyssal Anomaly"): Every concept MUST take place in the OCEAN, DEEP SEA, ABYSSAL TRENCHES, POINT NEMO, or MARINE PREDATORS (Colossal Squid, Sperm Whale, Greenland Shark, Orca vs Great White Shark, Deep-Sea Hydrophones, Saturation Diving).
-2. Unexplained Underwater Acoustic & Marine Signals: Open with a concrete physical measurement (depth in meters/feet, water pressure PSI, sonar Hz, ocean coordinates) in the first 3 seconds.
+2. Visceral Abyssal Stakes & Everyday Physical Analogies (ZERO DRY PHYSICS UNITS): Open with an immediate, terrifyingly vivid physical image anyone can feel (crushing a steel hull like an empty soda can under 50 passenger jets, boiling water inside lungs, pitch-black abyssal ambush)—NEVER dump dry textbook units like PSI, kPa, Newtons, or Hz.
 3. STRICT DOMAIN LOCK (CHỐNG NHẦM LẪN VỚI KÊNH TRÊN CẠN): 100% OCEAN / SEA / MARINE topics ONLY! NEVER suggest terrestrial land animals (NO jaguars/onça, NO anacondas/sucuri, NO caimans, NO eagles, NO deserts, NO forests/savannas).{auditor_note}
 """
     elif any(k in nid for k in ("alternate_history", "what_if", "timeline", "temporal")):
@@ -299,7 +299,7 @@ CRITICAL CONSTRAINT: Avoid passive or purely bleak titles; every title and hook 
         return f"""
 🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (TERRESTRIAL / LAND WILDLIFE & APEX PREDATORS ONLY — 100% TRÊN CẠN):
 1. Head-to-Head Land & River-Jungle Apex Predator Duels ("Entity A vs Entity B"): Frame the opening around an asymmetric biological confrontation between two named TERRESTRIAL / JUNGLE / SAVANNA creatures (e.g., Jaguar/Onça-pintada, Caiman/Jacaré-açu, Anaconda/Sucuri, Harpy Eagle/Harpia, Honey Badger/Texugo-do-mel, Komodo Dragon, Giant River Otter/Ariranha, Snow Leopard, Lion, Hippo, Black Mamba).
-2. Extreme Biomechanical Metrics: Anchor the first 3 seconds with a real physical measurement (PSI bite force, claw pressure, speed in mph/kmh, strike milliseconds).
+2. Visceral Biomechanical Weapons & Everyday Analogies (ZERO DRY PHYSICS UNITS): Anchor the first 3 seconds on a vivid, easy-to-picture physical clash (fangs punching straight through armored skull bone like a soda can, talons as big as grizzly claws, strikes faster than an eye blink)—NEVER dump dry textbook units like PSI, Newtons, Joules, or LD50.
 3. STRICT DOMAIN LOCK (CHỐNG NHẦM LẪN VỚI KÊNH BIỂN SÂU): 100% TERRESTRIAL / LAND & JUNGLE WILDLIFE ONLY! NEVER suggest deep-sea, ocean trenches, submarines, whales, sharks, or marine monsters.{auditor_note}
 """
     else:  # psychology / forensic crime, extreme brain science & money traps
@@ -307,10 +307,10 @@ CRITICAL CONSTRAINT: Avoid passive or purely bleak titles; every title and hook 
 🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (FORENSIC CRIME, EXTREME BRAIN EXPERIMENTS & MONEY PSYCHOLOGY — ZERO GENERIC DATING/TEXTING LISTICLES):
 1. 3 High-Retention, High-RPM Pillars ONLY:
    - Pillar A (Forensic & Courtroom Psychology): Real FBI interrogation traps, courtroom suspect tells, polygraph secrets, hostage negotiation tactics (proven #1 channel winner formula: 'Why Serial Killers Always Smile In Court').
-   - Pillar B (Extreme Brain & Body Neuro-Experiments): What happens to the human brain in -9.4 dB silent chambers, 72-hour white room isolation, Stanford Prison 6-day collapse, Milgram 450V shock experiment, or sensory deprivation.
+   - Pillar B (Extreme Brain & Body Neuro-Experiments): What happens to the human brain inside a room so silent you hear your own blood rushing, 72-hour white room isolation, Stanford Prison 6-day collapse, Milgram obedience shock experiment, or total sensory deprivation.
    - Pillar C (Billionaire, Casino & Financial Mind Traps): How casinos, auctions, and tech giants hijack dopamine and decision-making (Decoy Effect, Sunk Cost Trap, Gruen Transfer).
 2. STRICTLY FORBIDDEN TOPICS: NEVER suggest generic relationship/texting/fake-friend listicles ('3 Signs They're Using You', 'Narcissist Texts', 'Crush on You', 'How to Not Be Ignored')—these suffer >80% swipe-away!
-3. Concrete Physical Metric in First 2 Seconds: Every title and 0.0s hook MUST anchor on a hard measurement (decibels, hours, volts, seconds, feet, dollars).{auditor_note}
+3. Visceral Bodily & Behavioral Stakes in First 2 Seconds: Every title and 0.0s hook MUST paint an immediate human sensory picture or observable physical tell (hearing your own heartbeat, frozen feet under an interrogation desk, 72 hours in a pure white room)—NEVER dump dry lab jargon like decibels, kPa, or clinical ratios.{auditor_note}
 """
 
 

@@ -307,6 +307,8 @@ def build_million_view_showrunner_prose_dna(niche_id_or_profile: Any, language: 
     bench_label = comp_bp.get("benchmark_channel") or profile.get("name", "Million-View Benchmark Channels")
     persona = prose_dna.get("persona_and_voice") or blueprint.get("tone_of_voice", "Elite Documentary Showrunner")
     habits = prose_dna.get("writing_habits") or []
+    gen_prose = (get_niche("general").get("script_blueprint") or {}).get("showrunner_prose_dna") or {}
+    analogy_rules = prose_dna.get("visceral_analogy_rules") or gen_prose.get("visceral_analogy_rules") or []
     bad_ex = prose_dna.get("bad_ai_slop_example") or ""
     good_ex = (prose_dna.get("good_pt_br_example") if is_pt and prose_dna.get("good_pt_br_example") else prose_dna.get("good_million_view_example")) or ""
     bait_phil = bait_engine.get("philosophy") or (
@@ -317,24 +319,36 @@ def build_million_view_showrunner_prose_dna(niche_id_or_profile: Any, language: 
     bait_examples = bait_engine.get("bait_examples") or []
 
     lines: List[str] = [
-        f"8. MILLION-VIEW SHOWRUNNER WRITING STYLE & CONTROVERSY DNA (FROM YAML — BENCHMARK: {bench_label}):",
+        f"8. MILLION-VIEW SHOWRUNNER WRITING STYLE, VISCERAL EVERYDAY ANALOGIES & CONTROVERSY DNA (FROM YAML — BENCHMARK: {bench_label}):",
         "   - 🚫 UNIVERSAL ANTI-AI PROSE BAN: NEVER write 'When we examine...', 'In forensic behavioral analysis...', "
-        "'Researchers discovered that...', 'Furthermore,', 'Moreover,', 'It is important to note', 'Delve into', 'Tapestry', "
-        "'Ultimately,', or 'In conclusion'.",
+        "'Researchers discovered that...', 'Studies show...', 'Furthermore,', 'Moreover,', 'It is important to note', "
+        "'Delve into', 'Tapestry', 'Ultimately,', or 'In conclusion'.",
+        "   - 🚫 ZERO DRY PHYSICS / LABORATORY TEXTBOOK UNITS (NO PSI / NO NEWTONS / NO kPa / NO JOULES / NO LD50 / NO Hz): "
+        "Ordinary viewers scrolling YouTube have ZERO mental picture of what '1,500 PSI', '195 Newtons', '16,000 PSI', '300 kPa', "
+        "or 'LD50' feels like! Dropping raw science-class units makes the script sound cold, dry, and impossible to visualize. "
+        "NEVER use naked physics/engineering units in your Title, Scene 1 Hook, Thumbnail Text, or Narration!",
+        "   - 🎬 MANDATORY '12-YEAR-OLD MENTAL MOVIE' ANALOGY RULE: Translate every force, bite, strike, pressure, speed, toxin, "
+        "or brain mechanism into a VISCERAL EVERYDAY PHYSICAL COMPARISON & BODILY SENSATION that anyone can instantly see, hear, "
+        "and feel (e.g., punching fangs straight through a skull like an empty soda can, slamming down five times its body weight "
+        "faster than an eye blink, fifty passenger jets stacked on your chest, hearing your own blood rushing in a dead-silent room).",
         "   - SENTENCE CADENCE RULE: Write in punchy, spoken Grade-5 broadcast sentences. Alternate a crisp 6–9 word punch sentence "
-        "with a vivid 12–16 word action/mechanism sentence.",
+        "with a vivid 12–16 word sensory action/analogy sentence.",
         f"   - YAML SHOWRUNNER VOICE & PERSONA: {persona}",
     ]
     if habits:
         lines.append("   - YAML MANDATORY WRITING HABITS OF MILLION-VIEW CHANNELS:")
         for hb in habits:
             lines.append(f"     * {hb}")
+    if analogy_rules:
+        lines.append("   - YAML VISCERAL EVERYDAY ANALOGY TRANSLATION RULES (REPLACE DRY SCIENCE UNITS WITH THESE):")
+        for ar in analogy_rules:
+            lines.append(f"     * {ar}")
     if bad_ex or good_ex:
         lines.append("   - YAML GOLD-STANDARD PROSE CADENCE EXAMPLE (MATCH THIS EXACT RHYTHM):")
         if bad_ex:
-            lines.append(f"     * BAD (Generic AI Slop — FORBIDDEN): \"{bad_ex}\"")
+            lines.append(f"     * BAD (Dry Textbook / AI Science Slop — STRICTLY FORBIDDEN): \"{bad_ex}\"")
         if good_ex:
-            lines.append(f"     * GOOD (Million-View Showrunner Style — REQUIRED): \"{good_ex}\"")
+            lines.append(f"     * GOOD (Million-View Visceral Showrunner Style — REQUIRED): \"{good_ex}\"")
 
     lines.append(f"   - 🔥 YAML CONTROVERSY & COMMENT-WAR BAIT ENGINE: {bait_phil}")
     if bait_examples:
@@ -688,12 +702,20 @@ def build_llm_production_overview_prompt(
         if thumb_rule:
             lines.append(f"  * Thumbnail 2-3 Word Rule: {thumb_rule}")
 
-    prose_dna_dir = script_bp.get("showrunner_prose_dna") or {}
+    gen_prose_dir = (get_niche("general").get("script_blueprint") or {}).get("showrunner_prose_dna") or {}
+    prose_dna_dir = script_bp.get("showrunner_prose_dna") or gen_prose_dir or {}
     bait_dir = script_bp.get("controversy_comment_bait_engine") or {}
     if prose_dna_dir or bait_dir:
-        lines.append("\n🧠 YAML SHOWRUNNER PROSE & CONTROVERSY COMMENT-BAIT ENGINE FOR DIRECTOR NODE:")
+        lines.append("\n🧠 YAML SHOWRUNNER PROSE, VISCERAL ANALOGIES & CONTROVERSY ENGINE FOR DIRECTOR NODE:")
         if prose_dna_dir.get("persona_and_voice"):
             lines.append(f"  * Showrunner Persona & Voice: {prose_dna_dir.get('persona_and_voice')}")
+        lines.append(
+            "  * Visceral Everyday Analogy Rule (ZERO Dry Science Units): NEVER output abstract textbook physics units "
+            "(PSI, Newtons, kPa, Joules, LD50, Hz). Translate every force/pressure/speed/brain mechanism into an everyday "
+            "physical comparison & bodily sensation viewers can immediately picture!"
+        )
+        if prose_dna_dir.get("visceral_analogy_rules"):
+            lines.append("  * Niche Analogy Translations (YAML): " + " | ".join(str(x) for x in list(prose_dna_dir.get("visceral_analogy_rules"))[:3]))
         if prose_dna_dir.get("good_million_view_example"):
             lines.append(f"  * Gold-Standard Narration Cadence: \"{prose_dna_dir.get('good_million_view_example')}\"")
         if bait_dir.get("philosophy"):

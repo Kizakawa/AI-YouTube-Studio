@@ -243,7 +243,7 @@ QUY TẮC BẮT TREND & TỐI ƯU RETENTION > 85% (BẮT BUỘC):
 2. CHỐNG BÃO HÒA & TRÙNG LẶP (ANTI-CANNIBALIZATION):
    - Tuyệt đối không dùng lại các khái niệm đã bão hòa ({saturated_str}) hoặc trùng ý với danh sách video cũ.
 3. CÔNG THỨC HOOK 3 GIÂY ĐẦU (ANTI-SWIPE):
-   - Đập tan thói quen lướt qua trong 1.5 giây đầu bằng nghịch lý, con số cực đoan (PSI, mét sâu, năm lịch sử, % xác suất), hoặc câu hỏi đánh thẳng vào nỗi sợ/tò mò bản năng.
+   - Đập tan thói quen lướt qua trong 1.5 giây đầu bằng nghịch lý, hình ảnh va chạm vật lý hoặc ẩn dụ đời thường dễ tưởng tượng ngay trong đầu (TUYỆT ĐỐI CẤM đơn vị sách giáo khoa khô khan như PSI, Newton, kPa, Joule, LD50), hoặc câu hỏi đánh thẳng vào nỗi sợ/tò mò bản năng.
 4. THUMBNAIL TEXT (2-4 TỪ IN HOA):
    - Ngắn gọn, tương phản cực cao, đúng ngôn ngữ {target_lang_label}.
 

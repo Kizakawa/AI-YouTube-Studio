@@ -202,9 +202,9 @@ def _mine_real_world_research_dossier(topic: str, channel_niche: str) -> str:
         dossier_parts.append("2. VERIFIED SCIENTIFIC / HISTORICAL CONCEPTS & CASE STUDIES TO CITE:")
         dossier_parts.extend(wiki_lines)
     dossier_parts.append(
-        "3. MANDATORY CASE-STUDY RULE: Every chapter MUST cite a concrete real-world experiment, "
-        "documented historical/forensic case, or named neurological/physical mechanism with exact numbers "
-        "(years, percentages, milliseconds, PSI, meters) rather than vague generic advice!"
+        "3. MANDATORY CASE-STUDY & VISCERAL ANALOGY RULE: Every chapter MUST ground its story in a real-world experiment, "
+        "documented historical/forensic case, or real biological/physical mechanism, AND translate every abstract force or statistic "
+        "into a vivid everyday physical analogy viewers can immediately picture (STRICTLY BAN dry physics units like PSI, Newtons, kPa, Joules, or LD50)!"
     )
     return "\n".join(dossier_parts)
 
@@ -347,7 +347,7 @@ MANDATORY PACING, VIRAL DOCUMENTARY STORYTELLING & WORD COUNT (~14.5–16.0 SECO
 - For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 38 to 46 words of deep, vivid storytelling. NEVER write short 12-word Shorts sentences!
 - VIRAL COMPETITOR 4-BEAT CHAPTER ARCHITECTURE (JCS / Charisma on Command / @IFinity_What / @FossilVideos Formula — ZERO 'Studies show...' ACADEMIC OPENERS):
   * Slot 1 of each Chapter (Scenes {start_sid} & {start_sid+4}): **Case-Study / Verbatim Dialogue Reconstruction ("Show, Don't Tell")** — NEVER start with "Studies show..." or "Research reveals...". Jump straight into a named historical/forensic case, physical clash, or exact spoken quote ("Listen to the exact phrase they drop...").
-  * Slot 2 of each Chapter (Scenes {start_sid+1} & {start_sid+5}): **Forensic / Biological / Physical Mechanism + Concrete Metric** — Explain the hidden neural circuit, cortisol/dopamine shift, or physical force using exact numbers (milliseconds, percentages, PSI, meters).
+  * Slot 2 of each Chapter (Scenes {start_sid+1} & {start_sid+5}): **Hidden Mechanism Translated Into Visceral Everyday Analogy** — Explain WHY it works inside the brain, body, or physical world using a crystal-clear everyday comparison or bodily sensation that any viewer can picture immediately (STRICTLY FORBIDDEN: NEVER dump dry textbook physics/lab units like PSI, Newtons, kPa, Joules, LD50, or stiff university jargon!).
   * Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **2D Doodle Visual Metaphor + Cunningham's Law Sacred-Cow Breaker** — Illustrate the structural paradox AND drop 1 bold, unapologetically polarizing statement that attacks a common belief so viewers debate in the comments!
   * Slot 4 of each Chapter (Scenes {start_sid+3} & {start_sid+7}): **Surgical Verbatim Counter-Move + Open-Loop Cliffhanger Bridge** — Deliver the exact actionable counter-move (including a spoken sentence in quotation marks `"..."` for psychology/social topics), and for Chapters 1–9, end the final sentence with an open loop bridging into the next Chapter!
 - ZERO SPOKEN OUTRO CTA: Never say "Subscribe", "Like", or "Leave a comment" in the narration.

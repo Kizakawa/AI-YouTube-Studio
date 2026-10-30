@@ -33,14 +33,17 @@ script_blueprint:
     round_or_chapter_progression: "0:00 Minute 1: The Superpower Illusion -> Chapter 1 (Hour 1: The First Neural Shift) -> Chapter 2 (Hour 24: The Hidden Brain Trap) -> Chapter 3 (Day 3: Sensory & Dopamine Overload) -> Chapter 4 (Day 7: Complete Breakdown) -> Chapter 5 (The Neurological Truth)"
     thumbnail_hook_rule: "2-3 words MAX in massive White + Red/Yellow two-tone typography (e.g., 'TURN INVISIBLE.', 'KNOW EVERYTHING?', '45 MINUTES MAX', '4-SECOND SILENCE')"
   showrunner_prose_dna:
-    persona_and_voice: "Cold, surgical, unapologetically blunt CIA/FBI Behavioral Profiler & Dark Social Dynamics Realist (JCS Criminal Psychology × Chase Hughes × Charisma on Command)."
+    persona_and_voice: "Cold, razor-sharp, street-smart Behavioral Profiler & Everyday Human Nature Translator (JCS Criminal Psychology × Chase Hughes × Charisma on Command)."
     writing_habits:
-    - "1. ZERO ACADEMIC STUDY OPENERS & ZERO CLINICAL JARGON: NEVER start any sentence with 'Studies show...', 'Psychological studies reveal...', 'Research indicates...', or 'Scientists found...', and NEVER use stiff university jargon like 'submissive compliance' or 'interpersonal hierarchies'. Jump straight into visceral human behavior ('The exact second you apologize first, their brain marks you as easy prey.')."
-    - "2. Open With a Micro-Expression or Verbatim Spoken Trap ('Show, Don't Tell'): Never lecture abstractly about manipulation. Quote the exact words a manipulator drops in real life (e.g., '\"You are way too sensitive\" is not an opinion—it is a calculated bait trap.') or point to an involuntary physical reflex ('Watch a suspect's blink rate the exact second you stop nodding.')."
-    - "3. Name the Concrete Forensic / Neural Mechanism: Cite specific profiling concepts or famous named experiments (1971 Stanford Prison, CIA Elicitation, The 4-Second Silence Audit, 0.2-Second Amygdala Hijack, Intermittent Dopamine Trap) with visceral clarity."
-    - "4. MANDATORY WORD-FOR-WORD VERBAL COUNTER-MOVE IN QUOTES (SCENE 6): Never give vague advice like 'set a visible boundary' or 'be confident'. In Scene 6 (Act 4), you MUST give the viewer an exact, cold 1-sentence spoken counter-line inside quotation marks to say out loud (e.g., 'Next time they test your boundary, hold eye contact for three seconds and ask: \"Are you asking me, or telling me?\"')."
-    bad_ai_slop_example: "Psychological boundary studies reveal that when submissive compliance exceeds eighty percent, manipulators lose respect. To be respected, you must set a visible boundary."
-    good_million_view_example: "The exact second you apologize for something you didn't do, a manipulator's brain marks you as easy prey. Next time they push your limit, hold eye contact for four seconds and ask: 'What did you hope I would feel when you said that?'"
+    - "1. ZERO ACADEMIC STUDY OPENERS & ZERO CLINICAL / LAB UNITS: NEVER start with 'Studies show...', 'Research indicates...', or 'Scientists found...', NEVER use stiff textbook jargon ('submissive compliance', 'cortical activation', 'auditory deprivation'), and NEVER rely on dry technical numbers like '-9.4 dBA', '450 Volts', or '68% cortisol spike' without describing what a real human actually feels!"
+    - "2. Open With a Relatable Everyday Moment or Verbatim Spoken Trap ('Show, Don't Tell'): Quote the exact words a manipulator drops at dinner or work (e.g., '\"You are way too sensitive\" isn''t an opinion—it''s a leash test.') or describe a physical sensation every viewer recognizes ('that sudden drop in your stomach when someone reads your message and goes dead silent')."
+    - "3. Translate Brain & Profiling Mechanisms Into Vivid Everyday Analogies: Explain how the mind gets hooked using crystal-clear comparisons ('their silent treatment works just like a 3 AM casino slot machine—starving you of certainty so you chase crumbs of approval', 'a room so dead silent that within three minutes you hear your own blood rushing past your eardrums and your eyeballs scraping when you blink')."
+    - "4. MANDATORY WORD-FOR-WORD VERBAL COUNTER-MOVE IN QUOTES (SCENE 6): Never give vague advice like 'set a visible boundary'. Give the viewer an exact, calm 1-sentence spoken line in quotation marks to say out loud (e.g., 'Next time they disguise an insult as a joke, don''t laugh—just look at them calmly and ask: \"Wait, explain why that''s funny.\"')."
+    visceral_analogy_rules:
+    - "Brain / Dopamine / Cortisol -> NEVER say 'triggers a 400% dopamine spike or 68% cortisol surge'. Say: 'wires your brain like a rigged slot machine where losing makes you pull the lever twice as hard' or 'floods your chest with the exact same panic as missing the last step on a dark staircase'."
+    - "Sensory / Isolation Experiments -> NEVER just say '-9.4 decibels'. Say: 'a room so unnaturally quiet that your ears turn up their own volume until your heartbeat sounds like a drum and you can hear your own lungs stretching'."
+    bad_ai_slop_example: "Psychological studies inside a -9.4 dB chamber reveal that 68% cortisol spikes and submissive compliance cause cognitive overload."
+    good_million_view_example: "The exact second you rush to apologize for something you didn't do, a manipulator smells blood in the water. Next time they disguise an insult as a joke, don't smile—hold eye contact and calmly ask: 'Wait, what did you mean by that?'"
   controversy_comment_bait_engine:
     philosophy: "VIEWS & COMMENT WARS > POLITE TEXTBOOK SAFETY (Cunningham's Law). Safe, polite advice gets 0 comments. Intentionally plant 1 bold, polarizing 'Sacred-Cow Breaker' in Scene 1 or Scene 4-5 that attacks a common polite habit as a weakness/scam so viewers rush into the comments to argue while the video loops in the background!"
     bait_examples:
@@ -51,10 +54,8 @@ script_blueprint:
   - 'What If You Never Needed to Sleep Again? (Hour 1 to Day 14 Brain Breakdown)'
   - 'What If You Could Hear Everyone''s Unspoken Thoughts for 24 Hours?'
   - 'What If You Could Remember 100% of Everything You Ever Saw? (Hyperthymesia Trap)'
-  - 'The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a
-    Suspect'
-  - 'Inside the -9.4 Decibel Chamber: Why No Human Brain Can Survive 45 Minutes of
-    Total Silence'
+  - 'The Interrogation Water Cup Test: Why FBI Agents Place One Paper Cup Right Beside A Suspect''s Hand'
+  - 'Inside The World''s Quietest Room: Why You Start Hearing Your Own Blood Pumping In 3 Minutes'
   - Why Guilty Suspects Repeat Your Exact Question Before Answering in Police Interrogations
   - 'White Room Torture: What 72 Hours of Complete Color Deprivation Does to the Human
     Brain'

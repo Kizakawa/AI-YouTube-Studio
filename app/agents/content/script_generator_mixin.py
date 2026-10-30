@@ -657,7 +657,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "climax_scene_id": {8 if is_long_form else 3},
   "hook_search_queries": ["bare noun + action/format (2-4 words)", "bare noun + angle (2-4 words)"],
   "full_narration": "Complete, smooth, well-developed spoken story without stage directions ({'360-560 words across 16-22 scenes (~3.5 min 5-Chapter Documentary)' if is_long_form else '92-118 words, 34-42s High-APV 5-Act story'} with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
-  "thumbnail_text": "STRICTLY 2-3 PUNCHY ALL-CAPS WORDS IN {target_lang_display} WITH ZERO DRY PHYSICS UNITS (e.g. 'TOO EASY?', 'TURN INVISIBLE.', 'EVERY RECORD', 'CRUSHES SKULLS!')",
+  "thumbnail_text": "STRICTLY 2-3 PUNCHY ALL-CAPS WORDS IN {target_lang_display} WITH ZERO DRY PHYSICS UNITS ({'e.g. FÁCIL DEMAIS?, ESMAGA CRÂNIOS!, RECORDE MORTAL!' if str(language or '').lower().startswith('pt') else 'e.g. TOO EASY?, TURN INVISIBLE., CRUSHES SKULLS!'})",
   "scenes": [
     {{
       "scene_id": 1,

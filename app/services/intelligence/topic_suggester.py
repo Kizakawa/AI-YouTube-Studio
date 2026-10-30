@@ -242,8 +242,9 @@ CRITICAL MANDATE:
 Real YouTube Analytics proves that videos achieving 100%–127% APV and 1,500–3,000+ views succeed BEFORE the script is even written—because the TOPIC itself contains an irresistible physical anomaly and a 2-stage climax:
 1. BANNED WEAK / VAGUE TOPICS (ZERO TOLERANCE):
    - NEVER suggest generic textbook topics, vague open-ended questions, or soft self-help advice (e.g., FORBIDDEN: "Where Does This Endless River Go?", "Signs Someone Is Envious of You", "How To Be More Confident", "Why The Ocean Is Scary").
-2. MANDATORY TOPIC FORMULA = [CONCRETE PHYSICAL/NUMERICAL ANCHOR] + [ASYMMETRIC CLASH OR COUNTER-INTUITIVE PARADOX]:
-   - Every single topic and title MUST include a specific, verifiable physical measurement, extreme metric, or historical timestamp (`1,100 PSI`, `93°C`, `2,000m`, `1883`, `0.2 seconds`, `4-second silence`, `230 dB`) paired with a high-stakes clash ("Entity A vs. Entity B") or an "impossible" real-world anomaly (e.g., "A River in the Amazon That Boils at 93°C Without a Volcano", "Colossal Squid vs. Sperm Whale at 2,000m Depth", "The 4-Second Eye Freeze That Exposes Covert Liars").
+2. MANDATORY TOPIC FORMULA = [EXPLICIT SEARCHABLE ENTITIES] + [VISCERAL EVERYDAY PHYSICAL STAKES OR LETHAL PARADOX — ZERO DRY PHYSICS UNITS]:
+   - Every single topic and title MUST explicitly name the searchable entities ("Entity A vs. Entity B" or exact named phenomenon) paired with a visceral, instantly imaginable physical clash, sensory danger, or counter-intuitive anomaly (e.g., "Jaguar vs. Black Caiman: The Bite That Punches Straight Through Armored Skulls", "Inside Mexico's Crystal Cave Where Every Breath Boils Inside Your Lungs", "The 4-Second Eye Freeze That Exposes Covert Liars").
+   - 🚫 STRICT BAN ON DRY SCIENCE/TEXTBOOK UNITS: NEVER put abstract physics or laboratory units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`, `Hz`) in topics, titles, or hooks! Ordinary viewers cannot picture a Newton or a PSI—always describe the physical destruction or bodily sensation instead!
 3. BUILT-IN MID-VIDEO CLIMAX TWIST (15-SECOND RE-HOOK TO PREVENT APV DROP):
    - Do NOT pick one-dimensional topics where the entire secret is given away in Scene 1!
    - Every topic MUST have a built-in **Second Climax Twist (`mid_video_climax`)** that escalates the stakes at second 14–20 (Scene 4–5)—a hidden mechanism, a counter-attack, or a second shocking discovery that forces viewers to watch until the final second.
@@ -251,7 +252,7 @@ Real YouTube Analytics proves that videos achieving 100%–127% APV and 1,500–
 🎯 OBJECTIVE:
 Generate exactly {count + 2} completely unique, high-retention Shorts concepts tailored specifically to '{channel_name}'.
 Each concept must:
-1. Open with a blunt, concrete metric or "A vs B" confrontation in both the Title and 0.0s Hook (5–9 words, ZERO passive Yes/No questions).
+1. Open with an explicit entity name + visceral physical clash or sensory paradox in both the Title and 0.0s Hook (5–9 words, ZERO passive Yes/No questions, ZERO dry physics units like PSI or Newtons).
 2. Include a specific Mid-Video Climax Twist (`mid_video_climax`) for Scene 4–5 so APV stays above 90%+.
 3. Actively eliminate and fix the channel's past flop weaknesses (topic fatigue, passive tone, niche dilution).
 4. Keep YouTube Shorts titles concise (28–55 characters), punchy, and include #Shorts.

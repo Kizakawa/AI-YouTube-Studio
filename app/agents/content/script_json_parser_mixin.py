@@ -651,7 +651,13 @@ class ScriptJsonParserMixin:
             return cleaned.strip('"\'')
 
         if raw_data.get("title"):
-            raw_data["title"] = _strip_variant_prefix(str(raw_data["title"]))
+            t_norm = _strip_variant_prefix(str(raw_data["title"]))
+            if len(t_norm) > 100:
+                while len(t_norm) > 100 and re.search(r"\s+#\S+\s*$", t_norm):
+                    t_norm = re.sub(r"\s+#\S+\s*$", "", t_norm).strip()
+                if len(t_norm) > 100:
+                    t_norm = t_norm[:97].rsplit(" ", 1)[0].rstrip(":,-–—")
+            raw_data["title"] = t_norm
         if isinstance(raw_data.get("title_variants"), list):
             raw_data["title_variants"] = [
                 _strip_variant_prefix(str(v))
@@ -708,14 +714,22 @@ class ScriptJsonParserMixin:
                         h_score += 16.0
                     elif w_len > 11 or w_len < 4:
                         h_score -= 22.0
-                    # Chứa số liệu / tốc độ / lực cắn / thời gian cụ thể (chữ số hoặc số viết bằng chữ)
+                    # Phạt nặng nếu dùng đơn vị vật lý sách giáo khoa khô khan (PSI, Newton, kPa, Joule, LD50) khiến người xem không tưởng tượng được
                     if re.search(
-                        r'(?:\d|\b(?:one|two|three|four|five|ten|forty|fifty|hundred|thousand|million|percent|milliseconds|seconds|psi|degrees|'
-                        r'um|uma|dois|duas|três|quatro|cinco|dez|cem|mil|milissegundos|segundos|quilos|metros)\b)',
+                        r'\b(?:psi|newtons?|kpa|kilopascals?|joules?|ld50|mmhg|pounds\s+per\s+square\s+inch)\b',
                         h_str,
                         flags=re.IGNORECASE,
                     ):
-                        h_score += 28.0
+                        h_score -= 26.0
+                    # Thưởng cho so sánh vật lý đời thường trực quan, quy mô gần gũi dễ hiểu hoặc va chạm giác quan mạnh
+                    if re.search(
+                        r'(?:\b(?:like\s+a|like\s+an|como\s+uma?|como\s+papel|faster\s+than\s+a\s+blink|piscar\s+de\s+olhos|soda\s+can|latinha|eggshell|casca\s+de\s+ovo|punch(?:es|ing)?\s+straight|shatters?|snaps?|crushes|fura\s+o\s+crânio|already\s+dead|já\s+está\s+morto)\b|'
+                        r'\b(?:one|two|three|four|five|ten|thirty|forty|fifty|hundred|thousand|seconds|minutes|hours|days|miles|pounds|'
+                        r'um|uma|dois|duas|três|quatro|cinco|dez|cem|mil|segundos|minutos|quilos|metros)\b|\d)',
+                        h_str,
+                        flags=re.IGNORECASE,
+                    ):
+                        h_score += 22.0
                     # Phạt các câu chỉ trỏ mơ hồ giấu tên chủ thể ('Look closely at...', 'Watch the exact moment...')
                     if re.match(r'^(?:look\s+(?:closely\s+)?at|watch\s+(?:the\s+exact\s+moment|how|why)|olhe\s+bem\s+para)\b', h_str.strip(), flags=re.IGNORECASE):
                         h_score -= 30.0

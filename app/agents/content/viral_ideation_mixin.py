@@ -113,7 +113,7 @@ class ViralIdeationMixin:
                     0,
                     f"Scene 1 Hook is below the anti-swipe threshold ({best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
                     f"channel swipe_away={avg_swipe}%): {best_eval.hook_strength.feedback}. "
-                    f"MUST use an urgent 6-9 word visual pointer or 'Entity A vs Entity B' confrontation with a concrete physical metric at 0.0s."
+                    f"MUST explicitly name the primary entity/combatants and open with a visceral physical clash, everyday sensory analogy, or lethal paradox in 6-9 words at 0.0s (ZERO dry physics units like PSI or Newtons!)."
                 )
             vf_mode = "long" if str(kwargs.get("video_format") or getattr(best_script, "video_format", "short")).lower() in ("long", "16:9", "documentary") else "short"
             if best_eval.story_pacing.score < 8.0:

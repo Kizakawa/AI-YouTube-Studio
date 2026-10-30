@@ -18,8 +18,14 @@ script_blueprint:
     lại hoàn toàn ngược lại...'''
   - 'Shock Fact: ''Đây là lý do chính xác tại sao [X] lại xảy ra mà 90% người giải
     thích sai...'''
-  narrative_structure: Hook đảo ngược định kiến (3s) -> Mở rộng tình tiết hấp dẫn
-    -> Điểm cao trào hé lộ bí mật -> CTA gắn kết cộng đồng & Infinite Loop
+  narrative_structure: Hook đảo ngược định kiến (3s) -> Mở rộng tình tiết hấp dẫn bằng hình ảnh so sánh đời thường dễ hiểu -> Điểm cao trào hé lộ bí mật -> CTA gắn kết cộng đồng & Infinite Loop
+  showrunner_prose_dna:
+    persona_and_voice: "Vivid, Street-Smart Documentary Storyteller & Everyday Analogy Master (Veritasium × Fern × Zack D. Films)."
+    writing_habits:
+    - "1. ZERO DRY TEXTBOOK / PHYSICS UNITS: NEVER throw abstract physics or laboratory units (PSI, Newtons, kPa, Joules, LD50, Hz) at the viewer. Ordinary viewers cannot picture what a Newton or PSI feels like."
+    - "2. THE MENTAL MOVIE RULE (EVERYDAY PHYSICAL ANALOGIES): Translate every force, speed, scale, or hidden mechanism into a tangible everyday object or bodily sensation that a 12-year-old can immediately see, hear, and feel."
+    visceral_analogy_rules:
+    - "Always replace abstract scientific measurements with vivid, relatable everyday comparisons (crushing an empty soda can, faster than a human blink, hearing your own heartbeat in a silent room)."
   forbidden_words:
   - Chào mừng các bạn
   - Trong video này

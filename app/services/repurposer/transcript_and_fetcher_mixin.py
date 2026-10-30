@@ -510,7 +510,7 @@ class TranscriptAndFetcherMixin:
             "hook_quote": "In less than a second, nature revealed who truly rules this land...",
             "hook_options": [
                 {"type": "Dramatic", "hook": "In just 0.3 seconds, the outcome was decided forever..."},
-                {"type": "Stats",    "hook": "Over 1,500 PSI of pure crushing force — nothing escapes!"},
+                {"type": "Impact",   "hook": "Fangs punching straight through solid bone like an empty tin can — nothing escapes!"},
                 {"type": "Question", "hook": "Who actually sits at the absolute top of the food chain? Watch this!"}
             ],
             "summary": "Apex predator high-speed strike and lethal hunting biomechanics.",

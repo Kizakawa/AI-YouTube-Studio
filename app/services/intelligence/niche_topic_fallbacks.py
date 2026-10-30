@@ -193,10 +193,10 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
         if str(lang or "").lower().startswith("pt"):
             return [
                 {
-                    "topic": "Jaguar vs Black Caiman: Why The 1,500 PSI Bite Pierces Straight Through The Skull",
+                    "topic": "Jaguar vs Black Caiman: How Fangs Punch Straight Through Armored Reptile Skulls Like Tin Cans",
                     "title": "Por Que O Jacaré-Açu Tem Pavor Da Onça-Pintada No Pantanal 🐆🐊 #Shorts",
-                    "hook": "Com uma mordida de 1.500 PSI, a onça-pintada ignora o pescoço e perfura diretamente o crânio de jacarés no Pantanal.",
-                    "angle": "Jaguar skull-piercing 1,500 PSI bite force vs Black Caiman in Pantanal rivers",
+                    "hook": "Enquanto leões miram na garganta, a onça-pintada crava as presas direto no crânio blindado do jacaré como se furasse uma lata vazia.",
+                    "angle": "Jaguar skull-piercing fangs punching through armored reptile bone vs Black Caiman in Pantanal rivers",
                     "pinned_comment": "Quem domina o Pantanal: Onça-Pintada ou Jacaré-Açu? Deixe seu voto nos comentários! 👇",
                     "viral_formula": "Shock Fact & Apex Predator",
                     "predicted_retention": "175% - 185%",
@@ -231,14 +231,14 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
             ]
         return [
             {
-                "topic": "Harpy Eagle vs Tree Sloth: The 500 PSI Talons Larger Than Grizzly Bear Claws",
+                "topic": "Harpy Eagle vs Tree Sloth: Why Talons Larger Than Grizzly Bear Claws Snatch Prey Mid-Flight",
                 "title": "The Giant Eagle With Claws Bigger Than A Grizzly Bear! 🦅🔥 #Shorts",
                 "hook": "With talons larger than a grizzly bear's claws, the Harpy Eagle snatches 20-pound prey straight off tree branches at 50 mph.",
-                "angle": "500 PSI crushing grip, canopy radar facial disc, snatching sloths and monkeys mid-flight",
+                "angle": "Bone-crushing grip with claws bigger than a grizzly bear's, canopy radar facial disc, snatching sloths mid-flight",
                 "pinned_comment": "Is the Harpy Eagle the most terrifying bird on Earth? Drop your vote below! 👇",
                 "viral_formula": "Shock Fact & Apex Predator",
                 "predicted_retention": "175% - 185%",
-                "why_viral": "Cấu trúc đối đầu trực diện A vs B kèm thông số lực bóp 500 PSI",
+                "why_viral": "Cấu trúc đối đầu trực diện A vs B kèm ẩn dụ móng vuốt to hơn móng gấu xám cực dễ hình dung",
                 "fixes_flaw": "Nhân bản chủ đề đại bàng Harpia đã thắng lớn sang bản tiếng Anh.",
                 "trend_alignment": "Giải phẫu vũ khí săn mồi hạng nặng của tự nhiên."
             },

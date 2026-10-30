@@ -24,12 +24,16 @@ script_blueprint:
     round_or_chapter_progression: "0:00 Minute 1: The Deceptive Calm -> Chapter 1 (Hour 1: The Trigger Event) -> Chapter 2 (Hour 24: The Hidden Trap Activates) -> Chapter 3 (Day 7: The Domino Collapse) -> Chapter 4 (Month 1: The Point of No Return) -> Chapter 5 (The Final Aftermath)"
     thumbnail_hook_rule: "2-3 words MAX in massive White + Yellow/Red two-tone typography (e.g., 'ZERO SURVIVORS', '1,720 FT WAVE', 'DO NOT LOOK')"
   showrunner_prose_dna:
-    persona_and_voice: "High-Stakes Tick-Tock Historical Thriller & Provocative Counterfactual Domino Architect (AlternateHistoryHub × RealLifeLore × Fern × @IFinity_What)."
+    persona_and_voice: "High-Stakes Tick-Tock Historical Thriller & Visceral Human-Scale Storyteller (AlternateHistoryHub × RealLifeLore × Fern × @IFinity_What)."
     writing_habits:
-    - "1. In-Medias-Res Split-Second Opening: Never open with a slow biography. Start at the exact minute, location, and physical switch where history almost broke ('On January 24th, 1961, two four-megaton hydrogen bombs fell over North Carolina—and five of the six safety switches failed on impact.')."
-    - "2. Chronological Domino Escalation (Minute 1 -> Hour 24 -> Day 7 -> Year 1): Trace the exact chain reaction of military, geographical, and human consequences with hard numbers (megatons, miles, casualty counts, temperatures)."
-    bad_ai_slop_example: "The Cold War had many dangerous nuclear accidents that almost caused a war."
-    good_million_view_example: "On January 24th, 1961, two four-megaton hydrogen bombs fell over North Carolina—and five of the six safety switches failed on impact."
+    - "1. In-Medias-Res Split-Second Opening: Never open with a slow textbook biography. Start at the exact minute, room, or fatal decision where history almost broke ('In January 1961, two hydrogen bombs fell onto a North Carolina farm—and five of the six safety locks snapped on impact.')."
+    - "2. ZERO DRY PHYSICS / MILITARY SPEC DUMPS (NO PSI / NO kPa / NO VEI JARGON): Never bore viewers with sterile technical codes like 'VEI-7', '300 kPa overpressure', or '15 megatons of thermal yield'. Paint the human-scale sensory devastation so anyone can picture it immediately ('a blast wave that flattened eighty million trees like matchsticks and shattered church windows four hundred miles away', 'ash so thick it turned noon into freezing midnight in the middle of June')."
+    - "3. Chronological Domino Escalation (Minute 1 -> Hour 24 -> Day 7 -> Year 1): Trace the chain reaction through what an ordinary person on the street would see, hear, and survive."
+    visceral_analogy_rules:
+    - "Explosions / Shockwaves -> NEVER say '300 kPa' or rely on 'megatons' alone. Say: 'loud enough to burst eardrums forty miles away, circling the entire globe three times and knocking people off their feet a country away'."
+    - "Volcanoes / Climate Shifts -> NEVER say 'VEI-7 aerosol optical depth'. Say: 'blocking out the sun so completely that rivers froze solid in July and red snow fell on summer wheat fields'."
+    bad_ai_slop_example: "The VEI-7 eruption and 15-megaton airburst generated a 300-PSI overpressure wave across the region."
+    good_million_view_example: "In January 1961, two live hydrogen bombs fell onto a quiet North Carolina farm—and five of the six safety locks snapped on impact. Only one thin copper wire stopped the entire East Coast from vanishing in a flash brighter than the sun."
   controversy_comment_bait_engine:
     philosophy: "VIEWS & COMMENT WARS > POLITE TEXTBOOK HISTORY (Cunningham's Law). Challenge a famous historical myth, general, or textbook verdict in Scene 4-5 so history buffs rush into the comments to write paragraphs arguing!"
     bait_examples:
@@ -63,7 +67,7 @@ script_blueprint:
   - "If that final safety switch had failed in 1961, does the Cold War turn hot immediately: (1) Total War or (2) Emergency Stand-down? 👇"
   - "Was this turning point (1) Brilliant Strategy or (2) Pure Historical Luck? 👇"
   anti_hallucination_rules:
-  - Phải dựa trên các sự kiện, thảm họa, chiến dịch quân sự và con số vật lý có thật 100% trong lịch sử (năm, địa điểm, megaton, độ cao, nhiệt độ, PSI), kết hợp góc nhìn đối đầu trực diện ('A vs. B') hoặc giả thuyết 'What If' sắc bén.
+  - Phải dựa trên các sự kiện, thảm họa, chiến dịch quân sự có thật 100% trong lịch sử (năm, địa điểm, nhân vật), nhưng BẮT BUỘC miêu tả sức tàn phá/quy mô bằng hình ảnh đời thường sống động dễ mường tượng (TUYỆT ĐỐI KHÔNG ném các đơn vị vật lý khô khan như PSI, kPa, Newton, Joules vào lời thoại).
   - Tiêu đề BẮT BUỘC ưu tiên cấu trúc '[Thực thể/Thảm họa A] vs. [Mục tiêu/Lá chắn B] + Con số/Năm cụ thể' (dưới 60 ký tự) hoặc nghịch lý lịch sử có số liệu định lượng, tuyệt đối tránh câu mở đầu học thuật dài dòng.
   - CẤM LẶP LẠI các chủ đề đã khai thác nhiều lần trên kênh (Cổng thành Constantinople 1453, Tài xế rẽ nhầm 1914, Sĩ quan Liên Xô Stanislav Petrov 1983 / Vasili Arkhipov 1962, Cháy thư viện Alexandria, Động cơ hơi nước Hero ở Rome).
   - TUYỆT ĐỐI KHÔNG làm nội dung về tiêm chích y tế (inject/vaccine), tội phạm giết người (serial killer/Ted Bundy), tài chính cá nhân, hay mẹo tâm lý học.

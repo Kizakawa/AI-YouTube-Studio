@@ -57,10 +57,10 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel The mysteries of the world (US English). Deep 5-Act Dual-Peak abyssal showdown & lethal ocean/earth physics arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor): Explicitly name both high-search entities/phenomena ('[Entity A] vs [Entity B]: [Extreme Metric]', e.g. °F/°C, feet, PSI, 1,200x). NEVER hide the entity in the title! "
+            "TITLE (YT_SEARCH Anchor): Explicitly name both high-search entities/phenomena ('[Entity A] vs [Entity B]: [Visceral Physical Clash]'). NEVER hide the entity in the title and NEVER dump dry textbook units like PSI, Newtons, or kPa! "
             "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation 'Look closely at...', 2. The Fatal Mistake, 3. 2nd-Person Survival Simulation 'If you...', 4. The Illusion Breaker). NEVER repeat the title verbatim or spoil the final metric at 0.0s! "
-            "ACT 2 (Scenes 2-3): Reveal Entity A's real depth, biomechanical weapon, or thermal/chemical danger with the first hard number. "
-            "ACT 3 (Scene 4 - 15s Twist): Second explosive peak / counter-mechanism with a second concrete metric that flips the viewer's assumption. "
+            "ACT 2 (Scenes 2-3): Reveal Entity A's real depth, lethal weapon, or thermal danger translated into a vivid everyday physical analogy anyone can picture. "
+            "ACT 3 (Scene 4 - 15s Twist): Second explosive peak / counter-mechanism translated into a visceral sensory image that flips the viewer's assumption. "
             "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict English only."
         ),
@@ -74,7 +74,7 @@ CHANNELS_CONFIG = {
             "Brine Pool at 3,300 Feet: The Underwater Toxic Lake That Paralyzes Deep-Sea Sharks in 3 Seconds",
             "Goblin Shark vs Black Dragonfish: The Slingshot Jaw That Strikes in 0.02 Seconds at 4,000 Feet",
             "Lake Vostok: The Secret Prehistoric Ocean Sealed Under 13,000 Feet of Antarctic Ice for 15 Million Years",
-            "Challenger Deep at 35,876 Feet: What Crushed the Nereus Submarine at 16,000 PSI",
+            "Challenger Deep at 35,876 Feet: What Crushed the Nereus Submarine Like an Empty Soda Can Under 50 Passenger Jets",
             "Skeleton Coast Namibia: Why 1,000 Shipwrecks Rotted in the World's Oldest Desert Fog",
             "Lake Nyos 1986: The Silent 1.6-Million-Ton CO2 Cloud That Erased 1,746 Lives",
             "Why Deep Sea Divers Never Look Up At The Surface At Night",
@@ -101,7 +101,7 @@ CHANNELS_CONFIG = {
         "director_notes": (
             "Target channel Psychology of the world (US English). Deep 5-Act Dual-Peak Forensic Interrogation, Famous Brain Experiments & Behavioral Traps arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
             "STRICT NICHE PIVOT: Focus ONLY on (1) Forensic Courtroom & Detective Interrogation Psychology, (2) Famous University Brain & Obedience Experiments, and (3) Casino/Billionaire Behavioral Traps. "
-            "TITLE (YT_SEARCH Anchor): Explicitly name the exact test/experiment vs target ('[Test/Experiment A] vs [Target B]: [Concrete Metric]'). "
+            "TITLE (YT_SEARCH Anchor): Explicitly name the exact test/experiment vs target ('[Test/Experiment A] vs [Target B]: [Visceral Human Stakes]') with zero dry lab units. "
             "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (e.g. 'Watch what a suspect does the second...', 'Psychiatrists predicted only one percent of people...'). NEVER repeat the title verbatim at 0.0s! "
             "ACT 2 (Scenes 2-3): Real courtroom/experiment setup and first neurological/behavioral metric. "
             "ACT 3 (Scene 4 - 15s Twist): The hidden second mechanism (amygdala cortisol spike, agentic state shift) + exact percentage/voltage that flips expectations. "
@@ -114,7 +114,7 @@ CHANNELS_CONFIG = {
             "Water Cup Barrier Test vs Guilty Suspects: Why Detectives Place a Paper Cup 6 Inches From Your Hand to Expose Deception",
             "Las Vegas Casino Labyrinth vs Human Brain: How Zero Clocks and Curved Carpets Trigger a 400% Dopamine Trap",
             "The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a Suspect",
-            "Inside the -9.4 Decibel Chamber: Why No Human Brain Can Survive 45 Minutes of Total Silence",
+            "Inside the World's Quietest Room: Why Hearing Your Own Blood Rushing Drives Humans Out in 45 Minutes",
             "Why Guilty Suspects Repeat Your Exact Question Before Answering in Police Interrogations",
             "White Room Torture: What 72 Hours of Complete Color Deprivation Does to the Human Brain",
             "How Las Vegas Casinos Use Oxygen, Carpet Patterns, and Zero Clocks to Hijack Your Brain",
@@ -146,18 +146,18 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 18,
         "director_notes": (
             "Target channel Wild Odyssey (US English). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor): Explicitly name both animals + extreme physical metric ('[Animal A] vs [Animal B]: [PSI / MPH / Volts / Lbs]'). NEVER hide the animal name behind 'This Beast' or 'This Giant'! "
+            "TITLE (YT_SEARCH Anchor): Explicitly name both animals + visceral physical clash ('[Animal A] vs [Animal B]: [Visceral Weapon/Clash]'). NEVER hide the animal name behind 'This Beast' and NEVER use dry physics units like PSI or Newtons! "
             "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation, 2. The Fatal Mistake, 3. 2nd-Person Survival, 4. Role Reversal). NEVER repeat the title verbatim or spoil the final metric at 0.0s! "
-            "ACT 2 (Scenes 2-3): Animal A's offensive weapon and first biomechanical metric. "
-            "ACT 3 (Scene 4 - 15s Twist): Animal B's counter-mechanism or the unexpected biomechanical twist with a second concrete metric. "
+            "ACT 2 (Scenes 2-3): Animal A's offensive weapon translated into a vivid everyday physical analogy anyone can picture. "
+            "ACT 3 (Scene 4 - 15s Twist): Animal B's counter-mechanism or the unexpected biomechanical twist painted as a mental movie. "
             "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
             "Tone: cinematic, adrenaline-pumping, National Geographic documentary style. Strict English only."
         ),
         "topics": [
-            "Hippopotamus vs Nile Crocodile: How a 4,000-Pound River Titan Uses an 1,820 PSI Tusk Bite to Dominate 16-Foot Reptiles",
-            "Spotted Hyena Clan vs African Leopard: How an 1,100 PSI Bone-Crushing Jaw Steals Kills From a 150-Pound Stealth Cat",
-            "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive and 440 PSI Talons",
-            "Siberian Tiger vs 1,000-Pound Brown Bear: How a 660-Pound Big Cat Uses a 1,050 PSI Cervical Bite in the Frozen Taiga",
+            "Hippopotamus vs Nile Crocodile: How a 4,000-Pound River Titan Snaps 16-Foot Reptiles in Half With Foot-Long Ivory Tusks",
+            "Spotted Hyena Clan vs African Leopard: How Bone-Splintering Jaws Steal Kills From a 150-Pound Stealth Cat",
+            "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive to Hurl Prey Off Ledges",
+            "Siberian Tiger vs 1,000-Pound Brown Bear: How a 660-Pound Big Cat Ambushes Giants Twice Its Size in the Frozen Taiga",
             "Electric Eel vs Caiman: How an 860-Volt Biological Taser Stops a River Predator",
             "African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop a 150-Pound Ambush",
             "Cassowary: Why Nothing in the Jungle Messes With This 130-Pound Dinosaur Bird's 5-Inch Dagger Kick",
@@ -167,7 +167,7 @@ CHANNELS_CONFIG = {
             "Goliath Tigerfish: The 70-Pound Congo River Predator With 32 Interlocking Razor Teeth",
             "Wild Boar vs Tiger: Why 400 Pounds of Armored Cartilage and Razor Tusks Can Gore an Apex Cat",
             "Giant Horned Lizard vs Coyote: The Desert Reptile That Shoots Pressurized Blood From Its Eyes",
-            "Jaguar vs Green Anaconda: When a 1,500 PSI Skull-Bite Meets 500 Pounds of Constriction Muscle",
+            "Jaguar vs Green Anaconda: When Skull-Piercing Fangs Meet 500 Pounds of Bone-Crushing Coils",
         ],
         "default_tags": [
             "shorts", "wildlife", "predators", "bigcats", "nature",
@@ -197,7 +197,7 @@ CHANNELS_CONFIG = {
             "1588 Spanish Armada 130 Warships vs English Fire Ships: How 8 Burning Hulks at Midnight Shattered the World's Richest Empire",
             "1986 Chernobyl Divers vs 20-Megaton Steam Explosion: How 3 Volunteers Drained 20,000 Tons of Radioactive Water to Save Europe",
             "1281 Kamikaze Mega-Typhoon vs Kublai Khan 4,400 Warships: How a 2-Day Hurricane Sank 140,000 Troops and Saved Samurai Japan",
-            "1815 Mount Tambora Super-Eruption vs The Year Without a Summer: How a VEI-7 Volcano Froze Crops in June 1816",
+            "1815 Mount Tambora Super-Eruption vs The Year Without a Summer: How One Volcano Blocked the Sun and Froze Crops in June 1816",
             "How 1 Unlocked Gate in 1453 Ended the 1,100-Year Byzantine Empire at Constantinople",
             "What If the 1983 Stanislav Petrov Satellite Glitch Launched 10,000 Nuclear Warheads?",
             "What If Operation Unthinkable Happened in 1945: Churchill's Secret Plan to Invade the USSR",
@@ -226,7 +226,7 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Odisseia Selvagem (Brazilian Portuguese). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TÍTULO (Âncora YT_SEARCH): Nomeie explicitamente os dois animais + métrica física extrema ('[Animal A] vs [Animal B]: [Métrica Extrema]'). NUNCA esconda o nome do animal no título! "
+            "TÍTULO (Âncora YT_SEARCH): Nomeie explicitamente os dois animais + confronto físico visceral ('[Animal A] vs [Animal B]: [Arma/Confronto Visceral]'). NUNCA esconda o nome do animal e NUNCA use unidades secas como PSI ou Newtons! "
             "HOOK DA CENA 1 (0,0s-2,2s, 6-10 palavras): Use 1 dos 4 Arquétipos Visuais-Psicológicos (1. Apontamento Micro-Visual 'Olhe bem para...', 2. O Último Erro 'O último erro desse...', 3. Simulação em 2ª Pessoa 'Se você...', 4. Quebra de Expectativa). NUNCA repita o título palavra por palavra no segundo 0! "
             "ATO 2 (Cenas 2-3): Arma biomecânica do Animal A com o primeiro número exato. "
             "ATO 3 (Cena 4 - Twist de 15s): Contra-ataque ou mecanismo oculto do Animal B com o segundo número físico. "
@@ -235,8 +235,8 @@ CHANNELS_CONFIG = {
         ),
         "topics": [
             "Dragão-de-Komodo de 130 Quilos vs Búfalo-Asiático de 500 Quilos: Como Glândulas de Veneno Anticoagulante Derrubam um Gigante",
-            "Casuar de 60 Quilos vs Predadores da Selva: Como um Chute de 1.500 PSI e Garra-Adaga de 12 Centímetros Dominam a Floresta",
-            "Águia-Real vs Cabra-da-Montanha de 70 Quilos: Como um Mergulho a 240 km/h e Garras de 440 PSI Dominam Penhascos Verticais",
+            "Casuar de 60 Quilos vs Predadores da Selva: Como uma Garra-Adaga de 12 Centímetros Rasga Qualquer Rival na Floresta",
+            "Águia-Real vs Cabra-da-Montanha de 70 Quilos: Como um Mergulho a 240 km/h Derruba Gigantes de Penhascos Verticais",
             "Porco-Espinho-Africano vs Leopardo: Como 30.000 Espinhos Farpados de Queratina Param um Felino de 70 Quilos na Savana",
             "Carcaju de 16 Quilos vs Urso-Pardo de 350 Quilos: Como o Demônio da Neve Usa Mandíbulas Quebradoras de Ossos no Ártico",
             "Mamba-Negra vs Mangusto: O Reflexo de 15 Milissegundos Que Humilha a Cobra Mais Letal da África",
@@ -244,7 +244,7 @@ CHANNELS_CONFIG = {
             "Casuar: Por Que Nenhum Predador Ousa Enfrentar a Ave-Dinossauro Mais Perigosa do Mundo",
             "Cachalote vs Lula-Colossal: O Duelo Secreto a 2.000 Metros de Profundidade no Oceano",
             "Onça-Pintada vs Bando de Queixadas: Por Que 100 Porcos Selvagens Fazem o Maior Felino Subir nas Árvores",
-            "Guepardo vs Avestruz: O Chute de 2.000 PSI Que Pode Matar o Felino Mais Rápido da Terra",
+            "Guepardo vs Avestruz: O Chute Que Estraçalha Costelas e Pode Matar o Felino Mais Rápido da Terra",
             "Lobo-Cinzento vs Alce Gigante: A Estratégia de Caça na Neve Profunda Onde Um Coice É Fatal",
             "Hipopótamo vs Alcateia de Leões: Por Que 6 Leões Famintos Recuam Diante Deste Gigante nos Rios Africanos",
         ],

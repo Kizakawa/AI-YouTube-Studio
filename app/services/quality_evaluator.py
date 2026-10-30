@@ -272,7 +272,7 @@ Respond ONLY in valid JSON:
             else:
                 strengths.append(f"Cảnh 1 có độ dài lý tưởng ({len(words_s1)} từ) cho Hook 3s.")
 
-            hook_cues = ["!", "vs", "versus", "contra", "never", "nunca", "jamais", "deadliest", "mortal", "crushes", "destroys", "psi", "meters", "metros", "feet", "seconds", "segundos"]
+            hook_cues = ["!", "vs", "versus", "contra", "never", "nunca", "jamais", "deadliest", "mortal", "crushes", "destroys", "pierces", "shatters", "skull", "crânio", "perfura", "esmagando", "meters", "metros", "feet", "seconds", "segundos"]
             if any(p in scene_1.lower() for p in hook_cues) or bool(re.search(r"\d", scene_1)):
                 hook_score = min(9.8, hook_score + 0.6)
                 strengths.append("Cảnh 1 có yếu tố đối đầu kịch tính hoặc khẳng định số liệu gây sốc.")
