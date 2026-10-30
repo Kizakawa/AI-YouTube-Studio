@@ -230,7 +230,7 @@ class ScriptCritic:
 
         # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-14 từ cho Shorts, 4-34 từ cho Long-Form Documentary)
         is_lf_hook = str(s_data.get("video_format") or "short").strip().lower() == "long" or len(scenes) >= 14
-        max_hook_w = 34 if is_lf_hook else 14
+        max_hook_w = 46 if is_lf_hook else 14
         if w_cnt > max_hook_w or w_cnt < 3:
             score = max(1.0, score - 1.2)
             extra_critiques.append(
