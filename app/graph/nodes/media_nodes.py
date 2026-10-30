@@ -1727,7 +1727,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "pose_images": pose_images if pose_images else None,
             "alternate_urls": hook_alternate_urls,
             "vision_curated": vision_curated,
-            "visual_keyword": scene.visual_keyword,
+            "visual_keyword": search_query or scene.visual_keyword,
+            "raw_visual_keyword": scene.visual_keyword,
+            "fallback_broad_query": str(sc_strat.get("fallback_broad_query") or getattr(scene, "stock_query", "") or ""),
             "visual_prompt": getattr(scene, 'visual_prompt', None),
             "narration": scene.narration,
             "camera_motion": getattr(scene, "camera_motion", None) or camera_motion,
@@ -2812,9 +2814,30 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         vp = item.get("visual_prompt", None)
         sc_strat_ref = refine_strategy_map.get(scene_id) or {}
         sc_subj_raw = sc_strat_ref.get("creature_name") or sc_strat_ref.get("subject_entity") or ""
-        clean_kw_q = clean_search_query_from_prompt(kw or vp or "", narration=narr, topic=state.get("topic", ""), max_words=6) or kw
-        overall_refine_q = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4) or clean_kw_q
+        audited_yt_q = (
+            sc_strat_ref.get("youtube_search_query")
+            or sc_strat_ref.get("action_or_concept_query")
+            or sc_strat_ref.get("human_action_query")
+            or kw
+        )
+        audited_fb_q = str(
+            sc_strat_ref.get("fallback_broad_query")
+            or sc_strat_ref.get("secondary_stock_query")
+            or item.get("fallback_broad_query")
+            or ""
+        ).strip()
+        clean_kw_q = clean_search_query_from_prompt(audited_yt_q or kw or vp or "", narration=narr, topic=state.get("topic", ""), max_words=5) or kw
+        overall_refine_q = clean_scene_search_query(
+            sc_strat_ref.get("overall_script_query") or primary_entity or state.get("topic", ""),
+            max_words=4,
+        ) or clean_kw_q
         subj_refine = clean_scene_search_query(sc_subj_raw or primary_entity or state.get("topic", ""), max_words=2) or overall_refine_q
+        refine_angle_mods = ("close up action", "real footage", "documentary clip", "dramatic angle")
+        angle_mod = refine_angle_mods[(scene_id + retry_count) % len(refine_angle_mods)]
+        if audited_fb_q and audited_fb_q.lower() != (clean_kw_q or "").lower():
+            clean_kw_q = clean_scene_search_query(audited_fb_q, max_words=4) or clean_kw_q
+        elif subj_refine and subj_refine.lower().split()[0] not in (clean_kw_q or "").lower():
+            clean_kw_q = clean_scene_search_query(f"{subj_refine} {angle_mod}", max_words=4) or clean_kw_q
         if (
             subj_refine
             and len((clean_kw_q or "").split()) < 2

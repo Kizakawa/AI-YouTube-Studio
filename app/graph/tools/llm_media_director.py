@@ -115,18 +115,20 @@ STEP 2 — SELECT THE OPTIMAL `@tool` & CONTEXT-ANCHORED SEARCH QUERY FOR EACH S
      -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for all body scenes AND the Final Scene `scene_id={total_scenes}`), only calling `search_google_cinematic_image` on a middle scene when a specific historical map, document, or static artifact has no motion video equivalent (and NEVER on Scene 1, Scene 2, Scene {max(1, total_scenes - 1)}, or Scene {total_scenes}).
      -> SEARCH-ENGINE-NATIVE DUAL-TRACK QUERY ENGINEERING (STRICTLY FOLLOW THE INJECTED `YAML VIDEO SEARCH & DUAL-TRACK QUERY STRATEGY` ABOVE):
         * `subject_entity` (Scene-Accurate): Set `subject_entity` to the exact entity physically acting in that specific scene, OR in a 2-entity duel (`Entity A vs Entity B`), set `"Entity A or Entity B"` so our Vision Auditor accepts valid footage of either contender!
-        * `youtube_search_query` (3–5 words, YAML Dual-Track Strategy):
+        * `youtube_search_query` (3–5 words, YAML Dual-Track Strategy & Everyday YouTube Creator Vocabulary):
           - For individual body scenes describing ONE contender's weapon, movement, anatomy, mechanism, or habitat: follow the YAML `Single-Entity Body Scene Rule` and `YAML Clean Single-Entity Real-Action Query Examples` above — ONLY search **`[Single Canonical Entity] + [Real Physical Action / Environment]`** with ZERO `"A vs B"` or `"vs"` (avoiding `#edit` comparison videos and AI Veo clips)!
           - For direct clash/encounter scenes (Opening Hook or Climax clash, when permitted by the YAML `Dual-Track Clash vs. Single-Entity Rule`): write a genuine camera-encounter query following `YAML Direct-Encounter / Hook Query Examples`. Our engine searches BOTH `"A vs B"` and single-entity queries in parallel, and automatically Fast-Drops `"A vs B"` immediately if no clean unedited clash footage exists!
-          - NEVER write literary storytelling sentences that nobody titles a video with, and NEVER include any marker listed in `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
+          - 🚫 ZERO SIDE-PROP / OBSERVER ROOM / EMPTY SCENERY DRIFT (CRITICAL): When a narration sentence mentions a secondary side-effect, observer, or metaphor to illustrate the scale of the main event (e.g., car engines dying during a volcanic gas disaster, engineers planning in a command room during a weapon test, or empty trees/valleys), NEVER search for the side-prop, office room, or empty scenery (`"car dashboard night"`, `"military engineers planning"`, `"rainforest canopy"`). Always keep `subject_entity` and `youtube_search_query` anchored to a distinct, dramatic visual angle of the **Primary Phenomenon/Entity** promised in the title!
+          - 🚫 EVERYDAY YOUTUBE CREATOR VOCABULARY ONLY (BAN ACADEMIC / LATIN / TEXTBOOK JARGON): Real YouTube creators and stock videographers title their uploads with simple, everyday words — NEVER textbook taxonomy or clinical jargon. Translate any scientific/anatomical phrase in the narration into 3–5 everyday words that real videos use in titles (e.g., instead of `"deep ocean benthic crustacean"`, `"apex elapid"`, `"limnic eruption"`, or `"cervical vertebrae"`, write `"deep sea crab underwater"`, `"king cobra strike"`, `"volcanic crater lake gas"`, `"jaguar biting caiman"`).
+          - NEVER write literary storytelling sentences that nobody titles a video with, NEVER include `@tool` function names, and NEVER include any marker listed in `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
         * `fallback_broad_query` / `primary_stock_query` / `secondary_stock_query` (2–4 words, Strictly Single-Entity — FORBIDDEN `"vs"`): Follow the YAML `Stock & Fallback Broad Query Rule` and `YAML Canonical Stock/Fallback Query Examples` above (`[Single Canonical Subject Noun] + [Setting/Action]`).
           - FORBIDDEN #1 (NEVER PUT `"vs"` OR `"A vs B"` IN FALLBACK/STOCK QUERIES): Stock libraries index single subjects; `"vs"` returns 0 relevant results!
-          - FORBIDDEN #2 (NO GENERIC TEXTURES OR METAPHOR PROPS): When a sentence zooms into a body part, mechanism, or metaphor, NEVER search generic textures or inanimate metaphor objects — always anchor to the real canonical entity + visible feature!
-          - FORBIDDEN #3 (NEVER DROP THE HEAD NOUN): Always keep the core canonical subject noun, never regional/descriptive modifiers alone.
+          - FORBIDDEN #2 (NO GENERIC TEXTURES, SIDE PROPS OR METAPHOR OBJECTS): When a sentence zooms into a body part, mechanism, side effect, or metaphor, NEVER search generic textures, side props, or inanimate metaphor objects — always anchor to the real canonical entity + visible feature!
+          - FORBIDDEN #3 (NEVER DROP THE HEAD NOUN): Always keep the core canonical subject noun in everyday English, never regional/descriptive modifiers or academic jargon alone.
 
 2. DECIDE `search_scope` FOR EACH INDIVIDUAL SCENE (`"SCENE_SPECIFIC"` vs `"SCRIPT_OVERALL"`):
-   - `"SCENE_SPECIFIC"`: The split sentence (once pronouns are resolved) describes a clear, standalone visual action of the subject.
-   - `"SCRIPT_OVERALL"`: The split sentence is purely transitional, philosophical, statistical, or mentions a minor distracting metaphor/prop -> set `"SCRIPT_OVERALL"` and search around `overall_script_query`!
+   - `"SCENE_SPECIFIC"`: The split sentence (once pronouns are resolved) describes a clear, standalone visual action of the primary subject.
+   - `"SCRIPT_OVERALL"`: The split sentence is purely transitional, philosophical, statistical, or mentions a minor distracting side-effect/observer/prop -> set `"SCRIPT_OVERALL"` and search a fresh visual angle of `overall_script_query`!
 
 IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!"""
 
@@ -354,7 +356,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["youtube_search_query"] = p_sq
                 d["fallback_broad_query"] = s_sq
 
-            d["scope_audited"] = True
+            d["scope_audited"] = bool(is_long_form_dir and total_scenes >= 28)
             final_plan.append(d)
             continue
 
@@ -547,21 +549,23 @@ PROPOSED SCENE DECISIONS TO AUDIT:
 {json.dumps(review_items, ensure_ascii=False, indent=2)}
 
 YOUR 3-STEP COGNITIVE AUDIT PROTOCOL (STRICTLY GOVERNED BY THE YAML VIDEO SEARCH STRATEGY ABOVE):
-STEP 1 — PRONOUN RESOLUTION & ANATOMY/METAPHOR DECODING ACROSS THE FULL SCRIPT:
+STEP 1 — PRONOUN RESOLUTION, SIDE-PROP ELIMINATION & ACADEMIC-TO-EVERYDAY TRANSLATION ACROSS THE FULL SCRIPT:
 - Read the FULL SCRIPT STORY first. When a `split_sentence` uses pronouns ("It", "He", "She", "They", "This creature", "These weapons", "This trap") or omits the subject, substitute the true canonical entity physically acting in that sentence.
+- 🚫 ZERO SIDE-PROP / OBSERVER ROOM / EMPTY SCENERY DRIFT: When a `split_sentence` mentions a secondary side-effect, bystander/observer, or metaphor to illustrate the impact of the main phenomenon (e.g., car engines dying during a volcanic gas disaster, military engineers planning in an office during a weapon test, or empty forest/valley scenery), NEVER allow queries for the side-prop, room, or empty trees (`"car dashboard night"`, `"engineers planning"`, `"rainforest canopy"`). Always rewrite `approved_query` and `approved_fallback_stock_query` to show a distinct, dramatic visual angle of the **Primary Phenomenon/Entity** promised in the title (or set `approved_scope="SCRIPT_OVERALL"`)!
+- 🚫 EVERYDAY YOUTUBE CREATOR VOCABULARY ONLY (BAN ACADEMIC / LATIN / TEXTBOOK JARGON): Real YouTube creators and Pexels/Pixabay videographers title their uploads with simple, everyday words — NEVER textbook taxonomy or clinical jargon. If `proposed_query` contains academic/scientific terms (e.g., `"benthic crustacean"`, `"apex elapid"`, `"limnic eruption"`, `"cervical vertebrae"`), REWRITE it immediately into 3–5 everyday English words that real videos use in titles (e.g., `"deep sea crab underwater"`, `"king cobra strike"`, `"volcanic crater lake gas"`, `"jaguar biting caiman"`).
 - When a `split_sentence` describes a microscopic mechanism, anatomical weapon, or metaphor, NEVER allow generic material/texture queries or literal metaphor props! Always rewrite to the actual canonical subject + visible physical feature/action in its real environment.
 
 STEP 2 — AUDIT & REWRITE `approved_query` (YOUTUBE DUAL-TRACK) AND `approved_fallback_stock_query` (STOCK SINGLE-ENTITY):
 1. `approved_query` (3–5 English words, following the YAML `Dual-Track Clash vs. Single-Entity Rule` & `Single-Entity Body Scene Rule` above):
    - For single-entity body scenes: REWRITE any `"A vs B"` query into **`[Single Canonical Entity] + [Real Physical Action / Environment]`** matching the `YAML Clean Single-Entity Real-Action Query Examples` above so we avoid `#edit` comparison videos and AI Veo clips!
    - Keep `"Entity A attacking/vs Entity B"` ONLY on direct 2-entity encounter/clash scenes when permitted by the YAML `Dual-Track Clash vs. Single-Entity Rule`.
-   - REWRITE immediately if `proposed_query` is a literary storytelling phrase that nobody titles a video with, or contains any marker from `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
+   - REWRITE immediately if `proposed_query` is a literary storytelling phrase that nobody titles a video with, drifts to a side-prop/observer room, uses academic jargon, or contains any marker from `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
 2. `approved_fallback_stock_query` (2–4 English words, Strictly Single-Entity — ZERO `"vs"`):
-   - Must follow `YAML Canonical Stock/Fallback Query Examples` (`[Single Canonical Subject Noun] + [Setting/Action]`) with ZERO `"vs"` / `"versus"`, NEVER dropping the head noun, and NEVER outputting generic textures.
+   - Must follow `YAML Canonical Stock/Fallback Query Examples` (`[Single Canonical Subject Noun] + [Setting/Action]`) in simple everyday English with ZERO `"vs"` / `"versus"`, NEVER dropping the head noun, and NEVER outputting generic textures or side props.
 3. `approved_subject_entity` (Scene-Accurate Subject Filter for Vision Auditor):
    - Set to the exact active entity in that scene, OR `"Entity A or Entity B"` in a 2-entity duel, following the YAML `Niche Anti-Flop Scene Continuity Guardrail` above.
 4. ENFORCE THE YAML `Niche Anti-Flop Scene Continuity Guardrail` & INTRA-VIDEO UNIQUENESS:
-   - Strictly enforce the active niche's continuity rule from the YAML block above across all scenes 1..N, and NEVER assign the exact same `approved_query` string to two different scenes.
+   - Strictly enforce the active niche's continuity rule from the YAML block above across all scenes 1..N, and NEVER assign the exact same `approved_query` string to two different scenes (vary the visible action, angle, or stage of the event so every scene pulls a distinct clip).
 
 Return ONLY a valid JSON object in this exact format:
 {{

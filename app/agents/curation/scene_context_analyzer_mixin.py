@@ -36,7 +36,9 @@ _CAMERA_JARGON_RE = re.compile(
     r"high[\s\-]+angle|extreme\s+close[\s\-]+up|close[\s\-]+up\s+shot|tracking\s+shot|establishing\s+shot|"
     r"over[\s\-]+the[\s\-]+shoulder|dutch\s+angle|film\s+still|movie\s+still|shot\s+of|view\s+of|"
     r"8k|4k|hd|hdr|photorealistic|hyperrealistic|unreal\s+engine|octane\s+render|concept\s+art|"
-    r"chiaroscuro|shadow\s+portrait|monochrome\s+aesthetic|monochrome\s+psychological\s+thriller\s+aesthetic)\b",
+    r"chiaroscuro|shadow\s+portrait|monochrome\s+aesthetic|monochrome\s+psychological\s+thriller\s+aesthetic|"
+    r"render_doodle_2d_explainer_scene|clone_youtube_short_peak_clip|fetch_clean_cinematic_portrait_or_broll|"
+    r"summon_epic_monster_cinematic_media|search_pexels_pixabay_stock_video|search_google_cinematic_image)\b",
     re.IGNORECASE,
 )
 
@@ -282,9 +284,11 @@ QUY TRÌNH TƯ DUY SÂU 2 BƯỚC (2-STEP HOLISTIC SCRIPT & SUBTEXT REASONING):
 BƯỚC 1 — ĐỌC HIỂU TOÀN CỤC & GIẢI MÃ ĐẠI TỪ / ẨN DỤ / CÂU CHUYỂN Ý:
 1. Giải mã Đại từ & Chủ ngữ ẩn (Pronoun & Implicit Subject Resolution):
    - Khi một câu thoại bị tách nhỏ chỉ dùng đại từ ("It", "He", "She", "They", "This creature", "Nó", "Họ", "Kẻ này") hoặc chỉ nêu thông số/hệ quả mà không nhắc lại tên chủ thể, bạn PHẢI đối chiếu với `FULL USER SCRIPT` để khôi phục đúng Chủ thể cốt lõi đang thực hiện hành động ở câu đó.
-2. Giải mã Ẩn dụ, So sánh & Câu chuyển ý (Metaphor & Subtext Decoding):
-   - Nếu câu thoại dùng hình ảnh so sánh hoặc ẩn dụ (ví dụ: "bộ giáp vô hình", "cỗ máy nghiền thủy lực", "chiếc lồng im lặng", "như một con rối"), TUYỆT ĐỐI KHÔNG tìm kiếm vật thể nghĩa đen của từ ẩn dụ đó (không tìm cái lồng, con rối hay máy thủy lực!). Hãy dịch nó thành **hành động vật lý, cận cảnh giải phẫu hoặc biểu cảm thực tế của chủ thể chính trong kịch bản**.
-3. Suy luận Bối cảnh / Môi trường / Thời đại ngầm định (Implicit Habitat & Era Lock):
+2. Giải mã Ẩn dụ, So sánh, Đạo cụ phụ & Câu chuyển ý (Metaphor, Side-Prop & Subtext Decoding):
+   - Nếu câu thoại dùng hình ảnh so sánh, ẩn dụ hoặc nhắc tới một đạo cụ phụ/người quan sát để nhấn mạnh quy mô của sự kiện chính (ví dụ: "động cơ ô tô chết máy giữa đường chạy trốn", "các kỹ sư quân sự nhận ra sức công phá", "bộ giáp vô hình", "cỗ máy nghiền thủy lực", "chiếc lồng im lặng", "như một con rối"), TUYỆT ĐỐI KHÔNG tìm kiếm vật thể nghĩa đen của từ ẩn dụ hay đạo cụ phụ đó (CẤM tìm bảng điều khiển ô tô `"car dashboard"`, phòng họp kỹ sư `"engineers planning"`, cái lồng, con rối hay máy thủy lực!). Hãy luôn giữ ống kính khóa chặt vào **hành động vật lý, hiện tượng cốt lõi, cận cảnh giải phẫu hoặc biểu cảm thực tế của chủ thể chính trong kịch bản**.
+3. Ngôn ngữ Tìm kiếm Phổ thông của Creator (Everyday YouTube/Stock Vocabulary — CẤM Từ ngữ Học thuật / Sách giáo khoa):
+   - Người đăng video lên YouTube/Pexels luôn đặt tiêu đề bằng từ vựng tiếng Anh đời thường, trực quan. Nếu lời thoại dùng thuật ngữ sinh học/địa chất/học thuật (như `"benthic crustacean"`, `"apex elapid"`, `"limnic eruption"`, `"cervical vertebrae"`), BẮT BUỘC dịch ngay sang cụm từ tìm kiếm phổ thông 2–5 từ mà video thật luôn dùng (như `"deep sea crab underwater"`, `"king cobra strike"`, `"volcanic crater lake gas"`, `"jaguar biting caiman"`).
+4. Suy luận Bối cảnh / Môi trường / Thời đại ngầm định (Implicit Habitat & Era Lock):
    - Tự động suy luận môi trường sinh thái, mùa, độ sâu, ánh sáng hoặc thời đại lịch sử xuyên suốt của toàn bộ kịch bản (ví dụ: rừng tuyết Siberia, đáy biển sâu tối đen, sông Amazon, La Mã cổ đại, hay phòng tối tâm lý Noir) và giữ sự đồng nhất bối cảnh đó cho mọi phân cảnh.
 
 BƯỚC 2 — THIẾT KẾ TRUY VẤN SÁT Ý KỊCH BẢN (`google_image_queries` & `search_queries`):
@@ -409,9 +413,9 @@ THÔNG TIN ĐẦU VÀO:
 - Lời thoại phân cảnh hiện tại: "{narration}"
 
 QUY TẮC SUY LUẬN NGỮ NGHĨA (KHÔNG DỊCH TỪ KHÓA MÁY MÓC):
-1. Giải mã Đại từ & Ẩn dụ: Nếu lời thoại phân cảnh hiện tại dùng đại từ ("It", "He", "They", "Nó", "Họ") hoặc là câu chuyển ý/ẩn dụ, hãy dựa vào `Topic` và `Surrounding Script Context` để xác định đúng Chủ thể thực sự và Môi trường của câu chuyện.
-2. "core_visual_entity": Chỉ đặt tên thực thể/loài vật/nhân vật cụ thể (1–2 từ tiếng Anh). Nếu là chủ đề Tâm lý học, Hành vi con người, Triết học -> đặt `""`.
-3. "search_queries" & "google_image_queries": Viết 3 câu truy vấn tiếng Anh ngắn gọn (2–5 từ) mô tả đúng `[Chủ thể đơn lẻ của cảnh] + [Môi trường/bối cảnh của kịch bản] + [Hành động/trạng thái]`. Tuyệt đối không dùng `"vs"` hay ghép 2 loài khác nhau trong 1 câu truy vấn.
+1. Giải mã Đại từ, Ẩn dụ & Chống lệch sang Đạo cụ phụ: Nếu lời thoại phân cảnh hiện tại dùng đại từ ("It", "He", "They", "Nó", "Họ"), ẩn dụ, hoặc nhắc tới đạo cụ phụ/người quan sát bên lề (như xe cộ, phòng họp, tán cây trống rỗng), hãy dựa vào `Topic` và `Surrounding Script Context` để giữ truy vấn bám chặt vào Chủ thể / Hiện tượng cốt lõi của câu chuyện.
+2. "core_visual_entity": Chỉ đặt tên thực thể/loài vật/nhân vật cụ thể bằng từ vựng tiếng Anh phổ thông (1–2 từ). Nếu là chủ đề Tâm lý học, Hành vi con người, Triết học -> đặt `""`.
+3. "search_queries" & "google_image_queries": Viết 3 câu truy vấn tiếng Anh phổ thông ngắn gọn (2–5 từ, dịch mọi thuật ngữ học thuật sang từ khóa đời thường dễ tìm video thật) mô tả đúng `[Chủ thể đơn lẻ của cảnh] + [Môi trường/bối cảnh của kịch bản] + [Hành động/trạng thái]`. Tuyệt đối không dùng `"vs"` hay ghép 2 loài khác nhau trong 1 câu truy vấn.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{

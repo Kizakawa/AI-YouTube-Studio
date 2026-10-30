@@ -200,10 +200,11 @@ class ScriptGeneratorMixin:
                 + "\n".join(bottom_losers[:3])
             )
         memory_sections.append(
-            """🔥 MANDATORY CEILING-BREAKER ARCHITECTURE (APPLY STRICTLY TO ALL EN & pt-BR CHANNELS):
-1. GOLDEN 0.0s RETENTION LOCK: EXPLICIT ENTITY + EXTREME METRIC OR LETHAL PARADOX IN SCENE 1:
-   - `title`: MUST explicitly name high-search-volume entities + extreme physical metric ("Lula-Colossal vs Cachalote: O Duelo a 2.000m 🦑🐋", "Komodo Dragon vs 1,200lb Water Buffalo: Venom Ambush 🦎🐃"). NEVER hide the entity in the title!
-   - `Scene 1 (0.0s–2.2s, 6–10 words)`: Viewers scrolling the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND deliver an immediate shocking physical metric, clash, or lethal paradox right at 0.0s!
+            """🔥 MANDATORY CEILING-BREAKER & VISCERAL ANALOGY ARCHITECTURE (APPLY STRICTLY TO ALL EN & pt-BR CHANNELS):
+1. GOLDEN 0.0s RETENTION LOCK: EXPLICIT ENTITY + VISCERAL EVERYDAY IMAGE OR LETHAL PARADOX IN SCENE 1:
+   - `title`: MUST explicitly name high-search-volume entities + vivid, easy-to-picture clash or stakes ("Lula-Colossal vs Cachalote: O Duelo Mortal No Fundo Do Mar 🦑🐋", "Komodo Dragon vs Water Buffalo: One Bite Seals Its Fate 🦎🐃"). NEVER hide the entity in the title, AND NEVER put dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) in the title!
+   - `Scene 1 (0.0s–2.2s, 6–10 words)`: Viewers scrolling the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, Scene 1 MUST explicitly name the primary entity/combatants AND paint an immediate visceral physical action, everyday comparison, or lethal paradox right at 0.0s!
+   - 🚫 STRICT ANTI-SCIENCE-LECTURE BAN: NEVER use abstract physics or laboratory units (`1,500 PSI`, `195 Newtons`, `kPa`, `Joules`, `LD50`, `Hz`) anywhere in the script! Viewers have zero mental picture of a Newton or PSI—always translate forces/pressures/mechanisms into everyday physical comparisons (e.g., punching through an armored skull like an empty soda can, fifty jumbo jets stacked on a submarine, faster than an eye blink)!
    - STRICTLY FORBIDDEN VAGUE POINTERS: NEVER start Scene 1 with vague entity-blind pointers like "Look closely at why...", "Watch the exact moment...", or "Olhe bem para..." that hide the subject! Real YouTube Analytics proves hiding the entity in Scene 1 causes 70%–94% Swipe-Away!
    - STRICTLY FORBIDDEN IN SHORTS: NEVER split a 35-second Short into "Round 1, Round 2, Round 3" or switch to a 3rd unannounced opponent! Keep 100% of all 7–8 scenes focused on the exact entities promised in the `title`!"""
         )
@@ -290,33 +291,34 @@ Do NOT write the full script yet. Spend your full reasoning capacity to deeply u
 0. DEEP USER INTENT & SUBTEXT COMPREHENSION (ZERO KEYWORD DEPENDENCE):
    - Analyze what the user truly wants to convey in "{topic}" (and Creator Direction if provided), even if the input is brief, conversational, or a raw script idea.
    - Deduce the hidden curiosity gap, emotional core, canonical `primary_entity`, and authentic physical environment/era of the story.
-1. DEEP FACT & METRIC MINING:
-   - Extract 3 concrete, verifiable numbers/mechanisms (e.g. exact PSI bite force, °C temperature, ocean depth in meters, decibels, reaction speed in seconds/milliseconds, historical year/casualty count, or exact neurological/behavioral reflex).
+1. DEEP FACT MINING & VISCERAL EVERYDAY ANALOGY TRANSLATION (ZERO DRY PHYSICS UNITS):
+   - Uncover 3 real, jaw-dropping mechanisms or facts about "{topic}", AND IMMEDIATELY TRANSLATE any raw scientific force/pressure/speed/neurology into a **visceral everyday physical analogy** that a 12-year-old can instantly picture and feel in their body!
+   - STRICT BAN ON DRY UNITS: NEVER output naked physics/lab units like `PSI`, `pounds per square inch`, `Newtons`, `kPa`, `Joules`, `LD50`, or `Hz`! (Example: instead of "1,500 PSI bite", write "punching two fangs straight through a caiman's armored skull like an empty soda can"; instead of "195 Newtons", write "slamming down five times its own weight faster than a human blink, shattering bone like dry glass"; instead of "16,000 PSI", write "crushing steel like a tin can under fifty passenger jets").
 2. 3-ANGLE VIRAL TOURNAMENT:
-   - Angle A (Asymmetric 1v1 Clash / Direct Confrontation): Frame around "Entity A vs Entity B" with an extreme physical metric.
+   - Angle A (Asymmetric 1v1 Clash / Direct Confrontation): Frame around "Entity A vs Entity B" with a visceral, easy-to-picture physical clash.
    - Angle B (Counter-Intuitive Paradox / Hidden Lethal Mechanism): Expose why what 99% of people believe about this topic is dead wrong.
-   - Angle C (Visceral 0.0s Survival / Micro-Behavior Test): Immediate high-stakes action or observable real-life trap.
-3. SELECT THE #1 WINNING BLUEPRINT FOR >70% STAYED & 100%+ APV (EXPLICIT ENTITY + SHOCK METRIC/PARADOX AT 0.0s):
-   - `winning_title`: Search-optimized High-CTR Title in {target_lang_display} explicitly naming the primary entities + concrete metric (`[Entity A] vs [Entity B]: [Extreme Metric]`).
-   - BROAD-APPEAL ENTITY TRANSLATION IN TITLE (NO OBSCURE JARGON HEADERS): If the input topic uses an obscure scientific, geological, or academic psychology term that 90% of broad viewers do not instantly recognize (e.g., "Brinicle", "Pratfall Effect", "Zeigarnik Effect"), NEVER start `winning_title` with that obscure jargon word! Translate it into an instantly recognizable mass-appeal entity or physical confrontation (e.g., instead of "The Antarctic Brinicle", write "Underwater Ice Tornado vs Sea Life: -2°C Death Trap"; instead of "The Pratfall Effect", write "Why One Clumsy Mistake Makes People Trust You Instantly"). Save the technical term for Act 2 (Scene 2-3)!
-   - `selected_hook_archetype`: Choose the #1 best high-retention hook archetype for Scene 1 (`1. Direct Scale / Extreme Metric Clash`, `2. Walking Dead / Lethal Paradox with Named Entity`, `3. Concrete Historical / Scientific Shock Event`, or `4. Named Psychological / Behavioral Trap`).
-   - `scene_1_hook_0s`: 6–10 words in {target_lang_display} using `selected_hook_archetype`. CRITICAL: Viewers in the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, `scene_1_hook_0s` MUST explicitly name the primary entity/combatants from `winning_title` + a shocking physical metric, clash, or lethal paradox right at 0.0s! NEVER use vague pointers like "Look closely at..." or "Watch the exact moment..." that hide the entity!
+   - Angle C (Visceral 0.0s Survival / Micro-Behavior Test): Immediate high-stakes sensory danger or observable real-life trap.
+3. SELECT THE #1 WINNING BLUEPRINT FOR >70% STAYED & 100%+ APV (EXPLICIT ENTITY + VISCERAL SENSORY SHOCK AT 0.0s):
+   - `winning_title`: Search-optimized High-CTR Title in {target_lang_display} explicitly naming the primary entities + visceral stakes or clash (`[Entity A] vs [Entity B]: [Visceral Stakes]`, ZERO `PSI` / `Newtons` / dry lab units!).
+   - BROAD-APPEAL ENTITY TRANSLATION IN TITLE (NO OBSCURE JARGON HEADERS): If the input topic uses an obscure scientific, geological, or academic psychology term that 90% of broad viewers do not instantly recognize (e.g., "Brinicle", "Pratfall Effect", "Zeigarnik Effect"), NEVER start `winning_title` with that obscure jargon word! Translate it into an instantly recognizable mass-appeal entity or physical confrontation (e.g., instead of "The Antarctic Brinicle", write "Underwater Ice Tornado vs Sea Life: Freezing Trap"; instead of "The Pratfall Effect", write "Why One Clumsy Mistake Makes People Trust You Instantly").
+   - `selected_hook_archetype`: Choose the #1 best high-retention hook archetype for Scene 1 (`1. Direct Physical Clash`, `2. Walking Dead / Lethal Paradox with Named Entity`, `3. Visceral Historical / Sensory Shock Event`, or `4. Named Psychological / Behavioral Trap`).
+   - `scene_1_hook_0s`: 6–10 words in {target_lang_display} using `selected_hook_archetype`. CRITICAL: Viewers in the Shorts Feed DO NOT read the title before hearing the first 2 seconds! Therefore, `scene_1_hook_0s` MUST explicitly name the primary entity/combatants from `winning_title` + a vivid physical action, everyday comparison, or lethal paradox right at 0.0s (ZERO `PSI` / `Newtons` / dry units)! NEVER use vague pointers like "Look closely at..." or "Watch the exact moment..." that hide the entity!
    - `comment_war_bait_claim` (CUNNINGHAM'S LAW CONTROVERSY ENGINE — VIEWS & COMMENTS > POLITE NEUTRALITY): Design 1 bold, provocative, unapologetically polarizing statement or "Sacred-Cow Breaker" to drop in Scene 4–5 (e.g., declaring the fan-favorite predator overrated, calling a polite social habit a scam, or challenging the official explanation) so "armchair experts" rush into the comments to argue while the video loops in the background!
    - `counterfactual_debate_comment`: 12–22 words in {target_lang_display}. Design an unresolved Counterfactual Twist / Escalated 2v1 Odds / Next-Opponent 50-50 Debate Question ending with `(1) ... or (2) ... 👇` that was NOT already answered inside the video (ZERO 'Subscribe/Inscreva-se' spam!).
 
 Return ONLY valid JSON:
 {{
-  "mined_hard_metrics": ["metric/fact 1 with exact number", "metric/fact 2 with exact number", "metric/fact 3 with exact number"],
+  "mined_hard_metrics": ["visceral everyday analogy 1 (ZERO PSI/Newtons)", "visceral everyday analogy 2", "visceral everyday analogy 3"],
   "angle_a_clash": "1-sentence pitch for Angle A",
   "angle_b_paradox": "1-sentence pitch for Angle B",
   "angle_c_visceral": "1-sentence pitch for Angle C",
   "winning_angle": "Angle A | Angle B | Angle C — plus 1-sentence reason why it maximizes Stayed-to-Watch % and APV %",
   "primary_entity": "Bare 1-2 word English name of the primary subject/entity",
-  "winning_title": "High-CTR Searchable Title in {target_lang_display} (28-55 chars naming exact entities + concrete number or 'A vs B' + emojis)",
-  "selected_hook_archetype": "1. Direct Scale Clash | 2. Lethal Paradox with Named Entity | 3. Concrete Shock Event | 4. Named Behavioral Trap",
-  "scene_1_hook_0s": "6-10 word hook in {target_lang_display} explicitly naming the primary entity/combatants + shocking metric or paradox at 0.0s (NEVER use vague 'Look closely at...' or 'Watch the exact moment...'; NO '?' questions)",
-  "act_2_concrete_proof": "Direct visceral action, real-life spoken quote, or named historical event + first hard metric for Scenes 2-3 (STRICTLY FORBIDDEN: NEVER start with 'Studies show...', 'Research reveals...', or 'Estudos mostram que...')",
-  "scene_4_mid_video_15s_twist": "Explosive 15-second Plot Twist / Second Hook for Scene 4 that flips expectations with a 2nd concrete metric",
+  "winning_title": "High-CTR Searchable Title in {target_lang_display} (28-55 chars naming exact entities + visceral clash/stakes + emojis, ZERO PSI/Newtons)",
+  "selected_hook_archetype": "1. Direct Physical Clash | 2. Lethal Paradox with Named Entity | 3. Visceral Sensory Shock Event | 4. Named Behavioral Trap",
+  "scene_1_hook_0s": "6-10 word hook in {target_lang_display} explicitly naming the primary entity/combatants + vivid physical action or paradox at 0.0s (ZERO PSI/Newtons, NEVER use vague 'Look closely at...' or 'Watch the exact moment...'; NO '?' questions)",
+  "act_2_concrete_proof": "Direct visceral action, real-life spoken quote, or named historical event + first everyday physical analogy for Scenes 2-3 (STRICTLY FORBIDDEN: NEVER start with 'Studies show...' and NEVER dump dry units like PSI/Newtons)",
+  "scene_4_mid_video_15s_twist": "Explosive 15-second Plot Twist / Second Hook for Scene 4 that flips expectations with a 2nd vivid physical mechanism or everyday comparison",
   "comment_war_bait_claim": "Bold, polarizing 'Sacred-Cow Breaker' / Cunningham's Law claim in {target_lang_display} to spark fierce debate in the comment section",
   "act_4_ultimate_payoff": "For Psychology/Social topics: MUST include an exact word-for-word spoken sentence in quotation marks ('\"...\"') that the viewer can say out loud to flip the trap. For Wildlife/Mysteries/History: decisive biomechanical knockout or anomaly revelation for Scenes 6-7",
   "scene_8_infinite_echo_loop": "A 100% grammatically COMPLETE, self-contained closing punchline sentence in {target_lang_display} that conceptually echoes Scene 1's theme (STRICTLY FORBIDDEN: NEVER write an unfinished half-sentence ending with 'because...', 'ensure that...', 'which is why...', or 'and that is why')",
@@ -397,10 +399,11 @@ CURRENT DRAFT SCRIPT JSON:
 {draft_script.model_dump_json(indent=2)}
 
 YOUR EXECUTIVE PUNCH-UP MANDATE (UPGRADE EVERY WEAK LINK WHILE PRESERVING 7-8 SCENES & 92-118 TOTAL WORDS):
-1. GOLDEN 0.0s RETENTION LOCK IN `SCENE 1 HOOK` (0.0s–2.2s | 6 TO 10 WORDS):
-   - Keep `title` razor-sharp for `YT_SEARCH` + CTR (explicitly naming the primary entities + concrete metric/confrontation).
-   - Check Scene 1 (`scenes[0].narration` and `hook`): Scene 1 MUST explicitly name the primary entity/combatants from `title` AND deliver an immediate shocking physical metric, clash, or lethal paradox right at 0.0s (e.g., "Fifteen hundred pounds of muscle crushes a four-hundred-pound lion.", "This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead.", "Las Vegas casinos remove every clock to trap your brain's dopamine.")!
-   - STRICTLY BAN VAGUE POINTERS: If Scene 1 starts with a vague entity-blind pointer like "Look closely at...", "Watch the exact moment...", or "Olhe bem para..." that hides the subject, REWRITE Scene 1 immediately so it explicitly names the primary entity + shocking metric or paradox! NEVER use '?' questions in Scene 1.
+1. GOLDEN 0.0s RETENTION LOCK IN `SCENE 1 HOOK` (0.0s–2.2s | 6 TO 10 WORDS) & ZERO DRY PHYSICS UNITS:
+   - Keep `title` razor-sharp for `YT_SEARCH` + CTR (explicitly naming the primary entities + visceral clash/stakes — ZERO dry physics units like `PSI`, `Newtons`, `kPa`, `Joules`, or `LD50`!).
+   - Check Scene 1 (`scenes[0].narration` and `hook`): Scene 1 MUST explicitly name the primary entity/combatants from `title` AND paint an immediate visceral physical clash, everyday sensory image, or lethal paradox right at 0.0s (e.g., "One jaguar bite punches straight through a caiman's armored skull.", "This giant buffalo walked away from a Komodo dragon, already dead.", "Las Vegas casinos remove every clock to hijack your brain's sense of time.")!
+   - 🚫 ERADICATE ALL DRY SCIENCE/PHYSICS UNITS: Scan every single scene's `narration`, `title`, and `thumbnail_text` — if you see ANY dry textbook unit like `PSI`, `pounds per square inch`, `Newtons`, `kPa`, `Joules`, `LD50`, `Hz`, or clinical jargon, REWRITE IT IMMEDIATELY into a vivid everyday physical analogy that anyone can picture (e.g. crushing a bowling ball, folding steel like an empty soda can, slamming down five times its body weight faster than an eye blink)!
+   - STRICTLY BAN VAGUE POINTERS: If Scene 1 starts with a vague entity-blind pointer like "Look closely at...", "Watch the exact moment...", or "Olhe bem para..." that hides the subject, REWRITE Scene 1 immediately so it explicitly names the primary entity + visceral impact or paradox! NEVER use '?' questions in Scene 1.
    - ZERO MULTI-ROUND BAIT-AND-SWITCH: If any scene in this Short mentions "Round One / Round Two / Round Three" or switches to a 3rd animal not in `title`, REWRITE those scenes so 100% of the Short stays focused on the exact 1v1 duel or phenomenon promised in `title`!
 2. CAUSAL STORYTELLING FLOW ("BUT / THEREFORE" TRANSITIONS):
    - Ensure every scene flows into the next with high-tension causal connectors rather than flat textbook listing. Every scene MUST be 100% grammatically complete (11–16 words per body scene).
@@ -410,8 +413,10 @@ YOUR EXECUTIVE PUNCH-UP MANDATE (UPGRADE EVERY WEAK LINK WHILE PRESERVING 7-8 SC
    - Craft the final scene's closing sentence as a punchy, memorable conclusion that connects naturally back to the opening premise (NEVER write robotic phrases like "that is why you should look closely at..."). ZERO spoken Subscribe/Follow/Comment CTA!
 5. DISTILL 5 DUAL-TRACK YOUTUBE PEAK SEARCH QUERIES (`hook_search_queries` — FOLLOW THE ACTIVE YAML `video_search_strategy`):
    - Provide 5 distinct, concrete English search queries (3–5 words each): probe at most 1–2 genuine real-camera encounter queries (`"[Entity A] attacking [Entity B]"`, `"[Entity A] vs [Entity B]"`) ONLY if the script is a 2-entity physical duel, and make the remaining 3–5 queries **100% CLEAN SINGLE-ENTITY REAL-ACTION QUERIES** (`"[Single Entity] + [Real Physical Action / Environment]"`, ZERO `"vs"`) so our engine searches both and Fast-Drops `"A vs B"` immediately if no clean clash clip exists!
-6. SELF-CONTAINED, SINGLE-ENTITY BODY VISUAL QUERIES (`visual_keyword`, `stock_query`, `visual_prompt` — ZERO `"A vs B"` STUFFING IN BODY SCENES):
-   - Every scene's `visual_keyword` and `stock_query` MUST be 100% self-contained when isolated from the script (zero pronouns like "it/he/they", zero literal metaphor props like "hydraulic press" or "silent cage").
+6. SELF-CONTAINED, EVERYDAY YOUTUBE-NATIVE BODY VISUAL QUERIES (`visual_keyword`, `stock_query`, `visual_prompt` — ZERO SIDE-PROPS, ZERO ACADEMIC JARGON, ZERO `"A vs B"` STUFFING IN BODY SCENES):
+   - Every scene's `visual_keyword` and `stock_query` MUST be 100% self-contained when isolated from the script (zero pronouns like "it/he/they", zero literal metaphor props like "hydraulic press" or "silent cage", and ZERO `@tool` function names like `render_doodle_2d_explainer_scene`).
+   - 🚫 ZERO SIDE-PROP / OBSERVER ROOM DRIFT: If a body scene mentions a secondary side-effect or observer (e.g., car engines dying during a volcanic gas disaster, engineers in a command room during a weapon test, or empty trees/valleys), NEVER set `visual_keyword` or `stock_query` to the side-prop or room (`"car dashboard night"`, `"engineers planning"`). Always anchor `visual_keyword` and `stock_query` to a distinct visual angle of the **Primary Phenomenon/Entity**!
+   - 🚫 EVERYDAY YOUTUBE CREATOR VOCABULARY ONLY (NO TEXTBOOK JARGON): Never put academic/Latin/clinical terms (`"benthic crustacean"`, `"apex elapid"`, `"limnic eruption"`) in `visual_keyword` or `stock_query`—always use simple 3–5 word everyday English that real YouTube creators put in video titles (`"deep sea crab underwater"`, `"king cobra strike"`, `"volcanic crater lake gas"`).
    - CRITICAL YAML DUAL-TRACK RULE: For individual body scenes focusing on ONE contender/mechanism/environment, NEVER stuff `"A vs B"` or `"vs"` into `visual_keyword` (which lures `#edit` comparison spam and AI Veo clips) — write ONLY **`[Single Active Entity] + [Real Physical Action / Environment]`**! And `stock_query` (2–4 words) MUST ALWAYS be 100% single-entity with **ZERO `"vs"` / `"versus"`**!
 7. COUNTERFACTUAL 50/50 DEBATE COMMENT (`pinned_comment` — ZERO SUBSCRIBE SPAM & NEVER ASK WHAT THE VIDEO ALREADY ANSWERED):
    - If `pinned_comment` asks a question the video already answered (e.g. "Who wins: A or B?") or includes robotic "SUBSCRIBE / INSCREVA-SE" spam, REWRITE it into a punchy 12–22 word Counterfactual Escalation / Next-Opponent 50/50 Debate Question ending with `(1) ... or (2) ... 👇`!
@@ -543,34 +548,35 @@ YouTube rewards TWO metrics simultaneously:
 ═══════════════════════════════════════════════════════════
 1. THE MANDATORY 5-ACT DUAL-PEAK STORYTELLING BLUEPRINT (target: {word_range_en}):
    - DURATION & SCENE COUNT: {duration_spec}.
-   - UPSTREAM TOPIC & PREMISE ELEVATION (CRITICAL FIRST STEP):
-     * Before writing Scene 1, if the input Topic is broad or lacks a number, you MUST autonomously anchor the story around a **real, verifiable extreme physical/biological/historical metric** (`1,500 PSI`, `93°C`, `2,000m`, `1883`, `0.2 seconds`, `4-second silence`, `230 dB`) AND a **visceral "A vs B" confrontation or counter-intuitive anomaly**.
+   - UPSTREAM TOPIC & VISCERAL ANALOGY ELEVATION (CRITICAL FIRST STEP — ZERO DRY PHYSICS UNITS):
+     * Before writing Scene 1, NEVER leave the story as a dry science report! Anchor the story around a **visceral "A vs B" confrontation or counter-intuitive survival/behavioral paradox**, AND translate every force, bite, pressure, speed, or brain reaction into a **vivid everyday physical comparison** that a 12-year-old can immediately see, hear, and feel in their body!
+     * 🚫 STRICT BAN ON DRY SCIENCE/TEXTBOOK UNITS: NEVER write `PSI`, `pounds per square inch`, `Newtons`, `kPa`, `Joules`, `LD50`, `Hz`, or dry clinical metrics in your Title, Scene 1 Hook, Thumbnail Text, or Narration! Viewers cannot visualize a Newton or a PSI—always show what it DOES to bone, steel, glass, a soda can, or the human body!
    - YOU MUST EXECUTE ALL 5 ACTS SMOOTHLY IN ORDER across {'16 to 22 scenes (5 Documentary Chapters)' if is_long_form else '7 to 8 scenes'}:
 
-     * ACT 1 — THE 1.8-SECOND ENTITY + HARD NUMBER SHOCK HOOK (Scene 1 | 6 to 10 words MAX):
-       - CRITICAL RULE: Viewers in the Shorts Feed DO NOT read the bottom title before hearing the first 2 seconds of voiceover! Therefore, Scene 1 MUST explicitly name the primary entity/combatants from the `title` AND include a **concrete numerical metric or percentage** (`1,500 PSI`, `200 milliseconds`, `100%`, `2,000 meters`, `93°C`) right at 0.0s:
-         1. Direct Scale / Extreme Metric Clash ("Mil e quinhentos PSI da onça esmagam o crânio do jacaré.", "Fifteen hundred pounds of muscle crushes a four-hundred-pound lion.")
-         2. Lethal Paradox with Named Entity + Number ("This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead.", "Em dois segundos, a onça desliga o cérebro de um jacaré de 500 quilos.")
-         3. Concrete Historical / Scientific Shock Event ("One hundred thousand Mongol horsemen vanished forty miles from Vienna.")
-         4. Named Psychological / Behavioral Trap + Number ("Being too nice triggers a 100% disrespect reflex in 200 milliseconds.")
-       - FORBIDDEN: Vague entity-blind pointers ("Look closely at why...", "Watch the exact moment..."), hooks without a concrete number/metric, raw colon headers ("A vs B: ..."), abstract poetic metaphors ("loaded weapon", "silent cage"), or passive "Did you know?" questions.
+     * ACT 1 — THE 1.8-SECOND ENTITY + VISCERAL SHOCK / PARADOX HOOK (Scene 1 | 6 to 10 words MAX):
+       - CRITICAL RULE: Viewers in the Shorts Feed DO NOT read the bottom title before hearing the first 2 seconds of voiceover! Therefore, Scene 1 MUST explicitly name the primary entity/combatants from the `title` AND paint an **immediate visceral physical action, everyday comparison, or lethal paradox** right at 0.0s (ZERO `PSI` / `Newtons` / dry lab units!):
+         1. Direct Visceral Impact Clash ("Uma única mordida da onça fura o crânio do jacaré.", "One jaguar bite punches straight through a caiman's armored skull.")
+         2. Lethal Paradox with Named Entity ("This giant buffalo walked away from a Komodo dragon, already dead.", "Esta mamba-negra mata em segundos, mas o mangusto ri do veneno.")
+         3. Visceral Historical / Sensory Shock Event ("In 1815, Mount Tambora's ash turned June into freezing midnight.")
+         4. Named Psychological / Behavioral Trap ("The second you apologize first, a manipulator smells easy prey.")
+       - FORBIDDEN: Dry textbook units (`1,500 PSI`, `195 Newtons`, `kPa`), vague entity-blind pointers ("Look closely at why...", "Watch the exact moment..."), raw colon headers ("A vs B: ..."), abstract poetic metaphors ("loaded weapon", "silent cage"), or passive "Did you know?" questions.
 
-     * ACT 2 — NATURAL CONTEXT, CONCRETE PROOF & FIRST HARD METRIC (Scenes 2 – 3):
-       - STRICT BAN ON ACADEMIC STUDY OPENERS: NEVER start Scene 2 or 3 with "Studies show...", "Psychological studies reveal...", "Research indicates...", or "Estudos de biomecânica mostram que..."! Drop the viewer directly into the action, contrast, or named experiment ("In the 1971 Stanford Prison Experiment...", "While a lion spends ten minutes suffocating the throat, the jaguar...", "Enquanto o leão tenta sufocar a garganta, a onça...").
-       - Smoothly build the context, reveal the **first concrete physical/scientific metric** (PSI, depth, temperature, year, reaction time), and show real-life proof:
-         * For Psychology / Manipulation / Relationships / Stoicism: Describe the observable physical behavior or spoken trap ('Right after crossing your boundary, they smile and say, "You are overreacting again."').
-         * For Mysteries / Deep Sea / History: Set the historical/scientific scene with the exact year, location, depth, or documented event.
-         * For Wildlife / Animal Rescue: Build the physical tension of the encounter, exact biomechanical weapon/metric, or emotional turning point.
+     * ACT 2 — NATURAL CONTEXT, CONCRETE PROOF & FIRST EVERYDAY ANALOGY (Scenes 2 – 3):
+       - STRICT BAN ON ACADEMIC STUDY OPENERS: NEVER start Scene 2 or 3 with "Studies show...", "Psychological studies reveal...", "Research indicates...", or "Estudos de biomecânica mostram que..."! Drop the viewer directly into the action, contrast, or named real-world event ("While a lion spends ten minutes choking the throat, the jaguar...", "Enquanto o leão tenta sufocar a garganta, a onça...").
+       - Smoothly build the context and explain the **first real weapon or mechanism through a vivid everyday analogy** (ZERO dry physics units):
+         * For Psychology / Manipulation / Relationships / Stoicism: Describe the observable everyday trap or spoken line ('Right after crossing your boundary, they smile and say, "You are overreacting again."').
+         * For Mysteries / Deep Sea / History: Paint what the human body, eyes, lungs, or steel hull actually experiences in that place or historical moment ('pressing in like fifty passenger jets stacked on your chest').
+         * For Wildlife / Animal Rescue: Make the viewer feel the physical weapon ('jaws built to punch fangs through thick bone like teeth piercing an empty soda can') or emotional turning point.
 
      * ACT 3 — THE 15-SECOND MID-VIDEO CLIMAX TWIST (Scene 4) & CUNNINGHAM'S LAW COMMENT-BAIT CLAIM (Scene 5):
        - CRITICAL FOR APV > 95% & MASSIVE COMMENT VOLUME:
-       - **Scene 4 (`climax_scene_id` — The 15-Second Plot Twist)**: Flip the viewer's initial assumption with a **second shocking metric or hidden mechanism** ("But the real weapon isn't its teeth—it's a 230-decibel sonar shockwave.", "Mesmo pesando 500 quilos, a couraça do jacaré tem apenas 2 centímetros no osso temporal.") and set `overlay_badge` on Scene 4 in {target_lang_display} (e.g., `"[ // THE 15-SECOND TWIST // ]"` for EN or `"[ // O PONTO CEGO // ]"` for pt-BR).
-       - **Scene 5 (`THE COMMENT-WAR BAIT SCENE` — Cunningham's Law)**: In Scene 5, you MUST deliver the unapologetically bold, polarizing **Sacred-Cow Breaker / Fanboy Trigger claim** from `comment_war_bait_claim` (e.g., for Psychology: *"If you don't have the capacity for cruelty, your kindness isn't a virtue—it is just weakness."*; for Wildlife: *"Quilo por quilo, o leão africano parece um amador perto da precisão cirúrgica da onça-pintada."*) so viewers rush to the comments to argue while the video loops!
+       - **Scene 4 (`climax_scene_id` — The 15-Second Plot Twist)**: Flip the viewer's initial assumption with a **hidden counter-mechanism or second vivid physical twist** ("But the real weapon isn't its teeth—it fires an underwater sound blast strong enough to stun prey from the inside.", "Mas o jacaré esconde um ponto fraco do tamanho de uma moeda bem atrás dos olhos.") and set `overlay_badge` on Scene 4 in {target_lang_display} (e.g., `"[ // THE 15-SECOND TWIST // ]"` for EN or `"[ // O PONTO CEGO // ]"` for pt-BR).
+       - **Scene 5 (`THE COMMENT-WAR BAIT SCENE` — Cunningham's Law)**: In Scene 5, you MUST deliver the unapologetically bold, polarizing **Sacred-Cow Breaker / Fanboy Trigger claim** from `comment_war_bait_claim` (e.g., for Psychology: *"If you don't have the capacity to walk away, your kindness isn't a virtue—it is just fear."*; for Wildlife: *"Quilo por quilo, o leão africano parece um amador perto da precisão brutal da onça-pintada."*) so viewers rush to the comments to argue while the video loops!
 
      * ACT 4 — THE SURGICAL COUNTER-MOVE / ULTIMATE PAYOFF (Scenes 6 – 7):
        - Deliver the full climax payoff, resolution, or practical word-for-word Counter-Move that rewards the viewer for staying until the end:
          * For Psychology: NEVER write abstract advice like "set a visible boundary". You MUST give the viewer an exact, verbatim 1-sentence spoken counter-line inside quotation marks (`"..."`) to say out loud on the spot (e.g., 'Next time they push your limit, hold eye contact for three seconds and ask: "Are you asking me, or telling me?"').
-         * For Wildlife / Rescue / Mysteries: Deliver the decisive biomechanical outcome, joyful transformation, or scientific revelation that resolves the twist.
+         * For Wildlife / Rescue / Mysteries: Deliver the decisive biomechanical outcome, joyful transformation, or sensory revelation that resolves the twist.
 
      * ACT 5 — NATURAL PUNCHY FINALE & COMPLETE CLOSING PUNCHLINE (Final Scene 7 or 8):
        - ZERO SPOKEN OUTRO CTA: NEVER say "Subscribe", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in the narration!
@@ -578,25 +584,25 @@ YouTube rewards TWO metrics simultaneously:
 
 2. HIGH-CTR SEARCHABLE TITLE VS. SCENE 1 HOOK RULES (PROVEN BY OUR OWN TOP ANALYTICS WINNERS):
    - The first 1.5 - 2.2 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
-   - HIGH-CTR TITLE MANDATE (`YT_SEARCH` DISCOVERY ENGINE):
+   - HIGH-CTR TITLE MANDATE (`YT_SEARCH` DISCOVERY ENGINE — ZERO DRY PHYSICS UNITS):
      * NEVER write bleak/depressing-only titles for Animal Rescue (FORBIDDEN: "Frozen Puppy Found in Rain"). ALWAYS build a transformation/recognition gap ("The Exact Moment This Stray Dog Realized He Was Safe 🥺❤️", "He Guarded This Drain For 72 Hours Until Rescuers Looked Inside 🐾").
-     * NEVER write vague generic titles that hide the subject (FORBIDDEN: "Invisible Monsters Waiting To Strike", "That Fake Smile Exposes Their Envy", "Where Does This Endless River Go?"). ALWAYS name the specific entity/phenomenon + concrete number or "A vs B" clash ("Green Anaconda vs. Black Caiman: 1,500 PSI River Duel! 🐍🐊", "The 93°C Boiling Amazon River With Zero Volcanoes! 🔥🌊", "The 4-Second Eye Freeze That Exposes Fake Smiles 👁️🚩").
-     * NEVER repeat saturated numbers like "11,000m" on Mysteries; use fresh, verifiable physical metrics and visceral sensory/fear hooks.
-   - SCENE 1 HOOK ARCHETYPES (6–10 WORDS MAX — EXPLICITLY NAME THE ENTITY + SHOCK METRIC OR PARADOX AT 0.0s):
-     * Archetype 1 (Direct Scale / Extreme Metric Clash):
-       - "Fifteen hundred pounds of muscle crushes a four-hundred-pound lion."
+     * NEVER write vague generic titles that hide the subject (FORBIDDEN: "Invisible Monsters Waiting To Strike", "That Fake Smile Exposes Their Envy", "Where Does This Endless River Go?"). ALWAYS name the specific entity/phenomenon + vivid clash or stakes ("Green Anaconda vs. Black Caiman: Death Grip In The Amazon! 🐍🐊", "The Boiling Amazon River That Cooks Prey Without A Volcano! 🔥🌊", "The 4-Second Eye Freeze That Exposes Fake Smiles 👁️🚩").
+     * NEVER put dry physics/lab units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) in titles or hooks!
+   - SCENE 1 HOOK ARCHETYPES (6–10 WORDS MAX — EXPLICITLY NAME THE ENTITY + VISCERAL IMPACT OR PARADOX AT 0.0s):
+     * Archetype 1 (Direct Visceral Physical Clash):
+       - "One jaguar bite punches straight through a caiman's armored skull."
        - "Thirty thousand razor quills versus the deadliest jaws in Africa."
      * Archetype 2 (Lethal Paradox with Named Entity):
-       - "This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead."
+       - "This giant buffalo walked away from a Komodo dragon, already dead."
        - "Esta mamba-negra mata em segundos, mas o mangusto ri do veneno!"
-     * Archetype 3 (Concrete Historical / Scientific Shock Event):
+     * Archetype 3 (Visceral Historical / Sensory Shock Event):
        - "One hundred thousand Mongol horsemen vanished forty miles from Vienna."
-       - "Earth survived only because the Krakatoa volcano killed thousands."
+       - "In 1815, Mount Tambora's eruption buried summer under freezing snowstorms."
      * Archetype 4 (Named Psychological / Behavioral Trap):
-       - "Las Vegas casinos remove every clock to trap your brain's dopamine."
-       - "FBI interrogators place one water cup six inches from guilty suspects."
+       - "Las Vegas casinos remove every clock to hijack your brain's time."
+       - "FBI interrogators place one paper cup beside a guilty suspect's hand."
    - NEVER start with vague entity-blind pointers ("Look closely at...", "Watch the exact moment..."), abstract literary metaphors, textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
-   - thumbnail_text MUST be STRICTLY 2 to 3 ULTRA-PUNCHY WORDS MAX in ALL CAPS with ZERO emojis (competitor `@FossilVideos` & `@IFinity_What` formula: e.g. "TOO EASY?", "TURN INVISIBLE.", "EVERY RECORD", "1,500 PSI!", "ZERO SURVIVORS", "4 SECONDS MAX"). Our Thumbnail Engine renders Word 1 in Pure White and Word 2-3 in High-Contrast Yellow/Red!
+   - thumbnail_text MUST be STRICTLY 2 to 3 ULTRA-PUNCHY WORDS MAX in ALL CAPS with ZERO emojis and ZERO dry physics units (competitor `@FossilVideos` & `@IFinity_What` formula: e.g. "TOO EASY?", "TURN INVISIBLE.", "EVERY RECORD", "CRUSHES SKULLS!", "ZERO SURVIVORS", "4 SECONDS MAX"). Our Thumbnail Engine renders Word 1 in Pure White and Word 2-3 in High-Contrast Yellow/Red!
 
 3. SEAMLESS INFINITE LOOP ENDING (NO SPOKEN OUTRO CTA):
    - NEVER include "Subscribe", "Like", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in ANY scene's spoken narration!
@@ -604,8 +610,9 @@ YouTube rewards TWO metrics simultaneously:
 
 4. CONTEXT-ANCHORED, SEARCH-ENGINE-NATIVE VISUAL QUERIES (`visual_keyword` & `stock_query` — STRICTLY FOLLOW SECTION 9 `YAML VIDEO SEARCH & DUAL-TRACK QUERY STRATEGY` ABOVE):
    - Downstream visual agents search YouTube (`visual_keyword`, 3–5 English words) and Pexels/Pixabay Stock APIs (`stock_query`, 2–4 English words) for each scene independently:
-     * `visual_keyword` (YouTube Dual-Track search): Follow the active niche's YAML `Single-Entity Body Scene Rule` and `YAML Clean Single-Entity Real-Action Query Examples` in Section 9 above! For every body scene focusing on ONE contender, weapon, mechanism, or environment, write ONLY **`[Single Canonical Entity] + [Real Physical Action / Environment]`** — NEVER stuff `"A vs B"` or `"vs"` into single-entity body scenes (which lures comparison `#edit` and AI Veo videos)! Reserve `"Entity A attacking/vs Entity B"` strictly for direct 2-entity clash moments when permitted by the YAML `Dual-Track Clash vs. Single-Entity Rule`. NEVER write literary storytelling phrases or include any tag from `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
-     * `stock_query` (Pexels/Pixabay API search — STRICTLY SINGLE-ENTITY, ZERO `"vs"`): Follow the YAML `Stock & Fallback Broad Query Rule` and `YAML Canonical Stock/Fallback Query Examples` in Section 9 above (`[Single Canonical Subject Noun] + [Setting/Action]`, 2–4 words). NEVER include `"vs"` or `"versus"` in `stock_query`, NEVER drop the main head noun, and NEVER write generic material textures or inanimate metaphor objects!
+     * `visual_keyword` (YouTube Dual-Track search in Everyday Creator Vocabulary): Follow the active niche's YAML `Single-Entity Body Scene Rule` and `YAML Clean Single-Entity Real-Action Query Examples` in Section 9 above! For every body scene focusing on ONE contender, weapon, mechanism, or environment, write ONLY **`[Single Canonical Entity] + [Real Physical Action / Environment]`** — NEVER stuff `"A vs B"` or `"vs"` into single-entity body scenes (which lures comparison `#edit` and AI Veo videos)! Reserve `"Entity A attacking/vs Entity B"` strictly for direct 2-entity clash moments when permitted by the YAML `Dual-Track Clash vs. Single-Entity Rule`.
+     * 🚫 ZERO SIDE-PROP / OBSERVER DRIFT & ZERO ACADEMIC JARGON IN QUERIES: Never search for tangential side props or rooms mentioned in a sentence (`"car dashboard"`, `"military engineers planning"`, `"rainforest canopy"`)—always keep `visual_keyword` and `stock_query` anchored to the Primary Subject/Phenomenon in a distinct action/angle. Translate all scientific/textbook terms (`"benthic crustacean"`, `"limnic eruption"`) into everyday YouTube words (`"deep sea crab underwater"`, `"volcanic crater lake gas"`). NEVER write `@tool` function names or literary storytelling phrases inside `visual_keyword`!
+     * `stock_query` (Pexels/Pixabay API search — STRICTLY SINGLE-ENTITY, ZERO `"vs"`): Follow the YAML `Stock & Fallback Broad Query Rule` and `YAML Canonical Stock/Fallback Query Examples` in Section 9 above (`[Single Canonical Subject Noun] + [Setting/Action]`, 2–4 everyday English words). NEVER include `"vs"` or `"versus"` in `stock_query`, NEVER drop the main head noun, and NEVER write generic material textures or inanimate metaphor objects!
      * `hook_search_queries` (5 Dual-Track queries): In a 2-entity duel, include at most 1–2 genuine real-encounter queries (`"[Entity A] attacking [Entity B]"`) plus 3–4 clean single-entity real-action queries (`"[Entity A] + [real action/habitat]"`, `"[Entity B] + [real action/habitat]"`) so our engine searches both simultaneously and Fast-Drops `"A vs B"` immediately if no clean clash clip exists!
 
 5. CINEMATIC ATMOSPHERE & LIGHTING:
@@ -650,7 +657,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "climax_scene_id": {8 if is_long_form else 3},
   "hook_search_queries": ["bare noun + action/format (2-4 words)", "bare noun + angle (2-4 words)"],
   "full_narration": "Complete, smooth, well-developed spoken story without stage directions ({'360-560 words across 16-22 scenes (~3.5 min 5-Chapter Documentary)' if is_long_form else '92-118 words, 34-42s High-APV 5-Act story'} with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
-  "thumbnail_text": "STRICTLY 2-3 PUNCHY ALL-CAPS WORDS IN {target_lang_display} (e.g. 'TOO EASY?', 'TURN INVISIBLE.', 'EVERY RECORD', '1,500 PSI!')",
+  "thumbnail_text": "STRICTLY 2-3 PUNCHY ALL-CAPS WORDS IN {target_lang_display} WITH ZERO DRY PHYSICS UNITS (e.g. 'TOO EASY?', 'TURN INVISIBLE.', 'EVERY RECORD', 'CRUSHES SKULLS!')",
   "scenes": [
     {{
       "scene_id": 1,

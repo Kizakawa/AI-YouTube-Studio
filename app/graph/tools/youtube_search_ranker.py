@@ -467,11 +467,12 @@ Candidate YouTube Videos:
 TASK:
 1. Semantically evaluate each candidate title + channel + duration + views + format against the Topic, Primary Subject, and Scene Narration (understand synonyms, scientific names, and contextual meaning—do NOT rely on naive exact word matching).
 2. CLEAN RAW FOOTAGE OVER EDITED SHORTS (CRITICAL):
-   - Prioritize CLEAN, AUTHENTIC, UNEDITED RAW FOOTAGE (both `"9:16_NATIVE_SHORT"` and `"16:9_LANDSCAPE"` wildlife/field/documentary recordings—our FFmpeg engine smart-crops 16:9 cleanly!) OVER heavily-edited `#shorts` reposts, `"A vs B"` comparison edits, `"Who would win"` quizzes, or AI-generated Veo clips!
+   - Prioritize CLEAN, AUTHENTIC, UNEDITED RAW FOOTAGE (both `"9:16_NATIVE_SHORT"` and `"16:9_LANDSCAPE"` wildlife/field/documentary/archival recordings—our FFmpeg engine smart-crops 16:9 cleanly!) OVER heavily-edited `#shorts` reposts, `"A vs B"` comparison edits, `"Who would win"` quizzes, or AI-generated Veo clips!
    - DUAL-TRACK "A vs B" RULE: If a candidate is a GENUINE real-life camera encounter of both entities interacting, score it highest (`9.0–10.0`). If `"A vs B"` candidates look like comparison edits, fan montages, debates, or AI renders, REJECT them into `"rejected_ids"` immediately and approve the cleanest single-entity real footage!
    - When two candidates are equally clean & authentic raw footage, give a slight preference (+0.3) to `"9:16_NATIVE_SHORT"`.
-3. REJECT any candidate that is off-topic, shows the wrong subject/species, is a comparison `#edit` / quiz / AI-slop clip, a passive/boring clip (sleeping, screensaver, 1-hour loop), or a reaction/gaming/tier-list/compilation video.
-4. Score the approved candidates from 0.0 to 10.0 based on authenticity, absence of burned-in edit overlays, and dramatic visual impact for this scene.
+3. ZERO TANGENTIAL / SIDE-PROP / TALKING-HEAD TOLERANCE:
+   - REJECT any candidate that shows only a tangential side-prop, random room/car/scenery without the Primary Subject, wrong species/subject, comparison `#edit` / quiz / AI-slop clip, passive/boring clip (sleeping pet, static slideshow, 1-hour loop), or talking-head commentary/podcast/reaction/gaming/tier-list video.
+4. Score the approved candidates from 0.0 to 10.0 based on authenticity, clear visibility of the Primary Subject in motion, absence of burned-in edit overlays, and dramatic visual impact for this scene.
 
 Return ONLY valid JSON in this exact format:
 {{
