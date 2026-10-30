@@ -382,11 +382,11 @@ Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for
    - Reward (>= 9.0) effortless kitchen-table spoken creator prose: natural spoken contractions in English (`it's`, `doesn't`, `you'd`, `didn't`, `would've`, `hadn't`), colloquial spoken Brazilian YouTuber cadence in `pt-BR` (`pra`, `pro`, `tá`, `bicho`, `na hora`, `num piscar de olhos`, `só que`, `em vez de`), plain `$1` everyday words, and concrete macroscopic imagery.
    - STRICT AI-SMELL & TEXTBOOK AUDIT (`sounds_like_real_youtuber` & `ai_smell_phrases_detected`):
      * ONLY flag a phrase in `ai_smell_phrases_detected` if that EXACT phrase appears verbatim inside `--- SCRIPT CONTENT ---` above AND is a genuine robotic AI/textbook cliché:
-       - Front-loaded participial essay clauses (`"Equipped with..."`, `"Armed with..."`, `"Boasting..."`, `"Ostentando..."`)
-       - Preachy sermon or academic openers (`"Most people assume..."`, `"What most people miss..."`, `"Muita gente acha que..."`, `"Muita gente pensa que..."`, `"Studies show..."`, `"No fim das contas"`)
-       - Clunky `"acting like..."` similes or cellular biochemistry hand-waving (`"special molecules"`, `"chemical buffers"`, `"permeates every cell"`)
-       - Self-help guru slogans or moralizing nature proverbs (`"Real social power belongs to..."`, `"the hunter becomes the meal"`, `"O Pantanal pune quem falha"`, `"deixando só o silêncio"`)
-       - Formal written Portuguese enclitics (`"imobilizá-lo"`, `"matá-lo"`, `"esmagá-lo"`).
+       - Front-loaded participial essay clauses at the start of a scene (`"Equipped with"`, `"Armed with"`, `"Boasting"`, `"Ostentando"`, `"Trapped "`, `"Cornered "`, `"Surrounded "`, `"Reaching down into"`) or AI filler (`"Here's the thing"`)
+       - Preachy sermon, academic, or taxonomy-comparison openers (`"Most people assume"`, `"What most people miss"`, `"Muita gente acha que"`, `"Enquanto outros"`, `"Diferente de outros"`, `"Ao contrário de outros"`, `"Unlike other"`, `"Studies show"`, `"No fim das contas"`, `"That's because"`)
+       - Clinical toxin jargon (`"neurotoxins"`, `"neurotoxin"`), sports/police/machine clichés on wildlife (`"feathery shields"`, `"built-in shin guards"`, `"built-in armor"`, `"riot shield"`, `"body armor"`, `"pile-driver"`, `"prensa de metal"`, `"vira comida"`, `"elemento dele"`), clunky `"acting like"` / `"act like"` / `"acts like"` similes, stage-direction leaks (`"Voiceover:"`, `"Narrator:"`), cellular biochemistry or `$10` anatomy hand-waving (`"gelatinous"`, `"tiny cells"`, `"cell membranes"`, `"flexible fats"`, `"special molecules"`, `"proteins"`, `"chemical buffers"`, `"air bladders"`, `"permeates"`), standalone `"Because "` fragment scenes (`"Because it needs"`), passive endings (`"just stands there"`), or summary platitudes tacked after the twist (`"It's the ultimate survival trick"`, `"It's a perfect natural design"`, `"living its best life"`)
+       - Wikipedia calendar date-stamp openers (`"In 19"`, `"Back in "`), unnamed pronoun openers at the start of Scene 1 without naming the animal/subject (`"He wouldn't leave"`, `"She wouldn't leave"`), tense-clashing counterfactuals (`"If he hadn't"` paired with present-tense `"wipes out"`), dry blast units (`"kiloton"`, `"megaton"`), or bureaucratic/literary clichés (`"officers agreeing"`, `"required a "`, `" rules,"`, `"unanimous agreement"`, `"nuclear exchange"`, `"final roadblock"`, `"atomic retaliation"`, `"nuclear retaliation"`, `"nuclear apocalypse"`, `"peered down into"`, `"didn't budge"`, `"exact same"`)
+       - Self-help guru slogans, movie-trailer dub clichés, or moralizing proverbs (`"Real social power belongs to"`, `"the hunter becomes the meal"`, `"força brutal"`, `"golpe seco e fatal"`, `"onde o jogo vira"`, `"O Pantanal pune quem falha"`, `"deixando só o silêncio"`), or formal Portuguese enclitics (`"imobilizá-lo"`, `"matá-lo"`).
      * NEVER copy example phrases from this prompt into `ai_smell_phrases_detected` or `actionable_critiques` if they do NOT appear verbatim in `--- SCRIPT CONTENT ---`! If the script uses natural spoken language and contractions, set `sounds_like_real_youtuber: true`, `ai_smell_phrases_detected: []`, and score `story_pacing >= 8.8`.
 3. entity_coherence:
    - Deeply characterizes the exact entity/phenomenon's real macroscopic mechanism, human room dynamic, or `"What If"` 60-minute physical chain reaction rather than generic filler.
@@ -498,7 +498,7 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
             if not hook_extra_critiques:
                 hook_s = max(hook_s, 8.6)
         raw_sounds_human = bool(parsed.get("sounds_like_real_youtuber", True))
-        sounds_human = (raw_sounds_human and len(ai_smells) < 3) or len(ai_smells) == 0
+        sounds_human = (raw_sounds_human or not raw_ai_smells) and (len(ai_smells) == 0)
         voice_critique = ""
         if not sounds_human:
             pace_s = min(pace_s, 6.8)

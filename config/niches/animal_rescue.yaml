@@ -11,27 +11,27 @@ script_blueprint:
     trái tim người xem, kích hoạt phản xạ đồng cảm tức thì.
   pacing: "Nhịp điệu kể chuyện ấm áp, truyền cảm bằng giọng đọc thật (166 - 190 WPM, TUYỆT ĐỐI KHÔNG xuất video chỉ có nhạc nền không lời!), thời lượng vàng 35 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ), đủ 4 giai đoạn chuyển hóa cảm xúc có mốc thời gian cụ thể theo công thức GeoBeats Animals (2.77M views, 10.84% Like) & Rocky Kanaka (645K views)."
   hook_formulas:
-  - 'Time-Anchored Abandonment Hook (GeoBeats Animals 2.77M & 10.84% Like Formula): ''He spent ten years completely alone in a concrete cage without a single soft bed.'''
-  - 'Train Station / Street Discovery Hook (GeoBeats Animals 786K Formula): ''Found roaming a freezing train station severely underweight, this puppy refused to move.'''
-  - 'The 50-Minute Shelter Trust Breakthrough (Rocky Kanaka 645K Formula): ''Watch the exact second this terrified shelter dog rests his head on a human hand.'''
+  - 'Time-Anchored Abandonment Hook (GeoBeats Animals 2.77M & 10.84% Like Formula): ''This senior shelter dog spent ten years alone in a concrete kennel without a soft bed.'''
+  - 'Train Station / Street Discovery Hook (GeoBeats Animals 786K Formula): ''Nobody knew why this skinny stray puppy wouldn''t leave a freezing train platform.'''
+  - 'The 50-Minute Shelter Trust Breakthrough (Rocky Kanaka 645K Formula): ''This terrified shelter dog wouldn''t let anyone touch him—until one volunteer sat silently on the floor.'''
   - 'Senior Street Cat Retirement (GeoBeats Animals 2.03M Formula): ''After years surviving out of trash cans, this scarred street cat walked onto the right porch.'''
-  - 'Saved Mother Gratitude: ''This stray mama dog led a rescuer into the rain toward a flooded drain pipe.'''
+  - 'Saved Mother Gratitude: ''Nobody knew why this stray mama dog kept barking in the rain beside a flooded pipe.'''
   viral_topic_bank_2026:
-  - He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm
+  - Stray Dog Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm
   - The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe
   - Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign
   - Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time
-  - Watch How This Rescued Golden Retriever Reacts The First Time He Sees A Soft Bed
-  - She Guarded Her Injured Brother In The Rain Until Help Finally Arrived
+  - Rescued Golden Retriever Reacts The First Time He Sees A Soft Bed
+  - Stray Dog Guarded Her Injured Brother In The Rain Until Help Finally Arrived
   - 'Day 1 vs Day 30: The Stray Dog Nobody Wanted To Touch'
-  narrative_structure: "Cảnh 1 (0.0s-2.2s, 6-10 từ) - Hoàn cảnh bị bỏ rơi + địa điểm/thời gian cụ thể (KHÔNG lặp lại tiêu đề) -> Cảnh 2-3 (Act 2) - Đêm đầu tiên có chiếc giường êm / bữa ăn ấm áp đầu tiên -> Cảnh 4-5 (Act 3 - Mid-Video 15s Trust Breakthrough) - Khoảnh khắc trong 5 phút đầu tiên bước vào nhà mới, con vật ngừng run và chủ động xin ôm/vẫy đuôi -> Cảnh 6-7 (Act 4 Payoff) - Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng xuân -> Cảnh 8 - Cầu nối Infinite Loop quay về ánh mắt ở Cảnh 1 (Zero Spoken Subscribe CTA)."
+  narrative_structure: "Cảnh 1 (0.0s-2.2s, 8-12 từ) - Nêu đích danh con vật ('this stray dog', 'this tiny puppy' — CẤM mở đầu bằng đại từ 'He/She/It' mù chủ thể!) + địa điểm/thời gian cụ thể -> Cảnh 2-3 (Act 2) - Chi tiết hành vi nhỏ chân thực ngoài hiện trường -> Cảnh 4-5 (Act 3 - Mid-Video 15s Discovery/Trust Twist) - Khoảnh khắc người cứu hộ soi đèn/ngồi xuống và phát hiện sự thật bất ngờ -> Cảnh 6-7 (Act 4 Payoff) - Giải cứu thành công và cuộc sống ấm áp đời thường bên nhau (Zero Spoken Subscribe CTA)."
   showrunner_prose_dna:
     persona_and_voice: "Genuine, warm, grounded Human Rescuer Storyteller (The Dodo 801K × GeoBeats Animals 786K real-spoken warmth—zero melodramatic AI purple prose)."
     writing_habits:
-    - "1. RAW, PLAIN SPOKEN ENGLISH WITH CONTRACTIONS — ZERO MORALIZING 'MOST PEOPLE ASSUME' LECTURES (The Dodo 801K & GeoBeats Formula): Scene 1 MUST name the animal ('this stray dog', 'this tiny kitten') in a warm, urgent spoken sentence using natural contractions ('wouldn't', 'didn't', 'wasn't', 'couldn't') and zero exclamation marks ('Someone dumped this little dog at a busy park right beside his own bed.'). STRICTLY BAN preachy moralizing interruptions ('Most people assume stray dogs only look out for themselves...', 'The dog who had nothing gave everything') and literary purple prose ('silent vigil', 'shivering vigil', 'desperate cry', 'acting like a...')."
-    - "2. TINY REAL BEHAVIORS & GROUNDED RECOVERY PAYOFF: Show 100% observable actions a real rescuer sees on camera—no narrator sermons! ('Every time a car pulled in, he trotted up wagging his tail to check the driver's window. When a volunteer sat on the pavement with warm food, he climbed straight into her lap—and now he greets her at the front door every single afternoon.')."
-    bad_ai_slop_example: "Amidst the torrential downpour of despair, a shivering canine soul kept a silent vigil awaiting benevolent salvation."
-    good_million_view_example: "Nobody knew why this little dog wouldn't move from his spot at the park—until someone noticed his old bed sitting right beside him on the grass. Every time a car pulled in, he didn't bark or run; he just trotted up to check the driver's window. When a volunteer finally sat on the pavement with warm food, he climbed straight into her lap—and now he's waiting at her front door every single afternoon."
+    - "1. NAME THE ANIMAL IN 8–12 WORDS AT 0.0s + 6+ SPOKEN CONTRACTIONS THROUGH THE WHOLE STORY (The Dodo 801K Formula): NEVER start `title` or `Scene 1` with an unnamed pronoun ('He wouldn't...', 'She guarded...')! Keep Scene 1 tight (8–12 punchy spoken words naming the animal: 'Nobody knew why this stray dog wouldn't leave the park.'). Crucially, keep contractions flowing across BOTH the first half AND Scenes 4–7 ('wouldn't', 'didn't', 'couldn't', 'wasn't', 'that's when', 'he'd', 'he's', 'they're'—at least 5–6 contractions total!). NEVER drift into written novel prose in the middle ('Deep down in the dark tunnel, a muffled whine echoed...' -> say 'That's when she heard tiny cries coming from the dark water—and realized he wasn't guarding trash at all.'). Ban 'didn't budge', 'peered down into', front-loaded '-ing' openers ('Reaching down...'), 'vigil', and 'exact same'."
+    - "2. TINY REAL BEHAVIORS & WARM CONVERSATIONAL PAYOFF WITH CONTRACTIONS: Show 100% observable actions a real rescuer sees on camera and end with warm spoken contractions ('Every time a car pulled in, he didn't run—he trotted right up to check the driver's window. Turns out his owners had left his old bed on the grass and driven off. When a volunteer sat down with warm food, he climbed straight into her lap—and now he's waiting by her front door every single afternoon.')."
+    bad_ai_slop_example: "Amidst the torrential downpour, a shivering canine soul kept a silent vigil. Deep down in the dark concrete, a muffled sound echoed."
+    good_million_view_example: "Nobody knew why this little stray dog wouldn't leave the park. Every time a car pulled in, he didn't bark or run—he trotted right up to check the driver's window. That's when someone spotted his old bed sitting beside him and realized his owners weren't coming back. When a volunteer sat on the grass with warm food, he couldn't stop wagging his tail and climbed straight into her lap. Now he's curled up on her couch every single afternoon—and doesn't have to wait in the rain anymore."
   controversy_comment_bait_engine:
     philosophy: "MORAL CONTRAST & EMPATHY TRIGGER: Highlight the stark contrast between hundreds of indifferent passersby walking past and the one rescuer who stopped, sparking massive comment engagement!"
     bait_examples:

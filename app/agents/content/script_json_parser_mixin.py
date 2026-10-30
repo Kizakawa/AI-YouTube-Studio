@@ -194,9 +194,20 @@ class ScriptJsonParserMixin:
         )
         seen_visual_keywords: set = set()
 
+        _stage_dir_prefix_re = re.compile(
+            r'^(?:(?:\[[^\]]{2,35}\]|\([^\)]{2,35}\))\s*|(?:Voiceover|Voice-over|Narrator|Tone|Delivery|Locutor|Narração)\s*:\s*(?:[A-Z][^.!?:]{1,35}\.\s+)?)+',
+            re.IGNORECASE,
+        )
+
         for sc in scenes:
             if not isinstance(sc, dict):
                 continue
+
+            # Lột sạch nhãn chỉ dẫn sân khấu ("Voiceover: Flat, deadpan delivery.", "Narrator:", "[Whispering]") để TTS không bao giờ đọc nhầm
+            if isinstance(sc.get("narration"), str) and sc["narration"].strip():
+                cleaned_sc_narr = _stage_dir_prefix_re.sub("", sc["narration"].strip()).strip()
+                if cleaned_sc_narr:
+                    sc["narration"] = cleaned_sc_narr
 
             # Đảm bảo visual_keyword ngắn gọn (2-6 từ), sạch từ khóa kỹ thuật máy quay để tối ưu cho Top Search Google Images
             vk = str(sc.get("visual_keyword") or "").strip()
@@ -513,8 +524,8 @@ class ScriptJsonParserMixin:
                     sc["estimated_seconds"] = round(max(min_dur, min(max_est_dur, w_count / wps_div)), 1)
                     paced_scenes.append(sc)
 
-            # Nếu kịch bản Shorts chỉ có 6 cảnh (do LLM gộp 2 ý vào 1 cảnh thân dài >= 14 từ),
-            # tự động tách cảnh thân dài nhất thành 2 cảnh hoàn chỉnh để luôn đảm bảo >= 7 cảnh chuẩn Linter!
+            # Nếu kịch bản Shorts chỉ có 6 cảnh và có 1 cảnh thân gộp >= 2 câu độc lập (. ! ?),
+            # chỉ tách theo ranh giới câu hoàn chỉnh (TUYỆT ĐỐI KHÔNG cắt ngang dấu phẩy tạo mảnh vỡ gerund/động từ cụt chủ ngữ!).
             if not is_long_form_parse and len(paced_scenes) == 6:
                 best_split_idx = -1
                 best_split_pair = None
@@ -522,21 +533,8 @@ class ScriptJsonParserMixin:
                 for idx_cand in range(1, len(paced_scenes)):
                     cand_narr = str(paced_scenes[idx_cand].get("narration") or "").strip()
                     cand_words = cand_narr.split()
-                    if len(cand_words) >= 13 and len(cand_words) > best_w_len:
+                    if len(cand_words) >= 14 and len(cand_words) > best_w_len:
                         sp_pair = _split_long_narration(cand_narr, max(6, len(cand_words) // 2))
-                        if not sp_pair:
-                            m_mid = re.search(
-                                r'^([^,;\—\-]{18,95})(?:[,;\—\-]+\s*(?:and|but|yet|so|while|where|mas|só\s+que|e|enquanto|onde|nhưng|và)\s+|[,;\—\-]+\s+)(.{18,})$',
-                                cand_narr,
-                                flags=re.IGNORECASE,
-                            )
-                            if m_mid:
-                                l_p = m_mid.group(1).strip().rstrip(",;.-—") + "."
-                                r_p = m_mid.group(2).strip()
-                                if r_p and r_p[0].islower():
-                                    r_p = r_p[0].upper() + r_p[1:]
-                                if len(l_p.split()) >= 5 and len(r_p.split()) >= 5:
-                                    sp_pair = (l_p, r_p)
                         if sp_pair and not _speech_intro_tail_re.search(sp_pair[0]):
                             best_w_len = len(cand_words)
                             best_split_idx = idx_cand

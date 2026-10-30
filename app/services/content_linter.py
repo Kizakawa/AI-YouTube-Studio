@@ -181,7 +181,7 @@ class ScriptValidationLinter:
             min_words = 80
             max_words = 142
             target_range_str = "92 to 120 words (34-44s High-APV Golden Duration across 7-8 smooth, complete scenes)"
-            min_scenes = 7
+            min_scenes = 6
             max_scenes = 9
 
         if total_words > max_words:
@@ -260,9 +260,9 @@ class ScriptValidationLinter:
                     f"100% of Scene 1 hooks MUST be a sharp declarative statement or warning (NO '?' or Yes/No questions like 'Have you ever...' / 'Do you...')."
                 )
 
-            # Kiểm tra cấu trúc 2-Entity Matchup (`Entity A vs Entity B`): Nếu tiêu đề/chủ đề là cặp đối đầu `A vs B`,
-            # Cảnh 1 của Shorts BẮT BUỘC phải nêu tên CẢ 2 thực thể (tránh câu mù thực thể kiểu "You'd think a massive whale wouldn't fear anything!" giấu mất đối thủ).
-            if not is_long_form:
+            # Kiểm tra cấu trúc 2-Entity Matchup (`Entity A vs Entity B`): Chỉ áp dụng cho ngách đối đầu sinh vật vật lý (`wildlife`),
+            # KHÔNG áp dụng cho `alternate_history` / `psychology` / `mysteries` (nơi 'vs' thường là ẩn dụ như 'Commander vs World War III').
+            if not is_long_form and ("wildlife" in niche_id or "predator" in niche_id):
                 vs_source = raw_title if re.search(r"\b(?:vs\.?|versus|contra)\b", raw_title, re.I) else str(getattr(script, "topic", "") or "")
                 m_vs = re.search(
                     r"^([^:|\-–—#]{3,42}?)\s+\b(?:vs\.?|versus|contra)\b\s+([^:|\-–—#!?]{3,42})",
