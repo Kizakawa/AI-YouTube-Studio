@@ -10,6 +10,8 @@ import asyncio
 import logging
 import os
 import re
+import threading
+import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Set, Tuple
 
@@ -551,7 +553,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if _p_item:
                     used_pool_urls.add(_p_item)
 
-    async def _fetch_one_scene(idx: int, scene) -> Dict[str, Any]:
+    async def _fetch_one_scene(
+        idx: int,
+        scene,
+        cancel_event: Optional[threading.Event] = None,
+        deadline_ts: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        def _check_fetch_deadline() -> None:
+            if (cancel_event is not None and cancel_event.is_set()) or (
+                deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.8
+            ):
+                raise asyncio.TimeoutError("Cooperative scene fetch deadline reached")
+
         # ── ƯU TIÊN TUYỆT ĐỐI CHO NODE HOOK VIDEO: Nếu Cảnh này đã được cắt sẵn ──
         pre_hook = pre_hook_map.get(scene.scene_id) or pre_hook_map.get(str(scene.scene_id))
         if isinstance(pre_hook, dict) and pre_hook.get("media_path") and Path(pre_hook["media_path"]).exists():
@@ -574,6 +587,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 "full_peak_duration_sec": pre_hook.get("full_peak_duration_sec", 0.0),
                 "youtube_id": pre_hook.get("youtube_id"),
                 "source_url": pre_hook.get("source_url"),
+                "hook_verified": bool(pre_hook.get("hook_verified", False)),
+                "hook_overall_score": pre_hook.get("hook_overall_score"),
+                "hook_clean_score": pre_hook.get("hook_clean_score"),
+                "hook_sharpness": pre_hook.get("hook_sharpness"),
                 "tool": "hook_video_node",
                 "strategy_rationale": pre_hook.get("strategy_rationale", "Peak segment extracted from online Short"),
             }
@@ -797,6 +814,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     scene_id=scene.scene_id,
                     channel_id=channel_id_val,
                     target_image_count=scene_target_imgs,
+                    cancel_event=cancel_event,
+                    deadline_ts=deadline_ts,
                 )
                 if m_res and m_res.get("media_path"):
                     media_path = m_res["media_path"]
@@ -814,6 +833,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         prod_method = "MONSTER_CONCEPT_ART_8K"
                         rationale = f"Monster Concept Art 8K x{len(pose_images)} ({c_name} vs {s_anchor}): {m_res.get('title', '')[:45]}"
                 else:
+                    _check_fetch_deadline()
                     # Tầng 3 Fallback (Abyssal Silhouette & Scale Anchor AI): Tránh lộ chi tiết giải phẫu méo của model free
                     abyssal_prompt = (
                         f"Colossal silhouette of {c_name} emerging from pitch black fog and deep shadows, "
@@ -890,6 +910,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     job_id=job_id,
                     scene_id=scene.scene_id,
                     target_image_count=scene_target_imgs,
+                    cancel_event=cancel_event,
+                    deadline_ts=deadline_ts,
                 )
                 if c_res and c_res.get("media_path"):
                     media_path = c_res["media_path"]
@@ -934,6 +956,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     scene_id=scene.scene_id,
                     channel_id=channel_id_val,
                     skip_youtube_search=(tool_name == "search_pexels_pixabay_stock_video"),
+                    cancel_event=cancel_event,
+                    deadline_ts=deadline_ts,
                 )
                 if yt_res and yt_res.get("media_path"):
                     media_path = yt_res["media_path"]
@@ -947,6 +971,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         f"YouTube Shorts Peak [{yt_res.get('search_scope', sc_scope)}] "
                         f"({yt_res.get('window')}, full_peak={full_peak_duration_sec:.1f}s): {yt_res.get('title', '')[:45]}"
                     )
+                if not media_path:
+                    _check_fetch_deadline()
                 if not media_path and scene.scene_id in (1, 2):
                     try:
                         pre_used_hk = set(used_pool_urls)
@@ -1467,6 +1493,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # Nếu chiến lược chính ở trên chưa lấy được file, tự động fallback theo thứ tự
         # ══════════════════════════════════════════════════════════════════════
         if not media_path:
+            _check_fetch_deadline()
             logger.info(f"Scene {scene.scene_id}: ⚠️ Chiến lược '{chosen_strategy}' chưa có file, kích hoạt Multi-Tier Fallback...")
 
             # Fallback 1: Thử tìm Video B-Roll hoặc ảnh Pexels HD thực tế
@@ -1733,9 +1760,20 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
     async def _guarded_fetch(idx: int, scene) -> Dict[str, Any]:
         async with sem:
+            scene_cancel_ev = threading.Event()
+            scene_deadline_ts = time.monotonic() + 62.5
             try:
-                res = await asyncio.wait_for(_fetch_one_scene(idx, scene), timeout=65.0)
+                res = await asyncio.wait_for(
+                    _fetch_one_scene(
+                        idx,
+                        scene,
+                        cancel_event=scene_cancel_ev,
+                        deadline_ts=scene_deadline_ts,
+                    ),
+                    timeout=65.0,
+                )
             except asyncio.TimeoutError:
+                scene_cancel_ev.set()
                 logger.warning(
                     f"Scene {scene.scene_id}: ⏱️ Quá hạn 65s khi tải media -> Hủy nguồn chậm và tải ngay một nguồn độc lập mới hoàn toàn (không cắt lại hook_candidates)!"
                 )
@@ -1833,6 +1871,63 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             }
                 except Exception:
                     res = None
+            if not res or not isinstance(res, dict):
+                # Kiểm tra xem _fetch_one_scene đã kịp tải xong file video/ảnh thật nào cho cảnh này trên đĩa trước khi timeout chưa!
+                existing_disk_vids = sorted(
+                    [
+                        p for p in media_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4")
+                        if p.exists() and p.stat().st_size > 15_000 and "_raw" not in p.name
+                    ],
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                existing_disk_imgs = sorted(
+                    [
+                        p for p in media_dir.glob(f"scene_{scene.scene_id:03d}_*.jpg")
+                        if p.exists() and p.stat().st_size > 3_000 and "_cand" not in p.name
+                    ],
+                    key=lambda p: (0 if "_cut" not in p.name else 1, p.name),
+                )
+                if existing_disk_vids:
+                    v_disk = str(existing_disk_vids[0])
+                    res = {
+                        "scene_id": scene.scene_id,
+                        "media_path": v_disk,
+                        "media_type": "video",
+                        "pose_images": None,
+                        "vision_curated": True,
+                        "visual_keyword": scene.visual_keyword,
+                        "visual_prompt": getattr(scene, "visual_prompt", None),
+                        "narration": scene.narration,
+                        "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
+                        "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
+                        "highlight_words": getattr(scene, "highlight_words", None),
+                        "overlay_badge": getattr(scene, "overlay_badge", None),
+                        "visual_strategy": "STOCK_VIDEO",
+                        "production_method": "VIDEO_FIRST_BODY_BROLL",
+                        "tool": "recovered_disk_video",
+                        "strategy_rationale": "Recovered completed video from disk on timeout",
+                    }
+                elif existing_disk_imgs:
+                    img_list_disk = [str(p) for p in existing_disk_imgs[:2]]
+                    res = {
+                        "scene_id": scene.scene_id,
+                        "media_path": img_list_disk[0],
+                        "media_type": "image",
+                        "pose_images": img_list_disk,
+                        "vision_curated": True,
+                        "visual_keyword": scene.visual_keyword,
+                        "visual_prompt": getattr(scene, "visual_prompt", None),
+                        "narration": scene.narration,
+                        "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
+                        "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
+                        "highlight_words": getattr(scene, "highlight_words", None),
+                        "overlay_badge": getattr(scene, "overlay_badge", None),
+                        "visual_strategy": "GEMINI_SEARCH_3D",
+                        "production_method": "GOOGLE_TOP_IMAGE_FALLBACK",
+                        "tool": "recovered_disk_image",
+                        "strategy_rationale": "Recovered completed Google Top Image from disk on timeout",
+                    }
             if not res or not isinstance(res, dict):
                 logger.warning(f"Scene {scene.scene_id}: _fetch_one_scene không trả về dict hợp lệ, kích hoạt fallback đồ họa an toàn.")
                 out_g = str(media_dir / f"scene_{scene.scene_id:03d}_graphic.png")
@@ -1981,8 +2076,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             doodle_prop_cycle = ["puppet_strings", "mask", "cage", "broken_compass", "scroll_feed", "treadmill"]
             rescue_sem = asyncio.Semaphore(3)
 
-            async def _rescue_single_scene_motion(r_pos: int, r_idx: int) -> None:
-                async with rescue_sem:
+            async def _rescue_single_scene_motion(
+                r_pos: int,
+                r_idx: int,
+                cancel_event: Optional[threading.Event] = None,
+                deadline_ts: Optional[float] = None,
+            ) -> None:
+                def _rescue_cancelled() -> bool:
+                    return (cancel_event is not None and cancel_event.is_set()) or (
+                        deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.8
+                    )
+
+                if True:
                     r_sc = scenes_media[r_idx]
                     r_sid = int(r_sc.get("scene_id") or (r_idx + 1))
                     r_dur = _get_slot_dur(r_idx)
@@ -2086,6 +2191,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     is_hook_scene=(r_sid == 1),
                                     job_id=job_id,
                                     scene_id=r_sid,
+                                    cancel_event=cancel_event,
+                                    deadline_ts=deadline_ts,
                                 )
                                 if c_vid_res and c_vid_res.get("media_path") and Path(c_vid_res["media_path"]).exists():
                                     if str(c_vid_res.get("media_type") or "").lower() in ("video", "hook_ready_video"):
@@ -2111,7 +2218,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     if not already_tried_scene_kw:
                         yt_rescue_queries.insert(0, (r_kw, overall_rescue_q, "SCENE_SPECIFIC"))
                     for q_main, q_fb, q_scope in yt_rescue_queries:
-                        if rescued_ok or is_long_form:
+                        if rescued_ok or is_long_form or _rescue_cancelled():
                             break
                         try:
                             yt_rescue = await asyncio.to_thread(
@@ -2131,6 +2238,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 job_id=job_id,
                                 scene_id=r_sid,
                                 channel_id=channel_id_val,
+                                cancel_event=cancel_event,
+                                deadline_ts=deadline_ts,
                             )
                             if yt_rescue and yt_rescue.get("media_path") and Path(yt_rescue["media_path"]).exists():
                                 r_sc["media_path"] = yt_rescue["media_path"]
@@ -2144,7 +2253,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} YT peak rescue ({q_main}) skip: {_re_yt}")
 
                     # 2. Tầng Stock Video Pexels/Pixabay đa truy vấn (giới hạn 2 truy vấn mới chưa thử ở main loop)
-                    if not rescued_ok:
+                    if not rescued_ok and not _rescue_cancelled():
                         stock_queries = []
                         cand_sq_list = (
                             (portrait_broll_facets[r_pos % len(portrait_broll_facets)], overall_rescue_q)
@@ -2160,7 +2269,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             if sq_clean and sq_clean not in stock_queries:
                                 stock_queries.append(sq_clean)
                         for sq_try in stock_queries[:2]:
-                            if rescued_ok:
+                            if rescued_ok or _rescue_cancelled():
                                 break
                             try:
                                 best_v_fb = await asyncio.to_thread(
@@ -2311,7 +2420,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             logger.debug(f"[Ending Video Guarantee] Scene {r_sid} unused candidate skip: {_re_slice}")
 
                     # 4. Tầng bảo hiểm cuối cho kênh Tâm lý học: Nếu vẫn chưa có video thật, dựng ngay Doodle 2D Explainer (.mp4 24fps)
-                    if not rescued_ok and is_psych_niche:
+                    if not rescued_ok and is_psych_niche and not _rescue_cancelled():
                         try:
                             from app.services.media.doodle_animation_tool import DoodleAnimationTool
                             d_char = doodle_char_cycle[r_sid % len(doodle_char_cycle)]
@@ -2341,9 +2450,27 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         except Exception as _re_dd_fb:
                             logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Doodle 2D fallback skip: {_re_dd_fb}")
 
+            async def _guarded_rescue_single_scene_motion(r_pos: int, r_idx: int) -> None:
+                async with rescue_sem:
+                    r_cancel_ev = threading.Event()
+                    r_deadline_ts = time.monotonic() + 33.5
+                    try:
+                        await asyncio.wait_for(
+                            _rescue_single_scene_motion(
+                                r_pos,
+                                r_idx,
+                                cancel_event=r_cancel_ev,
+                                deadline_ts=r_deadline_ts,
+                            ),
+                            timeout=35.0,
+                        )
+                    except Exception as _e_r_to:
+                        r_cancel_ev.set()
+                        logger.debug(f"[Real-Motion Floor Rescue] Slot {r_idx} timeout/skip: {_e_r_to}")
+
             await asyncio.gather(
                 *[
-                    _rescue_single_scene_motion(r_pos, r_idx)
+                    _guarded_rescue_single_scene_motion(r_pos, r_idx)
                     for r_pos, r_idx in enumerate(rescue_candidates_idx[:needed_rescues])
                 ]
             )
@@ -2391,9 +2518,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 primary_p = sc_item.get("media_path")
                 existing_poses = [
                     p for p in (sc_item.get("pose_images") or ([primary_p] if primary_p else []))
-                    if p and Path(p).exists() and Path(p).stat().st_size > 2500
+                    if p and not str(p).endswith("_graphic.png") and Path(p).exists() and Path(p).stat().st_size > 2500
                 ]
-                if not existing_poses and primary_p and Path(primary_p).exists():
+                if not existing_poses and primary_p and not str(primary_p).endswith("_graphic.png") and Path(primary_p).exists():
                     existing_poses = [primary_p]
 
                 verified_poses: List[str] = []
@@ -2639,7 +2766,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     # Cổng chặn cuối cùng trước khi vào render_video: Nếu đã hết lượt retry refine_media mà vẫn còn cảnh lỗi
     # (ví dụ: lệch loài/chủ thể do ContactSheet Vision phát hiện ở lần refine cuối), tự động thay thế ngay
     # bằng clip chuyển động sạch đạt chuẩn trong cùng Job để tuyệt đối không lọt cảnh lỗi sang render_video!
-    max_media_retries_gate = max(0, int(os.getenv("MAX_MEDIA_RETRIES", "2")))
+    max_media_retries_gate = max(0, int(os.getenv("MAX_MEDIA_RETRIES", "1")))
     if not eval_report.passed and eval_report.failed_scene_ids and int(state.get("media_retry_count", 0)) >= max_media_retries_gate:
         try:
             import subprocess
@@ -2680,43 +2807,77 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     str(m.get("narration") or state.get("topic", "")),
                     state.get("topic", ""),
                 )
+                if not best_fg_v and primary_entity:
+                    q_fg_single = clean_scene_search_query(f"{primary_entity} {fg_facets[rescue_idx % len(fg_facets)]}", max_words=4)
+                    best_fg_v = ma_fg.search_best_video_clip(
+                        q_fg_single,
+                        used_active_paths | used_active_vids,
+                        {"video_format": "long"} if is_lf_eval else None,
+                        str(primary_entity),
+                        str(primary_entity),
+                    )
                 if best_fg_v and best_fg_v.get("url"):
                     fg_url = str(best_fg_v["url"])
                     fg_title = str(best_fg_v.get("title") or q_fg)
                     if not rag_fg.try_claim_in_job_video(job_id=job_id_fg, vid_id=fg_url, url=fg_url, title=fg_title, scene_id=sid):
                         used_active_vids.add(fg_url)
-                        continue
-                    raw_fg_dl = str(media_dir / f"scene_{sid:03d}_fg_raw.mp4")
-                    out_final_rescue = str(media_dir / f"scene_{sid:03d}_final_clean_rescue.mp4")
-                    ma_fg.download_file(fg_url, raw_fg_dl)
-                    if Path(raw_fg_dl).exists() and Path(raw_fg_dl).stat().st_size > 15_000:
-                        trim_video(
-                            input_path=raw_fg_dl,
-                            duration_seconds=sc_dur,
-                            output_path=out_final_rescue,
-                            width=1920 if is_lf_eval else 1080,
-                            height=1080 if is_lf_eval else 1920,
-                            fps=30,
-                            is_scifi=is_scifi_val,
-                            niche=current_niche,
-                            apply_grading=True,
-                            is_hook_scene=(sid == 1),
-                            fair_use_transform=True,
-                            start_offset_sec=0.0,
-                            preserve_continuous_flow=True,
-                        )
-                        Path(raw_fg_dl).unlink(missing_ok=True)
-                        if Path(out_final_rescue).exists() and Path(out_final_rescue).stat().st_size > 12_000:
-                            used_active_vids.add(fg_url)
-                            used_active_paths.add(str(Path(out_final_rescue).resolve()))
-                            m["media_path"] = out_final_rescue
-                            m["media_type"] = "hook_ready_video" if sid == 1 else "video"
-                            m["pose_images"] = []
-                            m["production_method"] = "FINAL_GATE_FRESH_STOCK_RESCUE"
-                            rescued_any = True
-                            logger.info(
-                                f"🛡️ [FinalVisualGate] Đã tải video Stock độc lập mới cho Cảnh #{sid} ('{q_fg}') -> {Path(out_final_rescue).name}"
+                    else:
+                        raw_fg_dl = str(media_dir / f"scene_{sid:03d}_fg_raw.mp4")
+                        out_final_rescue = str(media_dir / f"scene_{sid:03d}_final_clean_rescue.mp4")
+                        ma_fg.download_file(fg_url, raw_fg_dl)
+                        if Path(raw_fg_dl).exists() and Path(raw_fg_dl).stat().st_size > 15_000:
+                            trim_video(
+                                input_path=raw_fg_dl,
+                                duration_seconds=sc_dur,
+                                output_path=out_final_rescue,
+                                width=1920 if is_lf_eval else 1080,
+                                height=1080 if is_lf_eval else 1920,
+                                fps=30,
+                                is_scifi=is_scifi_val,
+                                niche=current_niche,
+                                apply_grading=True,
+                                is_hook_scene=(sid == 1),
+                                fair_use_transform=True,
+                                start_offset_sec=0.0,
+                                preserve_continuous_flow=True,
                             )
+                            Path(raw_fg_dl).unlink(missing_ok=True)
+                            if Path(out_final_rescue).exists() and Path(out_final_rescue).stat().st_size > 12_000:
+                                used_active_vids.add(fg_url)
+                                used_active_paths.add(str(Path(out_final_rescue).resolve()))
+                                m["media_path"] = out_final_rescue
+                                m["media_type"] = "hook_ready_video" if sid == 1 else "video"
+                                m["pose_images"] = []
+                                m["production_method"] = "FINAL_GATE_FRESH_STOCK_RESCUE"
+                                rescued_any = True
+                                logger.info(
+                                    f"🛡️ [FinalVisualGate] Đã tải video Stock độc lập mới cho Cảnh #{sid} ('{q_fg}') -> {Path(out_final_rescue).name}"
+                                )
+                                continue
+                # Fallback ảnh thật Google Top Image nếu kho video không trả về clip cho cảnh lỗi
+                from app.graph.tools.google_image_executor import execute_google_cinematic_image_sync
+                out_fg_img = str(media_dir / f"scene_{sid:03d}_final_gimg_rescue.jpg")
+                g_fg_res = execute_google_cinematic_image_sync(
+                    smart_query=clean_scene_search_query(m.get("visual_keyword") or primary_entity or state.get("topic", ""), max_words=4),
+                    output_path=out_fg_img,
+                    narration=str(m.get("narration") or state.get("topic", "")),
+                    topic=state.get("topic", ""),
+                    used_urls=used_active_vids,
+                    is_hook_scene=(sid == 1),
+                    subject_entity=primary_entity or state.get("topic", ""),
+                    job_id=job_id_fg,
+                    scene_id=sid,
+                    target_image_count=1,
+                )
+                if g_fg_res and g_fg_res.get("media_path") and Path(g_fg_res["media_path"]).exists():
+                    m["media_path"] = g_fg_res["media_path"]
+                    m["media_type"] = "image"
+                    m["pose_images"] = g_fg_res.get("pose_images") or [g_fg_res["media_path"]]
+                    m["production_method"] = "FINAL_GATE_GOOGLE_IMAGE_RESCUE"
+                    rescued_any = True
+                    logger.info(
+                        f"🛡️ [FinalVisualGate] Đã thay thế Cảnh #{sid} bằng Ảnh thật Top Google độc lập -> {Path(g_fg_res['media_path']).name}"
+                    )
             if rescued_any:
                 eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
         except Exception as e_fg:
@@ -2860,7 +3021,16 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         if isinstance(sc_sc, dict) and sc_sc.get("scene_id"):
             scene_eval_issues_map[int(sc_sc["scene_id"])] = [str(x) for x in (sc_sc.get("issues") or [])]
 
-    async def _refine_single_item(item: Dict[str, Any]) -> None:
+    async def _refine_single_item(
+        item: Dict[str, Any],
+        cancel_event: Optional[threading.Event] = None,
+        deadline_ts: Optional[float] = None,
+    ) -> None:
+        def _refine_cancelled() -> bool:
+            return (cancel_event is not None and cancel_event.is_set()) or (
+                deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.8
+            )
+
         if item.get("scene_id") not in failed_ids:
             return
         scene_id = int(item["scene_id"])
@@ -3002,11 +3172,16 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.debug(f"Scene {scene_id}: Doodle 2D refine skip: {ex_d_r}")
 
             # 1. Ưu tiên săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync — chỉ cho Shorts)
-            if not replaced and not is_lf_refine:
+            if not replaced and not is_lf_refine and not _refine_cancelled():
                 try:
                     from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
                     from app.services.video_memory_rag import get_video_memory_rag
                     rag_yt_ref = get_video_memory_rag()
+                    yt_ref_dl = (
+                        min(deadline_ts, time.monotonic() + 18.0)
+                        if deadline_ts is not None
+                        else (time.monotonic() + 18.0)
+                    )
                     out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
                     yt_ref_res = await asyncio.to_thread(
                         execute_youtube_short_peak_clone_sync,
@@ -3025,6 +3200,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         job_id=job_id_refine,
                         scene_id=scene_id,
                         channel_id=channel_id_refine,
+                        cancel_event=cancel_event,
+                        deadline_ts=yt_ref_dl,
                     )
                     if yt_ref_res and yt_ref_res.get("media_path") and Path(yt_ref_res["media_path"]).exists():
                         ok_yt_clean, _ = await asyncio.to_thread(
@@ -3057,7 +3234,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.debug(f"Scene {scene_id}: YouTube Short refine error: {ex_yt_r}")
 
             # 2. Tầng 2: Tìm kiếm Video Clip Pexels/Pixabay HD mới (kiểm tra RAG Intra-Video Dedup & dHash)
-            if not replaced:
+            if not replaced and not _refine_cancelled():
                 try:
                     from app.services.video_memory_rag import get_video_memory_rag
                     rag_ref = get_video_memory_rag()
@@ -3183,9 +3360,11 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex_sl:
                     logger.debug(f"Scene {scene_id}: Peak slice refine error: {ex_sl}")
 
-        if not replaced and not is_mandatory_vid:
+        if not replaced and not is_mandatory_vid and not _refine_cancelled():
             try:
                 for ph_attempt in range(3):
+                    if _refine_cancelled():
+                        break
                     q_ph = clean_kw_q if ph_attempt == 0 else (overall_refine_q if ph_attempt == 1 else f"{subj_refine} cinematic")
                     best_ph = await asyncio.to_thread(
                         media_agent.search_best_photo,
@@ -3219,7 +3398,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         # 7. Tầng 7 (Zero-Failed-Scene Guarantee): Tuyệt đối KHÔNG lấy video/ảnh của cảnh khác (`clean_video_donors`)
         # để tránh trùng lặp cảnh 100%! Thay vào đó, tải 1 nguồn Stock Video hoặc Ảnh Google độc lập hoàn toàn mới.
-        if not replaced:
+        if not replaced and not _refine_cancelled():
             try:
                 from app.utils.ffmpeg_helper import trim_video
                 from app.graph.tools.media_tools import execute_google_cinematic_image_sync
@@ -3263,7 +3442,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             item["production_method"] = "REFINED_FRESH_STOCK_VIDEO_RESCUE"
                             replaced = True
                             logger.info(f"Scene {scene_id}: 🛡️ [Zero-Failed-Scene Guarantee] Đã tải nguồn Stock Video độc lập mới ('{q_broad_r}')")
-                if not replaced:
+                if not replaced and not _refine_cancelled():
                     out_resc_img = str(media_dir / f"scene_{scene_id:03d}_refined_gimg_rescue_r{retry_count}.jpg")
                     g_res = await asyncio.to_thread(
                         execute_google_cinematic_image_sync,
@@ -3287,7 +3466,27 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as ex_resc:
                 logger.debug(f"Scene {scene_id}: Clean motion rescue error: {ex_resc}")
 
-    await asyncio.gather(*[_refine_single_item(item) for item in scenes_media if isinstance(item, dict)])
+        if scene_id == 1 and replaced and str(item.get("media_path") or "") != existing_mp:
+            item["hook_verified"] = False
+            item.pop("hook_sharpness", None)
+
+    async def _guarded_refine_single_item(item: Dict[str, Any]) -> None:
+        ref_cancel_ev = threading.Event()
+        ref_deadline_ts = time.monotonic() + 38.5
+        try:
+            await asyncio.wait_for(
+                _refine_single_item(
+                    item,
+                    cancel_event=ref_cancel_ev,
+                    deadline_ts=ref_deadline_ts,
+                ),
+                timeout=40.0,
+            )
+        except Exception as _e_ref_to:
+            ref_cancel_ev.set()
+            logger.debug(f"[RefineMedia] Scene {item.get('scene_id')} timeout/skip: {_e_ref_to}")
+
+    await asyncio.gather(*[_guarded_refine_single_item(item) for item in scenes_media if isinstance(item, dict)])
 
     return {
         "scenes_media": scenes_media,

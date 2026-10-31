@@ -20,6 +20,7 @@ import base64
 import logging
 import subprocess
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -610,15 +611,18 @@ Return ONLY valid JSON:
                     "contents": [{"parts": [{"text": plan_prompt}]}],
                     "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.15),
                 }
+                t_req0 = time.monotonic()
                 resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(14))
+                req_elapsed = time.monotonic() - t_req0
                 if resp.status_code == 200:
+                    rotator.record_model_success(key, model_name, req_elapsed)
                     cands = resp.json().get("candidates", [])
                     if cands:
                         txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
                         m = re.search(r"\{.*\}", txt, re.DOTALL)
                         if m:
                             return json.loads(m.group(0))
-                elif resp.status_code in (429, 403, 404, 503, 400):
+                elif resp.status_code in (429, 403, 404, 500, 502, 503, 504, 400):
                     rotator.mark_model_rate_limited(key, model_name, status_code=resp.status_code, error_text=resp.text[:300])
             except Exception as e_distill:
                 rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e_distill))
@@ -983,8 +987,11 @@ Return ONLY valid JSON:
                     "contents": [{"parts": [{"text": scout_prompt}]}],
                     "generationConfig": KeyRotator.build_fast_json_gen_config(m_scout, temperature=0.15),
                 }
+                t_req_sc = time.monotonic()
                 r_sc = requests.post(u_sc, json=p_sc, timeout=KeyRotator.fast_timeout(12))
+                sc_elapsed = time.monotonic() - t_req_sc
                 if r_sc.status_code == 200:
+                    rotator.record_model_success(k_scout, m_scout, sc_elapsed)
                     cands_sc = r_sc.json().get("candidates", [])
                     if cands_sc:
                         txt_sc = "".join(p.get("text", "") for p in cands_sc[0].get("content", {}).get("parts", []))
@@ -1004,7 +1011,7 @@ Return ONLY valid JSON:
                                     f"Lý do: {str(d_sc.get('selection_reasoning', ''))[:100]}"
                                 )
                                 return ordered_sel[:8]
-                elif r_sc.status_code in (429, 403, 404, 503, 400):
+                elif r_sc.status_code in (429, 403, 404, 500, 502, 503, 504, 400):
                     rotator.mark_model_rate_limited(k_scout, m_scout, status_code=r_sc.status_code, error_text=r_sc.text[:300])
             except Exception as e_sc:
                 rotator.mark_model_rate_limited(k_scout, m_scout, status_code=503, error_text=str(e_sc))
@@ -1019,18 +1026,26 @@ Return ONLY valid JSON:
         vid_url_dl = rc_cand["url"]
         q_idx = int(rc_cand.get("q_idx") or dl_idx)
         out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{dl_idx}_%(id)s.%(ext)s")
+        import time as _hk_time
+        t_hk_dl_start = _hk_time.monotonic()
+
+        def _hook_fast_switch_progress(d: Dict[str, Any]) -> None:
+            if d.get("status") == "downloading" and (_hk_time.monotonic() - t_hk_dl_start) > 10.0:
+                raise TimeoutError(f"Hook candidate download > 10s for {vid_url_dl} -> fast-switch")
+
         dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "socket_timeout": 10,
+            "socket_timeout": 8,
             "retries": 1,
             "nopart": True,
-            "max_filesize": 38 * 1024 * 1024,
+            "max_filesize": 18 * 1024 * 1024,
             "format": license_policy.VERTICAL_FIRST_YTDLP_FORMAT,
             "merge_output_format": "mp4",
             "outtmpl": out_tmpl,
-            "ignoreerrors": True,
+            "ignoreerrors": False,
+            "progress_hooks": [_hook_fast_switch_progress],
         })
         try:
             import yt_dlp
@@ -1181,7 +1196,7 @@ Return ONLY valid JSON:
                 validated_peaks[v_str] = peak_meta
                 if peak_meta.get("passed") and len(candidate_videos) < 8:
                     candidate_videos.append(v_str)
-        if len(candidate_videos) < 3 and len(top_curated_yt_cands) > len(wave1_selected):
+        if len(candidate_videos) < 2 and len(top_curated_yt_cands) > len(wave1_selected):
             # Fast-Drop 'A vs B' ở Wave 2: Bỏ qua các video 'vs' còn lại, chỉ tải clip đơn chủ thể sạch!
             rem_non_vs = [
                 c for c in top_curated_yt_cands
@@ -1455,8 +1470,11 @@ Return ONLY valid JSON:
                     ],
                     "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
                 }
+                t_req_v1 = time.monotonic()
                 resp = requests.post(url, json=payload, timeout=(3.5, 8.5))
+                v1_elapsed = time.monotonic() - t_req_v1
                 if resp.status_code == 200:
+                    rotator.record_model_success(key, model_name, v1_elapsed)
                     cands = resp.json().get("candidates", [])
                     if cands:
                         txt = "".join(
@@ -1497,7 +1515,7 @@ Return ONLY valid JSON:
                                 "reason": data.get("reason", ""),
                             }
                             break
-                elif resp.status_code in (429, 403, 404, 503):
+                elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                     rotator.mark_model_rate_limited(key, model_name, status_code=resp.status_code, error_text=resp.text[:300])
             except Exception as e_vis:
                 rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e_vis))
@@ -1559,15 +1577,29 @@ Return ONLY valid JSON:
                                 for m_n2, k_2 in rotator.iter_best_model_key_pairs(max_total_attempts=4):
                                     try:
                                         u2 = f"https://generativelanguage.googleapis.com/v1beta/models/{m_n2}:generateContent?key={k_2}"
-                                        r2 = requests.post(
-                                            u2,
-                                            json={"contents": [{"parts": [{"text": vision_prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": b64_alt2}}]}]},
-                                            timeout=12,
-                                        )
+                                        p2 = {
+                                            "contents": [
+                                                {
+                                                    "parts": [
+                                                        {"text": vision_prompt},
+                                                        {"inline_data": {"mime_type": "image/jpeg", "data": b64_alt2}},
+                                                    ]
+                                                }
+                                            ],
+                                            "generationConfig": KeyRotator.build_fast_json_gen_config(m_n2, temperature=0.1),
+                                        }
+                                        t_req_v2 = time.monotonic()
+                                        r2 = requests.post(u2, json=p2, timeout=(3.5, 8.5))
+                                        v2_elapsed = time.monotonic() - t_req_v2
                                         if r2.status_code == 200:
+                                            rotator.record_model_success(k_2, m_n2, v2_elapsed)
                                             c2 = r2.json().get("candidates", [])
                                             if c2:
-                                                t2 = "".join(p.get("text", "") for p in c2[0].get("content", {}).get("parts", []))
+                                                t2 = "".join(
+                                                    p.get("text", "")
+                                                    for p in c2[0].get("content", {}).get("parts", [])
+                                                    if isinstance(p, dict) and not p.get("thought")
+                                                )
                                                 m2 = re.search(r"\{.*\}", t2, re.DOTALL)
                                                 if m2:
                                                     d2 = json.loads(m2.group(0))
@@ -1603,7 +1635,7 @@ Return ONLY valid JSON:
                                                             "reason": f"[Window #2 @{alt_off2:.1f}s] {d2.get('reason', '')}",
                                                         }
                                                     break
-                                        elif r2.status_code in (429, 403, 404, 503):
+                                        elif r2.status_code in (429, 403, 404, 500, 502, 503, 504):
                                             rotator.mark_model_rate_limited(k_2, m_n2, status_code=r2.status_code, error_text=r2.text[:300])
                                     except Exception as e_v2:
                                         rotator.mark_model_rate_limited(k_2, m_n2, status_code=503, error_text=str(e_v2))
@@ -1812,6 +1844,7 @@ Return ONLY valid JSON:
                         if ok_alt_sh or alt_sh_val > s1_sharp_val:
                             import shutil as _sh_alt
                             _sh_alt.move(alt_out_tmp, hook_output_clip)
+                            best_candidate = alt_cand
                             best_v_path = alt_v_path
                             clean_p_path = alt_clean_p
                             use_precleaned = alt_use_pre
@@ -1850,6 +1883,10 @@ Return ONLY valid JSON:
                     uploader=candidate_uploaders.get(hook_vid_id, ""),
                 )
             hook_source_url = f"https://www.youtube.com/watch?v={hook_vid_id}" if len(hook_vid_id) == 11 else best_v_path
+            is_hook_verified_a = bool(ok_s1_sharp or s1_sharp_val >= 12.0)
+            hook_ov_score_a = float(best_candidate.get("overall_score", 8.0))
+            hook_cl_score_a = float(best_candidate.get("clean_frame_score", 8.0))
+            hook_sh_round_a = round(float(s1_sharp_val), 2)
             pre_resolved_hook_media[1] = {
                 "media_path": hook_output_clip,
                 "media_type": "hook_ready_video",
@@ -1859,7 +1896,11 @@ Return ONLY valid JSON:
                 "full_peak_duration_sec": natural_peak_dur,
                 "youtube_id": hook_vid_id,
                 "source_url": hook_source_url,
-                "strategy_rationale": f"Viral Peak Short @{peak_start:.1f}s (full_peak={natural_peak_dur:.1f}s, {best_candidate['overall_score']}/10)",
+                "hook_verified": is_hook_verified_a,
+                "hook_overall_score": hook_ov_score_a,
+                "hook_clean_score": hook_cl_score_a,
+                "hook_sharpness": hook_sh_round_a,
+                "strategy_rationale": f"Viral Peak Short @{peak_start:.1f}s (full_peak={natural_peak_dur:.1f}s, {hook_ov_score_a}/10)",
             }
             if scenes_media:
                 scene_1["media_path"] = hook_output_clip
@@ -1869,6 +1910,10 @@ Return ONLY valid JSON:
                 scene_1["full_peak_duration_sec"] = natural_peak_dur
                 scene_1["youtube_id"] = hook_vid_id
                 scene_1["source_url"] = hook_source_url
+                scene_1["hook_verified"] = is_hook_verified_a
+                scene_1["hook_overall_score"] = hook_ov_score_a
+                scene_1["hook_clean_score"] = hook_cl_score_a
+                scene_1["hook_sharpness"] = hook_sh_round_a
                 scenes_media[0] = scene_1
     else:
         # CỨU HỘ TẦNG 1.5 (YOUTUBE SHORTS PEAK CLONE TRƯỚC TIÊN) -> CHỈ XOAY SANG PEXELS/STOCK NẾU CHỦ ĐỀ QUÁ KHÓ KIẾM TRÊN YT SHORTS
@@ -1888,7 +1933,10 @@ Return ONLY valid JSON:
                     canonical_subject or visual_keyword or topic,
                 ]) if q
             ][:3]
+            t15_deadline_ts = time.monotonic() + 38.0
             for rq_idx, st_q in enumerate(rescue_yt_queries):
+                if (t15_deadline_ts - time.monotonic()) <= 3.0:
+                    break
                 fb_q = rescue_yt_queries[rq_idx + 1] if (rq_idx + 1) < len(rescue_yt_queries) else topic
                 st_res = execute_youtube_short_peak_clone_sync(
                     search_query=st_q,
@@ -1906,6 +1954,7 @@ Return ONLY valid JSON:
                     channel_id=channel_id,
                     skip_youtube_search=False,
                     allow_3d_cgi_monster=is_3d_cgi_subject,
+                    deadline_ts=t15_deadline_ts,
                 )
                 if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
                     ok_st_sharp, st_sh_val = _ensure_hook_clip_sharpness_and_luma(st_res["media_path"], min_sharpness=12.5)
@@ -1917,6 +1966,8 @@ Return ONLY valid JSON:
                         full_pk_d = float(st_res.get("full_peak_duration_sec") or target_hook_duration_sec)
                         st_yt_id = str(st_res.get("youtube_id") or "")
                         st_src_url = str(st_res.get("source_url") or (f"https://www.youtube.com/watch?v={st_yt_id}" if len(st_yt_id) == 11 else full_pk_p))
+                        st_ov_score = float(st_res.get("vision_score") or 8.2)
+                        st_sh_round = round(float(st_sh_val), 2)
                         pre_resolved_hook_media[1] = {
                             "media_path": st_res["media_path"],
                             "media_type": "hook_ready_video",
@@ -1926,6 +1977,10 @@ Return ONLY valid JSON:
                             "full_peak_duration_sec": full_pk_d,
                             "youtube_id": st_yt_id,
                             "source_url": st_src_url,
+                            "hook_verified": True,
+                            "hook_overall_score": st_ov_score,
+                            "hook_clean_score": 8.2,
+                            "hook_sharpness": st_sh_round,
                             "strategy_rationale": f"Tier-1.5 YT Short Peak Hook ({st_res.get('title', st_q)[:45]})",
                         }
                         scene_1["media_path"] = st_res["media_path"]
@@ -1935,6 +1990,10 @@ Return ONLY valid JSON:
                         scene_1["full_peak_duration_sec"] = full_pk_d
                         scene_1["youtube_id"] = st_yt_id
                         scene_1["source_url"] = st_src_url
+                        scene_1["hook_verified"] = True
+                        scene_1["hook_overall_score"] = st_ov_score
+                        scene_1["hook_clean_score"] = 8.2
+                        scene_1["hook_sharpness"] = st_sh_round
                         if scenes_media:
                             scenes_media[0] = scene_1
                         logger.info(f"🔥 [HookVideoNode Tier-1.5 YT Short Rescue] Đã nạp Peak Video cho Cảnh 1: {st_res['media_path']}")
@@ -2001,18 +2060,33 @@ Return ONLY valid JSON:
                                     stock_hook_ok = True
                                     final_hook_visual_mode = "video"
                                     hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                                    is_broll_verified = bool(
+                                        best_s1_vid.get("vision_curated") or best_s1_vid.get("vision_verified")
+                                    )
+                                    broll_ov_score = float(
+                                        best_s1_vid.get("curation_score") or best_s1_vid.get("vision_score") or 8.0
+                                    )
+                                    broll_sh_round = round(float(s1_broll_sh), 2)
                                     pre_resolved_hook_media[1] = {
                                         "media_path": hook_output_clip,
                                         "media_type": "hook_ready_video",
                                         "production_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
                                         "visual_strategy": "STOCK_VIDEO",
                                         "source_url": s1_raw_url,
+                                        "hook_verified": is_broll_verified,
+                                        "hook_overall_score": broll_ov_score,
+                                        "hook_clean_score": 8.0,
+                                        "hook_sharpness": broll_sh_round,
                                         "strategy_rationale": f"Real motion Stock B-Roll Hook ({s1_raw_title[:45]})",
                                     }
                                     scene_1["media_path"] = hook_output_clip
                                     scene_1["media_type"] = "hook_ready_video"
                                     scene_1["production_method"] = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
                                     scene_1["source_url"] = s1_raw_url
+                                    scene_1["hook_verified"] = is_broll_verified
+                                    scene_1["hook_overall_score"] = broll_ov_score
+                                    scene_1["hook_clean_score"] = 8.0
+                                    scene_1["hook_sharpness"] = broll_sh_round
                                     if scenes_media:
                                         scenes_media[0] = scene_1
                                     logger.info(f"🎬 [HookVideoNode B-Roll Rescue] Đã nạp Video chuyển động thật cho Cảnh 1: '{s1_q}'")
@@ -2064,6 +2138,7 @@ Return ONLY valid JSON:
                             hook_mode = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"
                             m_lc_yt = re.search(r"([A-Za-z0-9_-]{11})", lc_mp4.stem)
                             lc_yt_id = m_lc_yt.group(1) if m_lc_yt else ""
+                            lc_sh_round = round(float(lc_sh_val), 2)
                             pre_resolved_hook_media[1] = {
                                 "media_path": hook_output_clip,
                                 "media_type": "hook_ready_video",
@@ -2073,12 +2148,16 @@ Return ONLY valid JSON:
                                 "full_peak_duration_sec": lc_dur_s,
                                 "youtube_id": lc_yt_id,
                                 "source_url": f"https://www.youtube.com/watch?v={lc_yt_id}" if len(lc_yt_id) == 11 else str(lc_mp4),
+                                "hook_verified": False,
+                                "hook_sharpness": lc_sh_round,
                                 "strategy_rationale": f"Tier-2 Local Peak Motion Rescue ({lc_mp4.name}, sharp={lc_sh_val:.1f})",
                             }
                             scene_1["media_path"] = hook_output_clip
                             scene_1["media_type"] = "hook_ready_video"
                             scene_1["production_method"] = hook_mode
                             scene_1["youtube_id"] = lc_yt_id
+                            scene_1["hook_verified"] = False
+                            scene_1["hook_sharpness"] = lc_sh_round
                             if scenes_media:
                                 scenes_media[0] = scene_1
                             logger.info(

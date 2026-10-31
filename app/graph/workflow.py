@@ -122,7 +122,7 @@ def should_refine_media(state: VideoWorkflowState) -> Literal["refine_media", "r
     media_eval = state.get("media_eval", {})
     passed = bool(media_eval.get("passed", True))
     retry_count = int(state.get("media_retry_count", 0) or 0)
-    max_media_retries = max(0, int(os.getenv("MAX_MEDIA_RETRIES", "2")))
+    max_media_retries = max(0, int(os.getenv("MAX_MEDIA_RETRIES", "1")))
     failed_ids = media_eval.get("failed_scene_ids", [])
 
     if not passed and failed_ids and retry_count < max_media_retries:

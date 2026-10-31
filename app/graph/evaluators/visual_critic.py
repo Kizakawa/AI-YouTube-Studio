@@ -9,6 +9,7 @@ Kiểm tra:
 5. Độ tương phản & màu sắc (Phát hiện ảnh đen kịt hoặc đơn sắc lỗi)
 """
 import logging
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -718,6 +719,8 @@ class VisualCritic:
                 narr = str(item.get("narration") or item.get("visual_keyword") or "")
                 if sid <= 0 or not mpath or not Path(mpath).exists():
                     continue
+                if bool(item.get("hook_verified")):
+                    continue
                 if (
                     "DOODLE_2D" in prod_m_cs
                     or "16X9" in prod_m_cs
@@ -810,8 +813,11 @@ Return ONLY valid JSON in this exact format:
                 "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
             }
             try:
+                t_req_cs = time.monotonic()
                 resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(14))
+                cs_elapsed = time.monotonic() - t_req_cs
                 if resp.status_code == 200:
+                    rotator.record_model_success(api_key, model_name, cs_elapsed)
                     cands = resp.json().get("candidates") or []
                     if cands:
                         txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
@@ -990,7 +996,12 @@ Return ONLY valid JSON in this exact format:
                         elif scene_id == 1:
                             from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
                             req_s1_sh = 8.0 if (is_longform_chapter_clip or p.name.lower().endswith("_16x9.mp4")) else 12.0
-                            ok_s1_sh, s1_sh_val = _ensure_hook_clip_sharpness_and_luma(str(p), min_sharpness=req_s1_sh)
+                            is_hook_preverified = bool(item.get("hook_verified"))
+                            pre_hook_sh = float(item.get("hook_sharpness") or 0.0)
+                            if is_hook_preverified and pre_hook_sh >= req_s1_sh:
+                                ok_s1_sh, s1_sh_val = True, pre_hook_sh
+                            else:
+                                ok_s1_sh, s1_sh_val = _ensure_hook_clip_sharpness_and_luma(str(p), min_sharpness=req_s1_sh)
                             if not ok_s1_sh:
                                 aes_score = max(3.8, round(s1_sh_val * 0.5, 1))
                                 issues.append(
@@ -1001,8 +1012,8 @@ Return ONLY valid JSON in this exact format:
                                 clip_gate = self.inspect_clip_before_concat(
                                     str(p),
                                     min_short_edge=720,
-                                    min_sharpness=req_s1_sh,
-                                    check_watermark=True,
+                                    min_sharpness=5.8,
+                                    check_watermark=not is_hook_preverified,
                                 )
                                 aes_score = float(clip_gate.get("score", 9.2 if is_pregraded_hook else 8.0))
                                 if not clip_gate.get("passed", True):

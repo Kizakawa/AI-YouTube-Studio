@@ -7,6 +7,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -114,12 +115,18 @@ def _verify_short_clip_with_gemini_vision(
     video_title: str = "",
     allow_3d_cgi_monster: bool = False,
     strict_no_fallback: bool = True,
+    cancel_event: Optional[threading.Event] = None,
+    deadline_ts: Optional[float] = None,
 ) -> Tuple[bool, float, str]:
     """
     Trích xuất 3 khung hình (tile=3x1) từ đoạn clip vừa cắt và nhờ Gemini Vision kiểm duyệt nghiêm ngặt:
     - Chặn 100% clip có watermark, logo kênh khác (LatestSightings, MR. FRIEND, @username), phụ đề TikTok/Shorts in cứng, hoặc chữ bị lật ngược.
     - Chặn clip mờ, vỡ hạt, lệch màu, tranh vẽ trộn lẫn cảnh thật, hoặc sai môi trường sống (vd: báo trong sở thú tuyết khi truyện ở thảo nguyên).
     """
+    if cancel_event is not None and cancel_event.is_set():
+        return False, 0.0, "Cancelled by parent task"
+    if deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.5:
+        return False, 0.0, "Deadline exceeded before vision check"
     if not Path(video_path).exists():
         return False, 0.0, "File không tồn tại"
 
@@ -136,6 +143,8 @@ def _verify_short_clip_with_gemini_vision(
         return False, float(pre_gate.get("score", 2.0)), "; ".join(pre_gate.get("issues") or ["Failed pre-assembly clip gate"])
     if float(pre_gate.get("brightness", 50.0)) < 34.0:
         return False, 2.5, f"Clip quá tối / thiếu chi tiết chủ thể (brightness={pre_gate.get('brightness', 0):.1f} < 34)"
+    if (cancel_event is not None and cancel_event.is_set()) or (deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.5):
+        return False, 0.0, "Cancelled/deadline exceeded after CV pre-gate"
 
     with tempfile.TemporaryDirectory() as tmp_v:
         sheet_jpg = str(Path(tmp_v) / "verify_sheet.jpg")
@@ -210,7 +219,12 @@ Return ONLY valid JSON:
             "generationConfig": {"temperature": 0.1},
         }
 
+        from app.agents.curation.scene_context_analyzer_mixin import _VISION_SEM
         for model_name, api_key in rotator.iter_best_model_key_pairs(max_total_attempts=5):
+            if cancel_event is not None and cancel_event.is_set():
+                return False, 0.0, "Cancelled by parent task"
+            if deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.0:
+                break
             if model_name.startswith("gemma-"):
                 continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -219,9 +233,27 @@ Return ONLY valid JSON:
                 "contents": payload["contents"],
                 "generationConfig": gen_cfg,
             }
+            sem_wait = (
+                min(25.0, max(0.5, deadline_ts - time.monotonic() - 2.5))
+                if deadline_ts is not None
+                else 25.0
+            )
+            if not _VISION_SEM.acquire(timeout=sem_wait):
+                break
             try:
-                resp = requests.post(url, json=req_payload, timeout=(3.5, 8.0))
+                if (cancel_event is not None and cancel_event.is_set()) or (
+                    deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.5
+                ):
+                    break
+                eff_read = (
+                    min(11.0, max(3.8, deadline_ts - time.monotonic() - 0.5))
+                    if deadline_ts is not None
+                    else 11.0
+                )
+                t_req0 = time.monotonic()
+                resp = requests.post(url, json=req_payload, timeout=(3.5, eff_read))
                 if resp.status_code == 200:
+                    rotator.record_model_success(api_key, model_name, time.monotonic() - t_req0)
                     cands = resp.json().get("candidates") or []
                     if cands:
                         parts_list = cands[0].get("content", {}).get("parts", [])
@@ -244,6 +276,8 @@ Return ONLY valid JSON:
             except Exception as req_ex:
                 rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(req_ex)[:160])
                 continue
+            finally:
+                _VISION_SEM.release()
     except Exception as ex:
         logger.debug(f"[YouTubePeakTool] Vision check fallback: {ex}")
 
@@ -309,21 +343,21 @@ def _search_youtube_flat_cached(
             seen_s_ids = {str(x.get("id") or "") for x in native_shorts if x.get("id")}
             combined_entries: List[Dict[str, Any]] = list(native_shorts)
 
-            # Bước 2 (Luôn bổ sung song song): Quét cả video YouTube thường 16:9 HD/4K quay thật (không khóa ở < 10)
-            # vì rất nhiều thước phim hoang dã/tài liệu gốc sạch chữ 100% nằm ở dạng 16:9 chứ không nằm trong ổ #shorts edit!
-            yt_query = license_policy.youtube_search_target(sp, max_results=12)
-            try:
-                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=12)) as ydl:
-                    res = ydl.extract_info(yt_query, download=False)
-                for e in ((res or {}).get("entries") or []):
-                    if e and isinstance(e, dict):
-                        eid = str(e.get("id") or "")
-                        if eid and eid not in seen_s_ids:
-                            seen_s_ids.add(eid)
-                            e["is_vertical_short"] = license_policy.is_entry_vertical_short(e)
-                            combined_entries.append(e)
-            except Exception:
-                pass
+            # Bước 2: Chỉ gọi yt_dlp ytsearch8 khi kệ Shorts dọc có ít hơn 5 kết quả (tránh chậm 5s/phrase x 6 cảnh)
+            if len(native_shorts) < 5:
+                yt_query = license_policy.youtube_search_target(sp, max_results=8)
+                try:
+                    with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=8)) as ydl:
+                        res = ydl.extract_info(yt_query, download=False)
+                    for e in ((res or {}).get("entries") or []):
+                        if e and isinstance(e, dict):
+                            eid = str(e.get("id") or "")
+                            if eid and eid not in seen_s_ids:
+                                seen_s_ids.add(eid)
+                                e["is_vertical_short"] = license_policy.is_entry_vertical_short(e)
+                                combined_entries.append(e)
+                except Exception:
+                    pass
             cached_entries = combined_entries
             if cached_entries:
                 with _yt_url_lock:
@@ -333,11 +367,11 @@ def _search_youtube_flat_cached(
     try:
         from app.graph.parallel_search import run_langgraph_parallel_youtube_flat_search
         parallel_buckets = run_langgraph_parallel_youtube_flat_search(
-            search_phrases=search_phrases[:4],
+            search_phrases=search_phrases[:2],
             fetch_single_phrase_fn=_fetch_single_yt_phrase,
         )
     except Exception:
-        parallel_buckets = [{"items": _fetch_single_yt_phrase(sp)} for sp in search_phrases[:3]]
+        parallel_buckets = [{"items": _fetch_single_yt_phrase(sp)} for sp in search_phrases[:2]]
 
     candidates: List[Dict[str, Any]] = []
     seen_ids: Set[str] = set()
@@ -358,7 +392,7 @@ def _search_youtube_flat_cached(
                 webpage_url = f"https://www.youtube.com{webpage_url}"
 
             dur = float(entry.get("duration") or (25.0 if is_vert_short else 0.0))
-            if dur <= 0 or dur < 4 or dur > 240:
+            if dur <= 0 or dur < 4 or dur > 110:
                 continue
 
             title = str(entry.get("title") or "")
@@ -424,6 +458,8 @@ def _rank_youtube_candidates_with_llm(
     search_query: str,
     clip_role: str = "PEAK",
     allow_3d_cgi_monster: bool = False,
+    cancel_event: Optional[threading.Event] = None,
+    deadline_ts: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     """
     Bộ não LLM Batch Candidate Selector cho YouTube:
@@ -432,6 +468,10 @@ def _rank_youtube_candidates_with_llm(
       loại bỏ ngay các video `#edit` so sánh, `"Who would win"` hoặc AI tạo sinh giả cảnh thật.
     """
     if not candidates or len(candidates) <= 1:
+        return candidates
+    if (cancel_event is not None and cancel_event.is_set()) or (
+        deadline_ts is not None and (deadline_ts - time.monotonic()) <= 8.0
+    ):
         return candidates
 
     pool = candidates[:20]
@@ -489,16 +529,22 @@ Return ONLY valid JSON in this exact format:
         keys = settings.get_gemini_keys_pool()
         rotator = KeyRotator(keys) if keys else None
         if rotator and rotator.has_keys:
-            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=4):
+            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=3):
+                if (cancel_event is not None and cancel_event.is_set()) or (
+                    deadline_ts is not None and (deadline_ts - time.monotonic()) <= 6.0
+                ):
+                    break
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
                 gen_cfg = KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1)
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": gen_cfg,
                 }
+                t_req0 = time.monotonic()
                 try:
                     resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(10))
                     if resp.status_code == 200:
+                        rotator.record_model_success(api_key, model_name, time.monotonic() - t_req0)
                         cands_resp = resp.json().get("candidates") or []
                         if cands_resp:
                             txt_out = "".join(p.get("text", "") for p in cands_resp[0].get("content", {}).get("parts", []))
@@ -533,9 +579,10 @@ Return ONLY valid JSON in this exact format:
                                             reverse=True,
                                         )
                                         return curated_pool + remainder
-                    elif resp.status_code in (429, 403, 404, 503):
+                    elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                         rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
-                except Exception:
+                except Exception as rank_ex:
+                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(rank_ex)[:160])
                     continue
     except Exception as ex:
         logger.debug(f"[LLM YouTube Candidate Selector] Fallback pass: {ex}")

@@ -9,20 +9,12 @@ import threading as _threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator
+from app.utils.key_rotator import GEMINI_PRIORITY_MODELS, KeyRotator
 from app.utils.langsmith_tracer import trace_custom_span
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_MODELS = [
-    "gemini-3-flash-preview",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-flash-latest",
-    "gemini-flash-lite-latest",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-3.1-pro-preview",
-]
+AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 _VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "4") or 4)))
 
@@ -164,15 +156,15 @@ class SceneContextAnalyzerMixin:
             tls.session = http_sess
 
         per_req_timeout = max(4.0, float(timeout or 15))
-        wall_budget_sec = max(per_req_timeout * 2.6, 24.0)
-        t_deadline = _time.monotonic() + wall_budget_sec
+        active_http_budget_sec = max(per_req_timeout * 2.8, 32.0)
+        spent_http_sec = 0.0
 
         conn_errors = 0
-        for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=max_attempts or 6):
-            remaining_wall = t_deadline - _time.monotonic()
-            if remaining_wall <= 1.5:
+        for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=max_attempts or 8):
+            remaining_http = active_http_budget_sec - spent_http_sec
+            if remaining_http <= 1.5:
                 logger.warning(
-                    f"[VisualCurationAgent] Đạt ngưỡng wall-clock ({wall_budget_sec:.1f}s) cho gemini_json -> thoát sớm chống treo."
+                    f"[VisualCurationAgent] Đạt ngưỡng active HTTP budget ({active_http_budget_sec:.1f}s) cho gemini_json -> thoát sớm chống treo."
                 )
                 break
             if images and model.startswith("gemma-"):
@@ -183,13 +175,15 @@ class SceneContextAnalyzerMixin:
                 "contents": [{"parts": parts}],
                 "generationConfig": gen_cfg,
             }
-            sem_wait = min(remaining_wall, max(per_req_timeout, 8.0))
-            if not _VISION_SEM.acquire(timeout=sem_wait):
-                logger.warning("[VisualCurationAgent] Quá hạn chờ _VISION_SEM -> thoát sớm tránh dồn hàng đợi.")
+            if not _VISION_SEM.acquire(timeout=45.0):
+                logger.warning("[VisualCurationAgent] Quá hạn chờ _VISION_SEM (45s) -> thoát sớm tránh dồn hàng đợi.")
                 break
+            t_req_start = _time.monotonic()
+            req_elapsed = 0.0
             try:
-                eff_read = min(per_req_timeout, max(3.5, t_deadline - _time.monotonic()))
+                eff_read = min(per_req_timeout, max(4.5, active_http_budget_sec - spent_http_sec))
                 res = http_sess.post(url, json=payload, timeout=KeyRotator.fast_timeout(eff_read))
+                req_elapsed = max(0.05, _time.monotonic() - t_req_start)
             except requests.exceptions.Timeout as e:
                 self.rotator.mark_model_rate_limited(key, model, status_code=504, error_text=f"Timeout: {e}")
                 continue
@@ -202,10 +196,12 @@ class SceneContextAnalyzerMixin:
                 logger.debug(f"[VisualCurationAgent] Gemini call error on {model}: {e}")
                 continue
             finally:
+                spent_http_sec += max(0.05, _time.monotonic() - t_req_start)
                 _VISION_SEM.release()
 
             try:
                 if res.status_code == 200:
+                    self.rotator.record_model_success(key, model, req_elapsed)
                     data = res.json()
                     candidates = data.get("candidates", [])
                     if candidates:

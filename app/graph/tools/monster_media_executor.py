@@ -7,6 +7,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -41,6 +42,8 @@ def execute_epic_monster_cinematic_media_sync(
     scene_id: int = 0,
     channel_id: str = "",
     target_image_count: int = 3,
+    cancel_event: Optional[threading.Event] = None,
+    deadline_ts: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Thực thi công cụ `@tool summon_epic_monster_cinematic_media` (3-Tier Epic Monster & Megalophobia Engine):
@@ -95,6 +98,8 @@ def execute_epic_monster_cinematic_media_sync(
             scene_id=scene_id,
             channel_id=channel_id,
             allow_3d_cgi_monster=True,
+            cancel_event=cancel_event,
+            deadline_ts=deadline_ts,
         )
         if yt_res and yt_res.get("media_path") and Path(yt_res["media_path"]).exists():
             logger.info(
@@ -102,6 +107,11 @@ def execute_epic_monster_cinematic_media_sync(
                 f"(anchor='{s_anchor}'): {yt_res.get('title', '')[:50]}"
             )
             return yt_res
+
+    if (cancel_event is not None and cancel_event.is_set()) or (
+        deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.5
+    ):
+        return None
 
     # 2. TẦNG 2: Săn bộ 3-4 bức Đại cảnh Concept Art 8K (ArtStation / Wallhaven / Movie VFX Stills) có vật đối chiếu tỷ lệ
     c_qs = creature_queries(

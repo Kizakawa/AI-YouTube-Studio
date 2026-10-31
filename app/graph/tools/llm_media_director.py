@@ -184,6 +184,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                     "generationConfig": {"temperature": 0.2},
                 }
 
+                import time as _time
                 tool_capable_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
                 for model_name, api_key in rotator.iter_best_model_key_pairs(tool_capable_models, max_total_attempts=4):
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -191,9 +192,11 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                     if "lite" not in model_name.lower() and not model_name.startswith("gemma-"):
                         gen_cfg_tool["thinkingConfig"] = {"thinkingBudget": 0}
                     payload["generationConfig"] = gen_cfg_tool
+                    t_req0 = _time.monotonic()
                     try:
                         resp = requests.post(url, json=payload, timeout=(3.5, 22 if total_scenes >= 25 else 11.5))
                         if resp.status_code == 200:
+                            rotator.record_model_success(api_key, model_name, _time.monotonic() - t_req0)
                             data = resp.json()
                             parts = (
                                 data.get("candidates", [{}])[0]
@@ -584,6 +587,7 @@ Return ONLY a valid JSON object in this exact format:
 }}"""
 
     try:
+        import time as _time
         import requests
         from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 
@@ -597,10 +601,12 @@ Return ONLY a valid JSON object in this exact format:
                     "contents": [{"parts": [{"text": audit_prompt}]}],
                     "generationConfig": gen_cfg,
                 }
+                t_req0 = _time.monotonic()
                 try:
                     req_t = 12 if model_name.startswith("gemma-") else 11.5
                     resp = requests.post(url, json=payload, timeout=(3.5, req_t))
                     if resp.status_code == 200:
+                        rotator.record_model_success(api_key, model_name, _time.monotonic() - t_req0)
                         cands = resp.json().get("candidates") or []
                         if cands:
                             txt = "".join(
@@ -667,9 +673,10 @@ Return ONLY a valid JSON object in this exact format:
                                         f"qua `{model_name}` -> {verdict_log}"
                                     )
                                     return audited_list
-                    elif resp.status_code in (429, 403, 404, 503):
+                    elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                         rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
                 except Exception as e_req:
+                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_req)[:180])
                     logger.debug(f"[LLM Scope Judge] {model_name} error: {e_req}")
                     continue
     except Exception as ex:

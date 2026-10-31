@@ -42,8 +42,12 @@ class KeyRotator:
     _model_cooldowns: Dict[str, float] = {}
     _global_cursor: int = 0
     _verified_live_models: List[str] = []
+    _model_ema_latency: Dict[str, float] = {}
+    _model_slow_demote_until: Dict[str, float] = {}
     _last_parallel_probe_ts: float = 0.0
     _PARALLEL_PROBE_TTL_SEC: float = 300.0  # Cache kết quả kiểm tra đồng thời trong 5 phút
+    SLOW_LATENCY_THRESHOLD_SEC: float = 7.5
+    DEMOTE_COOLDOWN_SEC: float = 300.0
 
     def __init__(self, keys: List[str], default_cooldown_sec: float = 35.0):
         clean_keys = []
@@ -72,6 +76,61 @@ class KeyRotator:
         expired_m = [mk for mk, until in self._model_cooldowns.items() if until <= now]
         for mk in expired_m:
             self._model_cooldowns.pop(mk, None)
+        expired_slow = [m for m, until in self._model_slow_demote_until.items() if until <= now]
+        for m in expired_slow:
+            self._model_slow_demote_until.pop(m, None)
+
+    @classmethod
+    def _rank_live_model_key(cls, model_name: str, now: float) -> Tuple[int, int, int, int, float]:
+        is_demoted = 1 if cls._model_slow_demote_until.get(model_name, 0.0) > now else 0
+        ema = cls._model_ema_latency.get(model_name, 3.0)
+        speed_tier = 0 if ema <= 4.2 else (1 if ema <= cls.SLOW_LATENCY_THRESHOLD_SEC else 2)
+        speed_band = int(ema // 1.5)
+        quality_rank = _MODEL_QUALITY_RANK.get(model_name, 0)
+        return (is_demoted, speed_tier, speed_band, -quality_rank, round(ema, 3))
+
+    def record_model_success(self, key: str, model: str, latency_sec: float) -> None:
+        """
+        Ghi nhận độ trễ thực tế của model khi trả về HTTP 200 OK (không tốn thêm bất kỳ ping probe nào):
+        - Nếu model phản hồi nhanh (<= 7.5s): xóa án phạt chậm, cập nhật EMA latency và đưa lên nhóm ưu tiên sống (`_verified_live_models`).
+        - Nếu model phản hồi quá chậm (> 7.5s): tự động giáng hạng (demote) trong 300s để nhường đường cho các model phản hồi 1.0s–3.7s.
+        """
+        if not model:
+            return
+        lat = max(0.05, float(latency_sec or 0.0))
+        now = time.monotonic()
+        with self._global_lock:
+            self._cleanup_expired_locked(now)
+            if key:
+                self._model_cooldowns.pop(f"{key}:{model}", None)
+            prev_ema = KeyRotator._model_ema_latency.get(model)
+            ema = lat if prev_ema is None else (0.60 * prev_ema + 0.40 * lat)
+            KeyRotator._model_ema_latency[model] = ema
+
+            if lat > self.SLOW_LATENCY_THRESHOLD_SEC:
+                KeyRotator._model_slow_demote_until[model] = max(
+                    KeyRotator._model_slow_demote_until.get(model, 0.0),
+                    now + self.DEMOTE_COOLDOWN_SEC,
+                )
+                if model in KeyRotator._verified_live_models:
+                    KeyRotator._verified_live_models = [
+                        m for m in KeyRotator._verified_live_models if m != model
+                    ]
+                logger.info(
+                    f"🐢 [KeyRotator Latency Demote] Model `{model}` phản hồi chậm ({lat:.2f}s > {self.SLOW_LATENCY_THRESHOLD_SEC:.1f}s, "
+                    f"EMA={ema:.2f}s) -> Tạm giáng hạng {int(self.DEMOTE_COOLDOWN_SEC)}s để ưu tiên model siêu tốc!"
+                )
+            else:
+                if ema <= self.SLOW_LATENCY_THRESHOLD_SEC:
+                    KeyRotator._model_slow_demote_until.pop(model, None)
+                live_set = [
+                    m for m in KeyRotator._verified_live_models
+                    if m != model and self._model_cooldowns.get(f"*:{m}", 0.0) <= now
+                ]
+                if self._model_cooldowns.get(f"*:{model}", 0.0) <= now:
+                    live_set.append(model)
+                live_set.sort(key=lambda m_item: self._rank_live_model_key(m_item, now))
+                KeyRotator._verified_live_models = live_set
 
     def _select_next_healthy_key(self, advance_cursor: bool = True) -> Optional[str]:
         if not self.keys:
@@ -177,18 +236,23 @@ class KeyRotator:
                 or status_code in (500, 502, 503, 504)
                 or "internal error" in err_low
             ):
-                wait_t = cooldown_sec or 25.0
+                wait_t = cooldown_sec if cooldown_sec is not None else self.DEMOTE_COOLDOWN_SEC
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_t
+                KeyRotator._model_slow_demote_until[model] = max(
+                    KeyRotator._model_slow_demote_until.get(model, 0.0),
+                    now + wait_t,
+                )
+                if model in KeyRotator._verified_live_models:
+                    KeyRotator._verified_live_models = [
+                        m for m in KeyRotator._verified_live_models if m != model
+                    ]
                 active_t_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                # Chỉ tạm khóa toàn cục *:model ngắn hạn (18s) khi >= 3 keys (hoặc toàn bộ pool) cùng gặp 503/Timeout
-                if active_t_locks >= min(3, max(len(self.keys), 1)):
-                    self._model_cooldowns[f"*:{model}"] = now + min(wait_t, 18.0)
-                    if model in KeyRotator._verified_live_models:
-                        KeyRotator._verified_live_models = [
-                            m for m in KeyRotator._verified_live_models if m != model
-                        ]
+                is_hard_timeout = ("timed out" in err_low) or ("timeout" in err_low) or (status_code == 504)
+                # Khóa toàn cục *:model 300s ngay khi endpoint bị treo ReadTimeout hoặc >= 2 keys cùng gặp 503 để chặn đứng hiệu ứng treo dây chuyền
+                if is_hard_timeout or active_t_locks >= min(2, max(len(self.keys), 1)):
+                    self._model_cooldowns[f"*:{model}"] = now + wait_t
             elif (
                 status_code == 403
                 or "api_key_invalid" in err_low
@@ -198,15 +262,26 @@ class KeyRotator:
             else:
                 retry_match = _re.search(r"retry in (\d+(?:\.\d+)?)\s*s", err_low)
                 parsed_retry_s = float(retry_match.group(1)) if retry_match else 0.0
-                wait_s = cooldown_sec or max(60.0, min(parsed_retry_s + 2.0, 120.0) if parsed_retry_s > 0 else 60.0)
+                wait_s = (
+                    cooldown_sec
+                    if cooldown_sec is not None
+                    else max(
+                        self.DEMOTE_COOLDOWN_SEC,
+                        min(parsed_retry_s + 5.0, 600.0) if parsed_retry_s > 0 else self.DEMOTE_COOLDOWN_SEC,
+                    )
+                )
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
-                # Khi >= 2 key cùng bị 429 trên một model (hoặc chỉ có 1 key trong pool), khóa toàn cục *:model 60s
-                # để nhảy thẳng sang model khỏe mạnh kế tiếp thay vì thử tuần tự từng key trên cùng project quota.
+                KeyRotator._model_slow_demote_until[model] = max(
+                    KeyRotator._model_slow_demote_until.get(model, 0.0),
+                    now + wait_s,
+                )
+                # Khi >= 1 key bị 429 trên một model (do các key chung Google Cloud Project hoặc chạm trần RPM),
+                # khóa toàn cục *:model 300s để toàn bộ worker threads nhảy thẳng sang model sống siêu tốc ngay lập tức!
                 active_key_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_key_locks >= min(2, max(len(self.keys), 1)):
-                    self._model_cooldowns[f"*:{model}"] = now + min(wait_s, 60.0)
+                if active_key_locks >= 1:
+                    self._model_cooldowns[f"*:{model}"] = now + wait_s
                     if model in KeyRotator._verified_live_models:
                         KeyRotator._verified_live_models = [
                             m for m in KeyRotator._verified_live_models if m != model
@@ -319,23 +394,40 @@ class KeyRotator:
         if not self.keys:
             return
 
-        # Bỏ qua việc bắn 8 HTTP probe giả ('1') gây tốn RPM quota; sử dụng danh sách model ưu tiên kết hợp lịch sử sống (_verified_live_models)
-        live_ranked = [
-            m for m in KeyRotator._verified_live_models
-            if self._model_cooldowns.get(f"*:{m}", 0.0) <= time.monotonic()
-        ]
+        # Bỏ qua việc bắn 8 HTTP probe giả ('1') gây tốn RPM quota; sử dụng danh sách model sống được cập nhật theo độ trễ thực tế (_verified_live_models)
+        now_init = time.monotonic()
+        with self._global_lock:
+            self._cleanup_expired_locked(now_init)
+            live_ranked = sorted(
+                [
+                    m for m in KeyRotator._verified_live_models
+                    if self._model_cooldowns.get(f"*:{m}", 0.0) <= now_init
+                    and self._model_slow_demote_until.get(m, 0.0) <= now_init
+                ],
+                key=lambda m_item: self._rank_live_model_key(m_item, now_init),
+            )
 
-        # Ghép danh sách ưu tiên: Đưa các model sống (đã xếp hạng từ xịn nhất) lên đầu tiên.
-        # Nếu caller truyền danh sách `models` cụ thể (ví dụ chỉ các model hỗ trợ Vision), ưu tiên lọc trong `models` đó trước.
+        # Ghép danh sách ưu tiên:
+        # 1) Các model sống phản hồi nhanh (<= 7.5s, xếp theo tốc độ & Quality Tier) lên đầu tiên
+        # 2) Các model chưa bị giáng hạng chậm
+        # 3) Các model đang bị giáng hạng chậm (> 7.5s trong 300s gần nhất) bị đẩy xuống cuối cùng
         base_models = list(models) if models else list(GEMINI_PRIORITY_MODELS)
         if models:
             allowed_set = set(base_models)
-            model_list: List[str] = [m for m in live_ranked if m in allowed_set]
+            fast_candidates: List[str] = [m for m in live_ranked if m in allowed_set]
         else:
-            model_list = list(live_ranked)
+            fast_candidates = list(live_ranked)
+
+        slow_tail: List[str] = []
         for m in base_models:
-            if m not in model_list:
-                model_list.append(m)
+            if m in fast_candidates or m in slow_tail:
+                continue
+            if self._model_slow_demote_until.get(m, 0.0) > now_init:
+                slow_tail.append(m)
+            else:
+                fast_candidates.append(m)
+        slow_tail.sort(key=lambda m_item: self._model_ema_latency.get(m_item, 99.0))
+        model_list: List[str] = fast_candidates + slow_tail
 
         n_keys = len(self.keys)
         default_cap = max(8, n_keys * 2)
@@ -353,6 +445,17 @@ class KeyRotator:
                 with self._global_lock:
                     self._cleanup_expired_locked(now)
                     if self._model_cooldowns.get(f"*:{model}", 0.0) > now:
+                        continue
+                    # Ở lượt quét đầu tiên (pass_idx == 0), bỏ qua model đang bị giáng hạng chậm nếu vẫn còn model nhanh khả dụng
+                    if (
+                        pass_idx == 0
+                        and self._model_slow_demote_until.get(model, 0.0) > now
+                        and any(
+                            self._model_cooldowns.get(f"*:{fm}", 0.0) <= now
+                            and self._model_slow_demote_until.get(fm, 0.0) <= now
+                            for fm in model_list
+                        )
+                    ):
                         continue
                     start_idx = self._global_cursor % n_keys
 
@@ -372,35 +475,51 @@ class KeyRotator:
                     yield model, candidate_key
                     break  # Chuyển ngay sang Model kế tiếp trong pass hiện tại!
 
-        # Fallback dự phòng cho các dòng Flash/Flash-Lite ổn định nếu tất cả cặp trên đang trong thời gian cooldown ngắn
-        for fb_model in ("gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-robotics-er-2-preview"):
+        # Fallback dự phòng ưu tiên các dòng siêu tốc (1.0s–3.7s) nếu tất cả cặp trên đang trong thời gian cooldown ngắn
+        fallback_order = (
+            "gemini-3.1-flash-lite-preview",
+            "gemini-flash-lite-latest",
+            "gemini-3.6-flash",
+            "gemini-robotics-er-2-preview",
+            "gemini-3.5-flash-lite",
+            "gemini-3-flash-preview",
+            "gemini-3.5-flash",
+        )
+        allowed_fb = set(base_models) if models else None
+        for fb_model in fallback_order:
             if yielded >= limit:
                 return
-            if self._model_cooldowns.get(f"*:{fb_model}", 0.0) > time.monotonic():
+            if allowed_fb is not None and fb_model not in allowed_fb:
+                continue
+            now_fb = time.monotonic()
+            if self._model_cooldowns.get(f"*:{fb_model}", 0.0) > now_fb:
+                continue
+            if self._model_slow_demote_until.get(fb_model, 0.0) > now_fb:
                 continue
             fb_key = self._select_next_healthy_key(advance_cursor=True)
-            if fb_key and f"{fb_model}::{fb_key}" not in yielded_pairs:
+            if fb_key and self.is_model_available(fb_key, fb_model) and f"{fb_model}::{fb_key}" not in yielded_pairs:
                 yielded += 1
                 yielded_pairs.add(f"{fb_model}::{fb_key}")
                 yield fb_model, fb_key
 
-        # Cứu hộ chống "0 requests": Nếu toàn bộ model đều đang vướng cooldown ngắn hạn (< 120s, không phải lỗi 404/Daily Quota 3600s),
+        # Cứu hộ chống "0 requests": Nếu toàn bộ model đều đang vướng cooldown tạm thời (<= 360s, không phải lỗi 404/Daily Quota 3600s),
         # tự động chọn tối đa 3 cặp (model, key) sắp hết hạn cooldown sớm nhất để luôn thực hiện được request thật!
         if yielded == 0 and self.keys:
             now_rescue = time.monotonic()
+            rescue_max_wait = max(360.0, self.DEMOTE_COOLDOWN_SEC + 60.0)
             rescue_candidates: List[Tuple[float, str, str]] = []
             with self._global_lock:
                 for m in model_list:
                     global_until = self._model_cooldowns.get(f"*:{m}", 0.0)
-                    if global_until - now_rescue > 120.0:
+                    if global_until - now_rescue > rescue_max_wait:
                         continue  # Bỏ qua các model bị khóa 404 / Daily Quota 60 phút
                     for k in self.keys:
-                        if self._global_cooldowns.get(k, 0.0) - now_rescue > 120.0:
+                        if self._global_cooldowns.get(k, 0.0) - now_rescue > rescue_max_wait:
                             continue
                         km_until = self._model_cooldowns.get(f"{k}:{m}", 0.0)
-                        if km_until - now_rescue > 120.0:
+                        if km_until - now_rescue > rescue_max_wait:
                             continue
-                        eff_until = max(global_until, km_until)
+                        eff_until = max(global_until, km_until, self._model_slow_demote_until.get(m, 0.0))
                         rescue_candidates.append((eff_until, m, k))
             rescue_candidates.sort(key=lambda item: item[0])
             used_rescue_models: set = set()

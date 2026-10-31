@@ -7,6 +7,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -34,6 +35,8 @@ def execute_clean_cinematic_portrait_or_broll_sync(
     job_id: int = 0,
     scene_id: int = 0,
     target_image_count: int = 3,
+    cancel_event: Optional[threading.Event] = None,
+    deadline_ts: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Thực thi công cụ `@tool fetch_clean_cinematic_portrait_or_broll`:
@@ -79,6 +82,8 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 job_id=job_id,
                 scene_id=scene_id,
                 skip_youtube_search=False,
+                cancel_event=cancel_event,
+                deadline_ts=deadline_ts,
             )
             if yt_forensic_res and yt_forensic_res.get("media_path") and Path(yt_forensic_res["media_path"]).exists():
                 logger.info(
@@ -88,6 +93,11 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 return yt_forensic_res
         except Exception as e_yt_f:
             logger.debug(f"[CleanPortraitTool] YouTube Shorts priority skip on scene {scene_id}: {e_yt_f}")
+
+        if (cancel_event is not None and cancel_event.is_set()) or (
+            deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.5
+        ):
+            return None
 
         # Ưu tiên #2: Dự phòng Video B-Roll Dark Noir diễn viên thật Pexels / Pixabay HD sạch chữ 100%
         va_clean_vid = {

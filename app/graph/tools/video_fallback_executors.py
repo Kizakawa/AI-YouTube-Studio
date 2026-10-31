@@ -7,6 +7,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -41,8 +42,14 @@ def _try_bilibili_broll_fallback(
     job_id: int,
     eff_scene_id: int,
     aspect_ratio: str = "9:16",
+    cancel_event: Optional[threading.Event] = None,
+    deadline_ts: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
     """Tầng 1.5: Săn B-Roll độc quyền trên Bilibili (Safe-Crop logo/phụ đề + duyệt Gemini Vision)."""
+    if (cancel_event is not None and cancel_event.is_set()) or (
+        deadline_ts is not None and (deadline_ts - time.monotonic()) <= 3.0
+    ):
+        return None
     from app.services.media.media_history import extract_media_identity, record_used_media
     from app.services.video_memory_rag import get_video_memory_rag
     rag = get_video_memory_rag()
@@ -62,6 +69,10 @@ def _try_bilibili_broll_fallback(
         )
         bili_cands = search_bilibili_videos(zh_query, max_results=6, min_dur_s=10.0, max_dur_s=540.0)
         for b_cand in bili_cands[:2]:
+            if (cancel_event is not None and cancel_event.is_set()) or (
+                deadline_ts is not None and (deadline_ts - time.monotonic()) <= 3.0
+            ):
+                break
             bvid = str(b_cand.get("bvid") or b_cand.get("id") or "")
             b_url = str(b_cand.get("url") or f"https://www.bilibili.com/video/{bvid}")
             b_title = str(b_cand.get("title") or bvid)
@@ -113,6 +124,8 @@ def _try_bilibili_broll_fallback(
                 video_title=f"{b_title} ({zh_query})",
                 allow_3d_cgi_monster=allow_3d_cgi_monster,
                 strict_no_fallback=True,
+                cancel_event=cancel_event,
+                deadline_ts=deadline_ts,
             )
             if not passed_vis_b:
                 logger.info(
@@ -170,8 +183,14 @@ def _try_licensed_stock_video_fallback(
     job_id: int,
     eff_scene_id: int,
     aspect_ratio: str = "9:16",
+    cancel_event: Optional[threading.Event] = None,
+    deadline_ts: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
     """Tầng 2: Fallback tự động sang Video HD dọc bản quyền Pexels / Pixabay / Wikimedia Commons."""
+    if (cancel_event is not None and cancel_event.is_set()) or (
+        deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.5
+    ):
+        return None
     from app.services.media.media_history import extract_media_identity, is_media_already_used, record_used_media
     from app.services.video_memory_rag import get_video_memory_rag
     rag = get_video_memory_rag()
@@ -212,47 +231,32 @@ def _try_licensed_stock_video_fallback(
                 "expected_visual_content": f"{scene_subj_hint} — {narration}",
                 "search_queries": stock_query_candidates[:3],
                 "is_hook_scene": ((clip_role or "").upper() == "HOOK"),
+                "skip_establishing_pass": True,
             }
             effective_narr = (
                 f"{topic or overall_script_query}. {narration}"
                 if effective_scope == "SCRIPT_OVERALL"
                 else narration
             )
-            # Thử tối đa 3 truy vấn từ cụ thể -> rút gọn danh từ gốc (2 từ -> 1 từ) + bổ sung nguồn thứ 5 Wikimedia Commons HD Video
-            for idx_sq, st_q in enumerate(stock_query_candidates[:2]):
+            # StockFetcher.search_best_video_clip đã quét song song 5 nhánh trên toàn bộ search_queries[:3];
+            # chỉ gọi 1 lượt duy nhất để tránh nhân 4-8 lần số lượt gọi Pexels + Gemini Vision!
+            for idx_sq, st_q in enumerate(stock_query_candidates[:1]):
                 va_iter = dict(va_vid)
-                q_2w = _clean_yt_search_phrase(st_q, max_words=2)
-                va_iter["search_queries"] = list(dict.fromkeys([q for q in (st_q, q_2w) if q]))
-                best_stock_v = None
-                for _claim_retry in range(2):
-                    best_stock_v = media_agent.search_best_video_clip(
-                        query=st_q,
-                        used_urls=used,
-                        visual_analysis=va_iter,
-                        narration=effective_narr,
-                        topic=topic or overall_script_query,
-                    )
-                    stock_backend = getattr(media_agent, "_stock", None) or getattr(media_agent, "_stock_fetcher", None)
-                    if (not best_stock_v or not best_stock_v.get("url")) and stock_backend is not None:
-                        try:
-                            wiki_vids = stock_backend.search_wikimedia_videos(st_q, per_page=6) or []
-                            for wv in wiki_vids:
-                                w_url = wv.get("url")
-                                if w_url and not is_media_already_used(w_url, used):
-                                    best_stock_v = wv
-                                    break
-                        except Exception:
-                            pass
-                    if not best_stock_v or not best_stock_v.get("url"):
-                        break
+                best_stock_v = media_agent.search_best_video_clip(
+                    query=st_q,
+                    used_urls=used,
+                    visual_analysis=va_iter,
+                    narration=effective_narr,
+                    topic=topic or overall_script_query,
+                )
+                if best_stock_v and best_stock_v.get("url"):
                     v_url_try = best_stock_v["url"]
                     st_title_try = str(best_stock_v.get("title") or "")
-                    if rag.try_claim_in_job_video(job_id=job_id, url=v_url_try, title=st_title_try, scene_id=eff_scene_id):
-                        break
-                    with _yt_url_lock:
-                        used.update(extract_media_identity(v_url_try))
-                        used.add(v_url_try)
-                    best_stock_v = None
+                    if not rag.try_claim_in_job_video(job_id=job_id, url=v_url_try, title=st_title_try, scene_id=eff_scene_id):
+                        with _yt_url_lock:
+                            used.update(extract_media_identity(v_url_try))
+                            used.add(v_url_try)
+                        best_stock_v = None
                 if not best_stock_v or not best_stock_v.get("url"):
                     continue
                 st_title = str(best_stock_v.get("title") or "")
@@ -262,6 +266,12 @@ def _try_licensed_stock_video_fallback(
                         candidate_stock_urls.append(alt_u)
 
                 for cand_idx_u, v_url in enumerate(candidate_stock_urls[:3]):
+                    if (cancel_event is not None and cancel_event.is_set()) or (
+                        deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.0
+                    ):
+                        if cand_idx_u == 0:
+                            rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
+                        break
                     if cand_idx_u > 0:
                         if not rag.try_claim_in_job_video(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id):
                             continue
@@ -319,10 +329,9 @@ def _try_licensed_stock_video_fallback(
                                 Path(output_path).unlink(missing_ok=True)
                                 continue
 
-                            # Nếu clip đã được LLM Link & Vision Auditor duyệt trực tiếp qua ảnh Thumbnail (score >= 6.5, khớp ngưỡng StockFetcher),
-                            # không gọi lại Gemini Vision lần thứ 2 trên cùng 1 video để tiết kiệm 6.5 giây/cảnh!
+                            # Chỉ miễn kiểm tra Vision lần 2 nếu clip ĐÃ ĐƯỢC Gemini Vision nhìn trực tiếp qua Thumbnail (`vision_curated == True`)
                             pre_vis_score = float(best_stock_v.get("vision_score") or best_stock_v.get("curation_score") or 0.0)
-                            is_pre_curated = bool(best_stock_v.get("vision_curated") or ("curation_score" in best_stock_v))
+                            is_pre_curated = bool(best_stock_v.get("vision_curated"))
                             if is_pre_curated and pre_vis_score >= 6.5:
                                 passed_st_vis = True
                                 st_vis_score = pre_vis_score
@@ -338,6 +347,8 @@ def _try_licensed_stock_video_fallback(
                                     video_title=st_title,
                                     allow_3d_cgi_monster=False,
                                     strict_no_fallback=True,
+                                    cancel_event=cancel_event,
+                                    deadline_ts=deadline_ts,
                                 )
                             if not passed_st_vis:
                                 logger.info(
