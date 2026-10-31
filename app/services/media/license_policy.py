@@ -93,16 +93,18 @@ def ytdlp_cli_match_filter(base_filter: str = "") -> str:
     return " & ".join(parts)
 
 
-# ── Ưu tiên số 1 cho định dạng dọc 9:16 (YouTube Shorts nguyên bản, aspect_ratio <= 1.0) ──
+# ── Ưu tiên số 1 cho định dạng dọc 9:16 gọn nhẹ <= 1920p (<18MB) để tải tức thì 0.5s, tránh stream 4K 50MB ──
 VERTICAL_FIRST_YTDLP_FORMAT = (
-    "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=2560][ext=mp4]/"
-    "bestvideo[aspect_ratio<=1][height>=720][height<=2560][ext=mp4]/"
-    "bestvideo[aspect_ratio<=1][height>=480][ext=mp4]/"
-    "best[aspect_ratio<=1][height>=480]/"
-    "bestvideo[protocol=https][height>=720][height<=1920][ext=mp4]/"
-    "bestvideo[protocol=https][height>=480][height<=1920][ext=mp4]/"
-    "bestvideo[height>=720][height<=1920][ext=mp4]/"
-    "bestvideo[height>=480][height<=1920]/bestvideo/best"
+    "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=1920][filesize<18M][ext=mp4]/"
+    "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=1920][filesize_approx<18M][ext=mp4]/"
+    "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=1440][ext=mp4]/"
+    "bestvideo[aspect_ratio<=1][height>=720][height<=1920][ext=mp4]/"
+    "bestvideo[aspect_ratio<=1][height>=480][height<=1920][ext=mp4]/"
+    "best[aspect_ratio<=1][height>=480][height<=1920]/"
+    "bestvideo[protocol=https][height>=720][height<=1080][filesize<18M][ext=mp4]/"
+    "bestvideo[protocol=https][height>=720][height<=1080][ext=mp4]/"
+    "bestvideo[protocol=https][height>=480][height<=1080][ext=mp4]/"
+    "bestvideo[height>=480][height<=1080]/bestvideo/best"
 )
 
 

@@ -1281,7 +1281,7 @@ class VideoMemoryRAG:
             if img_hash:
                 for prev_sid, prev_hashes in seen_sigs.items():
                     for ph in (prev_hashes or []):
-                        if len(ph) == len(img_hash) and sum(a != b for a, b in zip(img_hash, ph)) <= 6:
+                        if len(ph) == len(img_hash) and sum(a != b for a, b in zip(img_hash, ph)) <= 9:
                             logger.info(
                                 f"🚫 [MiniRAG Multi-Image Guard] Loại bỏ ảnh trùng lặp thị giác tại Cảnh #{scene_id} "
                                 f"({Path(image_path).name} trùng dHash với Cảnh #{prev_sid})!"

@@ -957,9 +957,24 @@ Return ONLY valid JSON in this exact format:
                             failed = True
                         elif not failed:
                             aes_score = round(min(9.8, 7.6 + (sharpness - min_req_sharpness) * 0.22), 1)
-                        img_hash = self._compute_image_hash(str(p))
-                        if img_hash:
-                            sig = [img_hash]
+                        pose_list = [
+                            str(pp)
+                            for pp in (item.get("pose_images") or [str(p)])
+                            if pp and Path(str(pp)).exists() and not str(pp).endswith("_graphic.png")
+                        ]
+                        if not pose_list:
+                            pose_list = [str(p)]
+                        sig = []
+                        for pp in pose_list:
+                            h_val = self._compute_image_hash(pp)
+                            if h_val:
+                                if any(sum(a != b for a, b in zip(h_val, prev_h)) <= 8 for prev_h in sig):
+                                    issues.append(f"Hai ảnh trong cùng Cảnh #{scene_id} bị trùng lặp góc máy")
+                                    aes_score -= 3.5
+                                    failed = True
+                                else:
+                                    sig.append(h_val)
+                        img_hash = sig[0] if sig else None
                 except Exception as ex:
                     valid_bitmap = False
                     issues.append(f"Lỗi đọc file ảnh với Pillow: {ex}")

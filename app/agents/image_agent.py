@@ -226,6 +226,21 @@ class ImageAgent:
                         f"'{target_query}' → {output_path}"
                     )
                     return output_path
+
+            # Fallback sang Google/Bing/DDGS Top Images (execute_google_cinematic_image_sync) để không bao giờ rơi vào placeholder tím
+            from app.graph.tools.google_image_executor import execute_google_cinematic_image_sync
+            g_res = execute_google_cinematic_image_sync(
+                smart_query=target_query,
+                output_path=output_path,
+                narration=query,
+                topic=topic,
+                used_urls=used_urls,
+                is_hook_scene=False,
+                subject_entity=clean_scene_search_query(topic or target_query, max_words=2),
+                target_image_count=1,
+            )
+            if g_res and g_res.get("media_path") and Path(g_res["media_path"]).exists():
+                return str(g_res["media_path"])
         except Exception as e:
             logger.debug(f"[ImageAgent] Photo fallback error: {e}")
         return None

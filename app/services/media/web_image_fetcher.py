@@ -151,23 +151,21 @@ class WebImageFetcher:
             return parsed
 
         out: List[Dict] = []
-        base_params = {
-            "q": query,
-            "first": "0",
-            "count": str(min(limit, 35)),
-            "mmasync": "1",
+        from urllib.parse import quote_plus
+        req_headers = {
+            "User-Agent": _UA,
+            "Accept-Language": "en-US,en;q=0.9",
         }
+        q_enc = quote_plus(query)
         try:
-            client = cls._get_primp_client(timeout=9)
-            # Ưu tiên lọc ảnh kích thước lớn (large HD) như Google tbs=isz:l
-            r_large = client.get(
-                "https://www.bing.com/images/async",
-                params={**base_params, "qft": "+filterui:imagesize-large"},
-            )
+            # Ưu tiên số 1: Truy vấn HTTP trực tiếp Bing /images/search (lọc ảnh kích thước lớn imagesize-large, phản hồi ~0.5s)
+            url_large = f"https://www.bing.com/images/search?q={q_enc}&form=HDRSC2&first=1&qft=+filterui:imagesize-large"
+            r_large = requests.get(url_large, headers=req_headers, timeout=(1.2, 4.5))
             if r_large.status_code == 200 and "iusc" in r_large.text:
                 out.extend(_parse_bing_html(r_large.text))
             if len(out) < 10:
-                r_all = client.get("https://www.bing.com/images/async", params=base_params)
+                url_all = f"https://www.bing.com/images/search?q={q_enc}&form=HDRSC2&first=1&adlt={safe_mode}"
+                r_all = requests.get(url_all, headers=req_headers, timeout=(1.2, 4.0))
                 if r_all.status_code == 200 and "iusc" in r_all.text:
                     seen_u = {x["image"] for x in out}
                     for item in _parse_bing_html(r_all.text):
@@ -178,28 +176,28 @@ class WebImageFetcher:
             pass
 
         if not out:
-            res = requests.get(
-                "https://www.bing.com/images/async",
-                params={**base_params, "adlt": safe_mode},
-                headers={
-                    "User-Agent": _UA,
-                    "Accept-Language": "en-US,en;q=0.9",
-                },
-                timeout=9,
-            )
+            url_async = f"https://www.bing.com/images/async?q={q_enc}&first=0&count={min(limit, 35)}&mmasync=1&qft=+filterui:imagesize-large"
+            res = requests.get(url_async, headers=req_headers, timeout=(1.2, 4.5))
             if res.status_code != 200:
                 raise RuntimeError(f"Bing HTTP {res.status_code}")
             out = _parse_bing_html(res.text)
         return out[:limit]
 
-    @staticmethod
-    def _raw_ddgs_images(query: str, limit: int = 20) -> List[Dict]:
+    @classmethod
+    def _raw_ddgs_images(cls, query: str, limit: int = 20) -> List[Dict]:
+        if os.getenv("ENABLE_DDGS_SEARCH", "false").strip().lower() not in ("1", "true", "yes", "on"):
+            return cls._raw_bing_images(f"{query} photography", limit=limit)
         try:
             from ddgs import DDGS
         except ImportError:
             from duckduckgo_search import DDGS
         safe_mode = "off" if bypass_copyright_enabled() else "moderate"
-        raw = list(DDGS(timeout=8).images(query, region="us-en", safesearch=safe_mode, max_results=limit))
+        try:
+            raw = list(DDGS(timeout=3).images(query, region="us-en", safesearch=safe_mode, max_results=limit))
+        except Exception:
+            import time as _t
+            cls._engine_block_until["ddgs"] = _t.time() + 1800
+            return cls._raw_bing_images(query, limit=limit)
         for r in raw:
             turl = r.get("thumbnail") or ""
             if turl and not r.get("fallback_url"):
@@ -214,7 +212,7 @@ class WebImageFetcher:
 
     @classmethod
     def _raw_artstation_images(cls, query: str, limit: int = 18) -> List[Dict]:
-        """ArtStation API v2 — Kho tác phẩm 3D Render, Concept Art 8K, Dark Fantasy, Quái vật CGI đỉnh cao thế giới (dùng primp vượt Cloudflare)."""
+        """ArtStation API v2 — Kho tác phẩm 3D Render, Concept Art 8K, Dark Fantasy, Quái vật CGI đỉnh cao thế giới."""
         import re as _re
         short_q = cls._concise_art_query(query, max_words=3)
         if not short_q:
@@ -226,36 +224,39 @@ class WebImageFetcher:
         }
         data = []
         try:
-            client = cls._get_primp_client(timeout=8)
-            r_p = client.get(
-                "https://www.artstation.com/api/v2/search/projects.json",
-                params={"query": short_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
-                headers=headers,
-            )
-            if r_p.status_code == 200:
-                data = r_p.json().get("data") or []
-                if len(data) < 3 and len(short_q.split()) > 1:
-                    core_q = cls._concise_art_query(query, max_words=2)
-                    if core_q and core_q != short_q:
-                        r_p2 = client.get(
-                            "https://www.artstation.com/api/v2/search/projects.json",
-                            params={"query": core_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
-                            headers=headers,
-                        )
-                        if r_p2.status_code == 200:
-                            data = data + (r_p2.json().get("data") or [])
-        except Exception:
-            pass
-        if not data:
             res = requests.get(
                 "https://www.artstation.com/api/v2/search/projects.json",
                 params={"query": short_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
                 headers=headers,
-                timeout=8,
+                timeout=(2.5, 5.0),
             )
-            if res.status_code != 200:
-                raise RuntimeError(f"ArtStation HTTP {res.status_code}")
-            data = res.json().get("data") or []
+            if res.status_code == 200:
+                data = res.json().get("data") or []
+                if len(data) < 3 and len(short_q.split()) > 1:
+                    core_q = cls._concise_art_query(query, max_words=2)
+                    if core_q and core_q != short_q:
+                        res2 = requests.get(
+                            "https://www.artstation.com/api/v2/search/projects.json",
+                            params={"query": core_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
+                            headers=headers,
+                            timeout=(2.5, 5.0),
+                        )
+                        if res2.status_code == 200:
+                            data = data + (res2.json().get("data") or [])
+        except Exception:
+            pass
+        if not data:
+            try:
+                client = cls._get_primp_client(timeout=4)
+                r_p = client.get(
+                    "https://www.artstation.com/api/v2/search/projects.json",
+                    params={"query": short_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
+                    headers=headers,
+                )
+                if r_p.status_code == 200:
+                    data = r_p.json().get("data") or []
+            except Exception as e_art:
+                raise RuntimeError(f"ArtStation fetch failed: {e_art}")
 
         out: List[Dict] = []
         seen = set()
@@ -427,23 +428,8 @@ class WebImageFetcher:
             params["tbs"] = tbs
         target_url = f"https://www.google.com/search?{urlencode(params)}"
 
-        # Ưu tiên số 1: Dùng primp giả lập TLS Chrome phản hồi trong ~0.4s (không tốn 10-14s khởi tạo tiến trình chrome.exe)
+        # Ưu tiên số 1: Nếu không bật Headless Chrome (do Google tbm=isch luôn trả JS challenge với HTTP thường), trả rỗng ngay để chuyển sang Bing HD trong 0ms
         if os.getenv("ENABLE_HEADLESS_GOOGLE_DOM", "false").strip().lower() not in ("1", "true", "yes", "on"):
-            try:
-                client = cls._get_primp_client(timeout=6)
-                r_primp = client.get(
-                    target_url,
-                    headers={
-                        "User-Agent": _UA,
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                        "Accept-Language": "en-US,en;q=0.9",
-                        "Cookie": "CONSENT=YES+cb.20230531-04-p0.en+FX+908;",
-                    },
-                )
-                if r_primp.status_code == 200 and r_primp.text:
-                    return r_primp.text
-            except Exception:
-                pass
             return ""
 
         browser_exe = cls._find_headless_browser()
@@ -556,29 +542,14 @@ class WebImageFetcher:
             except Exception as e:
                 logger.debug(f"[WebImage] Google CSE fallback: {e}")
 
-        # 2. Truy vấn trực tiếp Top Search Google Images (tbm=isch & tbs=isz:l ưu tiên ảnh độ phân giải lớn)
+        # 2. Truy vấn trực tiếp Top Search Google Images (chỉ gọi khi bật ENABLE_HEADLESS_GOOGLE_DOM=true)
         raw_html = cls._fetch_google_isch_dom_headless(query, safe_mode=safe_mode, tbs="isz:l")
-        if not raw_html:
-            # Dự phòng HTTP thường nếu chưa có HTML
-            headers = {
-                "User-Agent": _UA,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Cookie": "CONSENT=YES+cb.20230531-04-p0.en+FX+908;",
-            }
-            res = requests.get(
-                "https://www.google.com/search",
-                params={"q": query, "tbm": "isch", "tbs": "isz:l", "hl": "en", "gl": "us", "safe": safe_mode, "ijn": "0"},
-                headers=headers,
-                timeout=5,
-            )
-            if res.status_code == 200:
-                raw_html = res.text
-
         if not raw_html:
             if out:
                 return out
-            raise RuntimeError("Không lấy được HTML từ Google Images")
+            import time as _t
+            cls._engine_block_until["google"] = _t.time() + 1800
+            return cls._raw_bing_images(query, limit=limit)
 
         text = (
             raw_html
@@ -641,7 +612,9 @@ class WebImageFetcher:
                 break
 
         if not out and "/httpservice/retry/enablejs" in raw_html:
-            raise RuntimeError("Google Images yêu cầu JS challenge")
+            import time as _t
+            cls._engine_block_until["google"] = _t.time() + 1800
+            return cls._raw_bing_images(query, limit=limit)
         return out
 
     @staticmethod

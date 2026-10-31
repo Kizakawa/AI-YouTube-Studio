@@ -773,7 +773,8 @@ class StockFetcher:
         # Thang truy vấn: cụ thể -> đồng nghĩa phổ biến (caiman -> crocodile) -> cảnh toàn đúng bối cảnh
         # CẤM TUYỆT ĐỐI dùng cảnh toàn (establishing shot rừng/sông trống rỗng) cho Cảnh 1 (Hook 0.0s)!
         ladder = build_query_ladder(query, narration=narration, topic=topic)
-        establishing = [] if (_establishing_pass or is_hook_vid) else ladder["establishing"]
+        skip_est = bool((visual_analysis or {}).get("skip_establishing_pass"))
+        establishing = [] if (_establishing_pass or is_hook_vid or skip_est) else ladder["establishing"]
 
         candidate_queries: List[str] = []
 
@@ -836,15 +837,18 @@ class StockFetcher:
             est_va["search_queries"] = list(establishing)
             est_va["subject"] = f"Bối cảnh thiên nhiên / địa hình ({', '.join(establishing[:2])})"
             est_va["core_visual_entity"] = establishing[0]
-            est_va["expected_visual_content"] = f"Cảnh toàn bối cảnh thiên nhiên ({', '.join(establishing[:2])}) — không bắt buộc có mặt chủ thể chính"
+            est_va["expected_visual_content"] = (
+                f"Cảnh toàn bối cảnh thiên nhiên trống trải ({', '.join(establishing[:2])}) "
+                f"hoặc đúng chủ thể của '{topic or query}' — TUYỆT ĐỐI KHÔNG chứa loài động vật khác lạc đề"
+            )
             est_va["visual_metaphor"] = (
-                f"Establishing shot of the real location ({', '.join(establishing[:2])}) for the topic '{topic or query}'"
+                f"Pure landscape establishing shot of ({', '.join(establishing[:2])}) for '{topic or query}' with ZERO unrelated animal species"
             )
             est_va["mood"] = "bất kỳ (hệ thống sẽ tự chỉnh màu u tối theo kênh)"
             est_narr = (
-                f"{narration or query}\n(Cảnh bối cảnh / establishing shot: CHẤP NHẬN mọi cảnh toàn đúng LOẠI địa hình "
-                f"của chủ đề ({', '.join(establishing[:3])}). "
-                f"Chỉ loại clip có người/vật hiện đại lạc đề, chữ/watermark, hoặc sai loại địa hình.)"
+                f"{narration or query}\n(Cảnh bối cảnh / establishing shot: CHỈ CHẤP NHẬN cảnh thiên nhiên/địa hình trống trải "
+                f"({', '.join(establishing[:3])}) hoặc có đúng chủ thể của '{topic or query}'. "
+                f"BẮT BUỘC TỪ CHỐI mọi clip quay loài động vật khác không có trong chủ đề '{topic or query}', người/vật hiện đại lạc đề, chữ/watermark.)"
             )
             return self.search_best_video_clip(
                 query=establishing[0],
@@ -892,6 +896,18 @@ class StockFetcher:
             except Exception:
                 pass
 
+        _DISTINCT_SPECIES_GUARD = (
+            "giraffe", "elephant", "zebra", "rhino", "rhinoceros", "hippo", "hippopotamus",
+            "buffalo", "bison", "camel", "dromedary", "lion", "tiger", "cheetah", "serval",
+            "caracal", "hyena", "monkey", "gorilla", "chimpanzee", "baboon", "orangutan",
+            "kangaroo", "koala", "panda", "sloth", "penguin", "flamingo", "ostrich", "pelican",
+            "toucan", "parrot", "owl", "peacock", "deer", "moose", "elk", "reindeer", "gazelle",
+            "antelope", "impala", "wildebeest", "horse", "stallion", "donkey", "cow", "cattle",
+            "sheep", "goat", "pig", "boar", "dog", "puppy", "cat", "kitten", "rabbit", "squirrel",
+            "hedgehog", "dolphin", "whale", "orca", "seal", "walrus", "manatee", "otter",
+        )
+        _allowed_species_ctx = f"{topic} {narration} {query} {clean_q} {' '.join(candidate_queries)}".lower()
+
         pxb_added = 0
         for b_res in branch_buckets:
             b_src = b_res.get("source", "pexels")
@@ -899,6 +915,12 @@ class StockFetcher:
             for v in (b_res.get("items") or []):
                 v_url = v.get("url")
                 v_desc = v.get("tags") or v.get("title") or v.get("url") or ""
+                v_desc_low = str(v_desc).lower()
+                if any(
+                    sp_w not in _allowed_species_ctx and re.search(rf"\b{re.escape(sp_w)}s?\b", v_desc_low)
+                    for sp_w in _DISTINCT_SPECIES_GUARD
+                ):
+                    continue
                 if (
                     v_url and not is_media_already_used(v_url, used)
                     and not any(bw in str(v_desc).lower() for bw in _bad_captive_cues)

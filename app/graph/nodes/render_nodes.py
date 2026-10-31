@@ -49,6 +49,9 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     target_w = 1920 if is_lf_pre else 1080
     target_h = 1080 if is_lf_pre else 1920
     render_retry_count = int(state.get("render_retry_count", 0) or 0)
+    if render_retry_count > 0:
+        for _stale_clip in (work_dir / "clips").glob("clip_*.mp4"):
+            _stale_clip.unlink(missing_ok=True)
 
     for idx_m, m in enumerate(scenes_media):
         if not isinstance(m, dict):

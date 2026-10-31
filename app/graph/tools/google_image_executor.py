@@ -105,34 +105,14 @@ def execute_google_cinematic_image_sync(
         if u_cand and u_cand not in all_candidate_urls:
             all_candidate_urls.append(u_cand)
 
-    # Khi cần >= 2 ảnh/cảnh, bồi thêm nhanh ứng viên góc nhìn phụ thứ 2 (ưu tiên Pexels/Pixabay HD trước khi gọi WebImageFetcher)
-    if target_image_count >= 2 and len(all_candidate_urls) < max(8, target_image_count * 2):
+    # Khi cần >= 2 ảnh/cảnh mà kho ứng viên từ best_photo chưa đủ, mới bồi thêm ứng viên từ Pexels/Pixabay
+    if target_image_count >= 2 and len(all_candidate_urls) < target_image_count + 1:
         sec_q = search_qs[1] if len(search_qs) > 1 else f"{subj} wildlife photography"
         try:
-            for q_extra in [sec_q, *(search_qs[2:3] if len(search_qs) > 2 else [])]:
-                for px_it in (media_agent.search_photos(q_extra, per_page=5, orientation="portrait", topic=overall_script_query or topic, narration=narration, used_urls=used) or []):
-                    u_px = px_it.get("url")
-                    if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
-                        all_candidate_urls.append(u_px)
-                for pxb_it in (media_agent.search_pixabay_photos(q_extra, per_page=5) or []):
-                    u_pxb = pxb_it.get("url")
-                    if u_pxb and u_pxb not in all_candidate_urls and not is_media_already_used(u_pxb, used):
-                        all_candidate_urls.append(u_pxb)
-        except Exception:
-            pass
-        try:
-            from app.services.media.web_image_fetcher import WebImageFetcher, bypass_copyright_enabled
-            if bypass_copyright_enabled() or len(all_candidate_urls) < target_image_count + 2:
-                extra_web = WebImageFetcher().search_all(
-                    query=sec_q,
-                    per_source=6,
-                    subject=subj,
-                    extra_queries=search_qs[2:3] if len(search_qs) > 2 else None,
-                )
-                for item_ex in (extra_web or []):
-                    u_ex = item_ex.get("url")
-                    if u_ex and u_ex not in all_candidate_urls and not is_media_already_used(u_ex, used):
-                        all_candidate_urls.append(u_ex)
+            for px_it in (media_agent.search_photos(sec_q, per_page=4, orientation="portrait", topic=overall_script_query or topic, narration=narration, used_urls=used) or []):
+                u_px = px_it.get("url")
+                if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
+                    all_candidate_urls.append(u_px)
         except Exception:
             pass
 
@@ -182,7 +162,7 @@ def execute_google_cinematic_image_sync(
         out_p = Path(output_path)
         stem = out_p.stem
         parent = out_p.parent
-        cand_slice = remaining_urls[: max(desired_extra + 6, 8)]
+        cand_slice = remaining_urls[: min(4, desired_extra + 2)]
 
         def _dl_cand(pair: Tuple[int, str]) -> Optional[Tuple[str, str]]:
             c_idx, c_url = pair

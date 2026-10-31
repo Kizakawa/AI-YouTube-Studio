@@ -1775,102 +1775,160 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except asyncio.TimeoutError:
                 scene_cancel_ev.set()
                 logger.warning(
-                    f"Scene {scene.scene_id}: ⏱️ Quá hạn 65s khi tải media -> Hủy nguồn chậm và tải ngay một nguồn độc lập mới hoàn toàn (không cắt lại hook_candidates)!"
+                    f"Scene {scene.scene_id}: ⏱️ Quá hạn 65s khi tải media -> Kiểm tra file đã tải trên đĩa hoặc chuyển nguồn độc lập mới!"
                 )
                 res = None
-                try:
-                    sc_s = strategy_map.get(scene.scene_id) or {}
-                    fresh_q = clean_scene_search_query(
-                        sc_s.get("youtube_search_query")
-                        or sc_s.get("smart_image_query")
-                        or getattr(scene, "stock_query", "")
-                        or getattr(scene, "visual_keyword", "")
-                        or primary_entity
-                        or state.get("topic", ""),
-                        max_words=4,
-                    )
-                    best_fresh_vid = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            media_agent.search_best_video_clip,
-                            fresh_q,
-                            used_pool_urls,
-                            batch_analyses.get(scene.scene_id) or {},
-                            scene.narration,
-                            state.get("topic", ""),
-                        ),
-                        timeout=18.0,
-                    )
-                    if best_fresh_vid and best_fresh_vid.get("url") and best_fresh_vid["url"] not in used_pool_urls:
-                        cand_u = str(best_fresh_vid["url"])
-                        out_fresh_v = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_stock.mp4")
-                        await asyncio.wait_for(
-                            asyncio.to_thread(media_agent.download_file, cand_u, out_fresh_v),
-                            timeout=12.0,
+                # Ưu tiên kiểm tra ngay xem _fetch_one_scene đã kịp tải xong video/ảnh thật trên đĩa ngay trước giây thứ 65 chưa
+                early_vids = sorted(
+                    [
+                        p for p in media_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4")
+                        if p.exists() and p.stat().st_size > 15_000 and "_raw" not in p.name
+                    ],
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                early_imgs = sorted(
+                    [
+                        p for p in media_dir.glob(f"scene_{scene.scene_id:03d}_*.jpg")
+                        if p.exists() and p.stat().st_size > 3_000 and "_cand" not in p.name
+                    ],
+                    key=lambda p: (0 if "_cut" not in p.name else 1, p.name),
+                )
+                if early_vids:
+                    res = {
+                        "scene_id": scene.scene_id,
+                        "media_path": str(early_vids[0]),
+                        "media_type": "hook_ready_video" if scene.scene_id == 1 else "video",
+                        "pose_images": None,
+                        "vision_curated": True,
+                        "visual_keyword": getattr(scene, "visual_keyword", "") or primary_entity,
+                        "visual_prompt": getattr(scene, "visual_prompt", None),
+                        "narration": scene.narration,
+                        "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
+                        "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
+                        "highlight_words": getattr(scene, "highlight_words", None),
+                        "overlay_badge": getattr(scene, "overlay_badge", None),
+                        "visual_strategy": "STOCK_VIDEO",
+                        "production_method": "VIDEO_FIRST_BODY_BROLL",
+                        "tool": "search_pexels_pixabay_stock_video",
+                        "strategy_rationale": f"Recovered completed video from disk ({early_vids[0].name})",
+                        "source_url": str(early_vids[0]),
+                    }
+                elif early_imgs:
+                    rec_early_poses = [str(p) for p in early_imgs[:2]]
+                    res = {
+                        "scene_id": scene.scene_id,
+                        "media_path": rec_early_poses[0],
+                        "media_type": "image",
+                        "pose_images": rec_early_poses,
+                        "vision_curated": True,
+                        "visual_keyword": getattr(scene, "visual_keyword", "") or primary_entity,
+                        "visual_prompt": getattr(scene, "visual_prompt", None),
+                        "narration": scene.narration,
+                        "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
+                        "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
+                        "highlight_words": getattr(scene, "highlight_words", None),
+                        "overlay_badge": getattr(scene, "overlay_badge", None),
+                        "visual_strategy": "GEMINI_SEARCH_3D",
+                        "production_method": "GOOGLE_TOP_IMAGE_FALLBACK",
+                        "tool": "search_google_top_cinematic_image",
+                        "strategy_rationale": f"Recovered completed image(s) from disk ({len(rec_early_poses)} shots)",
+                        "source_url": rec_early_poses[0],
+                    }
+                if not res:
+                    try:
+                        sc_s = strategy_map.get(scene.scene_id) or {}
+                        fresh_q = clean_scene_search_query(
+                            sc_s.get("youtube_search_query")
+                            or sc_s.get("smart_image_query")
+                            or getattr(scene, "stock_query", "")
+                            or getattr(scene, "visual_keyword", "")
+                            or primary_entity
+                            or state.get("topic", ""),
+                            max_words=4,
                         )
-                        if Path(out_fresh_v).exists() and Path(out_fresh_v).stat().st_size > 15_000:
-                            used_pool_urls.add(cand_u)
-                            res = {
-                                "scene_id": scene.scene_id,
-                                "media_path": out_fresh_v,
-                                "media_type": "video",
-                                "pose_images": None,
-                                "vision_curated": True,
-                                "visual_keyword": fresh_q or scene.visual_keyword,
-                                "visual_prompt": getattr(scene, "visual_prompt", None),
-                                "narration": scene.narration,
-                                "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
-                                "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
-                                "highlight_words": getattr(scene, "highlight_words", None),
-                                "overlay_badge": getattr(scene, "overlay_badge", None),
-                                "visual_strategy": "STOCK_VIDEO",
-                                "production_method": "VIDEO_FIRST_BODY_BROLL",
-                                "tool": "search_pexels_pixabay_stock_video",
-                                "strategy_rationale": f"Fast-switch fresh stock video ({fresh_q})",
-                                "source_url": cand_u,
-                            }
-                    if not res:
-                        from app.graph.tools.media_tools import execute_google_cinematic_image_sync
-                        out_fresh_img = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_gsearch.jpg")
-                        img_f_res = await asyncio.wait_for(
+                        best_fresh_vid = await asyncio.wait_for(
                             asyncio.to_thread(
-                                execute_google_cinematic_image_sync,
-                                smart_query=fresh_q,
-                                output_path=out_fresh_img,
-                                narration=scene.narration,
-                                topic=state.get("topic", ""),
-                                used_urls=used_pool_urls,
-                                is_hook_scene=(scene.scene_id == 1),
-                                subject_entity=primary_entity or state.get("topic", ""),
-                                search_scope="SCENE_SPECIFIC",
-                                overall_script_query=primary_entity or state.get("topic", ""),
-                                job_id=job_id,
-                                scene_id=scene.scene_id,
-                                target_image_count=2,
+                                media_agent.search_best_video_clip,
+                                fresh_q,
+                                used_pool_urls,
+                                batch_analyses.get(scene.scene_id) or {},
+                                scene.narration,
+                                state.get("topic", ""),
                             ),
                             timeout=18.0,
                         )
-                        if img_f_res and img_f_res.get("media_path"):
-                            res = {
-                                "scene_id": scene.scene_id,
-                                "media_path": img_f_res["media_path"],
-                                "media_type": "image",
-                                "pose_images": list(img_f_res.get("pose_images") or [img_f_res["media_path"]]),
-                                "vision_curated": True,
-                                "visual_keyword": fresh_q or scene.visual_keyword,
-                                "visual_prompt": getattr(scene, "visual_prompt", None),
-                                "narration": scene.narration,
-                                "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
-                                "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
-                                "highlight_words": getattr(scene, "highlight_words", None),
-                                "overlay_badge": getattr(scene, "overlay_badge", None),
-                                "visual_strategy": "GEMINI_SEARCH_3D",
-                                "production_method": "GOOGLE_TOP_IMAGE_FALLBACK",
-                                "tool": "search_google_top_cinematic_image",
-                                "strategy_rationale": f"Fast-switch fresh Google Top Image ({fresh_q})",
-                                "source_url": str(img_f_res.get("source_url") or ""),
-                            }
-                except Exception:
-                    res = None
+                        if best_fresh_vid and best_fresh_vid.get("url") and best_fresh_vid["url"] not in used_pool_urls:
+                            cand_u = str(best_fresh_vid["url"])
+                            out_fresh_v = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_stock.mp4")
+                            await asyncio.wait_for(
+                                asyncio.to_thread(media_agent.download_file, cand_u, out_fresh_v),
+                                timeout=12.0,
+                            )
+                            if Path(out_fresh_v).exists() and Path(out_fresh_v).stat().st_size > 15_000:
+                                used_pool_urls.add(cand_u)
+                                res = {
+                                    "scene_id": scene.scene_id,
+                                    "media_path": out_fresh_v,
+                                    "media_type": "video",
+                                    "pose_images": None,
+                                    "vision_curated": True,
+                                    "visual_keyword": fresh_q or scene.visual_keyword,
+                                    "visual_prompt": getattr(scene, "visual_prompt", None),
+                                    "narration": scene.narration,
+                                    "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
+                                    "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
+                                    "highlight_words": getattr(scene, "highlight_words", None),
+                                    "overlay_badge": getattr(scene, "overlay_badge", None),
+                                    "visual_strategy": "STOCK_VIDEO",
+                                    "production_method": "VIDEO_FIRST_BODY_BROLL",
+                                    "tool": "search_pexels_pixabay_stock_video",
+                                    "strategy_rationale": f"Fast-switch fresh stock video ({fresh_q})",
+                                    "source_url": cand_u,
+                                }
+                        if not res:
+                            from app.graph.tools.media_tools import execute_google_cinematic_image_sync
+                            out_fresh_img = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_gsearch.jpg")
+                            img_f_res = await asyncio.wait_for(
+                                asyncio.to_thread(
+                                    execute_google_cinematic_image_sync,
+                                    smart_query=fresh_q,
+                                    output_path=out_fresh_img,
+                                    narration=scene.narration,
+                                    topic=state.get("topic", ""),
+                                    used_urls=used_pool_urls,
+                                    is_hook_scene=(scene.scene_id == 1),
+                                    subject_entity=primary_entity or state.get("topic", ""),
+                                    search_scope="SCENE_SPECIFIC",
+                                    overall_script_query=primary_entity or state.get("topic", ""),
+                                    job_id=job_id,
+                                    scene_id=scene.scene_id,
+                                    target_image_count=2,
+                                ),
+                                timeout=18.0,
+                            )
+                            if img_f_res and img_f_res.get("media_path"):
+                                res = {
+                                    "scene_id": scene.scene_id,
+                                    "media_path": img_f_res["media_path"],
+                                    "media_type": "image",
+                                    "pose_images": list(img_f_res.get("pose_images") or [img_f_res["media_path"]]),
+                                    "vision_curated": True,
+                                    "visual_keyword": fresh_q or scene.visual_keyword,
+                                    "visual_prompt": getattr(scene, "visual_prompt", None),
+                                    "narration": scene.narration,
+                                    "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
+                                    "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
+                                    "highlight_words": getattr(scene, "highlight_words", None),
+                                    "overlay_badge": getattr(scene, "overlay_badge", None),
+                                    "visual_strategy": "GEMINI_SEARCH_3D",
+                                    "production_method": "GOOGLE_TOP_IMAGE_FALLBACK",
+                                    "tool": "search_google_top_cinematic_image",
+                                    "strategy_rationale": f"Fast-switch fresh Google Top Image ({fresh_q})",
+                                    "source_url": str(img_f_res.get("source_url") or ""),
+                                }
+                    except Exception:
+                        res = None
             if not res or not isinstance(res, dict):
                 # Kiểm tra xem _fetch_one_scene đã kịp tải xong file video/ảnh thật nào cho cảnh này trên đĩa trước khi timeout chưa!
                 existing_disk_vids = sorted(
@@ -2688,8 +2746,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     for ai_res in ai_completed:
                         gen_p = ai_res.get("result")
                         if gen_p and Path(gen_p).exists() and Path(gen_p).stat().st_size > 2500:
-                            rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=sid, image_path=gen_p, url=gen_p)
-                            verified_poses.append(gen_p)
+                            if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=sid, image_path=gen_p, url=gen_p):
+                                verified_poses.append(gen_p)
+                            else:
+                                Path(gen_p).unlink(missing_ok=True)
 
                 real_poses = [p for p in verified_poses if p and not str(p).endswith("_graphic.png")]
                 if real_poses:

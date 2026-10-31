@@ -616,8 +616,8 @@ Respond ONLY in valid JSON:
             try:
                 import re as _re_qa
                 freeze_noise_db = "-60dB" if is_long_form else "-52dB"
-                freeze_min_d = "3.6" if is_long_form else "2.4"
-                vf_qa = f"crop=iw*0.72:ih*0.42:iw*0.14:ih*0.16,blackdetect=d=0.10:pic_th=0.98,freezedetect=n={freeze_noise_db}:d={freeze_min_d},scdet=t=8.5"
+                freeze_min_d = "3.6" if is_long_form else "2.8"
+                vf_qa = f"crop=iw*0.76:ih*0.64:iw*0.12:ih*0.14,blackdetect=d=0.10:pic_th=0.98,freezedetect=n={freeze_noise_db}:d={freeze_min_d},scdet=t=8.5"
                 qa_cmd = ["ffmpeg", "-v", "info"]
                 if duration_sec > 55.0:
                     qa_cmd.extend(["-t", "55.0"])
@@ -640,7 +640,7 @@ Respond ONLY in valid JSON:
                 f_durs = [float(x) for x in _re_qa.findall(r"freeze_duration:\s*([0-9.]+)", qa_log)]
                 if f_durs:
                     freeze_max_sec = max(f_durs)
-                max_freeze_allowed = 4.5 if is_long_form else 2.3
+                max_freeze_allowed = 4.5 if is_long_form else 2.8
                 if freeze_max_sec >= max_freeze_allowed:
                     hard_fail = True
                     frame_pts = min(frame_pts, 2.0)

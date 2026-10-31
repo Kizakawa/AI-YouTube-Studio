@@ -189,6 +189,7 @@ class MediaVisionCuratorMixin:
             score: float,
             rationale: str,
             alternate_urls: Optional[List[str]] = None,
+            vision_curated: bool = True,
         ) -> Dict[str, Any]:
             out_w = {
                 "url": winner["download_link"],
@@ -202,6 +203,7 @@ class MediaVisionCuratorMixin:
                 "thumbnail": winner["thumbnail"],
                 "curation_score": score,
                 "curation_rationale": rationale,
+                "vision_curated": vision_curated,
             }
             if alternate_urls:
                 out_w["_vision_alternates"] = alternate_urls
@@ -332,9 +334,16 @@ TRẢ VỀ JSON DUY NHẤT:
                 w for w in _re_fb.findall(r"[a-zA-Z]{4,}", " ".join(str(x) for x in negative_cues).lower())
                 if w not in _stop_fb
             }
+            _habitat_generic_fb = {
+                "desert", "savanna", "african", "africa", "jungle", "forest", "ocean", "water",
+                "river", "mountain", "nature", "animal", "animals", "wildlife", "wild", "night",
+                "glow", "fire", "flame", "flames", "sand", "rock", "ground", "walking", "standing",
+                "running", "hunting", "attack", "aerial", "valley", "island", "arctic", "tundra",
+                "snow", "winter", "tropical", "deep", "underwater", "predator", "prey", "species",
+            }
             core_subj_tokens = {
                 w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{subject_req}".lower())
-                if w not in _stop_fb
+                if w not in _stop_fb and w not in _habitat_generic_fb
             }
             scene_intent_tokens = {
                 w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{scene_queries_str} {expected_vis}".lower())
@@ -357,8 +366,8 @@ TRẢ VỀ JSON DUY NHẤT:
                 intent_hits = len(cand_tokens.intersection(scene_intent_tokens))
                 narr_hits = len(cand_tokens.intersection(narr_tokens))
                 distinct_anchor_hits = len(cand_tokens.intersection(core_subj_tokens | scene_intent_tokens))
-                # Bắt buộc khớp ít nhất 2 token nội dung đặc trưng của cảnh/chủ thể (chống khớp mù 1 từ đơn lẻ gây lệch bối cảnh/niên đại)
-                if distinct_anchor_hits >= 2 and (intent_hits >= 2 or (subj_hits >= 1 and (intent_hits + narr_hits) >= 1)):
+                # Bắt buộc khớp ít nhất 1 token thực thể cốt lõi (`subj_hits >= 1`) kèm ít nhất 2 token ngữ cảnh (chống duyệt nhầm cảnh sa mạc/ thảo nguyên chung chung khi thiếu thực thể chính)
+                if subj_hits >= 1 and distinct_anchor_hits >= 2 and (intent_hits + narr_hits) >= 1:
                     is_vert = (cand.get("height") or 0) >= (cand.get("width") or 0)
                     det_sc = min(8.2, 7.0 + subj_hits * 0.35 + intent_hits * 0.25 + min(narr_hits, 2) * 0.1 + (0.2 if is_vert else 0.0))
                     if det_sc > best_det_score:
@@ -370,7 +379,7 @@ TRẢ VỀ JSON DUY NHẤT:
                     f"🎬 [LLM Link & Vision Audit] ⚡ Cứu hộ Subject-Anchor chọn Video #{best_det_cand['raw_video'].get('id')} "
                     f"('{best_det_cand['url']}') | Điểm: {best_det_score:.1f}/10"
                 )
-                return _format_winner(best_det_cand, round(best_det_score, 2), rationale_fb), round(best_det_score, 2), rationale_fb, False
+                return _format_winner(best_det_cand, round(best_det_score, 2), rationale_fb, vision_curated=False), round(best_det_score, 2), rationale_fb, False
         except Exception as _e_det_fb:
             logger.debug(f"[LLM Link & Vision Audit] Deterministic fallback skip: {_e_det_fb}")
 

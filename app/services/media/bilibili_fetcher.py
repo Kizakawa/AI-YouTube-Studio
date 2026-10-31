@@ -505,13 +505,16 @@ def download_and_crop_bilibili_broll_clip(
     with tempfile.TemporaryDirectory() as tmp_dir:
         raw_m4s = Path(tmp_dir) / f"bili_raw_{info['bvid']}.m4s"
         try:
-            r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(4.0, 12.0))
+            t_dl_bili = time.monotonic()
+            r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(3.5, 8.0))
             if r.status_code not in (200, 206):
                 return None
             with open(raw_m4s, "wb") as f:
                 for chunk in r.iter_content(chunk_size=262144):
                     if chunk:
                         f.write(chunk)
+                    if time.monotonic() - t_dl_bili > 10.0:
+                        break
             if not raw_m4s.exists() or raw_m4s.stat().st_size < 150_000:
                 return None
         except Exception as exc:

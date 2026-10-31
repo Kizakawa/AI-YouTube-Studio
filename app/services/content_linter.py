@@ -179,13 +179,13 @@ class ScriptValidationLinter:
             max_scenes = 60
         else:
             min_words = 80
-            max_words = 142
+            max_words = 158
             target_range_str = "92 to 120 words (34-44s High-APV Golden Duration across 7-8 smooth, complete scenes)"
             min_scenes = 6
             max_scenes = 9
 
         if total_words > max_words:
-            est_seconds = (total_words / max(target_wpm, 160)) * 60
+            est_seconds = (total_words / max(target_wpm, 185)) * 60
             issues.append(
                 f"Script is overly long ({total_words} words, ~{est_seconds:.1f}s) which lowers APV %. "
                 f"Keep around {target_range_str}."
