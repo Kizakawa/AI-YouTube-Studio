@@ -7,6 +7,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -180,7 +181,7 @@ def execute_youtube_short_peak_clone_sync(
                 channel_id=channel_id,
             )
 
-            max_claimed_probes = 3 if (clip_role or "").upper() == "HOOK" else 2
+            max_claimed_probes = 4 if (clip_role or "").upper() == "HOOK" else 3
             claimed_probes = 0
             # Fast-Drop 'A vs B': chỉ thử tối đa 1 ứng viên mang tiêu đề 'A vs B'; nếu thất bại thì bỏ ngay toàn bộ nhánh 'vs' để lấy clip đơn chủ thể sạch!
             vs_probes_attempted = 0
@@ -280,52 +281,44 @@ def execute_youtube_short_peak_clone_sync(
 
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     raw_dl_template = str(Path(tmp_dir) / "raw_short.%(ext)s")
+                    t_dl_start = time.monotonic()
+
+                    def _fast_switch_progress_hook(d: Dict[str, Any]) -> None:
+                        if d.get("status") == "downloading":
+                            if (time.monotonic() - t_dl_start) > 12.0:
+                                raise TimeoutError(
+                                    f"Slow YouTube CDN download > 12s for {vid_url} -> switch to next candidate"
+                                )
+
                     dl_opts = license_policy.optimize_ytdlp_download_opts({
                         "quiet": True,
                         "no_warnings": True,
                         "noplaylist": True,
-                        "max_filesize": 38 * 1024 * 1024,
+                        "max_filesize": 18 * 1024 * 1024,
                         "format": license_policy.VERTICAL_FIRST_YTDLP_FORMAT,
                         "merge_output_format": "mp4",
                         "outtmpl": raw_dl_template,
-                        "socket_timeout": 12,
+                        "socket_timeout": 8,
                         "retries": 1,
                         "nopart": True,
+                        "progress_hooks": [_fast_switch_progress_hook],
                     })
-                    # Chỉ dùng download_ranges khi video gốc dài > 75s; với YouTube Shorts (<= 75s), tải thẳng MP4 qua HTTP nhanh gấp 4-6 lần và tránh treo ffmpeg HTTP seek
-                    cand_dur_est = float(info_entry.get("duration") or cand.get("duration") or 0)
-                    if cand_dur_est > 75.0:
-                        try:
-                            from yt_dlp.utils import download_range_func
-                            dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s + 1.0)])
-                        except Exception:
-                            pass
-
+                    # TUYỆT ĐỐI KHÔNG dùng download_ranges (vì yt-dlp gọi ffmpeg seek qua HTTP dễ bị treo vô hạn trên CDN YouTube).
+                    # Tải thẳng file MP4 <= 18MB qua HTTP thuần; nếu quá 12s chưa tải xong thì hủy ngay để chuyển sang ứng viên khác!
                     try:
                         with _yt_download_sem:
+                            t_dl_start = time.monotonic()
                             with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
                                 ydl_dl.download([vid_url])
-                    except Exception:
-                        dl_opts.pop("download_ranges", None)
-                        try:
-                            with _yt_download_sem:
-                                with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
-                                    ydl_dl2.download([vid_url])
-                        except Exception:
-                            rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                            continue
+                    except Exception as dl_err:
+                        logger.info(
+                            f"⚡ [Fast-Switch Candidate] Bỏ qua '{cand_title[:42]}' ({vid_url}) do tải chậm/lỗi ({str(dl_err)[:60]}) -> Tải ứng viên khác!"
+                        )
+                        claimed_probes = max(0, claimed_probes - 1)
+                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                        continue
 
                     downloaded_files = list(Path(tmp_dir).glob("raw_short.*"))
-                    if not downloaded_files and "download_ranges" in dl_opts:
-                        dl_opts.pop("download_ranges", None)
-                        try:
-                            with _yt_download_sem:
-                                with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
-                                    ydl_dl2.download([vid_url])
-                        except Exception:
-                            pass
-                        downloaded_files = list(Path(tmp_dir).glob("raw_short.*"))
-
                     if not downloaded_files:
                         rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                         continue
@@ -514,8 +507,8 @@ def execute_youtube_short_peak_clone_sync(
     if stock_res:
         return stock_res
 
-    # ── TẦNG 3 (DỰ PHÒNG CUỐI KHI STOCK HD KHÔNG CÓ): SĂN B-ROLL TRÊN BILIBILI (SAFE-CROP & DUYỆT VISION) ──
-    if allow_low_risk_yt:
+    # ── TẦNG 3 (DỰ PHÒNG CUỐI KHI CẦN CGI/QUÁI VẬT): SĂN B-ROLL TRÊN BILIBILI (SAFE-CROP & DUYỆT VISION) ──
+    if allow_low_risk_yt and allow_3d_cgi_monster:
         bili_res = _try_bilibili_broll_fallback(
             search_phrases=search_phrases,
             search_query=search_query,

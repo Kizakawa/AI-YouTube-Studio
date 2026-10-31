@@ -189,7 +189,7 @@ def create_configured_engine(raw_url: str):
         for pg_attempt in range(1, 4):
             try:
                 pool_kwargs = (
-                    {"poolclass": NullPool}
+                    {"poolclass": NullPool, "pool_pre_ping": True}
                     if is_pgbouncer_pooler
                     else {
                         "pool_size": 3,

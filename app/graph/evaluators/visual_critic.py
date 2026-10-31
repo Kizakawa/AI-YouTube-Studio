@@ -82,8 +82,8 @@ class VisualCritic:
             return 10.0
 
     # Ngưỡng Hamming (trên 64 bit) để coi 2 khung hình là "cùng 1 cảnh quay" dù bị nén/scale/crop/LUT khác nhau
-    _DUP_HAMMING = 7
-    _DUP_HAMMING_MULTI = 10
+    _DUP_HAMMING = 8
+    _DUP_HAMMING_MULTI = 11
 
     @classmethod
     def _media_signature(cls, media_path: str) -> List[str]:
@@ -95,11 +95,27 @@ class VisualCritic:
         import subprocess
         import tempfile
         p = Path(media_path)
+        if not p.exists():
+            return []
+        try:
+            st_sig = p.stat()
+            sig_ck = (str(p.resolve()), st_sig.st_mtime_ns, st_sig.st_size)
+            cached_sig = getattr(cls, "_media_sig_cache", {}).get(sig_ck)
+            if cached_sig is not None:
+                return list(cached_sig)
+        except Exception:
+            sig_ck = None
+
         if p.suffix.lower() not in (".mp4", ".mov", ".webm", ".mkv"):
             if cls._is_solid_color_or_black(str(p)):
                 return []
             h = cls._compute_image_hash(str(p))
-            return [h] if h else []
+            res_img_sig = [h] if h else []
+            if sig_ck is not None:
+                if not hasattr(cls, "_media_sig_cache"):
+                    cls._media_sig_cache = {}
+                cls._media_sig_cache[sig_ck] = list(res_img_sig)
+            return res_img_sig
 
         sig: List[str] = []
         try:
@@ -107,29 +123,29 @@ class VisualCritic:
             dur = max(get_duration_ms(str(p)) / 1000.0, 0.8)
         except Exception:
             dur = 3.0
-        sample_points = (
-            min(0.25, dur * 0.06),
-            dur * 0.22,
-            dur * 0.40,
-            dur * 0.60,
-            dur * 0.78,
-            max(dur - 0.25, dur * 0.94),
-        )
         with tempfile.TemporaryDirectory() as td:
-            for i, t in enumerate(sample_points):
-                frame = str(Path(td) / f"f{i}.jpg")
-                try:
-                    subprocess.run(
-                        ["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", str(p),
-                         "-frames:v", "1", "-vf", "scale=160:-1", frame],
-                        capture_output=True, timeout=15,
-                    )
-                    if Path(frame).exists() and not cls._is_solid_color_or_black(frame):
-                        h = cls._compute_image_hash(frame)
+            fps_val = max(0.8, 5.0 / max(dur, 1.0))
+            out_pattern = str(Path(td) / "f_%02d.jpg")
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-v", "error", "-y", "-i", str(p),
+                        "-vf", f"fps={fps_val:.3f},scale=160:-1",
+                        "-frames:v", "5", out_pattern,
+                    ],
+                    capture_output=True, timeout=12,
+                )
+                for frame_p in sorted(Path(td).glob("f_*.jpg")):
+                    if frame_p.exists() and not cls._is_solid_color_or_black(str(frame_p)):
+                        h = cls._compute_image_hash(str(frame_p))
                         if h:
                             sig.append(h)
-                except Exception:
-                    continue
+            except Exception:
+                pass
+        if sig_ck is not None:
+            if not hasattr(cls, "_media_sig_cache"):
+                cls._media_sig_cache = {}
+            cls._media_sig_cache[sig_ck] = list(sig)
         return sig
 
     @classmethod
@@ -157,6 +173,8 @@ class VisualCritic:
             if multi_hits >= min(2, len(sig), len(prev_sig)):
                 return prev_id
         return None
+
+    _clip_inspect_cache: Dict[Tuple[str, int, int, int, float, bool], Dict[str, Any]] = {}
 
     @classmethod
     def inspect_clip_before_concat(
@@ -194,6 +212,14 @@ class VisualCritic:
                 "sharpness": 0.0,
                 "brightness": 0.0,
             }
+        try:
+            st_info = p.stat()
+            cache_key = (str(p.resolve()), st_info.st_mtime_ns, st_info.st_size, min_short_edge, round(min_sharpness, 1), check_watermark)
+            cached_res = cls._clip_inspect_cache.get(cache_key)
+            if cached_res is not None:
+                return dict(cached_res)
+        except Exception:
+            cache_key = None
 
         issues: List[str] = []
         width, height = 0, 0
@@ -634,7 +660,7 @@ class VisualCritic:
         if not passed:
             base_score = max(2.5, base_score - 3.5 * len(issues))
 
-        return {
+        out_dict = {
             "passed": passed,
             "score": round(base_score, 1),
             "issues": issues,
@@ -643,6 +669,14 @@ class VisualCritic:
             "sharpness": round(avg_sharp, 2),
             "brightness": round(avg_lum, 1),
         }
+        try:
+            if p.exists():
+                st_now = p.stat()
+                ck_now = (str(p.resolve()), st_now.st_mtime_ns, st_now.st_size, min_short_edge, round(min_sharpness, 1), check_watermark)
+                cls._clip_inspect_cache[ck_now] = dict(out_dict)
+        except Exception:
+            pass
+        return out_dict
 
     @classmethod
     def _gemini_vision_audit_contact_sheet(
@@ -846,11 +880,9 @@ Return ONLY valid JSON in this exact format:
                 prod_m_raw.startswith("LONGFORM_")
                 or p.name.lower().endswith("_16x9.mp4")
             )
-            is_long_peak_cont = (
-                prod_m_raw == "LONG_PEAK_CONTINUOUS_FLOW"
-                or prod_m_raw.startswith("HOOK_CONTINUOUS")
-                or is_doodle_clip
-            )
+            # Chỉ miễn kiểm tra trùng dHash cho hoạt họa Doodle 2D (do chung nền giấy kem #F7F3E8);
+            # MỌI cảnh video thật (kể cả Cảnh 1 & Cảnh 2) BẮT BUỘC phải kiểm tra trùng dHash để cấm tuyệt đối 2 cảnh cắt từ cùng 1 nguồn!
+            is_long_peak_cont = is_doodle_clip
             if media_type == "image":
                 # Kiểm tra & lọc sạch danh sách pose_images (nếu có) để loại bỏ file phụ lỗi/đen/vỡ hạt/dính chữ trước khi dựng
                 raw_poses = item.get("pose_images")
