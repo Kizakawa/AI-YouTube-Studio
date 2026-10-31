@@ -238,10 +238,16 @@ def _try_licensed_stock_video_fallback(
                 if effective_scope == "SCRIPT_OVERALL"
                 else narration
             )
-            # StockFetcher.search_best_video_clip đã quét song song 5 nhánh trên toàn bộ search_queries[:3];
-            # chỉ gọi 1 lượt duy nhất để tránh nhân 4-8 lần số lượt gọi Pexels + Gemini Vision!
-            for idx_sq, st_q in enumerate(stock_query_candidates[:1]):
+            # StockFetcher.search_best_video_clip quét song song 5 nhánh trên search_queries[:3];
+            # chỉ thử truy vấn thứ 2 nếu truy vấn 1 bị trùng/trống và còn > 9s ngân sách.
+            for idx_sq, st_q in enumerate(stock_query_candidates[:2]):
+                if cancel_event is not None and cancel_event.is_set():
+                    break
+                if idx_sq > 0 and deadline_ts is not None and (deadline_ts - time.monotonic()) <= 9.0:
+                    break
                 va_iter = dict(va_vid)
+                if idx_sq > 0:
+                    va_iter["search_queries"] = [st_q, *stock_query_candidates[:2]]
                 best_stock_v = media_agent.search_best_video_clip(
                     query=st_q,
                     used_urls=used,
@@ -249,32 +255,27 @@ def _try_licensed_stock_video_fallback(
                     narration=effective_narr,
                     topic=topic or overall_script_query,
                 )
-                if best_stock_v and best_stock_v.get("url"):
-                    v_url_try = best_stock_v["url"]
-                    st_title_try = str(best_stock_v.get("title") or "")
-                    if not rag.try_claim_in_job_video(job_id=job_id, url=v_url_try, title=st_title_try, scene_id=eff_scene_id):
-                        with _yt_url_lock:
-                            used.update(extract_media_identity(v_url_try))
-                            used.add(v_url_try)
-                        best_stock_v = None
                 if not best_stock_v or not best_stock_v.get("url"):
                     continue
                 st_title = str(best_stock_v.get("title") or "")
-                candidate_stock_urls = [best_stock_v["url"]]
-                for alt_u in (best_stock_v.get("_vision_alternates") or []):
-                    if alt_u and alt_u not in candidate_stock_urls and not is_media_already_used(alt_u, used):
-                        candidate_stock_urls.append(alt_u)
+                candidate_stock_urls = []
+                for raw_cand_u in [best_stock_v["url"], *(best_stock_v.get("_vision_alternates") or [])]:
+                    if raw_cand_u and raw_cand_u not in candidate_stock_urls:
+                        candidate_stock_urls.append(raw_cand_u)
 
-                for cand_idx_u, v_url in enumerate(candidate_stock_urls[:3]):
+                # Khi đã tìm được URL video đạt chuẩn qua Gemini Vision, cấp tối thiểu 11s ân hạn tải & cắt
+                # để tuyệt đối không vứt bỏ URL Pexels/Pixabay ngay sau khi tìm thấy!
+                dl_grace_deadline = max(deadline_ts or 0.0, time.monotonic() + 11.0)
+                for cand_idx_u, v_url in enumerate(candidate_stock_urls[:4]):
                     if (cancel_event is not None and cancel_event.is_set()) or (
-                        deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.0
+                        deadline_ts is not None and (dl_grace_deadline - time.monotonic()) <= 1.5
                     ):
-                        if cand_idx_u == 0:
-                            rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
                         break
-                    if cand_idx_u > 0:
-                        if not rag.try_claim_in_job_video(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id):
-                            continue
+                    if not rag.try_claim_in_job_video(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id):
+                        with _yt_url_lock:
+                            used.update(extract_media_identity(v_url))
+                            used.add(v_url)
+                        continue
                     with tempfile.TemporaryDirectory() as tmp_s:
                         raw_stock = str(Path(tmp_s) / "stock_raw.mp4")
                         media_agent.download_file(v_url, raw_stock)

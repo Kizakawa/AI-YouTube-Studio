@@ -973,36 +973,98 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     )
                 if not media_path:
                     _check_fetch_deadline()
-                if not media_path and scene.scene_id in (1, 2):
+                if not media_path:
                     try:
-                        pre_used_hk = set(used_pool_urls)
+                        from app.services.video_memory_rag import get_video_memory_rag
+                        from app.utils.ffmpeg_helper import trim_video
+                        rag_vf = get_video_memory_rag()
+                        vf_q = (
+                            str(getattr(scene, "stock_query", "") or "").strip()
+                            or fb_q
+                            or yt_q
+                        )
+                        va_vf = dict(v_analysis or {})
+                        va_vf["search_queries"] = [
+                            q_x for q_x in dict.fromkeys([vf_q, yt_q, fb_q, overall_q]) if q_x
+                        ][:3]
+                        va_vf["skip_establishing_pass"] = (scene.scene_id == 1)
                         best_hk_vid = await asyncio.to_thread(
                             media_agent.search_best_video_clip,
-                            yt_q,
+                            vf_q,
                             used_pool_urls,
-                            v_analysis,
+                            va_vf,
                             scene.narration,
                             state.get("topic", ""),
                         )
-                        if best_hk_vid and best_hk_vid.get("url") and best_hk_vid["url"] not in pre_used_hk:
-                            cand_hk_url = str(best_hk_vid["url"])
-                            vid_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst.mp4")
-                            await asyncio.to_thread(media_agent.download_file, cand_hk_url, vid_hk_out)
-                            if Path(vid_hk_out).exists() and Path(vid_hk_out).stat().st_size > 15_000:
-                                media_path = vid_hk_out
-                                media_type = "hook_ready_video" if scene.scene_id == 1 else "video"
-                                vision_curated = True
-                                prod_method = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
-                                chosen_strategy = "STOCK_VIDEO"
-                                source_url_used = cand_hk_url
-                                used_pool_urls.add(cand_hk_url)
-                                rationale = f"Opening Hook Stock Video ({best_hk_vid.get('title', yt_q)[:45]})"
-                                logger.info(
-                                    f"Scene {scene.scene_id}: 🎬 [Opening Real-Motion Video] "
-                                    f"Đã nạp Video B-Roll chuyển động thật cho '{yt_q}'"
-                                )
+                        if best_hk_vid and best_hk_vid.get("url"):
+                            vf_cand_urls = [
+                                best_hk_vid["url"],
+                                *(best_hk_vid.get("_vision_alternates") or []),
+                            ]
+                            vf_title = str(best_hk_vid.get("title") or vf_q)
+                            for cand_hk_url in vf_cand_urls[:4]:
+                                if not cand_hk_url:
+                                    continue
+                                if not rag_vf.try_claim_in_job_video(
+                                    job_id=job_id,
+                                    vid_id=str(cand_hk_url),
+                                    url=str(cand_hk_url),
+                                    title=vf_title,
+                                    scene_id=scene.scene_id,
+                                ):
+                                    used_pool_urls.add(str(cand_hk_url))
+                                    continue
+                                raw_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst_raw.mp4")
+                                vid_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst.mp4")
+                                await asyncio.to_thread(media_agent.download_file, str(cand_hk_url), raw_hk_out)
+                                if Path(raw_hk_out).exists() and Path(raw_hk_out).stat().st_size > 15_000:
+                                    await asyncio.to_thread(
+                                        trim_video,
+                                        input_path=raw_hk_out,
+                                        duration_seconds=max(3.0, dur + 0.25),
+                                        output_path=vid_hk_out,
+                                        width=1920 if is_long_form else 1080,
+                                        height=1080 if is_long_form else 1920,
+                                        fps=30,
+                                        is_scifi=is_scifi_val,
+                                        niche=current_niche,
+                                        apply_grading=True,
+                                        is_hook_scene=(scene.scene_id == 1),
+                                        fair_use_transform=True,
+                                    )
+                                    Path(raw_hk_out).unlink(missing_ok=True)
+                                    if Path(vid_hk_out).exists() and Path(vid_hk_out).stat().st_size > 15_000:
+                                        ok_vf_sig, _ = rag_vf.verify_and_commit_in_job_clip(
+                                            job_id=job_id,
+                                            scene_id=scene.scene_id,
+                                            media_path=vid_hk_out,
+                                            vid_id=str(cand_hk_url),
+                                            url=str(cand_hk_url),
+                                            title=vf_title,
+                                        )
+                                        used_pool_urls.add(str(cand_hk_url))
+                                        if ok_vf_sig:
+                                            media_path = vid_hk_out
+                                            media_type = "hook_ready_video" if scene.scene_id == 1 else "video"
+                                            vision_curated = True
+                                            prod_method = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                                            chosen_strategy = "STOCK_VIDEO"
+                                            source_url_used = str(cand_hk_url)
+                                            rationale = f"Video-First Stock Video ({vf_title[:45]})"
+                                            logger.info(
+                                                f"Scene {scene.scene_id}: 🎬 [Video-First Real-Motion] "
+                                                f"Đã nạp Video B-Roll chuyển động thật cho '{vf_q}'"
+                                            )
+                                            break
+                                        else:
+                                            Path(vid_hk_out).unlink(missing_ok=True)
+                                else:
+                                    Path(raw_hk_out).unlink(missing_ok=True)
+                                    rag_vf.release_in_job_video_claim(
+                                        job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
+                                    )
                     except Exception as hk_vf_err:
-                        logger.debug(f"Scene {scene.scene_id}: Opening video-first lookup fallback: {hk_vf_err}")
+                        logger.debug(f"Scene {scene.scene_id}: Video-first lookup fallback: {hk_vf_err}")
                 if not media_path:
                     # Lưu ý: execute_youtube_short_peak_clone_sync đã bao gồm cả Tầng 1 (YouTube Peak) và Tầng 2 (Pexels/Pixabay có kiểm duyệt Gemini Vision).
                     # Tuyệt đối không tải lại Stock Video mù (không qua Gemini Vision) để tránh lọt clip mèo nhà / thú trong sở thú!
@@ -2149,8 +2211,13 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     r_sc = scenes_media[r_idx]
                     r_sid = int(r_sc.get("scene_id") or (r_idx + 1))
                     r_dur = _get_slot_dur(r_idx)
+                    sc_obj_r = script.scenes[r_idx] if (script and hasattr(script, "scenes") and 0 <= r_idx < len(script.scenes)) else None
+                    r_stock_q = clean_scene_search_query(
+                        getattr(sc_obj_r, "stock_query", "") or r_sc.get("fallback_broad_query") or "",
+                        max_words=4,
+                    )
                     r_kw = clean_scene_search_query(
-                        r_sc.get("visual_keyword") or primary_entity or state.get("topic", ""),
+                        r_sc.get("visual_keyword") or r_stock_q or primary_entity or state.get("topic", ""),
                         max_words=4,
                     ) or overall_rescue_q
                     r_out_mp4 = str(media_dir / f"scene_{r_sid:03d}_motion_rescue.mp4")
@@ -2264,62 +2331,34 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         except Exception as _re_pb:
                             logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Portrait B-Roll rescue skip: {_re_pb}")
 
-                    # 1. Thử truy vấn YouTube Shorts Peak qua góc độ từ khóa mới (bỏ qua r_kw nếu main loop đã thử và thất bại)
+                    # Chuẩn bị truy vấn theo sát thực thể riêng của phân cảnh (không gộp cứng mọi cảnh về cùng 1 từ khóa chung!)
                     facet_tag = (
                         portrait_broll_facets[r_pos % len(portrait_broll_facets)]
                         if is_portrait_tool
                         else rescue_angle_facets[r_pos % len(rescue_angle_facets)]
                     )
-                    yt_rescue_queries = [
-                        (f"{r_subj} {facet_tag}".strip(), f"{r_subj} cinematic".strip(), "SCRIPT_OVERALL"),
-                    ]
-                    if not already_tried_scene_kw:
-                        yt_rescue_queries.insert(0, (r_kw, overall_rescue_q, "SCENE_SPECIFIC"))
-                    for q_main, q_fb, q_scope in yt_rescue_queries:
-                        if rescued_ok or is_long_form or _rescue_cancelled():
-                            break
-                        try:
-                            yt_rescue = await asyncio.to_thread(
-                                execute_youtube_short_peak_clone_sync,
-                                search_query=q_main,
-                                output_path=r_out_mp4,
-                                target_duration_sec=r_dur,
-                                clip_role="PEAK",
-                                used_urls=used_pool_urls,
-                                fallback_query=q_fb,
-                                subject_entity=r_subj,
-                                narration=str(r_sc.get("narration") or state.get("topic", "")),
-                                topic=state.get("topic", ""),
-                                search_scope=q_scope,
-                                overall_script_query=overall_rescue_q,
-                                max_peak_duration_sec=14.0,
-                                job_id=job_id,
-                                scene_id=r_sid,
-                                channel_id=channel_id_val,
-                                cancel_event=cancel_event,
-                                deadline_ts=deadline_ts,
-                            )
-                            if yt_rescue and yt_rescue.get("media_path") and Path(yt_rescue["media_path"]).exists():
-                                r_sc["media_path"] = yt_rescue["media_path"]
-                                r_sc["media_type"] = "video"
-                                r_sc["pose_images"] = []
-                                r_sc["production_method"] = "MOTION_FLOOR_RESCUE_YT_PEAK"
-                                r_sc["visual_strategy"] = "YOUTUBE_SHORT_PEAK_CLONE"
-                                rescued_ok = True
-                                logger.info(f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Video Peak độc lập ({Path(yt_rescue['media_path']).name})")
-                        except Exception as _re_yt:
-                            logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} YT peak rescue ({q_main}) skip: {_re_yt}")
+                    from app.graph.tools.tool_schemas import build_single_entity_stock_queries
+                    scene_single_queries = build_single_entity_stock_queries(
+                        [q_c for q_c in (r_stock_q, r_kw, overall_rescue_q) if q_c],
+                        subject_entity=r_subj,
+                        topic=state.get("topic", ""),
+                        max_words=3,
+                    )
 
-                    # 2. Tầng Stock Video Pexels/Pixabay đa truy vấn (giới hạn 2 truy vấn mới chưa thử ở main loop)
-                    if not rescued_ok and not _rescue_cancelled():
-                        stock_queries = []
+                    async def _run_stock_video_rescue_step() -> None:
+                        nonlocal rescued_ok
+                        if rescued_ok or _rescue_cancelled():
+                            return
+                        stock_queries: List[str] = []
                         cand_sq_list = (
-                            (portrait_broll_facets[r_pos % len(portrait_broll_facets)], overall_rescue_q)
+                            (portrait_broll_facets[r_pos % len(portrait_broll_facets)], r_stock_q, overall_rescue_q)
                             if is_portrait_tool
                             else (
-                                (overall_rescue_q, f"{r_subj} {facet_tag}".strip())
-                                if already_tried_scene_kw
-                                else (r_kw, overall_rescue_q)
+                                r_stock_q,
+                                r_kw,
+                                *(scene_single_queries[:2]),
+                                overall_rescue_q,
+                                f"{r_subj} {facet_tag}".strip(),
                             )
                         )
                         for sq in cand_sq_list:
@@ -2330,64 +2369,143 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             if rescued_ok or _rescue_cancelled():
                                 break
                             try:
+                                va_resc = {"video_format": "long"} if is_long_form else {
+                                    "search_queries": stock_queries[:3],
+                                    "subject": sq_try,
+                                    "core_visual_entity": sq_try,
+                                    "topic": state.get("topic", ""),
+                                    "skip_establishing_pass": (r_sid == 1),
+                                }
                                 best_v_fb = await asyncio.to_thread(
                                     media_agent.search_best_video_clip,
                                     sq_try,
                                     used_pool_urls,
-                                    {"video_format": "long"} if is_long_form else None,
+                                    va_resc,
                                     str(r_sc.get("narration") or state.get("topic", "")),
                                     state.get("topic", ""),
                                 )
                                 if best_v_fb and best_v_fb.get("url"):
-                                    cand_u_fb = str(best_v_fb["url"])
+                                    cand_fb_urls = [
+                                        best_v_fb["url"],
+                                        *(best_v_fb.get("_vision_alternates") or []),
+                                    ]
                                     cand_title_fb = str(best_v_fb.get("title") or sq_try)
-                                    if not rag.try_claim_in_job_video(
-                                        job_id=job_id, vid_id=cand_u_fb, url=cand_u_fb, title=cand_title_fb, scene_id=r_sid
-                                    ):
-                                        used_pool_urls.add(cand_u_fb)
-                                        continue
-                                    raw_dl_mp4 = str(media_dir / f"scene_{r_sid:03d}_stock_raw.mp4")
-                                    await asyncio.to_thread(media_agent.download_file, cand_u_fb, raw_dl_mp4)
-                                    if Path(raw_dl_mp4).exists() and Path(raw_dl_mp4).stat().st_size > 15_000:
-                                        trim_video(
-                                            input_path=raw_dl_mp4,
-                                            duration_seconds=r_dur + 0.25,
-                                            output_path=r_out_mp4,
-                                            width=1920 if is_long_form else 1080,
-                                            height=1080 if is_long_form else 1920,
-                                            fps=30,
-                                            is_scifi=is_scifi_val,
-                                            niche=current_niche,
-                                            apply_grading=True,
-                                            is_hook_scene=False,
-                                            fair_use_transform=True,
-                                        )
-                                        Path(raw_dl_mp4).unlink(missing_ok=True)
-                                        if Path(r_out_mp4).exists() and Path(r_out_mp4).stat().st_size > 15_000:
-                                            ok_sig, _ = rag.verify_and_commit_in_job_clip(
-                                                job_id=job_id,
-                                                scene_id=r_sid,
-                                                media_path=r_out_mp4,
-                                                vid_id=cand_u_fb,
-                                                url=cand_u_fb,
-                                                title=cand_title_fb,
-                                            )
+                                    for cand_u_fb_raw in cand_fb_urls[:4]:
+                                        cand_u_fb = str(cand_u_fb_raw or "").strip()
+                                        if not cand_u_fb:
+                                            continue
+                                        if not rag.try_claim_in_job_video(
+                                            job_id=job_id, vid_id=cand_u_fb, url=cand_u_fb, title=cand_title_fb, scene_id=r_sid
+                                        ):
                                             used_pool_urls.add(cand_u_fb)
-                                            if ok_sig:
-                                                r_sc["media_path"] = r_out_mp4
-                                                r_sc["media_type"] = "video"
-                                                r_sc["pose_images"] = []
-                                                r_sc["production_method"] = "MOTION_FLOOR_RESCUE_STOCK_VIDEO"
-                                                r_sc["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
-                                                rescued_ok = True
-                                                logger.info(f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Stock Video độc lập ({Path(r_out_mp4).name})")
-                                                break
-                                            else:
-                                                Path(r_out_mp4).unlink(missing_ok=True)
-                                    else:
-                                        Path(raw_dl_mp4).unlink(missing_ok=True)
+                                            continue
+                                        raw_dl_mp4 = str(media_dir / f"scene_{r_sid:03d}_stock_raw.mp4")
+                                        await asyncio.to_thread(media_agent.download_file, cand_u_fb, raw_dl_mp4)
+                                        if Path(raw_dl_mp4).exists() and Path(raw_dl_mp4).stat().st_size > 15_000:
+                                            await asyncio.to_thread(
+                                                trim_video,
+                                                input_path=raw_dl_mp4,
+                                                duration_seconds=r_dur + 0.25,
+                                                output_path=r_out_mp4,
+                                                width=1920 if is_long_form else 1080,
+                                                height=1080 if is_long_form else 1920,
+                                                fps=30,
+                                                is_scifi=is_scifi_val,
+                                                niche=current_niche,
+                                                apply_grading=True,
+                                                is_hook_scene=False,
+                                                fair_use_transform=True,
+                                            )
+                                            Path(raw_dl_mp4).unlink(missing_ok=True)
+                                            if Path(r_out_mp4).exists() and Path(r_out_mp4).stat().st_size > 15_000:
+                                                ok_sig, _ = rag.verify_and_commit_in_job_clip(
+                                                    job_id=job_id,
+                                                    scene_id=r_sid,
+                                                    media_path=r_out_mp4,
+                                                    vid_id=cand_u_fb,
+                                                    url=cand_u_fb,
+                                                    title=cand_title_fb,
+                                                )
+                                                used_pool_urls.add(cand_u_fb)
+                                                if ok_sig:
+                                                    r_sc["media_path"] = r_out_mp4
+                                                    r_sc["media_type"] = "video"
+                                                    r_sc["pose_images"] = []
+                                                    r_sc["production_method"] = "MOTION_FLOOR_RESCUE_STOCK_VIDEO"
+                                                    r_sc["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
+                                                    rescued_ok = True
+                                                    logger.info(
+                                                        f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Stock Video độc lập ('{sq_try}') -> {Path(r_out_mp4).name}"
+                                                    )
+                                                    break
+                                                else:
+                                                    Path(r_out_mp4).unlink(missing_ok=True)
+                                        else:
+                                            Path(raw_dl_mp4).unlink(missing_ok=True)
+                                            rag.release_in_job_video_claim(
+                                                job_id=job_id, vid_id=cand_u_fb, url=cand_u_fb, title=cand_title_fb, scene_id=r_sid
+                                            )
                             except Exception as _re_doc:
                                 logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Stock rescue ({sq_try}) skip: {_re_doc}")
+
+                    async def _run_yt_peak_rescue_step() -> None:
+                        nonlocal rescued_ok
+                        if rescued_ok or is_long_form or _rescue_cancelled():
+                            return
+                        yt_rescue_queries = [
+                            (f"{r_stock_q or r_kw} {facet_tag}".strip(), r_stock_q or overall_rescue_q, "SCENE_SPECIFIC"),
+                        ]
+                        if not already_tried_scene_kw:
+                            yt_rescue_queries.insert(0, (r_kw, r_stock_q or overall_rescue_q, "SCENE_SPECIFIC"))
+                        for q_main, q_fb, q_scope in yt_rescue_queries[:1]:
+                            if rescued_ok or is_long_form or _rescue_cancelled():
+                                break
+                            try:
+                                yt_sub_dl = (
+                                    min(deadline_ts, time.monotonic() + 22.0)
+                                    if deadline_ts is not None
+                                    else (time.monotonic() + 22.0)
+                                )
+                                yt_rescue = await asyncio.to_thread(
+                                    execute_youtube_short_peak_clone_sync,
+                                    search_query=q_main,
+                                    output_path=r_out_mp4,
+                                    target_duration_sec=r_dur,
+                                    clip_role="PEAK",
+                                    used_urls=used_pool_urls,
+                                    fallback_query=q_fb,
+                                    subject_entity=r_subj,
+                                    narration=str(r_sc.get("narration") or state.get("topic", "")),
+                                    topic=state.get("topic", ""),
+                                    search_scope=q_scope,
+                                    overall_script_query=overall_rescue_q,
+                                    max_peak_duration_sec=14.0,
+                                    job_id=job_id,
+                                    scene_id=r_sid,
+                                    channel_id=channel_id_val,
+                                    cancel_event=cancel_event,
+                                    deadline_ts=yt_sub_dl,
+                                )
+                                if yt_rescue and yt_rescue.get("media_path") and Path(yt_rescue["media_path"]).exists():
+                                    r_sc["media_path"] = yt_rescue["media_path"]
+                                    r_sc["media_type"] = "video"
+                                    r_sc["pose_images"] = []
+                                    r_sc["production_method"] = "MOTION_FLOOR_RESCUE_YT_PEAK"
+                                    r_sc["visual_strategy"] = "YOUTUBE_SHORT_PEAK_CLONE"
+                                    rescued_ok = True
+                                    logger.info(
+                                        f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Video Peak độc lập ({Path(yt_rescue['media_path']).name})"
+                                    )
+                            except Exception as _re_yt:
+                                logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} YT peak rescue ({q_main}) skip: {_re_yt}")
+
+                    # Nếu Phase 1 đã thử YouTube trên cảnh này mà hết giờ/trống, ưu tiên chạy Stock Video Pexels/Pixabay (6-8s) trước!
+                    if already_tried_scene_kw:
+                        await _run_stock_video_rescue_step()
+                        await _run_yt_peak_rescue_step()
+                    else:
+                        await _run_yt_peak_rescue_step()
+                        await _run_stock_video_rescue_step()
 
                     # 3. ĐÃ TẮT cắt lại từ `hook_candidates` để đảm bảo 100% không trùng lặp nguồn với Cảnh 1
                     if False and not rescued_ok:
@@ -2511,7 +2629,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             async def _guarded_rescue_single_scene_motion(r_pos: int, r_idx: int) -> None:
                 async with rescue_sem:
                     r_cancel_ev = threading.Event()
-                    r_deadline_ts = time.monotonic() + 33.5
+                    r_deadline_ts = time.monotonic() + 38.5
                     try:
                         await asyncio.wait_for(
                             _rescue_single_scene_motion(
@@ -2520,11 +2638,26 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 cancel_event=r_cancel_ev,
                                 deadline_ts=r_deadline_ts,
                             ),
-                            timeout=35.0,
+                            timeout=40.0,
                         )
                     except Exception as _e_r_to:
                         r_cancel_ev.set()
                         logger.debug(f"[Real-Motion Floor Rescue] Slot {r_idx} timeout/skip: {_e_r_to}")
+                        try:
+                            r_sc_to = scenes_media[r_idx]
+                            r_sid_to = int(r_sc_to.get("scene_id") or (r_idx + 1))
+                            r_out_to = media_dir / f"scene_{r_sid_to:03d}_motion_rescue.mp4"
+                            if not _is_real_video_slot(r_sc_to) and r_out_to.exists() and r_out_to.stat().st_size > 15_000:
+                                r_sc_to["media_path"] = str(r_out_to)
+                                r_sc_to["media_type"] = "video"
+                                r_sc_to["pose_images"] = []
+                                r_sc_to["production_method"] = "MOTION_FLOOR_RESCUE_LATE_RECOVERED"
+                                r_sc_to["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
+                                logger.info(
+                                    f"  ♻️ [Real-Motion Floor Rescue] Scene {r_sid_to}: Khôi phục file video '{r_out_to.name}' vừa cắt xong trên đĩa!"
+                                )
+                        except Exception:
+                            pass
 
             await asyncio.gather(
                 *[
@@ -2823,6 +2956,48 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     critic = VisualCritic()
     eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
 
+    # Cổng kiểm toán tỷ lệ Video chuyển động thật (>= 80% trên Shorts):
+    # Nếu video Shorts vẫn còn quá nhiều cảnh ảnh tĩnh (.jpg) sau node_fetch_media,
+    # tự động đưa các cảnh ảnh tĩnh đó vào danh sách cần nâng cấp (`failed_scene_ids`) để node_refine_media / FinalVisualGate nạp Video thật!
+    is_lf_check = (
+        str(state.get("video_format") or (state.get("script_data") or {}).get("video_format") or "short").strip().lower() == "long"
+        or len(scenes_media) >= 14
+    )
+    if not is_lf_check and len(scenes_media) >= 5:
+        def _is_eval_real_video(sc_d: Dict[str, Any]) -> bool:
+            mp_s = str(sc_d.get("media_path") or "").lower()
+            mt_s = str(sc_d.get("media_type") or "").lower()
+            pm_s = str(sc_d.get("production_method") or "").upper()
+            if any(t_k in mp_s for t_k in ("_i2v", "_fb_motion", "_anim", "_motion3d", "_gsearch_3d", "_creature_3d")):
+                return False
+            if any(t_p in pm_s for t_p in ("IMAGE_TO_VIDEO", "STOCK_PHOTO_I2V", "GOOGLE_TOP_IMAGE", "CLIMAX_IMAGES_LIVE_FX")):
+                return False
+            return mt_s in ("video", "hook_ready_video") and mp_s.endswith((".mp4", ".mov", ".webm"))
+
+        n_sc_eval = len(scenes_media)
+        min_req_vid = max(5, int((n_sc_eval * 0.80) + 0.999))
+        real_vid_count = sum(1 for sc_x in scenes_media if _is_eval_real_video(sc_x))
+        if real_vid_count < min_req_vid:
+            deficit_v = min_req_vid - real_vid_count
+            static_priority_order = [0, 1, n_sc_eval - 1, n_sc_eval - 2] + [
+                i_m for i_m in range(2, max(2, n_sc_eval - 2))
+            ]
+            added_static_sids: List[int] = []
+            for st_idx in static_priority_order:
+                if 0 <= st_idx < n_sc_eval and not _is_eval_real_video(scenes_media[st_idx]):
+                    st_sid = int(scenes_media[st_idx].get("scene_id") or (st_idx + 1))
+                    if st_sid not in eval_report.failed_scene_ids:
+                        eval_report.failed_scene_ids.append(st_sid)
+                        added_static_sids.append(st_sid)
+                    if len(added_static_sids) >= deficit_v:
+                        break
+            if eval_report.failed_scene_ids:
+                eval_report.passed = False
+                logger.warning(
+                    f"🎬 [MotionFloorGate] Chỉ có {real_vid_count}/{n_sc_eval} cảnh là video chuyển động thật (< {min_req_vid} cảnh chuẩn >=80%) "
+                    f"-> Đưa thêm các cảnh ảnh tĩnh {added_static_sids} vào luồng nâng cấp Video B-Roll!"
+                )
+
     # Cổng chặn cuối cùng trước khi vào render_video: Nếu đã hết lượt retry refine_media mà vẫn còn cảnh lỗi
     # (ví dụ: lệch loài/chủ thể do ContactSheet Vision phát hiện ở lần refine cuối), tự động thay thế ngay
     # bằng clip chuyển động sạch đạt chuẩn trong cùng Job để tuyệt đối không lọt cảnh lỗi sang render_video!
@@ -2877,11 +3052,19 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         str(primary_entity),
                     )
                 if best_fg_v and best_fg_v.get("url"):
-                    fg_url = str(best_fg_v["url"])
+                    fg_cand_urls = [
+                        best_fg_v["url"],
+                        *(best_fg_v.get("_vision_alternates") or []),
+                    ]
                     fg_title = str(best_fg_v.get("title") or q_fg)
-                    if not rag_fg.try_claim_in_job_video(job_id=job_id_fg, vid_id=fg_url, url=fg_url, title=fg_title, scene_id=sid):
-                        used_active_vids.add(fg_url)
-                    else:
+                    fg_rescued_this_scene = False
+                    for fg_u_raw in fg_cand_urls[:4]:
+                        fg_url = str(fg_u_raw or "").strip()
+                        if not fg_url:
+                            continue
+                        if not rag_fg.try_claim_in_job_video(job_id=job_id_fg, vid_id=fg_url, url=fg_url, title=fg_title, scene_id=sid):
+                            used_active_vids.add(fg_url)
+                            continue
                         raw_fg_dl = str(media_dir / f"scene_{sid:03d}_fg_raw.mp4")
                         out_final_rescue = str(media_dir / f"scene_{sid:03d}_final_clean_rescue.mp4")
                         ma_fg.download_file(fg_url, raw_fg_dl)
@@ -2910,10 +3093,16 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 m["pose_images"] = []
                                 m["production_method"] = "FINAL_GATE_FRESH_STOCK_RESCUE"
                                 rescued_any = True
+                                fg_rescued_this_scene = True
                                 logger.info(
                                     f"🛡️ [FinalVisualGate] Đã tải video Stock độc lập mới cho Cảnh #{sid} ('{q_fg}') -> {Path(out_final_rescue).name}"
                                 )
-                                continue
+                                break
+                        else:
+                            Path(raw_fg_dl).unlink(missing_ok=True)
+                            rag_fg.release_in_job_video_claim(job_id=job_id_fg, vid_id=fg_url, url=fg_url, title=fg_title, scene_id=sid)
+                    if fg_rescued_this_scene:
+                        continue
                 # Fallback ảnh thật Google Top Image nếu kho video không trả về clip cho cảnh lỗi
                 from app.graph.tools.google_image_executor import execute_google_cinematic_image_sync
                 out_fg_img = str(media_dir / f"scene_{sid:03d}_final_gimg_rescue.jpg")
@@ -3238,9 +3427,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     from app.services.video_memory_rag import get_video_memory_rag
                     rag_yt_ref = get_video_memory_rag()
                     yt_ref_dl = (
-                        min(deadline_ts, time.monotonic() + 18.0)
+                        min(deadline_ts, time.monotonic() + 28.0)
                         if deadline_ts is not None
-                        else (time.monotonic() + 18.0)
+                        else (time.monotonic() + 28.0)
                     )
                     out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
                     yt_ref_res = await asyncio.to_thread(
@@ -3297,49 +3486,87 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if not replaced and not _refine_cancelled():
                 try:
                     from app.services.video_memory_rag import get_video_memory_rag
+                    from app.utils.ffmpeg_helper import trim_video
                     rag_ref = get_video_memory_rag()
                     best_v = await asyncio.to_thread(
                         media_agent.search_best_video_clip,
                         clean_kw_q,
                         used_refine_urls,
-                        None,
+                        {"video_format": "long"} if is_lf_refine else None,
                         narr,
                         state.get("topic", ""),
                     )
-                    if best_v and best_v.get("url") and best_v["url"] not in used_refine_urls:
-                        cand_url = str(best_v["url"])
+                    if best_v and best_v.get("url"):
+                        ref_cand_urls = [
+                            best_v["url"],
+                            *(best_v.get("_vision_alternates") or []),
+                        ]
                         cand_title = str(best_v.get("title") or clean_kw_q)
-                        if rag_ref.try_claim_in_job_video(
-                            job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
-                        ):
-                            out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video_r{retry_count}.mp4")
-                            await asyncio.to_thread(media_agent.download_file, cand_url, out_v)
-                            if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
+                        for cand_u_raw in ref_cand_urls[:4]:
+                            cand_url = str(cand_u_raw or "").strip()
+                            if not cand_url:
+                                continue
+                            if not rag_ref.try_claim_in_job_video(
+                                job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
+                            ):
                                 used_refine_urls.add(cand_url)
-                                ok_v_clean, _ = await asyncio.to_thread(
-                                    _verify_and_sanitize_refined_media, out_v, True, scene_id
+                                continue
+                            raw_v = str(media_dir / f"scene_{scene_id:03d}_refined_raw_r{retry_count}.mp4")
+                            out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video_r{retry_count}.mp4")
+                            await asyncio.to_thread(media_agent.download_file, cand_url, raw_v)
+                            if Path(raw_v).exists() and Path(raw_v).stat().st_size > 15_000:
+                                await asyncio.to_thread(
+                                    trim_video,
+                                    input_path=raw_v,
+                                    duration_seconds=sc_dur_sec,
+                                    output_path=out_v,
+                                    width=w_ref,
+                                    height=h_ref,
+                                    fps=30,
+                                    is_scifi=is_scifi_val,
+                                    niche=current_niche,
+                                    apply_grading=True,
+                                    is_hook_scene=(scene_id == 1),
+                                    fair_use_transform=True,
+                                    start_offset_sec=0.0,
+                                    preserve_continuous_flow=True,
                                 )
-                                ok_v_sig, _ = (
-                                    rag_ref.verify_and_commit_in_job_clip(
-                                        job_id=job_id_refine,
-                                        scene_id=scene_id,
-                                        media_path=out_v,
-                                        vid_id=cand_url,
-                                        url=cand_url,
-                                        title=cand_title,
+                                Path(raw_v).unlink(missing_ok=True)
+                                if Path(out_v).exists() and Path(out_v).stat().st_size > 12_000:
+                                    used_refine_urls.add(cand_url)
+                                    ok_v_clean, _ = await asyncio.to_thread(
+                                        _verify_and_sanitize_refined_media, out_v, False, scene_id
                                     )
-                                    if ok_v_clean
-                                    else (False, "failed_refine_gate")
+                                    ok_v_sig, _ = (
+                                        rag_ref.verify_and_commit_in_job_clip(
+                                            job_id=job_id_refine,
+                                            scene_id=scene_id,
+                                            media_path=out_v,
+                                            vid_id=cand_url,
+                                            url=cand_url,
+                                            title=cand_title,
+                                        )
+                                        if ok_v_clean
+                                        else (False, "failed_refine_gate")
+                                    )
+                                    if ok_v_clean and ok_v_sig:
+                                        item["media_path"] = out_v
+                                        item["media_type"] = "video"
+                                        item["pose_images"] = []
+                                        item["production_method"] = "REFINED_STOCK_VIDEO"
+                                        replaced = True
+                                        logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video Clip Pexels mới độc lập: '{clean_kw_q}'")
+                                        break
+                                    else:
+                                        Path(out_v).unlink(missing_ok=True)
+                                        rag_ref.release_in_job_video_claim(
+                                            job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
+                                        )
+                            else:
+                                Path(raw_v).unlink(missing_ok=True)
+                                rag_ref.release_in_job_video_claim(
+                                    job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
                                 )
-                                if ok_v_clean and ok_v_sig:
-                                    item["media_path"] = out_v
-                                    item["media_type"] = "video"
-                                    item["pose_images"] = []
-                                    item["production_method"] = "REFINED_STOCK_VIDEO"
-                                    replaced = True
-                                    logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video Clip Pexels mới độc lập: '{clean_kw_q}'")
-                                else:
-                                    Path(out_v).unlink(missing_ok=True)
                 except Exception as ex_v:
                     logger.debug(f"Scene {scene_id}: Video refine error: {ex_v}")
 
@@ -3468,7 +3695,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     media_agent.search_best_video_clip,
                     q_broad_r,
                     used_refine_urls,
-                    {"video_format": "long"} if is_long_form_ref else None,
+                    {"video_format": "long"} if is_lf_refine else None,
                     narr,
                     state.get("topic", ""),
                 )

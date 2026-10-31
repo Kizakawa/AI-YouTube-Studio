@@ -11,6 +11,7 @@ Hỗ trợ:
 import os
 import re
 import time
+import threading
 import urllib.parse
 import itertools
 import logging
@@ -22,6 +23,7 @@ from config.settings import settings
 from app.services.media.entity_detector import clean_scene_search_query
 
 logger = logging.getLogger(__name__)
+_stock_video_claim_lock = threading.Lock()
 
 
 # ── MoneyPrinterTurbo Standard: 10px Dimension Tolerance ──
@@ -692,22 +694,28 @@ class StockFetcher:
                 }
             return None
 
+        v_dur_sec = float(v.get("duration") or 0.0)
+
         def _res_score(vf):
             h = vf.get("height", 0)
             w = vf.get("width", 0)
+            fps = float(vf.get("fps") or 30.0)
+            fps_pen = 1200 if (v_dur_sec > 20.0 and fps > 35.0) else (400 if fps > 50.0 else 0)
+            if v_dur_sec > 40.0 and abs(h - 1280) <= DIMENSION_TOLERANCE_PX:
+                return 3200 - fps_pen
             # Ưu tiên số 1: Full HD dọc ~1080x1920 (dung sai 10px)
             if abs(h - 1920) <= DIMENSION_TOLERANCE_PX and abs(w - 1080) <= (DIMENSION_TOLERANCE_PX * 2):
-                return 3000
+                return 3000 - fps_pen
             # Ưu tiên số 2: HD dọc ~720x1280 (dung sai 10px)
             elif abs(h - 1280) <= DIMENSION_TOLERANCE_PX:
-                return 2780
+                return 2780 - fps_pen
             elif 1080 <= h < (1920 - DIMENSION_TOLERANCE_PX):
-                return 1500 + min(h, 1270)
+                return 1500 + min(h, 1270) - fps_pen
             elif 720 <= h < 1080:
-                return 500 + h
+                return 500 + h - fps_pen
             elif h > (1920 + DIMENSION_TOLERANCE_PX):
-                return 100 - h  # 4K ưu tiên thấp nhất vì quá nặng
-            return h
+                return 100 - h - fps_pen  # 4K ưu tiên thấp nhất vì quá nặng
+            return h - fps_pen
 
         v_files = v.get("video_files", [])
         portrait_files = [
@@ -721,7 +729,7 @@ class StockFetcher:
         for best in hd_files:
             link = best.get("link")
             if link and not is_media_already_used(link, used_set):
-                return {
+                out_cand = {
                     "url": link,
                     "title": f"Pexels Video: {v.get('url', query)}",
                     "width": best.get("width", 1080),
@@ -731,6 +739,10 @@ class StockFetcher:
                     "source": "pexels_video",
                     "thumbnail": v.get("image", ""),
                 }
+                for keep_k in ("web_url", "_vision_alternates", "curation_score", "curation_rationale"):
+                    if keep_k in v:
+                        out_cand[keep_k] = v[keep_k]
+                return out_cand
         raw_u_no_qs = str(v.get("url") or "").split("?", 1)[0].lower()
         if raw_u_no_qs.endswith(".mp4"):
             if not is_media_already_used(v["url"], used_set):
@@ -961,16 +973,41 @@ class StockFetcher:
                 )
                 min_vid_score = 7.2 if is_hook_vid else 6.5
                 if winner and score >= min_vid_score and not should_ai:
-                    formatted_winner = self.format_video_candidate(winner, query=query, used=used)
-                    if formatted_winner and formatted_winner.get("url"):
-                        formatted_winner["vision_curated"] = (rationale != "Rule-based curation passed")
-                        formatted_winner["vision_score"] = round(float(score), 2)
-                        record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
-                        from app.services.media.media_history import extract_media_identity
-                        ids = extract_media_identity(formatted_winner["url"])
-                        used.update(ids)
+                    from app.services.media.media_history import extract_media_identity
+                    with _stock_video_claim_lock:
+                        live_used = set(used)
                         if used_urls is not None:
-                            used_urls.update(ids)
+                            live_used.update(used_urls)
+                        formatted_winner = self.format_video_candidate(winner, query=query, used=live_used)
+                        if formatted_winner and formatted_winner.get("url"):
+                            cand_win_urls = [
+                                formatted_winner["url"],
+                                *(formatted_winner.get("_vision_alternates") or []),
+                            ]
+                            chosen_win_url = None
+                            rem_alt_urls = []
+                            for cw_u in cand_win_urls:
+                                if not cw_u:
+                                    continue
+                                if chosen_win_url is None and not is_media_already_used(cw_u, live_used):
+                                    chosen_win_url = cw_u
+                                elif cw_u != chosen_win_url and not is_media_already_used(cw_u, live_used):
+                                    rem_alt_urls.append(cw_u)
+                            if chosen_win_url:
+                                formatted_winner["url"] = chosen_win_url
+                                formatted_winner["_vision_alternates"] = rem_alt_urls
+                                formatted_winner["vision_curated"] = (rationale != "Rule-based curation passed")
+                                formatted_winner["vision_score"] = round(float(score), 2)
+                                ids = extract_media_identity(chosen_win_url)
+                                used.update(ids)
+                                used.add(chosen_win_url)
+                                if used_urls is not None:
+                                    used_urls.update(ids)
+                                    used_urls.add(chosen_win_url)
+                            else:
+                                formatted_winner = None
+                    if formatted_winner and formatted_winner.get("url"):
+                        record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
                         return formatted_winner
                 if not is_hook_vid:
                     est_res = _try_establishing_pass(f"LLM Link & Vision Auditor từ chối clip cụ thể ({str(rationale)[:80]})")

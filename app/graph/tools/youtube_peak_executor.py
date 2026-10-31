@@ -76,18 +76,27 @@ def execute_youtube_short_peak_clone_sync(
       đoạn video Peak dài đó qua nhiều phân cảnh liên tiếp trước khi dùng đến ảnh tĩnh!
     """
     t_fn_start = time.monotonic()
-    default_budget_sec = 34.0 if (clip_role or "").upper() == "HOOK" else 26.0
+    default_budget_sec = 46.0 if (clip_role or "").upper() == "HOOK" else 42.0
     deadline_ts = (
         min(deadline_ts, t_fn_start + default_budget_sec)
         if deadline_ts is not None
         else (t_fn_start + default_budget_sec)
     )
+    # Tách ngân sách Tầng 1 (YouTube) và Tầng 2 (Pexels/Pixabay Stock Video):
+    # Luôn giữ lại tối thiểu 16s cho Tầng 2 Stock Video để tránh tình trạng Tầng 1 YouTube ngốn hết 100% thời gian!
+    yt_tier1_budget_sec = 24.0 if (clip_role or "").upper() == "HOOK" else 19.0
+    yt_tier1_deadline = min(deadline_ts - 16.0, t_fn_start + yt_tier1_budget_sec)
+    if yt_tier1_deadline <= t_fn_start + 3.5:
+        yt_tier1_deadline = max(t_fn_start + 3.5, deadline_ts - 8.5)
 
     def _is_cancelled() -> bool:
         return cancel_event is not None and cancel_event.is_set()
 
     def _remaining_sec() -> float:
         return (deadline_ts - time.monotonic()) if deadline_ts is not None else 9999.0
+
+    def _yt_remaining_sec() -> float:
+        return min(_remaining_sec(), yt_tier1_deadline - time.monotonic())
 
     if _is_cancelled() or _remaining_sec() <= 2.0:
         return None
@@ -190,7 +199,7 @@ def execute_youtube_short_peak_clone_sync(
                 clip_role=clip_role,
                 allow_3d_cgi_monster=allow_3d_cgi_monster,
                 cancel_event=cancel_event,
-                deadline_ts=deadline_ts,
+                deadline_ts=yt_tier1_deadline,
             )
             ordered_cands = rag.rank_video_candidates_for_scene(
                 job_id=job_id,
@@ -214,14 +223,18 @@ def execute_youtube_short_peak_clone_sync(
             for cand in cand_pool:
                 if _is_cancelled():
                     return None
-                rem_budget = _remaining_sec()
-                if not allow_3d_cgi_monster and claimed_probes >= 1 and rem_budget < 12.0:
+                rem_budget = _yt_remaining_sec()
+                if not allow_3d_cgi_monster and claimed_probes >= 1 and rem_budget < 7.0:
                     logger.info(
-                        f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Còn {rem_budget:.1f}s trước deadline -> "
-                        f"Dành ngân sách chuyển sang Tầng 2 Stock Video HD sạch!"
+                        f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Còn {rem_budget:.1f}s trong ngân sách Tầng 1 (tổng còn {_remaining_sec():.1f}s) -> "
+                        f"Chuyển sang Tầng 2 Stock Video HD sạch!"
                     )
                     break
-                if rem_budget <= 4.0:
+                if rem_budget <= 2.5:
+                    logger.info(
+                        f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Hết ngân sách Tầng 1 YouTube (tổng còn {_remaining_sec():.1f}s) -> "
+                        f"Chuyển sang Tầng 2 Stock Video HD sạch!"
+                    )
                     break
                 if claimed_probes >= max_claimed_probes:
                     break
@@ -316,12 +329,12 @@ def execute_youtube_short_peak_clone_sync(
                     t_dl_start = time.monotonic()
 
                     def _fast_switch_progress_hook(d: Dict[str, Any]) -> None:
-                        if _is_cancelled() or _remaining_sec() <= 1.5:
+                        if _is_cancelled() or _yt_remaining_sec() <= 1.2:
                             raise TimeoutError(
-                                f"Cooperative cancel / deadline reached while downloading {vid_url}"
+                                f"Cooperative cancel / Tier-1 deadline reached while downloading {vid_url}"
                             )
                         if d.get("status") == "downloading":
-                            max_dl_sec = min(10.0, max(3.5, _remaining_sec() - 3.0))
+                            max_dl_sec = min(9.5, max(3.5, _yt_remaining_sec() - 2.0))
                             if (time.monotonic() - t_dl_start) > max_dl_sec:
                                 raise TimeoutError(
                                     f"Slow YouTube CDN download > {max_dl_sec:.1f}s for {vid_url} -> switch to next candidate"
@@ -342,13 +355,13 @@ def execute_youtube_short_peak_clone_sync(
                     })
                     # TUYỆT ĐỐI KHÔNG dùng download_ranges (vì yt-dlp gọi ffmpeg seek qua HTTP dễ bị treo vô hạn trên CDN YouTube).
                     # Tải thẳng file MP4 <= 18MB qua HTTP thuần; nếu quá 12s chưa tải xong hoặc nhận cancel_event thì hủy ngay!
-                    sem_wait = min(18.0, max(0.5, _remaining_sec() - 4.0))
+                    sem_wait = min(10.0, max(0.5, _yt_remaining_sec() - 2.5))
                     if not _yt_download_sem.acquire(timeout=sem_wait):
                         rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                         break
                     try:
-                        if _is_cancelled() or _remaining_sec() <= 2.5:
-                            raise TimeoutError("Cancelled or deadline reached right after _yt_download_sem acquire")
+                        if _is_cancelled() or _yt_remaining_sec() <= 1.8:
+                            raise TimeoutError("Cancelled or Tier-1 deadline reached right after _yt_download_sem acquire")
                         t_dl_start = time.monotonic()
                         with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
                             ydl_dl.download([vid_url])
@@ -363,7 +376,7 @@ def execute_youtube_short_peak_clone_sync(
                     finally:
                         _yt_download_sem.release()
 
-                    if _is_cancelled() or _remaining_sec() <= 2.5:
+                    if _is_cancelled() or _remaining_sec() <= 4.0:
                         rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                         if _is_cancelled():
                             return None
@@ -468,7 +481,7 @@ def execute_youtube_short_peak_clone_sync(
                             allow_3d_cgi_monster=allow_3d_cgi_monster,
                             strict_no_fallback=True,
                             cancel_event=cancel_event,
-                            deadline_ts=deadline_ts,
+                            deadline_ts=max(yt_tier1_deadline, min(deadline_ts - 8.0, time.monotonic() + 7.5)),
                         )
                         if not passed_vis:
                             logger.info(

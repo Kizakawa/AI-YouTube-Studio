@@ -105,17 +105,21 @@ class MediaVisionCuratorMixin:
         if not candidates:
             return None, 0.0, "Không có ứng viên video nào từ kho tư liệu.", True
 
-        def _res_pref(vf: Dict[str, Any]) -> int:
+        def _res_pref(vf: Dict[str, Any], v_dur: float = 0.0) -> int:
             h = vf.get("height", 0) or 0
+            fps = float(vf.get("fps") or 30.0)
+            fps_penalty = 2500 if (v_dur > 20.0 and fps > 35.0) else (800 if fps > 50.0 else 0)
+            if v_dur > 40.0 and 1280 <= h < 1920:
+                return 10500 - fps_penalty
             if h == 1920:
-                return 10000
+                return 10000 - fps_penalty
             if 1280 <= h < 1920:
-                return 8000 + h
+                return 8500 + h - fps_penalty
             if 720 <= h < 1280:
-                return 6000 + h
+                return 6000 + h - fps_penalty
             if h > 1920:
-                return 4000 - h // 10
-            return h
+                return 4000 - h // 10 - fps_penalty
+            return h - fps_penalty
 
         valid_candidates = []
         for v in candidates:
@@ -156,7 +160,8 @@ class MediaVisionCuratorMixin:
             else:
                 slug = v.get("tags") or v.get("title") or "video clip"
 
-            best_file = sorted(portrait_files, key=_res_pref, reverse=True)[0]
+            v_dur_val = float(v.get("duration") or 0.0)
+            best_file = sorted(portrait_files, key=lambda vf: _res_pref(vf, v_dur_val), reverse=True)[0]
             valid_candidates.append({
                 "raw_video": v,
                 "url": url,
@@ -292,13 +297,45 @@ TRẢ VỀ JSON DUY NHẤT:
 
             if 0 <= w_idx < len(eval_pool) and score >= 7.0 and not fallback_ai:
                 winner = eval_pool[w_idx]
+                alt_indices: List[int] = []
+                for a_i in (agent_dec.get("approved_alternate_indices") or []):
+                    try:
+                        ai_int = int(str(a_i).strip())
+                        if 0 <= ai_int < len(eval_pool) and ai_int != w_idx and ai_int not in alt_indices:
+                            alt_indices.append(ai_int)
+                    except Exception:
+                        pass
+                # Bắt thêm các ứng viên dự phòng được Gemini nêu trong rationale (VD: "INDEX 3 và 4 là phương án dự phòng hợp lệ")
+                if not alt_indices and rationale:
+                    for m_alt in re.finditer(r"INDEX\s*(\d+)(?:\s*(?:,|và|and|or|hoặc)\s*(?:INDEX\s*)?(\d+))?", rationale, re.IGNORECASE):
+                        for grp_s in m_alt.groups():
+                            if grp_s and grp_s.isdigit():
+                                idx_cand = int(grp_s)
+                                if 0 <= idx_cand < len(eval_pool) and idx_cand != w_idx and idx_cand not in alt_indices:
+                                    # Không lấy ứng viên bị nêu trong câu từ chối
+                                    span_start = max(0, m_alt.start() - 35)
+                                    span_ctx = rationale[span_start : m_alt.end() + 45].lower()
+                                    if not any(neg_w in span_ctx for neg_w in ("loại", "từ chối", "sai", "lạc đề", "nhốt", "sở thú", "vòng mũi", "reject")):
+                                        alt_indices.append(idx_cand)
+                # Nếu vẫn dưới 2 backup, bổ sung ứng viên cùng từ khóa chủ thể với winner để chống va chạm đa luồng
+                if len(alt_indices) < 2:
+                    _w_stop = {"video", "clip", "footage", "shot", "view", "close", "slow", "motion", "nature", "wild", "wildlife", "animal", "animals"}
+                    w_tokens = {
+                        tok for tok in re.findall(r"[a-zA-Z]{4,}", str(winner.get("slug") or "").lower())
+                        if tok not in _w_stop
+                    }
+                    for cand_i, cand_obj in enumerate(eval_pool):
+                        if cand_i == w_idx or cand_i in alt_indices or cand_obj.get("_thumb_low_quality"):
+                            continue
+                        c_tokens = set(re.findall(r"[a-zA-Z]{4,}", str(cand_obj.get("slug") or "").lower()))
+                        if w_tokens and (w_tokens & c_tokens):
+                            alt_indices.append(cand_i)
+                            if len(alt_indices) >= 3:
+                                break
                 alt_urls = [
-                    eval_pool[int(a_i)]["download_link"]
-                    for a_i in (agent_dec.get("approved_alternate_indices") or [])
-                    if isinstance(a_i, (int, float))
-                    and 0 <= int(a_i) < len(eval_pool)
-                    and int(a_i) != w_idx
-                    and eval_pool[int(a_i)].get("download_link")
+                    eval_pool[ai_int]["download_link"]
+                    for ai_int in alt_indices
+                    if eval_pool[ai_int].get("download_link") and eval_pool[ai_int]["download_link"] != winner.get("download_link")
                 ]
                 logger.info(
                     f"🎬 [LLM Link & Vision Audit] ✅ Đã chọn Video #{winner['raw_video'].get('id')} "
