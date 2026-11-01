@@ -467,17 +467,16 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     topic = state.get("topic") or script_data.get("topic") or ""
     primary_entity = state.get("primary_entity") or script_data.get("primary_entity") or ""
     niche = state.get("channel_style") or state.get("niche") or "general"
-    channel_id_norm = str(state.get("target_channel_id") or "").strip().lower()
-    if str(niche).strip().lower() in ("psychology", "doodle_2d_explainer") or "psychology" in channel_id_norm:
+    if str(niche).strip().lower() in ("doodle_2d_explainer", "satirical_psychology_animation"):
         logger.info(
-            "🎨 [HookVideoNode] Kênh Tâm lý học (2D Doodle Explainer): "
+            "🎨 [HookVideoNode] Chế độ 100% 2D Doodle Explainer: "
             "Bỏ qua săn video người thật/stock ở Cảnh 1-2 để đồng bộ 100% hoạt họa 2D Doodle từ giây 0.0s tại node_fetch_media."
         )
         return {
             "current_step": "HOOK_VIDEO_DOODLE_BYPASS",
             "pre_resolved_hook_media": {},
             "progress_percent": 50,
-            "progress_message": "🎨 Kênh Psychology: Chuyển sang dựng đồng bộ 100% hoạt họa 2D Doodle từ Cảnh 1 (0.0s)...",
+            "progress_message": "🎨 Chế độ 2D Doodle Explainer: Chuyển sang dựng đồng bộ 100% hoạt họa 2D Doodle từ Cảnh 1 (0.0s)...",
         }
     visual_keyword = scene_1.get("visual_keyword") or topic
     hook_narration = scene_1.get("narration") or audio_1.get("narration") or script_data.get("hook") or ""

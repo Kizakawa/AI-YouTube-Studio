@@ -432,20 +432,14 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "scope_audited": False,
             })
 
-    # Kênh Tâm lý học / Triết học: Cân bằng tỷ lệ vàng giữa Video B-Roll người thật 16:9 (>= 75%) và Hoạt họa 2D Doodle Explainer (~24%: Scene 3, 7, 11, 15...)
+    # Kênh Tâm lý học / Triết học: Cân bằng tỷ lệ vàng giữa Video B-Roll người thật (>= 75%) và Hoạt họa 2D Doodle Explainer (~24%: Scene 3, 7, 11, 15...)
     if str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy") and total_scenes >= 5:
-        doodle_cycle = [
-            ("@MANIPULATOR", "puppet_strings"),
-            ("@MODERNYOU", "split"),
-            ("@PLEASER", "brain_battery"),
-            ("@ANCESTOR", "spear_nature"),
-            ("@FARMER", "alarm"),
-            ("@MANIPULATOR", "mask"),
-            ("@MODERNYOU", "block"),
-            ("@PLEASER", "magnifying_glass"),
-            ("@ANCESTOR", "money_scale"),
-            ("@FARMER", "climax"),
-        ]
+        from app.services.media.doodle_animation_tool import DoodleAnimationTool
+        scenes_by_id = {
+            int(s.get("scene_id") or (i + 1)): s
+            for i, s in enumerate(scenes)
+            if isinstance(s, dict)
+        }
         target_doodle_sids = (
             {s_id for s_id in range(3, total_scenes, 4) if s_id not in (1, total_scenes)}
             if is_long_form_dir
@@ -457,7 +451,13 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 if total_scenes >= 14:
                     d_it["scope_audited"] = True
                 if s_id_cur in target_doodle_sids:
-                    c_tag, p_type = doodle_cycle[((s_id_cur - 3) // 4) % len(doodle_cycle)]
+                    sc_obj = scenes_by_id.get(s_id_cur, {})
+                    c_tag, p_type, _, _, _ = DoodleAnimationTool.auto_select_prop_and_tag(
+                        narration=str(sc_obj.get("narration") or ""),
+                        visual_prompt=str(sc_obj.get("visual_keyword") or d_it.get("human_action_query") or ""),
+                        scene_id=s_id_cur,
+                        total_scenes=total_scenes,
+                    )
                     d_it["tool_name"] = "render_doodle_2d_explainer_scene"
                     d_it["character_tag"] = c_tag
                     d_it["prop_type"] = p_type
@@ -470,7 +470,13 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 for idx_d, t_sid in enumerate(sorted(target_doodle_sids)):
                     for d_it in final_plan:
                         if int(d_it.get("scene_id") or 0) == t_sid and d_it.get("tool_name") != "render_doodle_2d_explainer_scene":
-                            c_tag, p_type = doodle_cycle[idx_d % len(doodle_cycle)]
+                            sc_obj = scenes_by_id.get(t_sid, {})
+                            c_tag, p_type, _, _, _ = DoodleAnimationTool.auto_select_prop_and_tag(
+                                narration=str(sc_obj.get("narration") or ""),
+                                visual_prompt=str(sc_obj.get("visual_keyword") or d_it.get("human_action_query") or ""),
+                                scene_id=t_sid,
+                                total_scenes=total_scenes,
+                            )
                             d_it["tool_name"] = "render_doodle_2d_explainer_scene"
                             d_it["character_tag"] = c_tag
                             d_it["prop_type"] = p_type

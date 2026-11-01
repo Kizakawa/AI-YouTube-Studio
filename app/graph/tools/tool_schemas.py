@@ -25,7 +25,7 @@ _yt_search_sem = threading.Semaphore(2)
 _yt_flat_search_cache: Dict[str, List[Dict[str, Any]]] = {}
 _used_short_windows: Dict[str, List[Tuple[float, float]]] = {}
 
-# Chặn triệt để các video Podcast / Talking Head / Quảng cáo bán hàng / Đồ chơi / Game / Meme lệch chủ đề
+# Chặn triệt để các video Podcast / Talking Head / Quảng cáo bán hàng / Đồ chơi / Game / Meme / Phố đi bộ du lịch / Nhà hàng đồ ăn nhanh lệch chủ đề
 _TALKING_HEAD_BLOCKLIST = (
     "podcast", "interview", "reaction", "reacts", "q&a", "livestream", "stream highlight",
     "talking", "lecture", "ted talk", "joe rogan", "lex fridman", "review", "unboxing",
@@ -35,6 +35,8 @@ _TALKING_HEAD_BLOCKLIST = (
     "amazon", "shop", "buy", "price", "discount", "commercial", "promo", "toy", " plush",
     "vet explains", "veterinarian", "doctor explains", "training tips", "compilation",
     "bootie", "michael kors", "fashion", "handbag", "leathercare", "shoe polish",
+    "night walk", "walking tour", "virtual walk", "street food", "food tour", "travel vlog",
+    "crazy crowd vibes", "chowking", "jollibee", "mcdonalds", "kfc", "fast food", "shopping mall",
 )
 
 # Danh sách kênh & dấu hiệu có rủi ro bản quyền cao hoặc luôn in cứng watermark/caption (LatestSightings, MR. FRIEND, TikTok...)

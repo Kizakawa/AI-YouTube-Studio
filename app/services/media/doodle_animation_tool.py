@@ -657,10 +657,12 @@ def render_doodle_frame(
             anchor="mm",
         )
     else:
-        tag_box = [110, int(145 + header_y_off), canvas_w - 110, int(245 + header_y_off)]
+        # Đặt tại y=380..476 và x=220..canvas_w-220 để nằm gọn 100% trong vùng an toàn (Safe Zone)
+        # ngay cả khi camera zoom 1.14x (top_f lên tới ~319px, left_f lên tới ~205px)
+        tag_box = [220, int(380 + header_y_off), canvas_w - 220, int(476 + header_y_off)]
         draw.rounded_rectangle(tag_box, radius=24, fill=sc.accent_rgb, outline=INK_BLACK, width=6)
         draw.text(
-            (canvas_w // 2, int(195 + header_y_off)),
+            (canvas_w // 2, int(428 + header_y_off)),
             sc.headline,
             fill=(255, 255, 255),
             font=font_badge,
@@ -742,10 +744,10 @@ def render_doodle_frame(
         _draw_sketch_line(draw, (cx, cy - 340), (cx, cy + 220), t_sec, scene_seed + 40, color=ALERT_RED, width=8)
         _draw_doodle_character(draw, cx - 210, cy + 15, 0.92, TAG_COLOR_RGB["@MODERNYOU"], "exhausted", t_sec, scene_seed)
         _draw_doodle_character(draw, cx + 210, cy + 15, 0.92, TAG_COLOR_RGB["@ANCESTOR"], "calm", t_sec, scene_seed + 50)
-        draw.rounded_rectangle([cx - 340, cy - 320, cx - 70, cy - 235], radius=16, fill=ALERT_RED, outline=INK_BLACK, width=5)
-        draw.text((cx - 205, cy - 277), "CHAOS / TRAP", fill=(255, 255, 255), font=font_badge, anchor="mm")
-        draw.rounded_rectangle([cx + 70, cy - 320, cx + 340, cy - 235], radius=16, fill=GREEN_CALM, outline=INK_BLACK, width=5)
-        draw.text((cx + 205, cy - 277), "CLARITY", fill=(255, 255, 255), font=font_badge, anchor="mm")
+        draw.rounded_rectangle([cx - 380, cy - 320, cx - 50, cy - 235], radius=16, fill=ALERT_RED, outline=INK_BLACK, width=5)
+        draw.text((cx - 215, cy - 277), "CHAOS / TRAP", fill=(255, 255, 255), font=font_badge, anchor="mm")
+        draw.rounded_rectangle([cx + 50, cy - 320, cx + 380, cy - 235], radius=16, fill=GREEN_CALM, outline=INK_BLACK, width=5)
+        draw.text((cx + 215, cy - 277), "CLARITY", fill=(255, 255, 255), font=font_badge, anchor="mm")
 
     elif sc.prop_type == "puppet_strings":
         _draw_doodle_character(draw, cx - 150, cy + 25, 0.98, TAG_COLOR_RGB["@PLEASER"], "exhausted", t_sec, scene_seed, hunched=True)
@@ -969,18 +971,24 @@ class DoodleAnimationTool:
             elif any(w in ctx for w in ("farmer", "neolithic", "debt", "loan", "labor", "spine")):
                 tag = "@FARMER"
 
-        if any(w in ctx for w in ("manipulat", "puppet", "control", "gaslight", "narcissist", "strings")):
+        if any(w in ctx for w in ("manipulat", "puppet", "gaslight", "narcissist", "strings")):
             prop = "puppet_strings"
-        elif any(w in ctx for w in ("dopamine", "brain", "battery", "sleep", "tired", "cortisol", "exhausted")):
+        elif any(w in ctx for w in ("point directly", "command them", "break this paralysis", "solution", "breakthrough", "take action", "call an ambulance")):
+            prop = "climax"
+        elif any(w in ctx for w in ("lie", "deceit", "clue", "detect", "investigat", "witness", "assumed someone else", "specific person", "lock eyes")):
+            prop = "magnifying_glass"
+        elif any(w in ctx for w in ("fake", "persona", "pretend", "disguise", "two-faced", "mask")):
+            prop = "mask"
+        elif any(w in ctx for w in ("crushed", "heavy", "burden", "weight", "trap", "shrunk", "inches", "stress", "paralysis", "locked their windows")):
+            prop = "block"
+        elif any(w in ctx for w in ("vs", "compare", "while", "meanwhile", "paradox", "twice as", "divides", "crowd forms", "group")):
+            prop = "split"
+        elif any(w in ctx for w in ("dopamine", "battery", "sleep", "tired", "cortisol", "exhausted", "drained")):
             prop = "brain_battery"
         elif any(w in ctx for w in ("money", "debt", "bank", "inflation", "salary", "tax", "loan", "credit", "$")):
             prop = "money_scale"
-        elif any(w in ctx for w in ("alarm", "monday", "morning", "clock", "wake up", "6:00", "hours a week")):
+        elif any(w in ctx for w in ("alarm", "monday", "morning", "clock", "wake up", "6:00", "hours a week", "emergency")):
             prop = "alarm"
-        elif any(w in ctx for w in ("crushed", "heavy", "burden", "weight", "trap", "shrunk", "inches", "stress")):
-            prop = "block"
-        elif any(w in ctx for w in ("vs", "compare", "while", "meanwhile", "paradox", "twice as")):
-            prop = "split"
         elif any(w in ctx for w in ("hunter", "nature", "free", "spear", "walk", "leisure")):
             prop = "spear_nature"
         elif scene_id >= total_scenes:
@@ -1067,6 +1075,15 @@ class DoodleAnimationTool:
             scene_id=scene_id,
             total_scenes=total_scenes,
         )
+        # Nếu caller truyền mặc định @MANIPULATOR / puppet_strings nhưng ngữ cảnh thực tế của câu thoại
+        # không nói về thao túng/con rối, tự động ưu tiên đạo cụ & nhân vật khớp ngữ nghĩa câu thoại
+        ctx_check = f"{narration} {visual_prompt}".lower()
+        if prop_type == "puppet_strings" and auto_prop != "puppet_strings" and not any(
+            w in ctx_check for w in ("manipulat", "puppet", "gaslight", "narcissist", "strings")
+        ):
+            prop_type = auto_prop
+            if character_tag == "@MANIPULATOR":
+                character_tag = auto_tag
         dur_s = max(2.5, float(duration_seconds))
         sc = DoodleSceneConfig(
             scene_id=scene_id,
