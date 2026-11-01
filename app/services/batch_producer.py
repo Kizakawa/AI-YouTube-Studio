@@ -1051,6 +1051,18 @@ async def main():
     results = []
     videos_per_ch = max(1, int(args.count or 1))
     concurrency = max(1, int(getattr(args, "concurrency", 1) or 1))
+    total_planned_videos = len(targets) * videos_per_ch
+    if (
+        concurrency > 1
+        and total_planned_videos >= 2
+        and os.environ.get("ALLOW_HIGH_BATCH_CONCURRENCY", "").strip().lower() not in ("1", "true", "yes")
+    ):
+        logger.info(
+            f"⚡ [BatchProducer] Tự động đặt concurrency=1 (thay vì {concurrency}) cho lô {total_planned_videos} video "
+            f"vì mỗi video đã chạy song song 8 luồng cảnh + 5 luồng Stock. "
+            f"Chạy tuần tự từng video giúp đạt tốc độ 90s–120s/video và tránh nghẽn 429 Pexels/Gemini."
+        )
+        concurrency = 1
 
     if concurrency <= 1 or len(targets) <= 1:
         for t in targets:
@@ -1129,4 +1141,12 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    finally:
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+    os._exit(0)

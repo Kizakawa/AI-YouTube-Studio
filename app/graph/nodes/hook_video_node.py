@@ -440,7 +440,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
         }
 
     cancel_event = threading.Event()
-    hook_deadline_ts = time.monotonic() + 78.0
+    hook_deadline_ts = time.monotonic() + 42.0
 
     def _entry() -> Dict[str, Any]:
         with bind_scene_cancellation(cancel_event, hook_deadline_ts):
@@ -451,11 +451,11 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
             )
 
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=82.0)
+        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=45.0)
     except asyncio.TimeoutError:
         cancel_event.set()
         logger.warning(
-            "⏱️ [HookVideoNode] Chạm trần ngân sách 82s -> Hủy sớm worker nền và chuyển Cảnh 1 sang node_fetch_media."
+            "⏱️ [HookVideoNode] Chạm trần ngân sách 45s -> Hủy sớm worker nền và chuyển Cảnh 1 sang node_fetch_media."
         )
         out_timeout: Dict[str, Any] = {
             "pre_resolved_hook_media": {},
@@ -466,7 +466,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
                 "passed": False,
                 "hook_visual_mode": "video",
                 "evaluated_by": "timeout_guard",
-                "best_reason": "Hook node exceeded 82s wall-clock cap; delegated cleanly to fetch_media",
+                "best_reason": "Hook node exceeded 45s wall-clock cap; delegated cleanly to fetch_media",
                 "spliced_scenes": [],
             },
             "current_step": "HOOK_VIDEO_READY",
@@ -508,9 +508,35 @@ def _produce_and_score_hook_video_sync(
             return True
         return False
 
-    def _pool_map_ctx(pool: ThreadPoolExecutor, fn, items):
-        futs = [pool.submit(contextvars.copy_context().run, fn, item) for item in items]
-        return [f.result() for f in futs]
+    def _run_pool_map_nonblocking(fn, items, max_workers: int = 4, stage_timeout: float = 14.0):
+        items_list = list(items)
+        if not items_list:
+            return []
+        rem_sec = (hook_deadline_ts - time.monotonic() - 1.5) if hook_deadline_ts is not None else stage_timeout
+        wait_cap = max(1.0, min(stage_timeout, rem_sec))
+        pool = ThreadPoolExecutor(max_workers=min(max_workers, len(items_list)))
+        results_by_idx: Dict[int, Any] = {}
+        try:
+            futs = {
+                pool.submit(contextvars.copy_context().run, fn, item): idx
+                for idx, item in enumerate(items_list)
+            }
+            for fut in as_completed(futs, timeout=wait_cap):
+                idx = futs[fut]
+                try:
+                    results_by_idx[idx] = fut.result(timeout=0.05)
+                except Exception:
+                    pass
+                if _hook_cancelled(1.5):
+                    break
+        except Exception:
+            pass
+        finally:
+            try:
+                pool.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                pool.shutdown(wait=False)
+        return [results_by_idx[i] for i in sorted(results_by_idx.keys())]
 
     work_dir = Path(state.get("work_dir", "storage/cache"))
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -989,8 +1015,12 @@ Return ONLY valid JSON:
         return q_idx, q, raw_flat_cands
 
     if yt_queries_to_run and not _hook_cancelled(10.0):
-        with ThreadPoolExecutor(max_workers=min(5, len(yt_queries_to_run))) as flat_pool:
-            flat_results = _pool_map_ctx(flat_pool, _run_flat_search_for_query, enumerate(yt_queries_to_run))
+        flat_results = _run_pool_map_nonblocking(
+            _run_flat_search_for_query,
+            enumerate(yt_queries_to_run),
+            max_workers=min(5, len(yt_queries_to_run)),
+            stage_timeout=10.0,
+        )
         for q_idx, q, raw_flat_cands in sorted(flat_results, key=lambda x: x[0]):
             if not raw_flat_cands:
                 continue
@@ -1282,8 +1312,12 @@ Return ONLY valid JSON:
 
         wave1_cands = list(enumerate(wave1_selected))
         if wave1_cands and not _hook_cancelled(8.0):
-            with ThreadPoolExecutor(max_workers=min(4, len(wave1_cands))) as dl_pool:
-                dl_batches = _pool_map_ctx(dl_pool, _download_and_extract_single_short, wave1_cands)
+            dl_batches = _run_pool_map_nonblocking(
+                _download_and_extract_single_short,
+                wave1_cands,
+                max_workers=min(4, len(wave1_cands)),
+                stage_timeout=16.0,
+            )
         else:
             dl_batches = []
         for batch in dl_batches:
@@ -1302,8 +1336,12 @@ Return ONLY valid JSON:
             if not rem_non_vs:
                 rem_non_vs = [c for c in top_curated_yt_cands if c.get("id") not in wave1_ids]
             wave2_cands = list(enumerate(rem_non_vs[:2], start=4))
-            with ThreadPoolExecutor(max_workers=min(2, len(wave2_cands))) as dl_pool2:
-                dl_batches2 = _pool_map_ctx(dl_pool2, _download_and_extract_single_short, wave2_cands)
+            dl_batches2 = _run_pool_map_nonblocking(
+                _download_and_extract_single_short,
+                wave2_cands,
+                max_workers=min(2, len(wave2_cands)),
+                stage_timeout=12.0,
+            )
             for batch in dl_batches2:
                 for _dl_i, v_str, peak_meta in batch:
                     if v_str in validated_peaks or v_str in candidate_videos:
@@ -1414,8 +1452,12 @@ Return ONLY valid JSON:
                 return None
 
             if broll_queries_to_run and not _hook_cancelled(8.0):
-                with ThreadPoolExecutor(max_workers=min(2, len(broll_queries_to_run))) as ms_pool:
-                    ms_results = _pool_map_ctx(ms_pool, _fetch_single_multisrc_beat, broll_queries_to_run)
+                ms_results = _run_pool_map_nonblocking(
+                    _fetch_single_multisrc_beat,
+                    broll_queries_to_run,
+                    max_workers=min(2, len(broll_queries_to_run)),
+                    stage_timeout=16.0,
+                )
                 seen_multi_urls: set = set()
                 for ms_item in ms_results:
                     if not ms_item or len(candidate_videos) >= 6:
@@ -1817,14 +1859,16 @@ Return ONLY valid JSON:
 
     if candidate_videos and not _hook_cancelled(4.0):
         graded_pairs: List[Optional[tuple[int, Dict[str, Any]]]] = []
-        with ThreadPoolExecutor(max_workers=min(3, len(candidate_videos))) as grade_pool:
+        grade_pool = ThreadPoolExecutor(max_workers=min(3, len(candidate_videos)))
+        try:
             grade_futs = [
                 grade_pool.submit(contextvars.copy_context().run, _grade_single_hook_candidate, pair)
                 for pair in enumerate(candidate_videos)
             ]
-            for g_fut in as_completed(grade_futs):
+            rem_grade_sec = (hook_deadline_ts - time.monotonic() - 1.5) if hook_deadline_ts is not None else 14.0
+            for g_fut in as_completed(grade_futs, timeout=max(1.5, min(14.0, rem_grade_sec))):
                 try:
-                    g_res = g_fut.result()
+                    g_res = g_fut.result(timeout=0.05)
                 except Exception as e_gf:
                     logger.debug(f"[HookVideoGrader] Worker exception: {e_gf}")
                     g_res = None
@@ -1837,6 +1881,13 @@ Return ONLY valid JSON:
                         if not pend_f.done():
                             pend_f.cancel()
                     break
+        except Exception as e_gp:
+            logger.debug(f"[HookVideoGrader] Grade pool timeout/early-exit: {e_gp}")
+        finally:
+            try:
+                grade_pool.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                grade_pool.shutdown(wait=False)
         graded_pairs.sort(key=lambda pair: pair[0] if pair else 999)
         for g_item in graded_pairs:
             if not g_item:

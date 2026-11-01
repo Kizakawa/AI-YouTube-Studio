@@ -77,9 +77,24 @@ class MediaVisionCuratorMixin:
         if not eval_pool:
             return images_out, idx_to_order
 
-        with ThreadPoolExecutor(max_workers=min(8, len(eval_pool))) as ex:
-            results = list(ex.map(_dl_one, list(enumerate(eval_pool))))
+        from concurrent.futures import as_completed
+        ex = ThreadPoolExecutor(max_workers=min(8, len(eval_pool)))
+        results: List[Optional[Tuple[int, str, str]]] = []
+        try:
+            futs = [ex.submit(_dl_one, item) for item in enumerate(eval_pool)]
+            for fut in as_completed(futs, timeout=max(2.5, timeout + 1.2)):
+                try:
+                    r_val = fut.result()
+                    if r_val is not None:
+                        results.append(r_val)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
 
+        results.sort(key=lambda x: x[0] if x else 999)
         for res in results:
             if res is None:
                 continue
@@ -101,6 +116,9 @@ class MediaVisionCuratorMixin:
         Đánh giá toàn diện danh sách video ứng viên trả về từ API Pexels/Pixabay bằng LLM + Multimodal Vision
         dựa trên ý nghĩa thực sự của phân cảnh trong kịch bản người dùng.
         """
+        from app.agents.curation.scene_context_analyzer_mixin import is_scene_cancelled_ctx
+        if is_scene_cancelled_ctx(min_remaining_sec=1.5):
+            return None, 0.0, "Scene deadline reached before video curation.", False
         used = used_urls or set()
         if not candidates:
             return None, 0.0, "Không có ứng viên video nào từ kho tư liệu.", True
@@ -456,10 +474,10 @@ TRẢ VỀ JSON DUY NHẤT:
                 intent_hits = len(cand_tokens.intersection(scene_intent_tokens))
                 narr_hits = len(cand_tokens.intersection(narr_tokens))
                 distinct_anchor_hits = len(cand_tokens.intersection(core_subj_tokens | scene_intent_tokens))
-                # Bắt buộc khớp >= 2 từ khóa neo độc lập khi cụm chủ thể có >= 2 từ (tránh khớp nhầm từ bổ nghĩa của danh từ ghép như 'pelican eel' -> 'pelican')
-                if (subj_hits >= 1 or intent_hits >= 2) and distinct_anchor_hits >= min_req_anchors and (intent_hits + narr_hits) >= 1:
+                # Bắt buộc khớp ít nhất 1 từ khóa chủ thể đặc trưng (subj_hits >= 1) hoặc >= 2 từ khóa ngữ cảnh phân cảnh (intent_hits >= 2)
+                if (subj_hits >= 1 and distinct_anchor_hits >= 1) or (intent_hits >= 2 and distinct_anchor_hits >= min_req_anchors):
                     is_vert = (cand.get("height") or 0) >= (cand.get("width") or 0)
-                    det_sc = min(8.2, 7.1 + subj_hits * 0.35 + intent_hits * 0.25 + min(narr_hits, 2) * 0.1 + (0.2 if is_vert else 0.0))
+                    det_sc = min(8.2, 7.2 + subj_hits * 0.35 + intent_hits * 0.25 + min(narr_hits, 2) * 0.1 + (0.2 if is_vert else 0.0))
                     if det_sc > best_det_score:
                         best_det_score = det_sc
                         best_det_cand = cand
@@ -589,7 +607,11 @@ TRẢ VỀ JSON DUY NHẤT:
         Tuyển chọn ảnh kết hợp kiểm định kỹ thuật (Độ nét, Độ phân giải, Không chữ)
         và kiểm duyệt thị giác đa phương thức Gemini Vision bám sát ý nghĩa kịch bản người dùng.
         """
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from app.agents.curation.scene_context_analyzer_mixin import is_scene_cancelled_ctx
+
+        if is_scene_cancelled_ctx(min_remaining_sec=1.5):
+            return None, 0.0, "Scene deadline reached before photo curation.", False
 
         used = used_urls or set()
         valid = [c for c in candidates if c.get("url") and c.get("url") not in used]
@@ -597,8 +619,26 @@ TRẢ VỀ JSON DUY NHẤT:
             return None, 0.0, "Không có ứng viên ảnh nào khả dụng.", True
 
         top_pool = valid[:6]
-        with ThreadPoolExecutor(max_workers=min(6, len(top_pool))) as ex:
-            metrics_list = list(ex.map(self._inspect_candidate_sharpness, top_pool))
+        metrics_map: Dict[int, Optional[Dict[str, Any]]] = {}
+        ex = ThreadPoolExecutor(max_workers=min(6, len(top_pool)))
+        try:
+            futs = {ex.submit(self._inspect_candidate_sharpness, cand): i for i, cand in enumerate(top_pool)}
+            for fut in as_completed(futs, timeout=5.0):
+                if is_scene_cancelled_ctx(min_remaining_sec=1.2):
+                    break
+                i = futs[fut]
+                try:
+                    metrics_map[i] = fut.result(timeout=0.05)
+                except Exception:
+                    metrics_map[i] = None
+        except Exception:
+            pass
+        finally:
+            try:
+                ex.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                ex.shutdown(wait=False)
+        metrics_list = [metrics_map.get(i) for i in range(len(top_pool))]
 
         scored_sharp: List[Tuple[float, int, Dict[str, Any]]] = []
         for idx, (cand, m) in enumerate(zip(top_pool, metrics_list)):

@@ -84,7 +84,11 @@ def run_langgraph_parallel_tasks(
     def parallel_worker(state: Dict[str, Any]) -> Dict[str, Any]:
         w_t0 = time.perf_counter()
         try:
-            res_val = worker_fn(state)
+            from app.agents.curation.scene_context_analyzer_mixin import is_scene_cancelled_ctx
+            if is_scene_cancelled_ctx(min_remaining_sec=1.2):
+                res_val = None
+            else:
+                res_val = worker_fn(state)
         except Exception as e_w:
             logger.debug(f"[LangGraphParallel:{task_group}] Worker #{state.get('task_idx')} error: {e_w}")
             res_val = None
@@ -126,7 +130,8 @@ def run_langgraph_parallel_tasks(
             "task_group": task_group,
             "tasks": indexed_tasks,
             "parallel_results": [],
-        }
+        },
+        config={"callbacks": []},
     )
     return list(final_state.get("ordered_results") or [])
 
@@ -348,7 +353,7 @@ def run_langgraph_5way_stock_video_search(
             "per_source": 3,
         })
 
-    for idx, pq in enumerate(candidate_queries[:4]):
+    for idx, pq in enumerate(candidate_queries[:2]):
         tasks.append({
             "branch_name": f"pexels_v_{idx + 1}",
             "source": "pexels",

@@ -48,6 +48,54 @@ _system_awake_lock = __import__("threading").Lock()
 _active_awake_pipelines = 0
 
 
+def _install_fast_threadpool_atexit_guard() -> None:
+    """
+    Thay thế `concurrent.futures.thread._python_exit` mặc định của Python (vốn gọi `t.join()` không timeout
+    làm treo tiến trình hàng giờ nếu có worker thread `asyncio.to_thread` đã bị hủy theo deadline).
+    Bản nâng cấp này gửi tín hiệu đóng queue và chỉ chờ tối đa 1.5s tổng cộng khi thoát Python.
+    """
+    try:
+        import atexit
+        import concurrent.futures.thread as _cft
+
+        orig_exit = getattr(_cft, "_python_exit", None)
+        if orig_exit is None or getattr(_cft, "_fast_exit_patched", False):
+            return
+        try:
+            atexit.unregister(orig_exit)
+        except Exception:
+            return
+
+        def _bounded_python_exit() -> None:
+            try:
+                setattr(_cft, "_shutdown", True)
+                items = list(getattr(_cft, "_threads_queues", {}).items())
+                for _t, q in items:
+                    try:
+                        q.put(None)
+                    except Exception:
+                        pass
+                deadline = time.monotonic() + 1.5
+                for t, _q in items:
+                    rem = deadline - time.monotonic()
+                    if rem <= 0:
+                        break
+                    try:
+                        t.join(timeout=max(0.02, rem))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        atexit.register(_bounded_python_exit)
+        setattr(_cft, "_fast_exit_patched", True)
+    except Exception:
+        pass
+
+
+_install_fast_threadpool_atexit_guard()
+
+
 def _acquire_system_awake_guard() -> None:
     """Ngăn Windows tự động rơi vào Modern Standby / Sleep làm đứt kết nối mạng khi tiến trình dựng video chạy ngầm."""
     global _active_awake_pipelines
