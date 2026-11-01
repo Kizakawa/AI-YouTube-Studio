@@ -485,7 +485,14 @@ def render_opening_hook_multi_cut(
             if False:
                 concat_inputs.append(f"[{i}:v]")
             else:
-                dx, dy = drift_exprs[i % len(drift_exprs)]
+                sd_safe = max(float(sd), 1.0)
+                drift_scaled = [
+                    (f"60-48*min(t/{sd_safe:.2f},1)", f"104-80*min(t/{sd_safe:.2f},1)"),
+                    (f"12+48*min(t/{sd_safe:.2f},1)", f"24+80*min(t/{sd_safe:.2f},1)"),
+                    (f"60-48*min(t/{sd_safe:.2f},1)", f"24+80*min(t/{sd_safe:.2f},1)"),
+                    (f"12+48*min(t/{sd_safe:.2f},1)", f"104-80*min(t/{sd_safe:.2f},1)"),
+                ]
+                dx, dy = drift_scaled[i % len(drift_scaled)]
                 per_shot_chains.append(
                     f"[{i}:v]scale={pad_w}:{pad_h},crop={width}:{height}:'{dx}':'{dy}',setsar=1,fps={fps}[v{i}]"
                 )

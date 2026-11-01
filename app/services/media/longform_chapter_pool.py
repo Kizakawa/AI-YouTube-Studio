@@ -109,7 +109,7 @@ def is_clip_visually_unique_in_job(
         sig_map = _JOB_SCENE_SIGNATURES.setdefault(jid, {})
         dhash_map = _JOB_SCENE_DHASHES.setdefault(jid, {})
         other_sigs = {k: v for k, v in sig_map.items() if k != sid_slot}
-        if sig and other_sigs:
+        if max_hamming > 3 and sig and other_sigs:
             try:
                 from app.graph.evaluators.visual_critic import VisualCritic
                 if VisualCritic._find_duplicate(sig, other_sigs) is not None:
@@ -182,7 +182,7 @@ def stitch_two_16x9_clips_no_loop(
     ]
     try:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
-        if Path(tmp_stitch).exists() and Path(tmp_stitch).stat().st_size > 35_000 and get_duration_ms(tmp_stitch) >= 2500:
+        if Path(tmp_stitch).exists() and Path(tmp_stitch).stat().st_size > 35_000 and get_duration_ms(tmp_stitch) >= int(max(2.5, req_dur - 0.35) * 1000):
             Path(tmp_stitch).replace(output_path)
             return True
     except Exception:
@@ -786,7 +786,7 @@ def extract_longform_scene_with_internal_jumpcut(
         if attempt_shift > 0.0 and safe_start <= start_offset_sec + 0.5:
             break
 
-        # Nếu cảnh dài >= 11.0s (Phim tài liệu 10 phút) và file master đủ độ dư (>= req_dur + 3.0s), thực hiện Jump-Cut 3 cú máy (Wide -> Medium -> Close-up):
+        # N?u c?nh d?i >= 11.0s (Phim t?i li?u 10 ph?t) v? file master ?? ?? d? (>= req_dur + 3.0s), th?c hi?n Jump-Cut 3 c? m?y (Wide -> Medium -> Close-up):
         if req_dur >= 11.0 and (safe_start + req_dur + 3.0) <= master_dur and scene_id != 1:
             part_a = round(req_dur * 0.34, 2)
             part_b = round(req_dur * 0.33, 2)
@@ -795,11 +795,11 @@ def extract_longform_scene_with_internal_jumpcut(
             start_b = round(safe_start + part_a + 1.5, 2)
             start_c = round(start_b + part_b + 1.5, 2)
             filter_complex = (
-                f"[0:v]trim=start={start_a:.2f}:duration={part_a:.2f},setpts=PTS-STARTPTS,"
+                f"[0:v]setpts=PTS-STARTPTS,"
                 f"scale=1980:1114:flags=lanczos,crop=1920:1080:30:17,eq=contrast=1.03:saturation=1.05[v0];"
-                f"[0:v]trim=start={start_b:.2f}:duration={part_b:.2f},setpts=PTS-STARTPTS,"
+                f"[1:v]setpts=PTS-STARTPTS,"
                 f"scale=2060:1158:flags=lanczos,crop=1920:1080:70:39,eq=contrast=1.05:saturation=1.07[v1];"
-                f"[0:v]trim=start={start_c:.2f}:duration={part_c:.2f},setpts=PTS-STARTPTS,"
+                f"[2:v]setpts=PTS-STARTPTS,"
                 f"scale=2160:1215:flags=lanczos,crop=1920:1080:120:67,eq=contrast=1.06:saturation=1.08,"
                 f"vignette=PI/7[v2];"
                 f"[v0][v1][v2]concat=n=3:v=1:a=0,fps=30,format=yuv420p[vout]"
@@ -808,17 +808,22 @@ def extract_longform_scene_with_internal_jumpcut(
             tmp_out = str(out_p3.parent / f"_fftmp_jc3_{out_p3.name}")
             cmd = [
                 "ffmpeg", "-y", "-v", "error",
-                "-i", master_path,
+                "-ss", f"{start_a:.2f}", "-t", f"{part_a:.2f}", "-i", master_path,
+                "-ss", f"{start_b:.2f}", "-t", f"{part_b:.2f}", "-i", master_path,
+                "-ss", f"{start_c:.2f}", "-t", f"{part_c:.2f}", "-i", master_path,
                 "-filter_complex", filter_complex,
                 "-map", "[vout]",
                 "-t", f"{req_dur:.2f}",
+                "-threads", "2",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
                 "-an",
                 tmp_out,
             ]
+            encode_ok3 = False
             try:
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
-                if Path(tmp_out).exists() and Path(tmp_out).stat().st_size > 35_000 and get_duration_ms(tmp_out) >= 1500:
+                if Path(tmp_out).exists() and Path(tmp_out).stat().st_size > 35_000 and get_duration_ms(tmp_out) >= int(max(1.5, req_dur - 0.35) * 1000):
+                    encode_ok3 = True
                     if _is_clip_window_clean(tmp_out, [0.45, max(1.2, req_dur * 0.68)]):
                         Path(tmp_out).replace(output_path)
                         return True
@@ -826,10 +831,11 @@ def extract_longform_scene_with_internal_jumpcut(
                 pass
             finally:
                 Path(tmp_out).unlink(missing_ok=True)
-            continue
+            if encode_ok3:
+                continue
 
-        # Nếu cảnh dài >= 5.0s và file master đủ độ dư (>= req_dur + 2.4s), thực hiện Jump-Cut 2 nửa:
-        # Riêng Cảnh 1 (scene_id == 1) giữ độ phân giải gốc 1920x1080 -> 2016x1134 (zoom nhẹ 105%) với CRF 17 để giữ 100% độ nét căng ở giây mở màn!
+        # N?u c?nh d?i >= 5.0s v? file master ?? ?? d? (>= req_dur + 2.4s), th?c hi?n Jump-Cut 2 n?a:
+        # Ri?ng C?nh 1 (scene_id == 1) gi? ?? ph?n gi?i g?c 1920x1080 -> 2016x1134 (zoom nh? 105%) v?i CRF 17 ?? gi? 100% ?? n?t c?ng ? gi?y m? m?n!
         if req_dur >= 5.0 and (safe_start + req_dur + 2.5) <= master_dur:
             half_a = round(req_dur * 0.52, 2)
             half_b = round(req_dur - half_a + 0.12, 2)
@@ -844,9 +850,9 @@ def extract_longform_scene_with_internal_jumpcut(
                 scale_b, crop_b = "2150:1210", "1920:1080:115:65"
                 crf_val = "18"
             filter_complex = (
-                f"[0:v]trim=start={start_a:.2f}:duration={half_a:.2f},setpts=PTS-STARTPTS,"
+                f"[0:v]setpts=PTS-STARTPTS,"
                 f"scale={scale_a}:flags=lanczos,crop={crop_a},eq=contrast=1.04:saturation=1.06[v0];"
-                f"[0:v]trim=start={start_b:.2f}:duration={half_b:.2f},setpts=PTS-STARTPTS,"
+                f"[1:v]setpts=PTS-STARTPTS,"
                 f"scale={scale_b}:flags=lanczos,crop={crop_b},eq=contrast=1.06:saturation=1.08,"
                 f"vignette=PI/7[v1];"
                 f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
@@ -855,17 +861,21 @@ def extract_longform_scene_with_internal_jumpcut(
             tmp_out2 = str(out_p2.parent / f"_fftmp_jc2_{out_p2.name}")
             cmd = [
                 "ffmpeg", "-y", "-v", "error",
-                "-i", master_path,
+                "-ss", f"{start_a:.2f}", "-t", f"{half_a:.2f}", "-i", master_path,
+                "-ss", f"{start_b:.2f}", "-t", f"{half_b:.2f}", "-i", master_path,
                 "-filter_complex", filter_complex,
                 "-map", "[vout]",
                 "-t", f"{req_dur:.2f}",
+                "-threads", "2",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", crf_val,
                 "-an",
                 tmp_out2,
             ]
+            encode_ok2 = False
             try:
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40, check=False)
-                if Path(tmp_out2).exists() and Path(tmp_out2).stat().st_size > 35_000 and get_duration_ms(tmp_out2) >= 1500:
+                if Path(tmp_out2).exists() and Path(tmp_out2).stat().st_size > 35_000 and get_duration_ms(tmp_out2) >= int(max(1.5, req_dur - 0.35) * 1000):
+                    encode_ok2 = True
                     if _is_clip_window_clean(tmp_out2, [0.45, max(1.2, req_dur * 0.68)]):
                         Path(tmp_out2).replace(output_path)
                         return True
@@ -873,8 +883,8 @@ def extract_longform_scene_with_internal_jumpcut(
                 pass
             finally:
                 Path(tmp_out2).unlink(missing_ok=True)
-            continue
-
+            if encode_ok2:
+                continue
         # Fallback cắt đơn chuẩn 1920x1080 kèm Vignette & Color Grading nhẹ (tắt hflip để không lật ngược đồng hồ/chữ số)
         out_p1 = Path(output_path)
         tmp_out1 = str(out_p1.parent / f"_fftmp_jc1_{out_p1.name}")
@@ -892,7 +902,7 @@ def extract_longform_scene_with_internal_jumpcut(
                 start_offset_sec=safe_start,
                 preserve_continuous_flow=True,
             )
-            if Path(tmp_out1).exists() and Path(tmp_out1).stat().st_size > 30_000 and get_duration_ms(tmp_out1) >= 1500:
+            if Path(tmp_out1).exists() and Path(tmp_out1).stat().st_size > 30_000 and get_duration_ms(tmp_out1) >= int(max(1.5, req_dur - 0.35) * 1000):
                 if _is_clip_window_clean(tmp_out1, [0.45, max(1.2, req_dur * 0.68)]):
                     Path(tmp_out1).replace(output_path)
                     return True
@@ -945,7 +955,7 @@ def fetch_or_slice_longform_chapter_clip_sync(
         else str(media_dir / f"scene_{scene_id:03d}_16x9.mp4")
     )
     if Path(out_path).exists():
-        if is_completed_clean_mp4(out_path, min_size_bytes=40_000, min_duration_ms=1000):
+        if is_completed_clean_mp4(out_path, min_size_bytes=40_000, min_duration_ms=int(max(1.5, float(target_duration_sec) - 0.35) * 1000)):
             return {
                 "media_path": out_path,
                 "media_type": "video",
@@ -1161,7 +1171,7 @@ def fetch_or_slice_longform_chapter_clip_sync(
         max_safe_stride = max(4.5, (master_dur_s - target_duration_sec - 1.5) / max(1, scenes_per_chapter - 1))
         stride = min(ideal_stride, max_safe_stride)
         base_offset_s = round(slot_in_chapter * stride, 2)
-        max_try_offsets = 4 if int(scene_id) == 1 else 1
+        max_try_offsets = 4
         usable_master_span = max(0.0, master_dur_s - max(2.5, float(target_duration_sec)) - 0.8)
         for off_try in range(max_try_offsets):
             offset_s = (
@@ -1194,7 +1204,7 @@ def fetch_or_slice_longform_chapter_clip_sync(
                 job_id,
                 scene_id=scene_id,
                 master_key=master_file,
-                max_master_uses=(3 if master_dur_s >= 34.0 else 2),
+                max_master_uses=max(int(scenes_per_chapter), 4 if master_dur_s >= 34.0 else 3),
             ):
                 Path(out_path).unlink(missing_ok=True)
                 logger.info(f"Scene {scene_id}: 🚫 [VisualCritic Dedup] Loại bỏ clip trùng lặp/vượt trần Master từ {master_source_label}")
@@ -1237,11 +1247,21 @@ def slice_any_available_chapter_master_for_scene(
     excl_norm = {str(Path(m).name).lower() for m in (exclude_masters or set()) if m}
     masters = sorted(
         [
-            p for p in chapter_dir.glob("chapter_*_master.mp4")
+            p for p in (*list(chapter_dir.glob("chapter_*_master.mp4")), *list(chapter_dir.glob("refine_*_master.mp4")))
             if p.name.lower() not in excl_norm
             and is_completed_clean_mp4(p, min_size_bytes=60_000, min_duration_ms=8000)
         ]
     )
+    if len(masters) < 2 and media_dir.is_dir():
+        extra_m = sorted(
+            [
+                p for p in media_dir.glob("scene_*16x9*.mp4")
+                if p.name.lower() not in excl_norm
+                and p not in masters
+                and is_completed_clean_mp4(p, min_size_bytes=60_000, min_duration_ms=8000)
+            ]
+        )
+        masters.extend(extra_m)
     if not masters:
         return None
 
@@ -1252,12 +1272,14 @@ def slice_any_available_chapter_master_for_scene(
     ordered_masters = masters[start_idx:] + masters[:start_idx]
     max_steps = 8 if max_master_uses_override else (5 if int(scene_id) == 1 else 4)
 
-    for m_path in ordered_masters:
+    tiered_masters = [(mp, False) for mp in ordered_masters] + [(mp, True) for mp in ordered_masters]
+    for m_path, is_rescue_tier in tiered_masters:
         m_dur = get_duration_ms(str(m_path)) / 1000.0
         usable_span = max(0.0, m_dur - req_dur - 1.0)
         if usable_span <= 0.5:
             continue
-        eff_max_uses = int(max_master_uses_override) if max_master_uses_override else (3 if m_dur >= 34.0 else 2)
+        eff_max_uses = 24 if is_rescue_tier else (int(max_master_uses_override) if max_master_uses_override else (5 if m_dur >= 34.0 else 4))
+        eff_hamming = 2 if is_rescue_tier else 10
         # Thử nhiều mốc offset lệch pha trên mỗi Master cho tới khi đạt chuẩn độ nét (Cảnh 1 >= 13.2) và dHash xác nhận khung hình mới hoàn toàn
         for cand_step in range(max_steps):
             frac = (((int(scene_id) * 37 + cand_step * 23) % 89) / 89.0)
@@ -1286,6 +1308,7 @@ def slice_any_available_chapter_master_for_scene(
                     job_id,
                     scene_id=scene_id,
                     master_key=str(m_path),
+                    max_hamming=eff_hamming,
                     max_master_uses=eff_max_uses,
                 ):
                     logger.info(

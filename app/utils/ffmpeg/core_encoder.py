@@ -93,6 +93,12 @@ _cached_ffmpeg_version: Optional[str] = None
 _cached_supports_fps_mode: Optional[bool] = None
 
 
+def get_ffmpeg_exe() -> str:
+    """Trả về đường dẫn thực thi FFmpeg chuẩn xác đã được ưu tiên trong PATH."""
+    _ensure_ffmpeg_in_path()
+    return shutil.which("ffmpeg") or "ffmpeg"
+
+
 def _supports_fps_mode() -> bool:
     """Kiểm tra xem phiên bản FFmpeg hiện tại có hỗ trợ flag -fps_mode hay không (FFmpeg >= 5.1)"""
     global _cached_supports_fps_mode
@@ -267,20 +273,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
                 "-cq", "18",
                 "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
             ]
-        if encoder == "h264_qsv":
-            return [
-                "-c:v", "h264_qsv",
-                "-preset", "veryfast",
-                "-global_quality", "18",
-                "-pix_fmt", "nv12", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-            ]
-        if encoder == "h264_amf":
-            return [
-                "-c:v", "h264_amf",
-                "-quality", "speed",
-                "-b:v", "8M",
-                "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-            ]
+        # Tr?nh d?ng h264_qsv / h264_amf cho intermediate clips (ch?y 6-8 lu?ng song song g?y ngh?n h?ng ??i D3D11/MediaSDK)
         return [
             "-threads", "2",
             "-c:v", "libx264",
