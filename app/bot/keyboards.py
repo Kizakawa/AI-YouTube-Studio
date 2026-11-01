@@ -176,7 +176,7 @@ def get_script_review_keyboard(
     if vf_norm == "long":
         format_btn = InlineKeyboardButton("📱 Chuyển Sang Video Ngắn (9:16 Shorts)", callback_data=f"switch_format:{job_id}:short")
     else:
-        format_btn = InlineKeyboardButton("🎬 Chuyển Sang Video Dài (16:9 ~4 Phút)", callback_data=f"switch_format:{job_id}:long")
+        format_btn = InlineKeyboardButton("🎬 Chuyển Sang Video Dài (16:9 ~10 Phút)", callback_data=f"switch_format:{job_id}:long")
 
     if is_rendering:
         render_btn = InlineKeyboardButton(
