@@ -1,0 +1,24 @@
+{
+  "include": [
+    "app",
+    "config",
+    "scripts",
+    "tests",
+    "tools"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "storage",
+    "outputs",
+    "output",
+    "scratch",
+    "assets",
+    "bin",
+    "branding",
+    "credentials",
+    ".agents",
+    ".git"
+  ],
+  "reportMissingImports": "warning",
+  "pythonVersion": "3.13"
+}
