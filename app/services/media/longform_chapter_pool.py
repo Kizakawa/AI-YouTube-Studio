@@ -404,9 +404,9 @@ def _verify_16x9_master_with_gemini_vision(
             "-ss", f"{t3:.2f}", "-i", master_path,
             "-ss", f"{t4:.2f}", "-i", master_path,
             "-filter_complex",
-            "[0:v]scale=640:360[v0];[1:v]scale=640:360[v1];[2:v]scale=640:360[v2];[3:v]scale=640:360[v3];"
+            "[0:v]scale=480:270[v0];[1:v]scale=480:270[v1];[2:v]scale=480:270[v2];[3:v]scale=480:270[v3];"
             "[v0][v1]hstack=inputs=2[top];[v2][v3]hstack=inputs=2[bot];[top][bot]vstack=inputs=2",
-            "-frames:v", "1", "-q:v", "3",
+            "-frames:v", "1", "-q:v", "5",
             sheet_jpg,
         ]
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=False)
@@ -439,43 +439,72 @@ Return ONLY valid JSON:
 {{"passed": false, "clean_start_frame": 1, "reason": "short explanation"}}"""
 
     from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
+    from app.agents.curation.scene_context_analyzer_mixin import _VISION_SEM
+
     vision_models = [m for m in GEMINI_PRIORITY_MODELS if not str(m).startswith("gemma-")]
-    for model_name, api_key in rotator.iter_best_model_key_pairs(vision_models, max_total_attempts=6):
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": prompt},
-                    {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
-                ]
-            }],
-            "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
-        }
-        try:
-            t_v0 = time.monotonic()
-            resp = requests.post(url, json=payload, timeout=12)
-            if resp.status_code == 200:
-                rotator.record_model_success(api_key, model_name, time.monotonic() - t_v0)
-                cands = resp.json().get("candidates") or []
-                if cands:
-                    txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []) if not p.get("thought"))
-                    m = re.search(r"\{.*\}", txt, re.DOTALL)
-                    if m:
-                        data = json.loads(m.group(0))
-                        passed = bool(data.get("passed", False))
-                        start_f = int(data.get("clean_start_frame") or 1)
-                        reason = str(data.get("reason") or "")
-                        if not passed:
-                            logger.info(f"🚫 [LongForm Vision Gate] Loại Master '{video_title[:40]}': {reason[:110]}")
-                            return False, 0.0
-                        trim_off = t2 if start_f == 2 else (t3 if start_f >= 3 else 0.0)
-                        return True, trim_off
-            elif resp.status_code in (400, 429, 403, 404, 500, 502, 503, 504):
-                rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
-        except Exception as e_mv:
-            rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_mv))
-            continue
-    logger.warning(f"🚫 [LongForm Vision Gate] Không thể xác thực Gemini Vision cho '{video_title[:40]}' -> Chặn Fail-Closed!")
+    http_sess = requests.Session()
+    last_err_note = "no_pairs"
+    try:
+        for model_name, api_key in rotator.iter_best_model_key_pairs(
+            vision_models, max_total_attempts=5, require_vision=True
+        ):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
+                    ]
+                }],
+                "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
+            }
+            if not _VISION_SEM.acquire(timeout=14.0):
+                last_err_note = "vision_sem_timeout"
+                break
+            try:
+                t_v0 = time.monotonic()
+                resp = http_sess.post(url, json=payload, timeout=(4.0, 15.0))
+                if resp.status_code == 200:
+                    rotator.record_model_success(api_key, model_name, time.monotonic() - t_v0)
+                    cands = resp.json().get("candidates") or []
+                    if cands:
+                        txt = "".join(
+                            p.get("text", "")
+                            for p in cands[0].get("content", {}).get("parts", [])
+                            if isinstance(p, dict) and not p.get("thought")
+                        )
+                        m = re.search(r"\{.*\}", txt, re.DOTALL)
+                        if m:
+                            data = json.loads(m.group(0))
+                            passed = bool(data.get("passed", False))
+                            start_f = int(data.get("clean_start_frame") or 1)
+                            reason = str(data.get("reason") or "")
+                            if not passed:
+                                logger.info(f"🚫 [LongForm Vision Gate] Loại Master '{video_title[:40]}': {reason[:110]}")
+                                return False, 0.0
+                            trim_off = t2 if start_f == 2 else (t3 if start_f >= 3 else 0.0)
+                            return True, trim_off
+                    last_err_note = f"{model_name}:empty_json"
+                elif resp.status_code in (400, 429, 403, 404, 500, 502, 503, 504):
+                    last_err_note = f"{model_name}:HTTP_{resp.status_code}"
+                    rotator.mark_model_rate_limited(
+                        api_key, model_name, status_code=resp.status_code, error_text=resp.text[:800]
+                    )
+            except requests.exceptions.Timeout as e_to:
+                last_err_note = f"{model_name}:timeout"
+                rotator.mark_model_rate_limited(api_key, model_name, status_code=504, error_text=f"Timeout: {e_to}")
+                continue
+            except Exception as e_mv:
+                last_err_note = f"{model_name}:{type(e_mv).__name__}"
+                rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_mv))
+                continue
+            finally:
+                _VISION_SEM.release()
+    finally:
+        http_sess.close()
+    logger.warning(
+        f"🚫 [LongForm Vision Gate] Không thể xác thực Gemini Vision cho '{video_title[:40]}' ({last_err_note}) -> Chặn Fail-Closed!"
+    )
     return False, 0.0
 
 
@@ -1192,6 +1221,7 @@ def slice_any_available_chapter_master_for_scene(
     job_id: int,
     output_override_path: Optional[str] = None,
     exclude_masters: Optional[Set[str]] = None,
+    max_master_uses_override: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Khi một phân cảnh bị giới hạn API mạng (429 / timeout) ở cả nguồn riêng lẫn Stock 16:9,
@@ -1220,13 +1250,14 @@ def slice_any_available_chapter_master_for_scene(
     n_m = len(masters)
     start_idx = (int(scene_id) * 3) % n_m
     ordered_masters = masters[start_idx:] + masters[:start_idx]
-    max_steps = 5 if int(scene_id) == 1 else 3
+    max_steps = 8 if max_master_uses_override else (5 if int(scene_id) == 1 else 4)
 
     for m_path in ordered_masters:
         m_dur = get_duration_ms(str(m_path)) / 1000.0
         usable_span = max(0.0, m_dur - req_dur - 1.0)
         if usable_span <= 0.5:
             continue
+        eff_max_uses = int(max_master_uses_override) if max_master_uses_override else (3 if m_dur >= 34.0 else 2)
         # Thử nhiều mốc offset lệch pha trên mỗi Master cho tới khi đạt chuẩn độ nét (Cảnh 1 >= 13.2) và dHash xác nhận khung hình mới hoàn toàn
         for cand_step in range(max_steps):
             frac = (((int(scene_id) * 37 + cand_step * 23) % 89) / 89.0)
@@ -1255,7 +1286,7 @@ def slice_any_available_chapter_master_for_scene(
                     job_id,
                     scene_id=scene_id,
                     master_key=str(m_path),
-                    max_master_uses=(3 if m_dur >= 34.0 else 2),
+                    max_master_uses=eff_max_uses,
                 ):
                     logger.info(
                         f"Scene {scene_id}: ⚡ [ChapterPool Cross-Slice Rescue] Cắt phân đoạn độc lập (offset={off_s:.1f}s, VisualCritic-unique) "

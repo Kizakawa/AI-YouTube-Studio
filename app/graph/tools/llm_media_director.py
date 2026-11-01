@@ -291,15 +291,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["camera_motion"] = "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)]
             d.setdefault("target_duration_sec", float(s.get("estimated_seconds") or 4.5))
 
-            if (
-                not is_mandatory_video_scene
-                and (
-                    str(s.get("visual_strategy") or "").strip().upper() in ("DOODLE_2D_EXPLAINER", "DOODLE_2D_EXPLAINER_VIDEO")
-                    or "render_doodle_2d_explainer_scene" in str(s.get("visual_keyword") or "").lower()
-                )
-                and str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy")
-            ):
-                t_chosen = "render_doodle_2d_explainer_scene"
+            if t_chosen == "render_doodle_2d_explainer_scene":
+                t_chosen = "fetch_clean_cinematic_portrait_or_broll"
                 d["tool_name"] = t_chosen
 
             if is_mandatory_video_scene and t_chosen in ("search_google_cinematic_image", "search_pexels_pixabay_stock_video"):
@@ -442,63 +435,18 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "scope_audited": False,
             })
 
-    # Kênh Tâm lý học / Triết học: Cân bằng tỷ lệ vàng giữa Video B-Roll người thật (>= 75%) và Hoạt họa 2D Doodle Explainer (~24%: Scene 3, 7, 11, 15...)
-    if str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy") and total_scenes >= 5:
-        from app.services.media.doodle_animation_tool import DoodleAnimationTool
-        scenes_by_id = {
-            int(s.get("scene_id") or (i + 1)): s
-            for i, s in enumerate(scenes)
-            if isinstance(s, dict)
-        }
-        target_doodle_sids = (
-            {s_id for s_id in range(3, total_scenes, 4) if s_id not in (1, total_scenes)}
-            if is_long_form_dir
-            else {s_id for s_id in (2, 4, 6) if 1 < s_id < total_scenes}
-        )
-        if is_long_form_dir:
-            for idx_d, d_it in enumerate(final_plan):
-                s_id_cur = int(d_it.get("scene_id") or (idx_d + 1))
-                if total_scenes >= 14:
-                    d_it["scope_audited"] = True
-                if s_id_cur in target_doodle_sids:
-                    sc_obj = scenes_by_id.get(s_id_cur, {})
-                    c_tag, p_type, _, _, _ = DoodleAnimationTool.auto_select_prop_and_tag(
-                        narration=str(sc_obj.get("narration") or ""),
-                        visual_prompt=str(sc_obj.get("visual_keyword") or d_it.get("human_action_query") or ""),
-                        scene_id=s_id_cur,
-                        total_scenes=total_scenes,
+    # Kênh Tâm lý học / Triết học: Dùng 100% Video B-Roll điện ảnh người thật (tuyệt đối không dùng hoạt họa người que / Doodle 2D)
+    if str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy"):
+        for d_it in final_plan:
+            if d_it.get("tool_name") in ("render_doodle_2d_explainer_scene", "search_google_cinematic_image"):
+                d_it["tool_name"] = "fetch_clean_cinematic_portrait_or_broll"
+                if not d_it.get("human_action_query"):
+                    d_it["human_action_query"] = (
+                        d_it.get("scene_concept_summary")
+                        or d_it.get("smart_image_query")
+                        or d_it.get("youtube_search_query")
+                        or "person intense eye contact closeup"
                     )
-                    d_it["tool_name"] = "render_doodle_2d_explainer_scene"
-                    d_it["character_tag"] = c_tag
-                    d_it["prop_type"] = p_type
-                    d_it["scene_concept_summary"] = d_it.get("human_action_query") or d_it.get("youtube_search_query") or default_overall_q
-                elif d_it.get("tool_name") == "render_doodle_2d_explainer_scene":
-                    d_it["tool_name"] = "fetch_clean_cinematic_portrait_or_broll"
-        else:
-            doodle_count = sum(1 for d_it in final_plan if d_it.get("tool_name") == "render_doodle_2d_explainer_scene")
-            if doodle_count < 2:
-                for idx_d, t_sid in enumerate(sorted(target_doodle_sids)):
-                    for d_it in final_plan:
-                        if int(d_it.get("scene_id") or 0) == t_sid and d_it.get("tool_name") != "render_doodle_2d_explainer_scene":
-                            sc_obj = scenes_by_id.get(t_sid, {})
-                            c_tag, p_type, _, _, _ = DoodleAnimationTool.auto_select_prop_and_tag(
-                                narration=str(sc_obj.get("narration") or ""),
-                                visual_prompt=str(sc_obj.get("visual_keyword") or d_it.get("human_action_query") or ""),
-                                scene_id=t_sid,
-                                total_scenes=total_scenes,
-                            )
-                            d_it["tool_name"] = "render_doodle_2d_explainer_scene"
-                            d_it["character_tag"] = c_tag
-                            d_it["prop_type"] = p_type
-                            d_it["scene_concept_summary"] = d_it.get("human_action_query") or d_it.get("youtube_search_query") or default_overall_q
-                            break
-            # Kênh Tâm lý học: Tuyệt đối không dùng ảnh tĩnh MRI/infographic (search_google_cinematic_image),
-            # tự động nâng lên Video B-Roll người thật (fetch_clean_cinematic_portrait_or_broll)
-            for d_it in final_plan:
-                if d_it.get("tool_name") == "search_google_cinematic_image":
-                    d_it["tool_name"] = "fetch_clean_cinematic_portrait_or_broll"
-                    if not d_it.get("human_action_query"):
-                        d_it["human_action_query"] = d_it.get("smart_image_query") or d_it.get("youtube_search_query") or "person intense eye contact closeup"
 
     return final_plan
 

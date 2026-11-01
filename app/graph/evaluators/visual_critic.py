@@ -892,17 +892,13 @@ Return ONLY valid JSON in this exact format:
 
             failed = False
             prod_m_raw = str(item.get("production_method") or "")
-            is_doodle_clip = (
-                "DOODLE_2D" in prod_m_raw
-                or p.name.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4"))
-            )
+            is_doodle_clip = False
             is_longform_chapter_clip = (
                 prod_m_raw.startswith("LONGFORM_")
                 or p.name.lower().endswith("_16x9.mp4")
             )
-            # Chỉ miễn kiểm tra trùng dHash cho hoạt họa Doodle 2D (do chung nền giấy kem #F7F3E8);
             # MỌI cảnh video thật (kể cả Cảnh 1 & Cảnh 2) BẮT BUỘC phải kiểm tra trùng dHash để cấm tuyệt đối 2 cảnh cắt từ cùng 1 nguồn!
-            is_long_peak_cont = is_doodle_clip
+            is_long_peak_cont = False
             if media_type == "image":
                 # Kiểm tra & lọc sạch danh sách pose_images (nếu có) để loại bỏ file phụ lỗi/đen/vỡ hạt/dính chữ trước khi dựng
                 raw_poses = item.get("pose_images")

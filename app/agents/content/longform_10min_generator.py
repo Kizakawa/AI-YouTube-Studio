@@ -301,9 +301,7 @@ Return ONLY valid JSON:
 
         from app.services.niche_manager import build_million_view_showrunner_prose_dna
         prose_dna_block = build_million_view_showrunner_prose_dna(channel_niche, language=language)
-        is_doodle_niche = str(channel_niche or "").strip().lower() in (
-            "psychology", "satirical_psychology_animation", "doodle", "philosophy", "finance_wealth"
-        )
+        is_doodle_niche = False
         slot_3_rule = (
             f"* Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **2D Doodle Visual Metaphor + Cunningham's Law Sacred-Cow Breaker** — Illustrate the structural paradox AND drop 1 bold, unapologetically polarizing statement that attacks a common belief so viewers debate in the comments!"
             if is_doodle_niche

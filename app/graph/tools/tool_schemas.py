@@ -367,7 +367,6 @@ MEDIA_DIRECTOR_TOOLS = [
     search_google_cinematic_image,
     summon_epic_monster_cinematic_media,
     fetch_clean_cinematic_portrait_or_broll,
-    render_doodle_2d_explainer_scene,
 ]
 
 

@@ -183,6 +183,7 @@ class StockFetcher:
                         continue
 
                     p_id = str(p.get("id", ""))
+                    p_creator = f"pexels_user:{p.get('photographer_id')}" if p.get("photographer_id") else ""
                     alt_text = p.get("alt", "") or query
                     alt_low = f"{alt_text} {p.get('url', '')}".lower()
 
@@ -196,9 +197,14 @@ class StockFetcher:
                     if is_incongruent_stock_image(alt_text, topic=topic or query, narration=narration):
                         continue
 
-                    # Lọc trùng lặp qua used_urls
+                    # Lọc trùng lặp qua used_urls (bao gồm cả cùng 1 nhiếp ảnh gia/buổi chụp)
                     if used_urls:
-                        if is_media_already_used(img_url, used_urls) or p_id in used_urls or f"pexels:{p_id}" in used_urls:
+                        if (
+                            is_media_already_used(img_url, used_urls)
+                            or p_id in used_urls
+                            or f"pexels:{p_id}" in used_urls
+                            or (p_creator and p_creator in used_urls)
+                        ):
                             continue
 
                     results.append({
@@ -210,6 +216,7 @@ class StockFetcher:
                         "height": p.get("height", 1920),
                         "source": "pexels",
                         "thumbnail": src.get("medium") or img_url,
+                        "creator_key": p_creator,
                     })
                     if len(results) >= per_page:
                         break
@@ -278,6 +285,8 @@ class StockFetcher:
                         )
                         results.append({
                             "id": h.get("id"),
+                            "user_id": h.get("user_id"),
+                            "creator_key": f"pixabay_user:{h.get('user_id')}" if h.get("user_id") else "",
                             "url": v_info["url"],
                             "title": f"Pixabay Video: {h.get('tags', clean_q)}",
                             "tags": h_tags,
@@ -697,6 +706,8 @@ class StockFetcher:
             except Exception:
                 pass
         ids = extract_media_identity(winner["url"])
+        if winner.get("creator_key"):
+            ids.add(str(winner["creator_key"]))
         if used_urls is not None:
             used_urls.update(ids)
         return winner
@@ -723,7 +734,7 @@ class StockFetcher:
                     "source": v.get("source", "video"),
                     "thumbnail": v.get("thumbnail") or v.get("image", ""),
                 }
-                for keep_k in ("web_url", "_vision_alternates", "curation_score", "curation_rationale"):
+                for keep_k in ("web_url", "_vision_alternates", "curation_score", "curation_rationale", "creator_key"):
                     if keep_k in v:
                         out_cand[keep_k] = v[keep_k]
                 return out_cand
@@ -1045,6 +1056,14 @@ class StockFetcher:
             q_try = b_res.get("query", query)
             for v in (b_res.get("items") or []):
                 v_url = v.get("url")
+                v_user = v.get("user") if isinstance(v.get("user"), dict) else {}
+                v_creator_key = str(
+                    v.get("creator_key")
+                    or (f"pexels_user:{v_user.get('id')}" if v_user.get("id") else "")
+                    or (f"pixabay_user:{v.get('user_id')}" if v.get("user_id") else "")
+                ).strip()
+                if v_creator_key:
+                    v["creator_key"] = v_creator_key
                 v_desc = v.get("tags") or v.get("title") or v.get("url") or ""
                 v_desc_low = str(v_desc).lower()
                 if any(
@@ -1054,6 +1073,7 @@ class StockFetcher:
                     continue
                 if (
                     v_url and not is_media_already_used(v_url, used)
+                    and (not v_creator_key or v_creator_key not in used)
                     and not any(bw in str(v_desc).lower() for bw in _bad_captive_cues)
                     and not is_incongruent_stock_image(v_desc, topic=f"{topic} {q_try}".strip(), narration=narration)
                     and not conflicts_with_topic_biome(v_desc, topic)
@@ -1116,11 +1136,24 @@ class StockFetcher:
                                 elif cw_u != chosen_win_url and not is_media_already_used(cw_u, live_used):
                                     rem_alt_urls.append(cw_u)
                             if chosen_win_url:
+                                win_creator_k = str(
+                                    formatted_winner.get("creator_key") or winner.get("creator_key") or ""
+                                ).strip()
+                                if win_creator_k and win_creator_k in live_used:
+                                    chosen_win_url = None
+                            if chosen_win_url:
                                 formatted_winner["url"] = chosen_win_url
                                 formatted_winner["_vision_alternates"] = rem_alt_urls
                                 formatted_winner["vision_curated"] = (rationale != "Rule-based curation passed")
                                 formatted_winner["vision_score"] = round(float(score), 2)
                                 ids = extract_media_identity(chosen_win_url)
+                                if formatted_winner.get("web_url"):
+                                    ids.update(extract_media_identity(str(formatted_winner["web_url"])))
+                                win_creator_k = str(
+                                    formatted_winner.get("creator_key") or winner.get("creator_key") or ""
+                                ).strip()
+                                if win_creator_k:
+                                    ids.add(win_creator_k)
                                 used.update(ids)
                                 used.add(chosen_win_url)
                                 if used_urls is not None:

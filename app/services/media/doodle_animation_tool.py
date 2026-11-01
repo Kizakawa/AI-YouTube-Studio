@@ -51,17 +51,7 @@ ALERT_RED = (214, 48, 49)         # #D63031 Danger / Cortisol / Debt Stamp
 GOLD_ACCENT = (230, 161, 0)       # #E6A100 Metric Highlight / Wealth / Insight
 GREEN_CALM = (46, 139, 87)        # #2E8B57 Freedom / Recovery / Dopamine Balance
 
-SUITABLE_DOODLE_NICHES: Tuple[str, ...] = (
-    "satirical_psychology_animation",
-    "dark_psychology",
-    "psychology_stoicism",
-    "personal_finance",
-    "wealth_traps",
-    "brain_hacks",
-    "dopamine_detox",
-    "absurd_history",
-    "what_if_science",
-)
+SUITABLE_DOODLE_NICHES: Tuple[str, ...] = ()
 
 EXCLUDED_REAL_FOOTAGE_NICHES: Tuple[str, ...] = (
     "wildlife_predators",
@@ -921,27 +911,9 @@ class DoodleAnimationTool:
         reality_class: str = "",
     ) -> Tuple[bool, str]:
         """
-        Kiểm tra xem phân cảnh hoặc chủ đề hiện tại có phù hợp để gọi `doodle_2d_animator` hay không.
-        Trả về: (should_use, rationale).
+        Đã tắt hoàn toàn tính năng người que / 2D Doodle theo yêu cầu người dùng — toàn hệ thống dùng 100% B-Roll người thật / tư liệu điện ảnh.
         """
-        niche_clean = (niche or "").strip().lower()
-        if niche_clean in EXCLUDED_REAL_FOOTAGE_NICHES:
-            return False, f"Ngách '{niche_clean}' yêu cầu footage quay thật hoặc CGI 3D chân thực."
-
-        combined = f"{topic} {narration} {visual_prompt}".lower()
-        if any(tag.lower() in combined for tag in TAG_COLOR_RGB.keys()):
-            return True, "Phát hiện thẻ nhân vật @CHARACTER_TAG chuẩn 2D Doodle trong kịch bản/prompt."
-
-        if any(k in combined for k in ("2d doodle", "sketchbook animation", "stickman", "whiteboard animation", "hand-drawn doodle")):
-            return True, "Prompt yêu cầu trực tiếp phong cách hoạt họa 2D Doodle / Stickman."
-
-        if niche_clean in SUITABLE_DOODLE_NICHES:
-            return True, f"Kênh thuộc ngách '{niche_clean}' tối ưu cho hoạt họa 2D Doodle Explainer."
-
-        if str(reality_class).upper() == "DOODLE_PSYCHOLOGY_EXPLAINER":
-            return True, "VisualToolRouter phân loại cảnh là DOODLE_PSYCHOLOGY_EXPLAINER."
-
-        return False, "Không thuộc ngách hoạt họa 2D Doodle mặc định."
+        return False, "Tính năng người que / 2D Doodle đã tắt hoàn toàn — dùng 100% video/ảnh điện ảnh thật."
 
     @classmethod
     def auto_select_prop_and_tag(
@@ -1065,10 +1037,9 @@ class DoodleAnimationTool:
         height: int = 1920,
     ) -> Optional[str]:
         """
-        Render trực tiếp 1 video clip MP4 (1080x1920 cho Shorts hoặc 1920x1080 cho Long-Form @ True 30 FPS) hoạt họa 2D Doodle siêu mượt
-        bằng cách tính toán 100% các khung hình độc lập (`int(duration_s * 30)` frames) trên đa luồng CPU
-        và truyền thẳng qua ống dẫn `rawvideo` vào FFmpeg (không qua file JPEG trung gian).
+        Đã vô hiệu hóa hoàn toàn công cụ dựng người que / 2D Doodle — luôn trả về None để hệ thống chuyển sang tải Video B-Roll / Ảnh điện ảnh thật.
         """
+        return None
         auto_tag, auto_prop, auto_cam, auto_head, auto_badge = cls.auto_select_prop_and_tag(
             narration=narration,
             visual_prompt=visual_prompt,

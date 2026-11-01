@@ -138,10 +138,20 @@ class MediaVisionCuratorMixin:
                 return 4500 - h // 10 - fps_penalty
             return h - fps_penalty
 
+        from app.services.media.media_history import is_media_already_used
         valid_candidates = []
+        seen_creators_in_pool: set = set()
         for v in candidates:
             url = v.get("url", "")
-            if not url or url in used:
+            if not url or is_media_already_used(url, used):
+                continue
+            raw_user = v.get("user") if isinstance(v.get("user"), dict) else {}
+            creator_key = str(
+                v.get("creator_key")
+                or (f"pexels_user:{raw_user.get('id')}" if raw_user.get("id") else "")
+                or (f"pixabay_user:{v.get('user_id')}" if v.get("user_id") else "")
+            ).strip()
+            if creator_key and (creator_key in used or creator_key in seen_creators_in_pool):
                 continue
 
             v_files = v.get("video_files", [])
@@ -152,6 +162,8 @@ class MediaVisionCuratorMixin:
                 vh = int(v.get("height", 1080) or 1080)
                 if is_long_fmt and vw <= vh:
                     continue
+                if creator_key:
+                    seen_creators_in_pool.add(creator_key)
                 valid_candidates.append({
                     "raw_video": v,
                     "url": url,
@@ -162,6 +174,7 @@ class MediaVisionCuratorMixin:
                     "slug": re.sub(r"^(Pixabay Video|NASA[^:]*):\s*", "", v.get("title", "")) or v.get("tags") or "video clip",
                     "thumbnail": v.get("thumbnail", ""),
                     "source": v.get("source", "stock_video"),
+                    "creator_key": creator_key,
                 })
                 continue
 
@@ -192,16 +205,22 @@ class MediaVisionCuratorMixin:
             v_dur_val = float(v.get("duration") or 0.0)
             pref_fn = _res_pref_landscape if is_long_fmt else _res_pref
             best_file = sorted(matched_files, key=lambda vf: pref_fn(vf, v_dur_val), reverse=True)[0]
+            dl_link = best_file.get("link")
+            if not dl_link or is_media_already_used(str(dl_link), used):
+                continue
+            if creator_key:
+                seen_creators_in_pool.add(creator_key)
             valid_candidates.append({
                 "raw_video": v,
                 "url": url,
-                "download_link": best_file.get("link"),
+                "download_link": dl_link,
                 "width": best_file.get("width", 1920 if is_long_fmt else 1080),
                 "height": best_file.get("height", 1080 if is_long_fmt else 1920),
                 "duration": v.get("duration", 0),
                 "slug": slug,
                 "thumbnail": v.get("image", ""),
                 "source": "pexels_16x9_video" if is_long_fmt else "pexels_video",
+                "creator_key": creator_key,
             })
 
         if not valid_candidates:
@@ -240,6 +259,8 @@ class MediaVisionCuratorMixin:
                 "curation_rationale": rationale,
                 "vision_curated": vision_curated,
             }
+            if winner.get("creator_key"):
+                out_w["creator_key"] = winner["creator_key"]
             if alternate_urls:
                 out_w["_vision_alternates"] = alternate_urls
             return out_w

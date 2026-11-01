@@ -336,10 +336,16 @@ def execute_youtube_short_peak_clone_sync(
                                 f"Cooperative cancel / Tier-1 deadline reached while downloading {vid_url}"
                             )
                         if d.get("status") == "downloading":
-                            max_dl_sec = min(9.5, max(3.5, _yt_remaining_sec() - 2.0))
-                            if (time.monotonic() - t_dl_start) > max_dl_sec:
+                            elapsed_dl = time.monotonic() - t_dl_start
+                            max_dl_sec = min(6.5, max(3.2, _yt_remaining_sec() - 2.0))
+                            if elapsed_dl > max_dl_sec:
                                 raise TimeoutError(
                                     f"Slow YouTube CDN download > {max_dl_sec:.1f}s for {vid_url} -> switch to next candidate"
+                                )
+                            dl_speed = float(d.get("speed") or 0.0)
+                            if elapsed_dl >= 2.0 and 0.0 < dl_speed < 180 * 1024:
+                                raise TimeoutError(
+                                    f"Throttled YouTube CDN ({dl_speed / 1024:.0f} KiB/s < 180 KiB/s) -> fast switch"
                                 )
 
                     dl_opts = license_policy.optimize_ytdlp_download_opts({

@@ -213,16 +213,8 @@ class VisualToolRouter:
         if explicit_reality in REALITY_KEYWORDS:
             reality = explicit_reality
 
-        from app.services.media.doodle_animation_tool import DoodleAnimationTool
-        use_doodle, doodle_reason = DoodleAnimationTool.should_activate(
-            topic=topic,
-            narration=narr,
-            niche=channel_niche,
-            visual_prompt=vp,
-            reality_class=reality,
-        )
-        if use_doodle:
-            reality = DOODLE_PSYCHOLOGY_EXPLAINER
+        if reality == DOODLE_PSYCHOLOGY_EXPLAINER:
+            reality = REAL_FILMABLE
 
         subject = (matched.get(reality) or [""])[0]
 

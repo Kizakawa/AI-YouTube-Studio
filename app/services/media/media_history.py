@@ -166,6 +166,10 @@ def extract_media_identity(url_or_path: str) -> Set[str]:
         num_id = m_px.group(1)
         identities.add(num_id)
         identities.add(f"pexels:{num_id}")
+        try:
+            identities.add(f"pexels_shoot:{int(num_id) // 50}")
+        except Exception:
+            pass
 
     # Pexels VIDEO: file tải về (videos.pexels.com/video-files/<id>/...) và trang web (pexels.com/video/<slug>-<id>/)
     # → cùng 1 clip ở mọi độ phân giải / mọi dạng URL đều quy về 1 định danh pexels:<id>
@@ -173,7 +177,12 @@ def extract_media_identity(url_or_path: str) -> Set[str]:
         r'pexels\.com/(?:[a-z-]+/)?(?:video|photo)/(?:[^/?#]*-)?(\d+)/?', url_or_path
     )
     if m_pxv:
-        identities.add(f"pexels:{m_pxv.group(1)}")
+        pxv_id = m_pxv.group(1)
+        identities.add(f"pexels:{pxv_id}")
+        try:
+            identities.add(f"pexels_shoot:{int(pxv_id) // 50}")
+        except Exception:
+            pass
 
     # Trích xuất Pixabay ID (trang web: pixabay.com/videos/<slug>-<id>/, CDN: cdn.pixabay.com/video/YYYY/MM/DD/<id>-<hash>_large.mp4)
     if "pixabay.com" in url_or_path:
@@ -182,7 +191,12 @@ def extract_media_identity(url_or_path: str) -> Set[str]:
             or re.search(r'pixabay\.com/(?:[a-z-]+/)?(?:videos|photos|illustrations|vectors)/(?:[^/?#]*-)?(\d+)/?', url_or_path)
         )
         if m_pb:
-            identities.add(f"pixabay:{m_pb.group(1)}")
+            pb_id = m_pb.group(1)
+            identities.add(f"pixabay:{pb_id}")
+            try:
+                identities.add(f"pixabay_shoot:{int(pb_id) // 50}")
+            except Exception:
+                pass
 
     # Trích xuất YouTube Video ID (watch?v=..., /shorts/..., youtu.be/..., hoặc tên file yt_hook_cand_0_<id>.mp4)
     m_yt = (

@@ -561,17 +561,6 @@ def _produce_and_score_hook_video_sync(
     topic = state.get("topic") or script_data.get("topic") or ""
     primary_entity = state.get("primary_entity") or script_data.get("primary_entity") or ""
     niche = state.get("channel_style") or state.get("niche") or "general"
-    if str(niche).strip().lower() in ("doodle_2d_explainer", "satirical_psychology_animation"):
-        logger.info(
-            "🎨 [HookVideoNode] Chế độ 100% 2D Doodle Explainer: "
-            "Bỏ qua săn video người thật/stock ở Cảnh 1-2 để đồng bộ 100% hoạt họa 2D Doodle từ giây 0.0s tại node_fetch_media."
-        )
-        return {
-            "current_step": "HOOK_VIDEO_DOODLE_BYPASS",
-            "pre_resolved_hook_media": {},
-            "progress_percent": 50,
-            "progress_message": "🎨 Chế độ 2D Doodle Explainer: Chuyển sang dựng đồng bộ 100% hoạt họa 2D Doodle từ Cảnh 1 (0.0s)...",
-        }
     visual_keyword = scene_1.get("visual_keyword") or topic
     hook_narration = scene_1.get("narration") or audio_1.get("narration") or script_data.get("hook") or ""
 
@@ -1132,8 +1121,11 @@ Return ONLY valid JSON:
         t_hk_dl_start = _hk_time.monotonic()
 
         def _hook_fast_switch_progress(d: Dict[str, Any]) -> None:
-            if d.get("status") == "downloading" and (_hk_time.monotonic() - t_hk_dl_start) > 10.0:
-                raise TimeoutError(f"Hook candidate download > 10s for {vid_url_dl} -> fast-switch")
+            if d.get("status") == "downloading":
+                el_hk = _hk_time.monotonic() - t_hk_dl_start
+                spd_hk = d.get("speed")
+                if el_hk > 6.5 or (el_hk > 2.0 and spd_hk is not None and float(spd_hk) < 180 * 1024):
+                    raise TimeoutError(f"Hook candidate slow/timeout ({el_hk:.1f}s) for {vid_url_dl} -> fast-switch")
 
         dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
@@ -1573,7 +1565,7 @@ Return ONLY valid JSON:
 {{"recommended_hook_mode": "video", "entity_match_score": 8.5, "motion_action_score": 8.5, "scroll_stop_score": 8.2, "clean_frame_score": 8.5, "reason": "..."}}"""
 
         score_res: Optional[Dict[str, Any]] = None
-        for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=2):
+        for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=3, require_vision=True):
             if _hook_cancelled(3.5):
                 break
             with _early_stop_lock:
@@ -1704,7 +1696,7 @@ Return ONLY valid JSON:
                             )
                             if alt_sheet.exists() and alt_sheet.stat().st_size > 5_000:
                                 b64_alt2 = base64.b64encode(alt_sheet.read_bytes()).decode("ascii")
-                                for m_n2, k_2 in rotator.iter_best_model_key_pairs(max_total_attempts=2):
+                                for m_n2, k_2 in rotator.iter_best_model_key_pairs(max_total_attempts=3, require_vision=True):
                                     if _hook_cancelled(3.5):
                                         break
                                     _sem_ok2 = _VISION_SEM.acquire(timeout=3.0)
