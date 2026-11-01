@@ -353,11 +353,11 @@ class VideoJob(Base):
     target_channel_id = Column(String(100), nullable=False)
 
     # Nội dung
-    topic = Column(String(255), nullable=False)
-    title = Column(String(255), nullable=True)
+    topic = Column(Text, nullable=False)
+    title = Column(String(500), nullable=True)
     script = Column(Text, nullable=True)          # full_narration text (backward compat)
     description = Column(Text, nullable=True)
-    tags = Column(String(500), nullable=True)
+    tags = Column(Text, nullable=True)
 
     # ──────────────────────────────────────────
     # [NEW] Structured data — Giải quyết đứt gãy contract
@@ -371,7 +371,7 @@ class VideoJob(Base):
     # DRAFT -> SCRIPT_READY -> AUDIO_READY -> MEDIA_READY -> RENDERING -> RENDERED -> SCHEDULED -> PUBLISHED -> FAILED
     status = Column(String(50), default="DRAFT")
     progress_percent = Column(Integer, default=0)         # [NEW] Phần trăm tiến độ 0-100%
-    progress_message = Column(String(255), nullable=True) # [NEW] Chi tiết bước đang thực hiện
+    progress_message = Column(String(500), nullable=True) # [NEW] Chi tiết bước đang thực hiện
     error_message = Column(Text, nullable=True)    # [NEW] Lưu traceback khi FAILED
 
     video_path = Column(String(500), nullable=True)

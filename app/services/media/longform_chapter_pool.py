@@ -796,12 +796,12 @@ def extract_longform_scene_with_internal_jumpcut(
             start_c = round(start_b + part_b + 1.5, 2)
             filter_complex = (
                 f"[0:v]setpts=PTS-STARTPTS,"
-                f"scale=1980:1114:flags=lanczos,crop=1920:1080:30:17,eq=contrast=1.03:saturation=1.05[v0];"
+                f"scale=1980:1114:flags=lanczos,crop=1920:1080:30:17,eq=contrast=1.03:saturation=1.05,setsar=1[v0];"
                 f"[1:v]setpts=PTS-STARTPTS,"
-                f"scale=2060:1158:flags=lanczos,crop=1920:1080:70:39,eq=contrast=1.05:saturation=1.07[v1];"
+                f"scale=2060:1158:flags=lanczos,crop=1920:1080:70:39,eq=contrast=1.05:saturation=1.07,setsar=1[v1];"
                 f"[2:v]setpts=PTS-STARTPTS,"
                 f"scale=2160:1215:flags=lanczos,crop=1920:1080:120:67,eq=contrast=1.06:saturation=1.08,"
-                f"vignette=PI/7[v2];"
+                f"vignette=PI/7,setsar=1[v2];"
                 f"[v0][v1][v2]concat=n=3:v=1:a=0,fps=30,format=yuv420p[vout]"
             )
             out_p3 = Path(output_path)
@@ -851,10 +851,10 @@ def extract_longform_scene_with_internal_jumpcut(
                 crf_val = "18"
             filter_complex = (
                 f"[0:v]setpts=PTS-STARTPTS,"
-                f"scale={scale_a}:flags=lanczos,crop={crop_a},eq=contrast=1.04:saturation=1.06[v0];"
+                f"scale={scale_a}:flags=lanczos,crop={crop_a},eq=contrast=1.04:saturation=1.06,setsar=1[v0];"
                 f"[1:v]setpts=PTS-STARTPTS,"
                 f"scale={scale_b}:flags=lanczos,crop={crop_b},eq=contrast=1.06:saturation=1.08,"
-                f"vignette=PI/7[v1];"
+                f"vignette=PI/7,setsar=1[v1];"
                 f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
             )
             out_p2 = Path(output_path)

@@ -1303,11 +1303,11 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 job = VideoJob(
                     user_id=user.id,
                     target_channel_id=channel_id,
-                    topic=clean_topic,
-                    title=script.title,
+                    topic=clean_topic[:1000],
+                    title=(script.title or clean_topic)[:490],
                     script=script.full_narration,
                     description=script.description,
-                    tags=",".join(script.tags),
+                    tags=",".join(script.tags)[:1500],
                     scenes_json=script.to_json_str(),   # Lưu structured data
                     status="SCRIPT_READY"
                 )
@@ -1656,9 +1656,9 @@ async def _execute_bilibili_search_and_reply(update: Update, context: ContextTyp
             bvid = item.get("bvid") or ""
             title = item.get("title") or bvid
             dur = float(item.get("duration") or 0.0)
-            play = int(item.get("play") or 0)
-            author = item.get("author") or "Bilibili Creator"
-            url = item.get("webpage_url") or f"https://www.bilibili.com/video/{bvid}"
+            play = int(item.get("view_count") or item.get("play") or 0)
+            author = item.get("uploader") or item.get("author") or "Bilibili Creator"
+            url = item.get("url") or item.get("webpage_url") or f"https://www.bilibili.com/video/{bvid}"
             bili_meta_cache[bvid] = {
                 "bvid": bvid,
                 "title": title,
@@ -1763,7 +1763,7 @@ async def bilibili_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             size_mb = out_file.stat().st_size / (1024 * 1024)
             title = clip_res.get("title") or bvid
-            dur_s = float(clip_res.get("duration") or 20.0)
+            dur_s = float(clip_res.get("clipped_duration") or clip_res.get("duration") or 20.0)
 
             caption = (
                 f"✅ **ĐÃ CẮT SẠCH WATERMARK BILIBILI ({res_label})**\n\n"
