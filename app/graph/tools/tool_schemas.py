@@ -19,7 +19,7 @@ from config.settings import settings
 logger = logging.getLogger(__name__)
 
 _yt_url_lock = threading.Lock()
-_yt_search_sem = threading.Semaphore(2)
+_yt_search_sem = threading.Semaphore(6)
 
 # Bộ nhớ đệm kết quả tìm kiếm YouTube Shorts theo từ khóa & các khoảng thời gian đã cắt trên từng URL
 _yt_flat_search_cache: Dict[str, List[Dict[str, Any]]] = {}
@@ -526,12 +526,15 @@ def _resolve_adaptive_search_queries(
     topic: str,
     narration: str,
     max_words: int = 5,
+    storyline_queries: Optional[List[str]] = None,
 ) -> Tuple[str, List[str]]:
     """
-    Chiến lược Tìm Kiếm Song Song 2 Nhánh (Dual-Track: 'A vs B' + 'Đơn Chủ Thể Quay Thật'):
-    - Giữ nhánh `A vs B` (từ `overall_script_query` / `scene_query`) để YouTube vẫn săn được video chạm trán thật nếu có.
-    - Đồng thời LUÔN kèm nhánh truy vấn ĐƠN CHỦ THỂ sạch (không chứa `vs`) ngay trong cùng lượt quét song song 4 nhánh,
-      để nếu `A vs B` chỉ toàn video `#edit` / AI hoặc không tìm được clip sạch thì có sẵn ngay clip quay thật của từng thực thể!
+    Chiến lược Tìm Kiếm Khớp Mạch Truyện Kịch Bản + Song Song 2 Nhánh (Dual-Track):
+    - Luôn ưu tiên số 1 cho bộ câu truy vấn phân cảnh (`scene_query` + `storyline_queries` + `fallback_query`)
+      do LLM phân rã trực tiếp từ mạch truyện kịch bản (tuyệt đối không để `overall_script_query` chung chung
+      đè lên câu truy vấn riêng của phân cảnh!).
+    - Đồng thời luôn kèm nhánh truy vấn ĐƠN CHỦ THỂ sạch (không chứa `vs`) để nếu `A vs B` chỉ toàn video `#edit`
+      hoặc AI thì có sẵn ngay clip quay thật của từng thực thể.
     """
     _ = narration
     scope_norm = (search_scope or "SCENE_SPECIFIC").strip().upper()
@@ -542,23 +545,39 @@ def _resolve_adaptive_search_queries(
     q_overall = _clean_yt_search_phrase(overall_base, subject_entity=subject_entity, max_words=max_words)
     q_scene = _clean_yt_search_phrase(scene_query, subject_entity=subject_entity, max_words=max_words)
 
+    clean_story_qs: List[str] = []
+    for sq in (storyline_queries or []):
+        c_sq = _clean_yt_search_phrase(str(sq or ""), subject_entity=subject_entity, max_words=max_words)
+        if c_sq and c_sq.lower() not in {x.lower() for x in clean_story_qs}:
+            clean_story_qs.append(c_sq)
+
     single_entity_fallbacks = build_single_entity_stock_queries(
-        raw_queries=[fallback_query, scene_query, overall_base],
+        raw_queries=[*clean_story_qs, fallback_query, scene_query, overall_base],
         subject_entity=subject_entity,
         topic=topic,
         max_words=min(4, max_words),
     )
-    q_fallback = single_entity_fallbacks[0] if single_entity_fallbacks else _clean_yt_search_phrase(
-        fallback_query or subject_entity or topic,
-        subject_entity=subject_entity,
-        max_words=min(3, max_words),
-        strip_distractor_props=True,
+    q_fallback = (
+        _clean_yt_search_phrase(fallback_query, subject_entity=subject_entity, max_words=min(4, max_words))
+        if fallback_query
+        else (
+            single_entity_fallbacks[0]
+            if single_entity_fallbacks
+            else _clean_yt_search_phrase(
+                subject_entity or topic,
+                subject_entity=subject_entity,
+                max_words=min(3, max_words),
+                strip_distractor_props=True,
+            )
+        )
     )
 
-    if scope_norm == "SCRIPT_OVERALL":
-        base_list = [q_overall, q_scene, q_fallback, *single_entity_fallbacks[:2]]
+    if q_scene:
+        base_list = [q_scene, *clean_story_qs, q_fallback, *single_entity_fallbacks[:2], q_overall]
+    elif scope_norm == "SCRIPT_OVERALL":
+        base_list = [*clean_story_qs, q_overall, q_fallback, *single_entity_fallbacks[:2]]
     else:
-        base_list = [q_scene, q_fallback, q_overall, *single_entity_fallbacks[:2]]
+        base_list = [*clean_story_qs, q_fallback, q_overall, *single_entity_fallbacks[:2]]
 
     ordered: List[str] = []
     seen_q: Set[str] = set()

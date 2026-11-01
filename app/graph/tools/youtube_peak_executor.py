@@ -62,6 +62,7 @@ def execute_youtube_short_peak_clone_sync(
     channel_id: str = "",
     allow_3d_cgi_monster: bool = False,
     skip_youtube_search: bool = False,
+    storyline_queries: Optional[List[str]] = None,
     cancel_event: Optional[threading.Event] = None,
     deadline_ts: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -128,6 +129,7 @@ def execute_youtube_short_peak_clone_sync(
         topic=topic,
         narration=narration,
         max_words=5,
+        storyline_queries=storyline_queries,
     )
     if allow_3d_cgi_monster:
         c_core = _clean_yt_search_phrase(subject_entity or topic, max_words=2, strip_distractor_props=True) or "sea monster"

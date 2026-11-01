@@ -35,18 +35,16 @@ def execute_clean_cinematic_portrait_or_broll_sync(
     job_id: int = 0,
     scene_id: int = 0,
     target_image_count: int = 3,
+    fallback_query: str = "",
+    storyline_queries: Optional[List[str]] = None,
     cancel_event: Optional[threading.Event] = None,
     deadline_ts: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Thực thi công cụ `@tool fetch_clean_cinematic_portrait_or_broll`:
     - Bỏ qua 100% Open Web Google Images (tránh triệt để Quote Card có chữ, bìa sách, infographic).
-    - Khi `media_preference == "VIDEO_BROLL"` (hoặc cảnh Hook):
-      Truy xuất trực tiếp Video B-Roll quay diễn viên thật chuẩn dọc 9:16 từ Pexels HD / Pixabay HD,
-      cắt đoạn Peak cảm xúc và trả về cả `full_peak_path` nếu đoạn Peak dài.
-    - Khi `media_preference == "CLEAN_PORTRAIT_PHOTO"` (hoặc dự phòng):
-      Truy xuất bộ 3-4 bức ảnh chân dung nghệ thuật ánh sáng tối (Chiaroscuro / Moody Portrait) sạch chữ 100%
-      từ Pexels & Pixabay Photo API.
+    - Sử dụng trực tiếp bộ câu truy vấn phân cảnh (`human_action_query` + `storyline_queries` + `fallback_query`)
+      do LLM phân rã từ kịch bản gốc để tìm kiếm khung hình khớp 100% với mạch truyện.
     """
     from app.services.media.media_history import extract_media_identity, is_media_already_used, record_used_media
     from app.services.video_memory_rag import get_video_memory_rag
@@ -54,10 +52,26 @@ def execute_clean_cinematic_portrait_or_broll_sync(
     rag = get_video_memory_rag()
     used = used_urls if used_urls is not None else set()
     media_agent = MediaAgent()
-    clean_act_q = (human_action_query or subject_entity or "dramatic portrait dark lighting").strip()
+    clean_act_q = (human_action_query or fallback_query or subject_entity or "dramatic portrait dark lighting").strip()
     pref_norm = (media_preference or "VIDEO_BROLL").strip().upper()
+    story_q_list = [
+        str(q).strip()
+        for q in dict.fromkeys([
+            clean_act_q,
+            *(storyline_queries or []),
+            fallback_query,
+            overall_script_query,
+        ])
+        if str(q or "").strip()
+    ]
+    eff_fb_q = (
+        fallback_query
+        or (story_q_list[1] if len(story_q_list) > 1 else "")
+        or overall_script_query
+        or clean_act_q
+    )
 
-    # 1. Ưu tiên #1: Săn đoạn Peak từ YouTube Shorts (Băng thẩm vấn FBI/CIA thật, Tòa án, 3D Não bộ, hoặc Nhân vật điện ảnh biểu tượng)
+    # 1. Ưu tiên #1: Săn đoạn Peak từ YouTube Shorts theo đúng bộ truy vấn mạch truyện của LLM
     if pref_norm in ("YOUTUBE_FORENSIC_OR_CHARACTER_SHORT", "VIDEO_BROLL") or is_hook_scene:
         vid_out = (
             output_path
@@ -72,7 +86,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 target_duration_sec=max(3.0, target_duration_sec),
                 clip_role="HOOK" if is_hook_scene else "PEAK",
                 used_urls=used,
-                fallback_query=overall_script_query or "fbi interrogation suspect dark",
+                fallback_query=eff_fb_q,
                 subject_entity=subject_entity or clean_act_q,
                 narration=narration,
                 topic=overall_script_query or topic,
@@ -81,6 +95,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 max_peak_duration_sec=14.0,
                 job_id=job_id,
                 scene_id=scene_id,
+                storyline_queries=story_q_list,
                 skip_youtube_search=False,
                 cancel_event=cancel_event,
                 deadline_ts=deadline_ts,
@@ -99,15 +114,10 @@ def execute_clean_cinematic_portrait_or_broll_sync(
         ):
             return None
 
-        # Ưu tiên #2: Dự phòng Video B-Roll Dark Noir diễn viên thật Pexels / Pixabay HD sạch chữ 100%
+        # Ưu tiên #2: Dự phòng Video B-Roll Pexels / Pixabay HD theo đúng các câu truy vấn mạch truyện của LLM
         va_clean_vid = {
             "subject": subject_entity or clean_act_q,
-            "search_queries": [
-                clean_act_q,
-                "detective interrogation dark room",
-                "close up eyes dark lighting",
-                "silhouette person walking night",
-            ],
+            "search_queries": story_q_list[:4] if story_q_list else [clean_act_q],
             "clean_stock_only": True,
             "is_hook_scene": is_hook_scene,
         }
@@ -214,12 +224,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
     )
     va_clean_photo = {
         "subject": subject_entity or clean_act_q,
-        "search_queries": [
-            clean_act_q,
-            "dramatic portrait dark lighting",
-            "man intense eyes dark shadow",
-            "person silhouette shadow",
-        ],
+        "search_queries": story_q_list[:4] if story_q_list else [clean_act_q],
         "clean_stock_only": True,
         "is_hook_scene": is_hook_scene,
     }
@@ -228,7 +233,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
         used_urls=used,
         visual_analysis=va_clean_photo,
         narration=narration,
-        topic="dramatic portrait",
+        topic=overall_script_query or topic or clean_act_q,
     )
     if not best_photo or not best_photo.get("url"):
         return None
@@ -241,7 +246,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
     if len(all_candidate_urls) < max(8, target_image_count * 2):
         try:
             from app.graph.parallel_search import run_langgraph_parallel_tasks
-            supp_queries = [clean_act_q, "dramatic portrait dark shadow", "intense eyes close up dark", "person silhouette night"]
+            supp_queries = story_q_list[:4] if story_q_list else [clean_act_q]
             px_tasks = [{"q": q_s} for q_s in supp_queries]
             px_completed = run_langgraph_parallel_tasks(
                 tasks=px_tasks,

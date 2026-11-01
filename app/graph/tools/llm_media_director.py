@@ -241,7 +241,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                                 )
                                 break
                         elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
-                            rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
+                            rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:800])
                     except Exception as req_err:
                         rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(req_err))
                         logger.debug(f"[LLM Tool Director] {model_name} error: {req_err}")
@@ -358,6 +358,16 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["secondary_stock_query"] = s_sq
                 d["youtube_search_query"] = p_sq
                 d["fallback_broad_query"] = s_sq
+
+            init_story_qs = [
+                q_item for q_item in dict.fromkeys([
+                    str(d.get("youtube_search_query") or d.get("human_action_query") or d.get("action_or_concept_query") or d.get("primary_stock_query") or "").strip(),
+                    str(d.get("fallback_broad_query") or d.get("secondary_stock_query") or "").strip(),
+                    str(s.get("visual_keyword") or "").strip(),
+                ]) if q_item
+            ]
+            if init_story_qs:
+                d["storyline_search_queries"] = init_story_qs[:3]
 
             d["scope_audited"] = bool(is_long_form_dir and total_scenes >= 28)
             final_plan.append(d)
@@ -527,12 +537,14 @@ def audit_and_decide_search_scopes_with_llm_sync(
             or d.get("smart_image_query")
             or d.get("action_or_concept_query")
             or d.get("human_action_query")
+            or s.get("visual_keyword")
             or ""
         )
-        fb_cur = d.get("fallback_broad_query") or d.get("secondary_stock_query") or ""
+        fb_cur = d.get("fallback_broad_query") or d.get("secondary_stock_query") or s.get("stock_query") or ""
         review_items.append({
             "scene_id": sid,
             "split_sentence": s.get("narration", ""),
+            "scene_visual_hint": s.get("visual_keyword", ""),
             "proposed_tool": d.get("tool_name", "search_google_cinematic_image"),
             "proposed_scope": d.get("search_scope", "SCENE_SPECIFIC"),
             "proposed_subject_entity": d.get("subject_entity", ""),
@@ -544,7 +556,7 @@ def audit_and_decide_search_scopes_with_llm_sync(
     from app.services.niche_manager import build_video_search_strategy_prompt_block
     yaml_search_strategy_block = build_video_search_strategy_prompt_block(channel_niche or "general")
 
-    audit_prompt = f"""You are the Chief LLM Search Scope Judge & Search-Engine Query Auditor in a LangGraph video pipeline.
+    audit_prompt = f"""You are the Chief LLM Script-to-Storyline Search Query Decomposer & Search Scope Judge in a LangGraph video pipeline.
 Topic: "{topic}"
 Primary Subject: "{primary_entity or topic}"
 Channel Niche: "{channel_niche or 'general'}"
@@ -554,40 +566,43 @@ Channel Niche: "{channel_niche or 'general'}"
 FULL SCRIPT STORY:
 "{full_script_text}"
 
-PROPOSED SCENE DECISIONS TO AUDIT:
+PROPOSED SCENE DECISIONS TO DECOMPOSE & AUDIT:
 {json.dumps(review_items, ensure_ascii=False, indent=2)}
 
-YOUR 3-STEP COGNITIVE AUDIT PROTOCOL (STRICTLY GOVERNED BY THE YAML VIDEO SEARCH STRATEGY ABOVE):
-STEP 1 — PRONOUN RESOLUTION, SIDE-PROP ELIMINATION & ACADEMIC-TO-EVERYDAY TRANSLATION ACROSS THE FULL SCRIPT:
-- Read the FULL SCRIPT STORY first. When a `split_sentence` uses pronouns ("It", "He", "She", "They", "This creature", "These weapons", "This trap") or omits the subject, substitute the true canonical entity physically acting in that sentence.
-- 🚫 ZERO SIDE-PROP / OBSERVER ROOM / EMPTY SCENERY DRIFT: When a `split_sentence` mentions a secondary side-effect, bystander/observer, or metaphor to illustrate the impact of the main phenomenon (e.g., car engines dying during a volcanic gas disaster, military engineers planning in an office during a weapon test, or empty forest/valley scenery), NEVER allow queries for the side-prop, room, or empty trees (`"car dashboard night"`, `"engineers planning"`, `"rainforest canopy"`). Always rewrite `approved_query` and `approved_fallback_stock_query` to show a distinct, dramatic visual angle of the **Primary Phenomenon/Entity** promised in the title (or set `approved_scope="SCRIPT_OVERALL"`)!
-- 🚫 EVERYDAY YOUTUBE CREATOR VOCABULARY ONLY (BAN ACADEMIC / LATIN / TEXTBOOK JARGON): Real YouTube creators and Pexels/Pixabay videographers title their uploads with simple, everyday words — NEVER textbook taxonomy or clinical jargon. If `proposed_query` contains academic/scientific terms (e.g., `"benthic crustacean"`, `"apex elapid"`, `"limnic eruption"`, `"cervical vertebrae"`), REWRITE it immediately into 3–5 everyday English words that real videos use in titles (e.g., `"deep sea crab underwater"`, `"king cobra strike"`, `"volcanic crater lake gas"`, `"jaguar biting caiman"`).
-- When a `split_sentence` describes a microscopic mechanism, anatomical weapon, or metaphor, NEVER allow generic material/texture queries or literal metaphor props! Always rewrite to the actual canonical subject + visible physical feature/action in its real environment.
+YOUR 3-STEP COGNITIVE STORYLINE DECOMPOSITION PROTOCOL (STRICTLY GOVERNED BY THE YAML VIDEO SEARCH STRATEGY ABOVE):
+STEP 1 — FULL-SCRIPT STORYLINE ARC COMPREHENSION, PRONOUN RESOLUTION & EMOTIONAL MOOD LOCK:
+- Read the FULL SCRIPT STORY from Scene 1 to Scene {len(scenes)} first so you understand the complete narrative arc (Act 1: Crisis/Hook -> Act 2: Mechanism/Escalation -> Act 3: Mid-Video Twist -> Act 4: Counter-Move/Climax -> Act 5: Payoff) and emotional atmosphere.
+- When a `split_sentence` uses pronouns ("It", "He", "She", "They", "This creature", "These witnesses", "This trap") or omits the subject, substitute the true camera-visible subject acting in that sentence.
+- 🚫 NEVER USE ABSTRACT THEORY NAMES AS `approved_subject_entity`: A camera cannot film an abstract psychological/philosophical term like `"Bystander Effect"`, `"Diffusion of Responsibility"`, `"Cognitive Dissonance"`, or `"Paradox"`. When the topic is an abstract concept, set `approved_subject_entity` to the **CONCRETE CAMERA-VISIBLE SUBJECT** of that specific scene (e.g., `"witness looking through window"`, `"flashing police lights night"`, `"glowing brain neurons"`, `"man pointing finger"`, `"person calling emergency phone"`).
+- 🚫 PRESERVE DRAMATIC STORYLINE MOOD (NO TOURIST VLOG / HAPPY STREET DRIFT): Never flatten a tense/dark storyline moment into a generic casual phrase that returns unrelated tourist vlogs or fast-food queues! For example, if a scene says *"Thirty-eight people watched a brutal attack outside and nobody called the police"*, NEVER write `"urban crowd walking night street"` (which returns happy night-market walking tours)—write queries that match the exact dramatic storyline beat: `"police lights dark apartment street"`, `"witness looking through window night"`, `"crime scene flashing lights night"`.
+- 🚫 ZERO SIDE-PROP / OBSERVER ROOM / EMPTY SCENERY DRIFT: When a `split_sentence` mentions a secondary side-effect or metaphor to illustrate the scale of a phenomenon, NEVER search for the side-prop or empty trees—anchor queries to the primary phenomenon/action of the storyline.
+- 🚫 EVERYDAY YOUTUBE CREATOR VOCABULARY ONLY (BAN ACADEMIC / LATIN / TEXTBOOK JARGON): Translate any clinical/scientific terms (`"benthic crustacean"`, `"apex elapid"`, `"limnic eruption"`, `"diffusion of responsibility"`) into 3–5 everyday English words that real videos use in titles (`"deep sea crab underwater"`, `"king cobra strike"`, `"volcanic crater lake gas"`, `"3d glowing brain neurons"`).
 
-STEP 2 — AUDIT & REWRITE `approved_query` (YOUTUBE DUAL-TRACK) AND `approved_fallback_stock_query` (STOCK SINGLE-ENTITY):
-1. `approved_query` (3–5 English words, following the YAML `Dual-Track Clash vs. Single-Entity Rule` & `Single-Entity Body Scene Rule` above):
-   - For single-entity body scenes: REWRITE any `"A vs B"` query into **`[Single Canonical Entity] + [Real Physical Action / Environment]`** matching the `YAML Clean Single-Entity Real-Action Query Examples` above so we avoid `#edit` comparison videos and AI Veo clips!
-   - Keep `"Entity A attacking/vs Entity B"` ONLY on direct 2-entity encounter/clash scenes when permitted by the YAML `Dual-Track Clash vs. Single-Entity Rule`.
-   - REWRITE immediately if `proposed_query` is a literary storytelling phrase that nobody titles a video with, drifts to a side-prop/observer room, uses academic jargon, or contains any marker from `YAML Forbidden #Edit / Quiz / AI-Slop Video Markers`.
-2. `approved_fallback_stock_query` (2–4 English words, Strictly Single-Entity — ZERO `"vs"`):
-   - Must follow `YAML Canonical Stock/Fallback Query Examples` (`[Single Canonical Subject Noun] + [Setting/Action]`) in simple everyday English with ZERO `"vs"` / `"versus"`, NEVER dropping the head noun, and NEVER outputting generic textures or side props.
-3. `approved_subject_entity` (Scene-Accurate Subject Filter for Vision Auditor):
-   - Set to the exact active entity in that scene, OR `"Entity A or Entity B"` in a 2-entity duel, following the YAML `Niche Anti-Flop Scene Continuity Guardrail` above.
-4. ENFORCE THE YAML `Niche Anti-Flop Scene Continuity Guardrail` & INTRA-VIDEO UNIQUENESS:
-   - Strictly enforce the active niche's continuity rule from the YAML block above across all scenes 1..N, and NEVER assign the exact same `approved_query` string to two different scenes (vary the visible action, angle, or stage of the event so every scene pulls a distinct clip).
+STEP 2 — DECOMPOSE EACH SCENE INTO 3 COMPLEMENTARY STORYLINE SEARCH QUERIES (`approved_query`, `approved_secondary_query`, `approved_fallback_stock_query`):
+For EVERY scene (`scene_id = 1..{len(scenes)}`), break that scene's narrative beat down into 3 distinct, storyline-matched search queries so our search engine finds frames that fit the exact storyline progression:
+1. `approved_query` (3–5 English words — Primary YouTube Storyline Query):
+   - Captures the #1 most vivid, camera-visible physical action + mood of this exact beat in the script.
+   - Follow the YAML `Dual-Track Clash vs. Single-Entity Rule`: for single-entity body scenes, use **`[Single Canonical Entity] + [Real Physical Action / Environment]`** with ZERO `"vs"`; keep `"Entity A attacking/vs Entity B"` ONLY on direct 2-entity clash scenes when permitted by the YAML block.
+2. `approved_secondary_query` (3–5 English words — Alternate Camera Angle / Reaction Shot for the Same Storyline Beat):
+   - A second distinct search query capturing a complementary visual angle or reaction of the SAME scene beat in the story (e.g., if `approved_query` is `"police lights dark apartment street"`, `approved_secondary_query` can be `"witness looking through window blinds"`).
+3. `approved_fallback_stock_query` (2–4 English words — Pexels/Pixabay Stock B-Roll Query, ZERO `"vs"`):
+   - Concrete, stock-indexable physical subject + action/setting in simple everyday English (`[Visible Subject Noun] + [Action/Setting]`), NEVER dropping the head noun and NEVER using `"vs"`.
+4. ENFORCE INTRA-VIDEO STORYLINE PROGRESSION:
+   - Never assign identical queries to two different scenes; each scene's queries must visually advance the story from beginning to end.
 
 Return ONLY a valid JSON object in this exact format:
 {{
-  "overall_script_query": "3-5 word core story search query following YAML rules",
-  "subject_entity": "main canonical subject(s) of the story",
+  "overall_script_query": "3-5 word core visual theme of the story",
+  "subject_entity": "main concrete camera-visible subject(s) of the story",
   "scenes_audit": [
     {{
       "scene_id": 1,
       "approved_scope": "SCENE_SPECIFIC",
-      "approved_subject_entity": "Canonical Entity A or Canonical Entity B",
-      "approved_query": "3-5 word YouTube search query following YAML strategy",
-      "approved_fallback_stock_query": "2-4 word single-entity stock fallback query without vs",
-      "reason": "Search-engine-native query aligned with YAML video_search_strategy"
+      "approved_subject_entity": "concrete camera-visible subject in this scene",
+      "approved_query": "3-5 word primary YouTube query matching this storyline beat",
+      "approved_secondary_query": "3-5 word alternate angle query for this same storyline beat",
+      "approved_fallback_stock_query": "2-4 word concrete stock video query without vs",
+      "reason": "Storyline-matched visual beat decomposition"
     }}
   ]
 }}"""
@@ -644,12 +659,15 @@ Return ONLY a valid JSON object in this exact format:
                                             au = audit_by_sid[sid]
                                             app_scope = str(au.get("approved_scope") or item.get("search_scope") or "SCENE_SPECIFIC").upper()
                                             app_query = str(au.get("approved_query") or "").strip()
+                                            app_sec_query = str(au.get("approved_secondary_query") or "").strip()
                                             app_fb_query = str(au.get("approved_fallback_stock_query") or "").strip()
                                             app_subj_ent = str(au.get("approved_subject_entity") or "").strip()
                                             item["search_scope"] = app_scope if app_scope in ("SCENE_SPECIFIC", "SCRIPT_OVERALL") else "SCENE_SPECIFIC"
                                             item["scope_audit_reason"] = str(au.get("reason") or "")
                                             if app_subj_ent and not item.get("creature_name"):
                                                 item["subject_entity"] = app_subj_ent
+                                            if app_sec_query:
+                                                item["secondary_storyline_query"] = app_sec_query
                                             if app_fb_query:
                                                 item["fallback_broad_query"] = app_fb_query
                                                 if item.get("tool_name") == "search_pexels_pixabay_stock_video":
@@ -667,6 +685,15 @@ Return ONLY a valid JSON object in this exact format:
                                                     item["human_action_query"] = app_query
                                                 else:
                                                     item["smart_image_query"] = app_query
+                                            story_qs = [
+                                                q_s for q_s in dict.fromkeys([
+                                                    app_query,
+                                                    app_sec_query,
+                                                    app_fb_query,
+                                                ]) if q_s
+                                            ]
+                                            if story_qs:
+                                                item["storyline_search_queries"] = story_qs
                                         item["scope_audited"] = True
                                         audited_list.append(item)
 
@@ -680,7 +707,7 @@ Return ONLY a valid JSON object in this exact format:
                                     )
                                     return audited_list
                     elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
-                        rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
+                        rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:800])
                 except Exception as e_req:
                     rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_req)[:180])
                     logger.debug(f"[LLM Scope Judge] {model_name} error: {e_req}")
