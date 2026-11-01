@@ -100,6 +100,24 @@ def _try_bilibili_broll_fallback(
                 Path(output_path).unlink(missing_ok=True)
                 continue
 
+            from app.graph.evaluators.visual_critic import VisualCritic
+            bili_gate = VisualCritic.inspect_clip_before_concat(
+                output_path,
+                min_short_edge=720,
+                min_sharpness=5.2,
+                check_watermark=True,
+                allow_snow=True,
+                auto_sanitize=True,
+            )
+            if not bili_gate.get("passed", False):
+                logger.info(
+                    f"🚫 [BilibiliPeakTool] Loại bỏ clip Bilibili '{b_title[:40]}' qua cổng CV: "
+                    f"{'; '.join(bili_gate.get('issues') or [])}"
+                )
+                rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
+                Path(output_path).unlink(missing_ok=True)
+                continue
+
             ok_sig_b, _ = rag.verify_and_commit_in_job_clip(
                 job_id=job_id,
                 scene_id=eff_scene_id,

@@ -263,14 +263,27 @@ class StockFetcher:
                 return []
             if res.status_code == 200:
                 hits = res.json().get("hits", [])
+                _generic_action_words = {
+                    "running", "swimming", "walking", "jumping", "flying", "hunting", "sleeping",
+                    "water", "ocean", "sea", "river", "lake", "snow", "ice", "mountain", "forest",
+                    "jungle", "desert", "beach", "night", "day", "fast", "slow", "giant", "wild",
+                    "deep", "underwater", "waves", "storm", "rain", "wind", "fire", "rescue",
+                }
+                _subj_tokens = [
+                    w.lower() for w in re.findall(r"[a-zA-Z]{3,}", clean_q)
+                    if w.lower() not in _generic_action_words
+                ]
                 results = []
                 for h in hits:
                     h_type = str(h.get("type") or "film").lower()
                     h_tags = str(h.get("tags") or "")
+                    h_tags_low = h_tags.lower()
                     if not allow_cgi and (
                         h_type == "animation"
-                        or any(bad_t in h_tags.lower() for bad_t in ("cartoon", "anime", "comic", "2d", "illustration", "cute heart"))
+                        or any(bad_t in h_tags_low for bad_t in ("cartoon", "anime", "comic", "2d", "illustration", "cute heart"))
                     ):
+                        continue
+                    if _subj_tokens and not any(st in h_tags_low for st in _subj_tokens):
                         continue
                     vids = h.get("videos", {})
                     med_v = vids.get("medium") or {}
@@ -341,6 +354,12 @@ class StockFetcher:
                     if min(w, h) < 480:
                         continue
                     title_raw = str(p.get("title") or "").replace("File:", "").rsplit(".", 1)[0]
+                    t_raw_low = title_raw.lower()
+                    if any(
+                        bad_w in t_raw_low
+                        for bad_w in ("meat", "slaughter", "butcher", "investigation", "animated", "cartoon", "cgi spot", "corpse", "autopsy")
+                    ):
+                        continue
                     results.append({
                         "url": v_url,
                         "title": f"Wikimedia Video: {title_raw}",

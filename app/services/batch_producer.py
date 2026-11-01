@@ -301,27 +301,33 @@ CHANNELS_CONFIG = {
         "niche": "animal_rescue",
         "language": "en",
         "google_account": "acount_2",
-        "preferred_voice": "en-US-JennyNeural",
+        "preferred_voice": "en-US-ChristopherNeural",
         "handle": "@pawsandheartsrescue",
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 18,
+        "prefer_non_youtube_sources": True,
         "director_notes": (
-            "Target channel Paws & Hearts Rescue. Tear-jerking emotional animal rescue arc: "
-            "HOOK (0-3s): Curiosity + Refusal to let go or trembling eye contact ('He refused to let go until...'). "
-            "DEVELOPMENT: Gentle human approach, rescuer builds trust through gentle whispers and warm blanket. "
-            "CLIMAX: Miraculous Day 1 vs Day 30 recovery and joyful sprint in sunlit meadow. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: compassionate, deeply emotional, heartwarming, uplifting."
+            "Target channel Paws & Hearts Rescue (US English, Category 15 Pets & Animals). Deep 5-Act Dual-Peak Heroic Rescue Dogs & Canine Survival Science arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
+            "TITLE (YT_SEARCH Anchor): Explicitly name the heroic rescue dog breed/animal vs the extreme survival hazard or physical feat ('[Rescue Dog Breed / Animal A] vs [Extreme Hazard B]: [Visceral Survival Mechanism]'). NEVER hide the breed name behind vague pronouns! "
+            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation 'Look closely at this dog\'s paws...', 2. The Fatal Mistake, 3. 2nd-Person Survival Simulation 'If you are trapped under...', 4. Role Reversal). NEVER repeat the title verbatim at 0.0s! "
+            "ACT 2 (Scenes 2-3): Explain the breed\'s extraordinary biological rescue adaptation (webbed paws, 300-million scent receptors, double thermal coat, 700-PSI bite or towing power) translated into a vivid everyday physical analogy. "
+            "ACT 3 (Scene 4 - 15s Twist): The hidden second survival mechanism or real-world rescue turning point that saves human/animal lives in extreme conditions. "
+            "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
+            "Tone: gripping, heroic, awe-inspiring National Geographic / Canine Survival Documentary style. Strict English only."
         ),
         "topics": [
-            "He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm",
-            "The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe",
-            "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign",
-            "Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time",
+            "Newfoundland Rescue Dog vs Ocean Rip Current: How Webbed Paws and a 150-Pound Lung Capacity Pull Drowning Swimmers From Freezing Waves",
+            "Saint Bernard Rescue Dog vs 15-Foot Alpine Avalanche: How 300 Million Scent Receptors Detect Human Heartbeats Beneath Solid Snow",
+            "Belgian Malinois K9 vs 12-Foot Vertical Wall: How Military Rescue Dogs Parachute From 10,000 Feet to Track Missing Survivors",
+            "Kangal Shepherd Dog vs Wolf Pack: How a 140-Pound Livestock Guardian Protects Entire Mountain Flocks at Night",
+            "Bloodhound Scent Tracker vs 130-Hour Rain Trail: How Loose Facial Skin Traps Microscopic Human Scent Particles Across 100 Miles",
+            "Alaskan Malamute Sled Team vs -50°F Arctic Blizzard: How Double Thermal Coats and Counter-Current Paw Veins Stop Frostbite",
+            "German Shepherd Search Dog vs Collapsed Concrete Rubble: How Ultrasonic Hearing Pinpoints Trapped Survivors After an Earthquake",
+            "Golden Retriever Water Rescue Dog vs Capsized Boat: Why Coast Guard Squads Trust This Soft-Mouthed Breed to Tow Two Adults at Once",
         ],
         "default_tags": [
-            "shorts", "animalrescue", "rescuedog", "puppy", "dog",
-            "pets", "heartwarming", "faithinhumanity", "transformation", "animals",
+            "shorts", "rescuedog", "dogs", "animalrescue", "workingdogs",
+            "k9", "newfoundlanddog", "saintbernard", "germanshepherd", "pets", "animals", "viral",
         ],
     },
 }
@@ -722,7 +728,24 @@ async def produce_channel_video(
     pipeline = VideoPipeline(job_id=job_id, progress_callback=_progress_cb)
     pipeline.niche = ch_niche
 
-    render_result = await pipeline.execute()
+    prev_non_yt = os.environ.get("PREFER_NON_YOUTUBE_SOURCES")
+    prev_allow_yt = os.environ.get("ALLOW_LOW_RISK_YOUTUBE_CLIPS")
+    if cfg.get("prefer_non_youtube_sources"):
+        os.environ["PREFER_NON_YOUTUBE_SOURCES"] = "true"
+        os.environ["ALLOW_LOW_RISK_YOUTUBE_CLIPS"] = "false"
+        print("   🛡️ [Non-YouTube Clean Sources Mode]: Đã kích hoạt chế độ lấy nguồn 100% ngoài YouTube (Pexels HD + Pixabay HD + Wikimedia + Bilibili Safe-Crop)!")
+    try:
+        render_result = await pipeline.execute()
+    finally:
+        if cfg.get("prefer_non_youtube_sources"):
+            if prev_non_yt is None:
+                os.environ.pop("PREFER_NON_YOUTUBE_SOURCES", None)
+            else:
+                os.environ["PREFER_NON_YOUTUBE_SOURCES"] = prev_non_yt
+            if prev_allow_yt is None:
+                os.environ.pop("ALLOW_LOW_RISK_YOUTUBE_CLIPS", None)
+            else:
+                os.environ["ALLOW_LOW_RISK_YOUTUBE_CLIPS"] = prev_allow_yt
     output_video_path = render_result.output_path
 
     if not output_video_path or not Path(output_video_path).exists():

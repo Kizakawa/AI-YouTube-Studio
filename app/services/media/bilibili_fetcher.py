@@ -103,6 +103,34 @@ _CORE_TERM_ZH_MAP: Dict[str, str] = {
     "fbi": "FBI 审讯 肢体语言",
     "manipulation": "暗黑心理学 操控",
     "narcissist": "自恋型人格 心理学",
+    # Ngách 01: Cứu hộ động vật & Chó nghiệp vụ / Chó cứu hộ sinh tồn (Paws & Hearts Rescue)
+    "newfoundland dog": "纽芬兰犬 水上救援",
+    "newfoundland": "纽芬兰犬 救生",
+    "st bernard": "圣伯纳犬 搜救",
+    "saint bernard": "圣伯纳犬 搜救",
+    "search and rescue dog": "搜救犬 救援 实拍",
+    "rescue dog": "搜救犬 救助",
+    "water rescue": "水上救援犬 实拍",
+    "avalanche rescue": "雪崩 搜救犬",
+    "german shepherd": "德牧 警犬 搜救",
+    "belgian malinois": "马犬 警犬 飞跃",
+    "malinois": "马犬 警犬",
+    "golden retriever": "金毛 搜救 导盲犬",
+    "labrador": "拉布拉多 搜救犬",
+    "kangal": "坎高犬 护卫犬",
+    "husky": "哈士奇 雪橇犬",
+    "alaskan malamute": "阿拉斯加雪橇犬",
+    "police dog": "警犬 抓捕 实拍",
+    "military dog": "军犬 训导 实拍",
+    "guide dog": "导盲犬 实拍",
+    "stray dog": "流浪狗 救助 实拍",
+    "dog rescue": "流浪狗 救援 感人",
+    "puppy rescue": "小狗 救助 领养",
+    "kitten rescue": "流浪猫 救助 实拍",
+    "stray cat": "流浪猫 救援",
+    "animal rescue": "动物救援 野生动物救助",
+    "shelter dog": "收容所 流浪狗 领养",
+    "drowning swimmer": "落水 救援 救生犬",
 }
 
 # Các từ khóa rác trên Bilibili cần loại bỏ (game, reacción, vlog nói chuyện, bài giảng dài)
@@ -189,11 +217,17 @@ def translate_query_to_chinese(query: str, primary_entity: str = "", is_3d_or_sc
         if clean_q in _zh_query_cache:
             return _zh_query_cache[clean_q]
 
-    # 1. Tra cứu nhanh từ điển thuật ngữ cốt lõi
+    # 1. Tra cứu nhanh từ điển thuật ngữ cốt lõi (ưu tiên tuyệt đối cụm từ ngắn 2-3 từ sát chủ thể để không làm loãng BM25 Bilibili)
     matched_zh: List[str] = []
     for en_term, zh_term in _CORE_TERM_ZH_MAP.items():
         if en_term in clean_q and zh_term not in matched_zh:
             matched_zh.append(zh_term)
+
+    if matched_zh and not is_3d_or_scifi:
+        zh_fast = matched_zh[0].strip() if " " in matched_zh[0] else " ".join(matched_zh[:2]).strip()
+        with _bili_lock:
+            _zh_query_cache[clean_q] = zh_fast
+        return zh_fast
 
     # 2. Gọi nhanh Gemini Flash (với thinkingBudget=0, timeout=3.5s) để dịch chuẩn ngữ cảnh
     zh_result = ""
@@ -204,10 +238,14 @@ def translate_query_to_chinese(query: str, primary_entity: str = "", is_3d_or_sc
         keys = settings.get_gemini_keys_pool()
         rotator = KeyRotator(keys) if keys else None
         if rotator and rotator.has_keys:
-            style_hint = "3D动画 科普 纪录片" if is_3d_or_scifi else "高清 实拍 纪录片"
+            style_rule = (
+                "append '3D 动画' at the end"
+                if is_3d_or_scifi
+                else "ONLY output 2 to 3 core subject + physical action words, NEVER append generic filler words like 高清, 实拍, or 纪录片"
+            )
             prompt = (
                 f"Translate this video B-roll search query into a concise Simplified Chinese (zh-CN) "
-                f"Bilibili search query (2 to 5 Chinese words, append '{style_hint}' if appropriate, "
+                f"Bilibili search query ({style_rule}, "
                 f"no English words unless proper acronym like FBI/NASA).\n"
                 f"Input query: \"{query}\" (Primary subject: \"{primary_entity}\")\n"
                 f"Return ONLY valid JSON: {{\"zh_query\": \"...\"}}"
@@ -319,8 +357,25 @@ def search_bilibili_videos(
     except Exception as exc:
         logger.debug(f"[BilibiliFetcher] Lỗi tìm kiếm Bilibili ('{kw}'): {exc}")
 
-    # Sắp xếp ưu tiên video có lượt xem cao (chất lượng hình ảnh/3D đã được kiểm chứng trên Bilibili)
-    results.sort(key=lambda x: int(x.get("view_count") or 0), reverse=True)
+    # Lọc & ưu tiên các ứng viên chứa đúng từ khóa chủ thể chữ Hán đầu tiên trong tiêu đề/mô tả
+    zh_tokens = re.findall(r"[\u4e00-\u9fff]{2,}", kw)
+    primary_zh_anchor = zh_tokens[0][:2] if zh_tokens else ""
+    if primary_zh_anchor and results:
+        anchor_matched = [
+            r for r in results
+            if primary_zh_anchor in f"{r.get('title', '')} {r.get('description', '')}"
+        ]
+        if anchor_matched:
+            results = anchor_matched
+
+    # Sắp xếp ưu tiên video khớp nhiều từ khóa chữ Hán nhất + lượt xem cao
+    results.sort(
+        key=lambda x: (
+            sum(1 for t in zh_tokens if t[:2] in f"{x.get('title', '')} {x.get('description', '')}"),
+            int(x.get("view_count") or 0),
+        ),
+        reverse=True,
+    )
 
     if results:
         with _bili_lock:
@@ -550,7 +605,7 @@ def download_and_crop_bilibili_broll_clip(
         # Bilibili Safe-Crop + Crisp Lanczos + Optical Unsharp Mask:
         if is_16x9:
             base_16x9_vf = (
-                "crop=iw*0.86:ih*0.82:iw*0.07:ih*0.09,"
+                "crop=iw*0.84:ih*0.70:iw*0.08:ih*0.09,"
                 "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
                 "crop=1920:1080,"
                 "unsharp=5:5:0.85:5:5:0.0,"
@@ -594,7 +649,7 @@ def download_and_crop_bilibili_broll_clip(
                 ]
         else:
             vf_chain = (
-                "crop=iw:ih*0.74:0:ih*0.12,"
+                "crop=iw:ih*0.64:0:ih*0.09,"
                 "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
                 "crop=1080:1920,"
                 "unsharp=5:5:0.75:5:5:0.0,"

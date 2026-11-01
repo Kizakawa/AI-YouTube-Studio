@@ -163,7 +163,8 @@ def execute_youtube_short_peak_clone_sync(
     }
 
     # ── TẦNG 1 (ƯU TIÊN SỐ 1): SĂN & CẮT ĐOẠN PEAK TỪ VIDEO YOUTUBE RỦI RO THẤP (ĐÃ QUA 4 LỚP LỌC WATERMARK & >= 720P) ──
-    allow_low_risk_yt = (not skip_youtube_search) and (
+    prefer_non_yt = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
+    allow_low_risk_yt = (not skip_youtube_search) and (not prefer_non_yt) and (
         allow_3d_cgi_monster or (
             os.getenv("ALLOW_LOW_RISK_YOUTUBE_CLIPS", "true").strip().lower() not in ("0", "false", "no", "off")
         )
@@ -595,8 +596,12 @@ def execute_youtube_short_peak_clone_sync(
     if _is_cancelled() or _remaining_sec() <= 3.0:
         return None
 
-    # ── TẦNG 3 (DỰ PHÒNG CUỐI KHI CẦN CGI/QUÁI VẬT): SĂN B-ROLL TRÊN BILIBILI (SAFE-CROP & DUYỆT VISION) ──
-    if allow_low_risk_yt and allow_3d_cgi_monster:
+    # ── TẦNG 3 (DỰ PHÒNG NON-YOUTUBE / CGI / CỨU HỘ ĐA NỀN TẢNG): SĂN B-ROLL TRÊN BILIBILI (SAFE-CROP & DUYỆT VISION) ──
+    allow_bili_fallback = (
+        os.getenv("ALLOW_BILIBILI_BROLL_FALLBACK", "true").strip().lower() not in ("0", "false", "no", "off")
+        and (allow_3d_cgi_monster or (not allow_low_risk_yt) or prefer_non_yt)
+    )
+    if allow_bili_fallback:
         bili_res = _try_bilibili_broll_fallback(
             search_phrases=search_phrases,
             search_query=search_query,

@@ -1014,7 +1014,11 @@ Return ONLY valid JSON:
             logger.debug(f"[HookVideoNode] yt_dlp flat pre-filter skip ({q}): {e_flat}")
         return q_idx, q, raw_flat_cands
 
-    if yt_queries_to_run and not _hook_cancelled(10.0):
+    allow_yt_hook = (
+        os.getenv("ALLOW_LOW_RISK_YOUTUBE_CLIPS", "true").strip().lower() not in ("0", "false", "no", "off")
+        and os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() not in ("1", "true", "yes", "on")
+    )
+    if allow_yt_hook and yt_queries_to_run and not _hook_cancelled(10.0):
         flat_results = _run_pool_map_nonblocking(
             _run_flat_search_for_query,
             enumerate(yt_queries_to_run),
@@ -2157,7 +2161,7 @@ Return ONLY valid JSON:
                         job_id=job_id,
                         scene_id=1,
                         channel_id=channel_id,
-                        skip_youtube_search=False,
+                        skip_youtube_search=(not allow_yt_hook),
                         allow_3d_cgi_monster=is_3d_cgi_subject,
                         deadline_ts=t15_deadline_ts,
                     )
