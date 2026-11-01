@@ -269,32 +269,42 @@ def search_youtube_native_shorts_flat(query: str, max_results: int = 20) -> List
                     })
                 return
 
-            # 3. `videoRenderer` thông thường nhưng có URL `/shorts/` hoặc `reelWatchEndpoint`
+            # 3. `videoRenderer` (bao gồm cả `/shorts/` và video ngắn <= 180s)
             if "videoRenderer" in node and isinstance(node["videoRenderer"], dict):
                 vr = node["videoRenderer"]
                 vid_id = str(vr.get("videoId") or "").strip()
                 nav_cmd = ((vr.get("navigationEndpoint") or {}).get("commandMetadata") or {}).get("webCommandMetadata") or {}
                 nav_url = str(nav_cmd.get("url") or "")
                 has_reel = "reelWatchEndpoint" in (vr.get("navigationEndpoint") or {})
-                if vid_id and len(vid_id) == 11 and vid_id not in seen_ids and ("/shorts/" in nav_url or has_reel):
+                is_short_vr = bool("/shorts/" in nav_url or has_reel)
+                len_txt = str(((vr.get("lengthText") or {}).get("simpleText")) or "").strip()
+                dur_vr = 28.0 if is_short_vr else 0.0
+                if len_txt:
+                    parts_t = [p for p in len_txt.split(":") if p.strip().isdigit()]
+                    if len(parts_t) == 2:
+                        dur_vr = float(int(parts_t[0]) * 60 + int(parts_t[1]))
+                    elif len(parts_t) == 3:
+                        dur_vr = float(int(parts_t[0]) * 3600 + int(parts_t[1]) * 60 + int(parts_t[2]))
+                if vid_id and len(vid_id) == 11 and vid_id not in seen_ids and (is_short_vr or (4.0 <= dur_vr <= 180.0)):
                     runs = ((vr.get("title") or {}).get("runs")) or []
                     title = "".join(str(r.get("text") or "") for r in runs if isinstance(r, dict)).strip()
                     v_txt = str(((vr.get("viewCountText") or {}).get("simpleText")) or "").strip()
                     ch_runs = (((vr.get("ownerText") or {}).get("runs")) or [{}])
                     uploader = str((ch_runs[0] if ch_runs else {}).get("text") or "").strip()
                     seen_ids.add(vid_id)
+                    v_url = f"https://www.youtube.com/shorts/{vid_id}" if is_short_vr else f"https://www.youtube.com/watch?v={vid_id}"
                     out.append({
                         "id": vid_id,
-                        "url": f"https://www.youtube.com/shorts/{vid_id}",
-                        "webpage_url": f"https://www.youtube.com/shorts/{vid_id}",
-                        "title": title or f"YouTube Short {vid_id}",
+                        "url": v_url,
+                        "webpage_url": v_url,
+                        "title": title or f"YouTube Video {vid_id}",
                         "uploader": uploader,
-                        "duration": 28.0,
+                        "duration": dur_vr if dur_vr > 0 else 28.0,
                         "view_count": _parse_short_views_text(v_txt),
-                        "width": 1080,
-                        "height": 1920,
-                        "aspect_ratio": 0.56,
-                        "is_vertical_short": True,
+                        "width": 1080 if is_short_vr else 1920,
+                        "height": 1920 if is_short_vr else 1080,
+                        "aspect_ratio": 0.56 if is_short_vr else 1.77,
+                        "is_vertical_short": is_short_vr,
                     })
                 return
 

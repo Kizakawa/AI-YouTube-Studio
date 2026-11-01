@@ -170,7 +170,7 @@ def concat_videos_with_xfade(
 
         fps_flag = ["-fps_mode", "cfr"] if _supports_fps_mode() else ["-vsync", "cfr"]
         enc_args = get_video_encoder_args(quality="longform" if len(video_paths) >= 22 else "high")
-        vf_chain_parts = [f"fps={fps}", "format=yuv420p"]
+        vf_chain_parts = [f"fps={fps}", "setsar=1", "format=yuv420p"]
         if has_sub:
             srt_escaped = str(subtitle_path).replace("\\", "/").replace(":", "\\:").replace("'", "")
             is_ass = str(subtitle_path).lower().endswith(".ass")

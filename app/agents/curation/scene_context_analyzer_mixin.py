@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
-_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "6") or 6)))
+_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "8") or 8)))
 
 _SCENE_CANCEL_CTX: _contextvars.ContextVar[Optional[_threading.Event]] = _contextvars.ContextVar(
     "_SCENE_CANCEL_CTX", default=None
@@ -223,9 +223,13 @@ class SceneContextAnalyzerMixin:
         )
 
         conn_errors = 0
-        default_attempts = 2 if images else 3
-        eff_attempts = min(int(max_attempts or default_attempts), 3 if not images else 2)
-        for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=eff_attempts):
+        default_attempts = 4 if images else 3
+        eff_attempts = min(int(max_attempts or default_attempts), 4)
+        cand_models = [
+            m for m in (models or AVAILABLE_MODELS)
+            if not (images and str(m).startswith("gemma-"))
+        ]
+        for model, key in self.rotator.iter_best_model_key_pairs(cand_models, max_total_attempts=eff_attempts):
             if is_scene_cancelled_ctx():
                 return None
             remaining_wall = call_deadline_ts - _time.monotonic()
@@ -234,15 +238,13 @@ class SceneContextAnalyzerMixin:
                     f"[VisualCurationAgent] Đạt ngưỡng tổng wall-clock budget ({total_wall_budget_sec:.1f}s) cho gemini_json -> thoát sớm chống treo."
                 )
                 break
-            if images and model.startswith("gemma-"):
-                continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
             gen_cfg = KeyRotator.build_fast_json_gen_config(model, temperature=0.2)
             payload = {
                 "contents": [{"parts": parts}],
                 "generationConfig": gen_cfg,
             }
-            sem_wait = min(5.5, max(0.5, remaining_wall - 3.5))
+            sem_wait = min(9.5, max(0.8, remaining_wall - 2.5))
             if not _VISION_SEM.acquire(timeout=sem_wait):
                 logger.warning(f"[VisualCurationAgent] Quá hạn chờ _VISION_SEM ({sem_wait:.1f}s) -> thoát sớm tránh dồn hàng đợi.")
                 break

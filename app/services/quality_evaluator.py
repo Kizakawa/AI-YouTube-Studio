@@ -512,7 +512,7 @@ Respond ONLY in valid JSON:
                 bitrate_pts = 23.0
             else:
                 bitrate_pts = max(5.0, mbps * 7.0)
-                issues.append(f"Bitrate video thấp ({mbps:.2f} Mbps), dễ bị vỡ nét trên YouTube Shorts.")
+                issues.append(f"Bitrate video thấp ({mbps:.2f} Mbps), dễ bị vỡ nét trên {'YouTube 1080p Long-Form' if is_long_form else 'YouTube Shorts'}.")
                 if mbps < 0.8:
                     hard_fail = True
 

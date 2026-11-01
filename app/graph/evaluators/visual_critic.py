@@ -805,7 +805,7 @@ Inspect every labeled tile carefully and flag ONLY scenes that have severe visua
 2. Surreal AI Deformities: Frames showing grotesque AI hallucinations (e.g. a human arm/leg grafted onto an animal, gibberish digital meters, or mutated body parts).
 3. Wrong Animal Family / Wrong Ecosystem / Contradictory Subject (2-TIER DOCUMENTARY B-ROLL & FAMILY-LEVEL CHECK):
    - 2-TIER B-ROLL RULE FOR MULTI-ENTITY & HABITAT SCENES: When a scene mentions multiple entities or describes their wild ecosystem/river/forest/ocean/historical setting, a clean shot showing AT LEAST ONE of the named entities OR a clean wild establishing shot of that exact named ecosystem/habitat (with ZERO tourists/boats/unrelated animals) is 100% VALID documentary cutaway B-Roll.
-   - STRICT WRONG-SPECIES / WRONG-CONTINENT REJECTION: IMMEDIATELY FAIL any scene showing animals/prey from a completely different continent or family not mentioned in the video (e.g., African savanna zebra/giraffe/lion/elephant in an Amazonian story, whale shark for predatory shark, domestic pet/livestock instead of wild predator, or modern human office/DJ mixer/car/snowboarder).
+   - STRICT WRONG-SPECIES / WRONG-CONTINENT / CAPTIVE-HANDLER REJECTION: IMMEDIATELY FAIL any scene showing animals/prey from a completely different continent or family not mentioned in the video (e.g., African savanna zebra/giraffe/lion/elephant in an Amazonian story, whale shark for predatory shark, domestic pet/livestock instead of wild predator, human handler/zookeeper holding or standing beside a wild animal, wire/chain-link zoo cage, or modern human office/DJ mixer/car/snowboarder).
 
 Return ONLY valid JSON in this exact format:
 {{

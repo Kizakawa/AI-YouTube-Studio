@@ -294,12 +294,16 @@ class VideoAgent:
                     scene = scene.model_copy(update={"media_path": placeholder, "media_type": "image"})
 
             raw_type = (scene.media_type or "image").lower()
+            src_marker = Path(f"{clip_path}.src")
+            expected_src = os.path.abspath(scene.media_path) if scene.media_path else ""
             if (
                 Path(clip_path).exists()
                 and Path(clip_path).stat().st_size > 25_000
                 and scene.media_path
                 and Path(scene.media_path).exists()
                 and Path(clip_path).stat().st_mtime >= Path(scene.media_path).stat().st_mtime
+                and src_marker.exists()
+                and src_marker.read_text(encoding="utf-8", errors="ignore").strip() == expected_src
             ):
                 from app.utils.ffmpeg_helper import get_duration_ms as _get_c_dur
                 c_sec = _get_c_dur(clip_path) / 1000.0
@@ -621,6 +625,11 @@ class VideoAgent:
             except Exception as ex_cb:
                 logger.debug(f"[PreConcatBlackGuard] Scene {scene.scene_id} check skip: {ex_cb}")
 
+            try:
+                if expected_src and "_graphic.png" not in expected_src.lower():
+                    src_marker.write_text(expected_src, encoding="utf-8")
+            except Exception:
+                pass
             return scene.scene_id, clip_path
 
         # ── Chạy song song với ThreadPoolExecutor ──

@@ -227,6 +227,7 @@ class KeyRotator:
                 or "perday" in err_low
                 or "requests per day" in err_low
                 or bool(_re.search(r"retry in \d+\s*[hm]", err_low))
+                or ("exceeded your current quota" in err_low and not bool(_re.search(r"retry in \d+", err_low)))
             ):
                 # Hết hạn mức ngày theo từng Project/Key -> khóa cặp (key:model) này trong 60 phút
                 lock_until = now + (cooldown_sec or 3600.0)
@@ -234,9 +235,9 @@ class KeyRotator:
                 if model in ("gemini-flash-lite-latest", "gemini-3.5-flash-lite"):
                     self._model_cooldowns[f"{key}:gemini-flash-lite-latest"] = lock_until
                     self._model_cooldowns[f"{key}:gemini-3.5-flash-lite"] = lock_until
-                # Tạm cách ly key vừa chạm trần hạn mức ngày 180s để nhường đường cho các key khỏe mạnh trong pool
+                # Tạm cách ly key vừa chạm trần hạn mức ngày 1800s để nhường đường cho các key khỏe mạnh trong pool
                 if key:
-                    self._global_cooldowns[key] = max(self._global_cooldowns.get(key, 0.0), now + 180.0)
+                    self._global_cooldowns[key] = max(self._global_cooldowns.get(key, 0.0), now + 1800.0)
                 # Chỉ khóa toàn cục *:model nếu TẤT CẢ các key trong pool đều đã cạn model này
                 all_keys_exhausted = all(
                     self._model_cooldowns.get(f"{k}:{model}", 0.0) > now for k in self.keys

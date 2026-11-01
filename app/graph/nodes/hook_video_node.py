@@ -368,6 +368,7 @@ def _ensure_hook_clip_sharpness_and_luma(
             [
                 "eq=brightness=0.02:contrast=1.06:saturation=1.04,unsharp=5:5:0.65:3:3:0.25",
                 "eq=brightness=0.02:contrast=1.08:saturation=1.05,unsharp=5:5:0.95:3:3:0.45",
+                "eq=brightness=0.04:contrast=1.18:saturation=1.10,unsharp=5:5:1.50:3:3:0.85,cas=0.45",
             ],
             start=1,
         ):

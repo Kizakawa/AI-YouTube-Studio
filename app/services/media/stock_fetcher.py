@@ -1241,6 +1241,12 @@ class StockFetcher:
             d_low = str(desc_text or "").lower()
             if any(gs in d_low for gs in ("green screen", "greenscreen", "chroma key", "chromakey", "blue screen")):
                 return -100
+            for cap_tok in (
+                "zoo", "cage", "enclosure", "chain link", "captive",
+                "zookeeper", "petting", "swimming pool", "goggles", "swimsuit",
+            ):
+                if cap_tok in d_low and cap_tok not in ctx_all_low:
+                    return -100
             if is_incongruent_stock_image(d_low, topic=f"{topic} {q_try}".strip(), narration=narration):
                 return -100
             if conflicts_with_topic_biome(d_low, topic):
@@ -1329,36 +1335,7 @@ class StockFetcher:
                 v_copy["_cand_key"] = v_id_key
                 scored_pool.append((sc + res_bonus, v_copy))
 
-        def _collect_wikimedia_for_q(q_try: str, boost: int = 0) -> None:
-            try:
-                wm_vids = self.search_wikimedia_videos(q_try, per_page=6)
-                for wv in (wm_vids or []):
-                    w_url = str(wv.get("url") or "")
-                    wm_id_key = f"wikimedia_vid_{w_url}"
-                    ww = int(wv.get("width") or 0)
-                    wh = int(wv.get("height") or 0)
-                    w_title = f"{wv.get('title') or ''} {wv.get('tags') or ''}"
-                    if (
-                        not w_url
-                        or ww <= wh
-                        or wh < 720
-                        or wm_id_key in used
-                        or wm_id_key in seen_cand_keys
-                        or is_media_already_used(w_url, used)
-                    ):
-                        continue
-                    sc = _score_candidate_text(w_title, q_try)
-                    if sc < 0:
-                        continue
-                    seen_cand_keys.add(wm_id_key)
-                    wv_copy = dict(wv)
-                    wv_copy["source"] = "wikimedia_16x9_video"
-                    wv_copy["_cand_key"] = wm_id_key
-                    scored_pool.append((sc + 12 + boost, wv_copy))
-            except Exception:
-                pass
-
-        for idx_q, q_try in enumerate(search_q_list[:6]):
+        for idx_q, q_try in enumerate(search_q_list[:5]):
             if _is_cancelled():
                 return None
             use_px_first = prefer_pixabay if idx_q == 0 else ((idx_q % 2 == 1) ^ prefer_pixabay)
@@ -1371,8 +1348,6 @@ class StockFetcher:
                 _collect_pexels_for_q(q_try, boost=pref_boost + 4)
                 if not _is_cancelled():
                     _collect_pixabay_for_q(q_try, boost=pref_boost)
-            if idx_q < 2 and not _is_cancelled():
-                _collect_wikimedia_for_q(q_try, boost=pref_boost + 2)
             if len(scored_pool) >= 12:
                 break
 

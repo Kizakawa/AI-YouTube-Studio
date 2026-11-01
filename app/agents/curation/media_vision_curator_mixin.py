@@ -121,6 +121,23 @@ class MediaVisionCuratorMixin:
                 return 4000 - h // 10 - fps_penalty
             return h - fps_penalty
 
+        is_long_fmt = str((visual_analysis or {}).get("video_format") or "short").lower() == "long"
+
+        def _res_pref_landscape(vf: Dict[str, Any], v_dur: float = 0.0) -> int:
+            w = int(vf.get("width", 0) or 0)
+            h = int(vf.get("height", 0) or 0)
+            fps = float(vf.get("fps") or 30.0)
+            fps_penalty = 2000 if (v_dur > 25.0 and fps > 35.0) else (600 if fps > 50.0 else 0)
+            if w == 1920 and h == 1080:
+                return 11000 - fps_penalty
+            if 1060 <= h <= 1100 and w >= 1900:
+                return 10000 - fps_penalty
+            if 720 <= h < 1080 and w > h:
+                return 8500 + h - fps_penalty
+            if h > 1080 and w > h:
+                return 4500 - h // 10 - fps_penalty
+            return h - fps_penalty
+
         valid_candidates = []
         for v in candidates:
             url = v.get("url", "")
@@ -131,26 +148,38 @@ class MediaVisionCuratorMixin:
             if not v_files:
                 if v.get("media_type", "video") != "video":
                     continue
+                vw = int(v.get("width", 1920) or 1920)
+                vh = int(v.get("height", 1080) or 1080)
+                if is_long_fmt and vw <= vh:
+                    continue
                 valid_candidates.append({
                     "raw_video": v,
                     "url": url,
                     "download_link": url,
-                    "width": v.get("width", 1920),
-                    "height": v.get("height", 1080),
+                    "width": vw,
+                    "height": vh,
                     "duration": v.get("duration", 0),
-                    "slug": re.sub(r"^(Pixabay Video|NASA[^:]*):\s*", "", v.get("title", "")) or "video clip",
+                    "slug": re.sub(r"^(Pixabay Video|NASA[^:]*):\s*", "", v.get("title", "")) or v.get("tags") or "video clip",
                     "thumbnail": v.get("thumbnail", ""),
                     "source": v.get("source", "stock_video"),
                 })
                 continue
 
-            portrait_files = [
-                vf for vf in v_files
-                if vf.get("width", 0) <= vf.get("height", 0) and (
-                    vf.get("link", "").endswith(".mp4") or "mp4" in vf.get("file_type", "")
-                )
-            ]
-            if not portrait_files:
+            if is_long_fmt:
+                matched_files = [
+                    vf for vf in v_files
+                    if int(vf.get("width", 0) or 0) > int(vf.get("height", 0) or 0)
+                    and int(vf.get("height", 0) or 0) >= 720
+                    and (str(vf.get("link", "")).endswith(".mp4") or "mp4" in str(vf.get("file_type", "")))
+                ]
+            else:
+                matched_files = [
+                    vf for vf in v_files
+                    if vf.get("width", 0) <= vf.get("height", 0) and (
+                        vf.get("link", "").endswith(".mp4") or "mp4" in vf.get("file_type", "")
+                    )
+                ]
+            if not matched_files:
                 continue
 
             slug = ""
@@ -161,23 +190,23 @@ class MediaVisionCuratorMixin:
                 slug = v.get("tags") or v.get("title") or "video clip"
 
             v_dur_val = float(v.get("duration") or 0.0)
-            best_file = sorted(portrait_files, key=lambda vf: _res_pref(vf, v_dur_val), reverse=True)[0]
+            pref_fn = _res_pref_landscape if is_long_fmt else _res_pref
+            best_file = sorted(matched_files, key=lambda vf: pref_fn(vf, v_dur_val), reverse=True)[0]
             valid_candidates.append({
                 "raw_video": v,
                 "url": url,
                 "download_link": best_file.get("link"),
-                "width": best_file.get("width", 1080),
-                "height": best_file.get("height", 1920),
+                "width": best_file.get("width", 1920 if is_long_fmt else 1080),
+                "height": best_file.get("height", 1080 if is_long_fmt else 1920),
                 "duration": v.get("duration", 0),
                 "slug": slug,
                 "thumbnail": v.get("image", ""),
-                "source": "pexels_video",
+                "source": "pexels_16x9_video" if is_long_fmt else "pexels_video",
             })
 
         if not valid_candidates:
             return None, 0.0, "Tất cả ứng viên đều không đạt định dạng hoặc đã được sử dụng.", True
 
-        is_long_fmt = str((visual_analysis or {}).get("video_format") or "short").lower() == "long"
         if not is_long_fmt:
             portrait_only = [
                 c for c in valid_candidates
@@ -185,8 +214,9 @@ class MediaVisionCuratorMixin:
             ]
             if portrait_only:
                 valid_candidates = portrait_only
-
-        valid_candidates.sort(key=lambda c: 0 if (c["height"] or 0) >= (c["width"] or 0) else 1)
+            valid_candidates.sort(key=lambda c: 0 if (c["height"] or 0) >= (c["width"] or 0) else 1)
+        else:
+            valid_candidates.sort(key=lambda c: 0 if (c["width"] or 0) > (c["height"] or 0) else 1)
         eval_pool = valid_candidates[:8]
 
         def _format_winner(
@@ -266,9 +296,10 @@ DANH SÁCH ỨNG VIÊN VIDEO TỪ KHO:
 TIÊU CHUẨN SUY LUẬN & TUYỂN CHỌN THÔNG MINH 2 TẦNG (KHÔNG ĐẾM TỪ KHÓA MÁY MÓC):
 1. QUY TẮC B-ROLL PHIM TÀI LIỆU 2 TẦNG (2-TIER DOCUMENTARY B-ROLL):
    - Tầng 1 (`confidence_score: 8.5–9.8`): Ứng viên thể hiện trực tiếp toàn bộ tương tác nhiều thực thể hoặc đúng vi hành động vật lý trong `{narration}`.
-   - Tầng 2 (`confidence_score: 7.4–8.4`): Khi câu thoại mô tả pha va chạm hiếm giữa 2 thực thể hoặc cơ chế vi mô khó có sẵn trong một clip kho miễn phí duy nhất, TUYỆT ĐỐI KHÔNG từ chối (`winner_index: -1`) chỉ vì clip chỉ quay riêng MỘT trong các thực thể chính/phụ của phân cảnh! Nếu ứng viên quay ĐÚNG thực thể/nhân vật/hiện tượng của phân cảnh trong môi trường tự nhiên/lịch sử/bối cảnh chân thực và sạch 100%, BẮT BUỘC DUYỆT (`should_fallback_to_ai: false`) làm cảnh B-Roll điện ảnh hợp lệ.
+   - Tầng 2 (`confidence_score: 7.5–8.4`): Khi kịch bản là kèo đối đầu đa thực thể (`Thực thể A vs Thực thể B`) hoặc câu thoại mô tả pha va chạm hiếm / cơ chế sinh học - vật lý vi mô không thể có sẵn trọn vẹn trong một clip kho miễn phí (Pexels/Pixabay), TUYỆT ĐỐI KHÔNG chấm `6.0–6.9` hay đánh trượt (`winner_index: -1`) chỉ vì clip chỉ quay riêng MỘT trong các thực thể (Thực thể A HOẶC Thực thể B) hay bối cảnh/bộ phận cơ thể liên quan! Miễn là ứng viên quay THẬT, RÕ NÉT, SẠCH 100% đúng một trong các thực thể của kịch bản hoặc đúng hiện tượng/môi trường tự nhiên - lịch sử - đời thực được nhắc tới trong `{narration}` mà không vi phạm mục 2, BẮT BUỘC DUYỆT Ở TẦNG 2 (`confidence_score >= 7.5`, `should_fallback_to_ai: false`) làm cảnh B-Roll điện ảnh hợp lệ.
 2. TIÊU CHUẨN LOẠI BỎ NGHIÊM NGẶT (ĐỒNG BỘ VỚI GIÁM KHẢO CUỐI VISUAL CRITIC):
-   - BẮT BUỘC TỪ CHỐI ứng viên quay sai hẳn loài/chủ thể (ví dụ: thú cưng/gia súc thuần hóa có vòng mũi/dây xích khi kịch bản nói về thú săn mồi hoang dã, hoặc động vật lọt vào kịch bản tâm lý học con người), quay trong lồng sắt/bể bê tông sở thú, có bóng khách du lịch/người đứng chụp ảnh ở góc xa trong cảnh thiên nhiên hoang dã, lệch hoàn toàn thời đại/hệ sinh thái/mùa của kịch bản, hoặc dính chữ/watermark/biểu tượng sao 4 cánh AI (`✦`) ở góc khung hình.
+   - BẮT BUỘC TỪ CHỐI ứng viên quay sai hẳn loài/chủ thể (ví dụ: thú cưng/gia súc thuần hóa có vòng mũi/dây xích, hoặc người bơi đeo kính bơi/bể bơi khi kịch bản nói về động vật hoang dã; hoặc động vật lọt vào kịch bản tâm lý học con người), quay trong lồng sắt/hàng rào lưới mắt cáo/bể bê tông sở thú, có con người/nhân viên cầm giữ, vuốt ve, cho ăn, đứng cạnh động vật hoang dã hoặc khách du lịch chụp ảnh trong cảnh thiên nhiên hoang dã, lệch hoàn toàn thời đại/hệ sinh thái/mùa của kịch bản, hoặc dính chữ/watermark/biểu tượng sao 4 cánh AI (`✦`) ở góc khung hình.
+   - CẤM TUYỆT ĐỐI NGỤY BIỆN ẨN DỤ ĐỒNG ÂM / ĐỒNG TÊN (ZERO HOMONYM / METAPHORICAL ANIMAL SUBSTITUTION): Khi chủ thể có tên ghép chứa từ bổ nghĩa mượn từ loài/vật thể khác (ví dụ: sinh vật biển sâu mang tên chim/thú trên cạn hoặc ngược lại), TUYỆT ĐỐI KHÔNG ĐƯỢC chọn loài động vật/vật thể khác lớp sinh học hoặc khác hẳn môi trường sống (như chọn chim trên cạn/mặt hồ cho sinh vật biển sâu, hoặc người hóa trang cho sinh vật đại dương) rồi ngụy biện là 'minh họa ẩn dụ cấu trúc'! Nếu ứng viên sai lớp sinh học hoặc sai môi trường sống (trên cạn/mặt nước nông vs đáy biển sâu), BẮT BUỘC đánh trượt (`winner_index: -1`, `confidence_score: 1.0`, `should_fallback_to_ai: true`).
 3. ƯU TIÊN KHUNG HÌNH SỐNG ĐỘNG & GIỮ ỨNG VIÊN DỰ PHÒNG SẠCH:
    - Chọn ứng viên có hành động rõ nét nhất, góc quay cận/trung cảnh giàu kịch tính làm `winner_index`, đồng thời liệt kê các ứng viên sạch đạt chuẩn còn lại (`>= 7.2`) vào `approved_alternate_indices` để làm phương án dự phòng tức thì.
    - Chỉ khi TẤT CẢ ứng viên đều vi phạm mục 2 hoặc lạc đề hoàn toàn (`confidence_score < 7.0`), mới trả về `"winner_index": -1`, `"winner_url": ""` và `"should_fallback_to_ai": true`.
@@ -379,34 +410,35 @@ TRẢ VỀ JSON DUY NHẤT:
                 "snow", "winter", "tropical", "deep", "underwater", "predator", "prey", "species",
             }
             core_subj_tokens = {
-                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{subject_req}".lower())
+                w for w in _re_fb.findall(r"[a-zA-Z]{3,}", f"{subject_req} {expected_vis} {scene_queries_str}".lower())
                 if w not in _stop_fb and w not in _habitat_generic_fb
             }
             scene_intent_tokens = {
-                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{scene_queries_str} {expected_vis}".lower())
+                w for w in _re_fb.findall(r"[a-zA-Z]{3,}", f"{scene_queries_str} {expected_vis}".lower())
                 if w not in _stop_fb
             }
             narr_tokens = {
-                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", f"{narration}".lower())
+                w for w in _re_fb.findall(r"[a-zA-Z]{3,}", f"{narration}".lower())
                 if w not in _stop_fb
             }
+            min_req_anchors = 2 if len(core_subj_tokens | scene_intent_tokens) >= 2 else 1
             best_det_cand = None
             best_det_score = 0.0
             for cand in eval_pool:
                 slug_txt = f"{cand.get('slug', '')} {cand.get('url', '')}".lower()
                 if is_incongruent_stock_image(slug_txt, topic=topic_ctx, narration=narration):
                     continue
-                cand_tokens = set(_re_fb.findall(r"[a-zA-Z]{4,}", slug_txt))
+                cand_tokens = set(_re_fb.findall(r"[a-zA-Z]{3,}", slug_txt))
                 if neg_tokens and cand_tokens.intersection(neg_tokens - core_subj_tokens - scene_intent_tokens):
                     continue
                 subj_hits = len(cand_tokens.intersection(core_subj_tokens))
                 intent_hits = len(cand_tokens.intersection(scene_intent_tokens))
                 narr_hits = len(cand_tokens.intersection(narr_tokens))
                 distinct_anchor_hits = len(cand_tokens.intersection(core_subj_tokens | scene_intent_tokens))
-                # Bắt buộc khớp ít nhất 1 token thực thể cốt lõi (`subj_hits >= 1`) kèm ít nhất 2 token ngữ cảnh (chống duyệt nhầm cảnh sa mạc/ thảo nguyên chung chung khi thiếu thực thể chính)
-                if subj_hits >= 1 and distinct_anchor_hits >= 2 and (intent_hits + narr_hits) >= 1:
+                # Bắt buộc khớp >= 2 từ khóa neo độc lập khi cụm chủ thể có >= 2 từ (tránh khớp nhầm từ bổ nghĩa của danh từ ghép như 'pelican eel' -> 'pelican')
+                if (subj_hits >= 1 or intent_hits >= 2) and distinct_anchor_hits >= min_req_anchors and (intent_hits + narr_hits) >= 1:
                     is_vert = (cand.get("height") or 0) >= (cand.get("width") or 0)
-                    det_sc = min(8.2, 7.0 + subj_hits * 0.35 + intent_hits * 0.25 + min(narr_hits, 2) * 0.1 + (0.2 if is_vert else 0.0))
+                    det_sc = min(8.2, 7.1 + subj_hits * 0.35 + intent_hits * 0.25 + min(narr_hits, 2) * 0.1 + (0.2 if is_vert else 0.0))
                     if det_sc > best_det_score:
                         best_det_score = det_sc
                         best_det_cand = cand
@@ -664,6 +696,9 @@ TRẢ VỀ JSON DUY NHẤT:
                             f"(Score={v_score}/10: {v_rat}) -> Chuyển truy vấn tiếp theo / AI!"
                         )
                         return None, v_score, v_rat or "Ảnh ứng viên không khớp bối cảnh kịch bản", True
+                else:
+                    logger.warning("⚠️ [PhotoVisionAudit] Không thể kết nối Gemini Vision -> Từ chối chọn mù ảnh ứng viên chưa kiểm duyệt!")
+                    return None, 0.0, "Gemini Vision unavailable — rejected unverified photo candidates", True
 
             best_score, _, winner_item = scored_sharp[selected_idx]
             m = winner_item.pop("_sharp_metrics", {})
@@ -671,19 +706,12 @@ TRẢ VỀ JSON DUY NHẤT:
                 if winner_item.get("url") and winner_item["url"] != m["verified_url"] and not winner_item.get("fallback_url"):
                     winner_item["fallback_url"] = winner_item["url"]
                 winner_item["url"] = m["verified_url"]
-            approved_alt_idxs = winner_item.pop("_approved_alt_indices", None)
-            if approved_alt_idxs is not None:
-                alt_urls = [
-                    scored_sharp[i][2].get("url")
-                    for i in approved_alt_idxs
-                    if scored_sharp[i][2].get("url") and scored_sharp[i][2].get("url") != winner_item.get("url")
-                ]
-            else:
-                alt_urls = [
-                    item.get("url")
-                    for idx_s, (_, _, item) in enumerate(scored_sharp[:5])
-                    if idx_s != selected_idx and item.get("url") and item.get("url") != winner_item.get("url")
-                ]
+            approved_alt_idxs = winner_item.pop("_approved_alt_indices", None) or []
+            alt_urls = [
+                scored_sharp[i][2].get("url")
+                for i in approved_alt_idxs
+                if 0 <= i < len(scored_sharp) and scored_sharp[i][2].get("url") and scored_sharp[i][2].get("url") != winner_item.get("url")
+            ]
             for _, _, item_cleanup in scored_sharp:
                 item_cleanup.pop("_sharp_metrics", None)
                 item_cleanup.pop("_approved_alt_indices", None)

@@ -328,12 +328,19 @@ def _search_youtube_flat_cached(
     }
 
     def _fetch_single_yt_phrase(sp: str) -> List[Dict[str, Any]]:
+        from app.agents.curation.scene_context_analyzer_mixin import is_scene_cancelled_ctx
+        if is_scene_cancelled_ctx():
+            return []
         cache_key = f"{license_policy.license_mode()}::vdual::{sp.lower().strip()}"
         with _yt_url_lock:
             cached_entries = _yt_flat_search_cache.get(cache_key)
         if cached_entries:
             return cached_entries
-        with _yt_search_sem:
+        if not _yt_search_sem.acquire(timeout=6.0):
+            return []
+        try:
+            if is_scene_cancelled_ctx():
+                return []
             with _yt_url_lock:
                 cached_entries = _yt_flat_search_cache.get(cache_key)
             if cached_entries:
@@ -343,11 +350,11 @@ def _search_youtube_flat_cached(
             seen_s_ids = {str(x.get("id") or "") for x in native_shorts if x.get("id")}
             combined_entries: List[Dict[str, Any]] = list(native_shorts)
 
-            # Bước 2: Chỉ gọi yt_dlp ytsearch8 khi kệ Shorts dọc có ít hơn 5 kết quả (tránh chậm 5s/phrase x 6 cảnh)
-            if len(native_shorts) < 5:
-                yt_query = license_policy.youtube_search_target(sp, max_results=8)
+            # Bước 2: Chỉ gọi yt_dlp ytsearch6 khi kệ Shorts dọc có ít hơn 2 kết quả
+            if len(native_shorts) < 2 and not is_scene_cancelled_ctx():
+                yt_query = license_policy.youtube_search_target(sp, max_results=6)
                 try:
-                    with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=8)) as ydl:
+                    with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=6)) as ydl:
                         res = ydl.extract_info(yt_query, download=False)
                     for e in ((res or {}).get("entries") or []):
                         if e and isinstance(e, dict):
@@ -363,6 +370,8 @@ def _search_youtube_flat_cached(
                 with _yt_url_lock:
                     _yt_flat_search_cache[cache_key] = cached_entries
             return cached_entries
+        finally:
+            _yt_search_sem.release()
 
     try:
         from app.graph.parallel_search import run_langgraph_parallel_youtube_flat_search

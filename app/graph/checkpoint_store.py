@@ -132,7 +132,7 @@ def _can_reuse_cached_node(node_name: str, state: Dict[str, Any], cached_out: Di
         expected_n = len(((state.get("script_data") or {}).get("scenes")) or [])
         if not scenes_media or (expected_n > 0 and len(scenes_media) < expected_n):
             return False
-        return all(_file_valid(sm.get("media_path"), min_bytes=4000) for sm in scenes_media if isinstance(sm, dict))
+        return all(_file_valid(sm.get("media_path"), min_bytes=4000) and "_graphic.png" not in str(sm.get("media_path") or "").lower() and str(sm.get("media_type") or "").lower() != "graphic" for sm in scenes_media if isinstance(sm, dict))
 
     return False
 

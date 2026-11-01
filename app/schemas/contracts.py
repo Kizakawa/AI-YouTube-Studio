@@ -293,6 +293,27 @@ class ScriptContract(BaseModel):
         description="2 câu truy vấn ngắn gọn bằng tiếng Anh để tìm video Short trên mạng khi hook_visual_mode='video'"
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def backfill_missing_script_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            d = dict(data)
+            scenes = d.get("scenes") or []
+            if not d.get("hook") and scenes and isinstance(scenes[0], dict):
+                d["hook"] = str(scenes[0].get("narration") or "Watch until the end...")
+            if not d.get("full_narration") and scenes:
+                full_n = " ".join(
+                    str(s.get("narration") or "").strip()
+                    for s in scenes
+                    if isinstance(s, dict) and s.get("narration")
+                ).strip()
+                if full_n:
+                    d["full_narration"] = full_n
+            if not d.get("tags"):
+                d["tags"] = ["shorts", "viral"]
+            return d
+        return data
+
     @field_validator("video_format", mode="before")
     @classmethod
     def normalize_video_format(cls, v: Any) -> str:

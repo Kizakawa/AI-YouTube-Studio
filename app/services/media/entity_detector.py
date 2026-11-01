@@ -472,8 +472,15 @@ def detect_video_primary_entity(
     return None, ""
 
 
+_DANGLING_QUERY_CONNECTORS = {
+    "vs", "versus", "and", "or", "with", "from", "into", "of", "in", "on",
+    "at", "to", "for", "by", "the", "a", "an", "between", "against",
+    "inside", "where", "when", "while", "than",
+}
+
+
 def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
-    """Làm sạch query tìm kiếm ảnh: loại bỏ toàn bộ từ rác kỹ thuật/nhiếp ảnh, giữ lại danh từ trọng tâm."""
+    """Làm sạch query tìm kiếm ảnh: loại bỏ toàn bộ từ rác kỹ thuật/nhiếp ảnh và từ nối cụt đuôi ('vs', 'and'...), giữ lại danh từ trọng tâm."""
     if not raw_query:
         return ""
     # Loại bỏ tỉ lệ khung hình / độ phân giải trước (vd: "9:16", "16x9", "1080p", "60fps")
@@ -493,7 +500,24 @@ def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
     clean = [w for w in words if not _is_junk(w)]
     if not clean:
         clean = [w for w in words if len(w) > 1 and not w.isdigit()]
-    return " ".join(clean[:max_words]).strip()
+
+    # Nếu chuỗi có cấu trúc "Entity A vs Entity B" và max_words nhỏ (<= 3), lấy trọn vẹn thực thể A phía trước "vs"
+    # để không bao giờ cắt cụt thành "Orca vs" hoặc "Orca vs Great" gây hỏng truy vấn Stock/Web!
+    if max_words <= 3 and clean:
+        lower_clean = [w.lower() for w in clean]
+        for vs_tok in ("vs", "versus"):
+            if vs_tok in lower_clean:
+                vs_idx = lower_clean.index(vs_tok)
+                if 1 <= vs_idx <= max_words:
+                    clean = clean[:vs_idx]
+                break
+
+    sliced = list(clean[:max_words])
+    while len(sliced) > 1 and sliced[-1].lower() in _DANGLING_QUERY_CONNECTORS:
+        sliced.pop()
+    while len(sliced) > 1 and sliced[0].lower() in _DANGLING_QUERY_CONNECTORS:
+        sliced.pop(0)
+    return " ".join(sliced).strip()
 
 
 # Từ mô tả định dạng/khung hình — vô nghĩa với search engine stock (gây ra query rác kiểu "16 vertical")
