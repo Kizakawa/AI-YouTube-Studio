@@ -34,6 +34,9 @@ DIMENSION_TOLERANCE_PX: int = 10
 class StockFetcher:
     """Fetcher chuyên trách kết nối và trích xuất stock footage & photos chất lượng cao."""
     DIMENSION_TOLERANCE_PX: int = DIMENSION_TOLERANCE_PX
+    _pexels_key_cooldown_until: Dict[str, float] = {}
+    _pexels_cycle_lock = threading.Lock()
+    _pexels_rr_idx: int = 0
 
     def __init__(self, api_key: Optional[str] = None):
         if api_key and api_key.strip() and api_key != "your_pexels_api_key_here":
@@ -53,13 +56,34 @@ class StockFetcher:
         return self.keys[0] if self.keys else None
 
     def _get_active_key(self) -> Optional[str]:
-        if self._key_cycle:
-            return next(self._key_cycle)
+        if not self.keys:
+            return None
+        now = time.time()
+        n_keys = len(self.keys)
+        with StockFetcher._pexels_cycle_lock:
+            for offset in range(n_keys):
+                idx = (StockFetcher._pexels_rr_idx + offset) % n_keys
+                cand_k = self.keys[idx]
+                if now >= StockFetcher._pexels_key_cooldown_until.get(cand_k, 0.0):
+                    StockFetcher._pexels_rr_idx = (idx + 1) % n_keys
+                    return cand_k
         return None
+
+    @staticmethod
+    def _mark_pexels_key_limited(key: Optional[str], status_code: int) -> None:
+        if not key:
+            return
+        now = time.time()
+        cooldown_sec = 600.0 if status_code == 401 else 65.0
+        with StockFetcher._pexels_cycle_lock:
+            prev_until = StockFetcher._pexels_key_cooldown_until.get(key, 0.0)
+            StockFetcher._pexels_key_cooldown_until[key] = max(prev_until, now + cooldown_sec)
+            should_log = now >= prev_until
+        if should_log:
+            logger.warning(f"Pexels key bị giới hạn ({status_code}), tạm ngắt key {cooldown_sec:.0f}s và chuyển key...")
 
     def search_videos(self, query: str, per_page: int = 4, orientation: str = "portrait", page: Optional[int] = None) -> List[Dict]:
         """Tìm kiếm video trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) có cơ chế retry, xoay key và pagination jitter."""
-        import random
         key = self._get_active_key()
         if not key:
             return []
@@ -77,7 +101,10 @@ class StockFetcher:
                 if not any(bs in str(v.get("url", "")).lower() for bs in _bad_zoo_slugs)
             ]
 
+        from app.agents.curation.scene_context_analyzer_mixin import is_scene_cancelled_ctx, remaining_scene_budget_ctx
         for attempt in range(2):
+            if not key or is_scene_cancelled_ctx(min_remaining_sec=1.5):
+                break
             try:
                 headers = {"Authorization": key}
                 params = {
@@ -86,21 +113,24 @@ class StockFetcher:
                     "orientation": orientation,
                     "page": target_page,
                 }
-                res = requests.get(self.base_url, headers=headers, params=params, timeout=12)
+                req_to = min(6.0, max(2.5, remaining_scene_budget_ctx(8.0) - 1.0))
+                res = requests.get(self.base_url, headers=headers, params=params, timeout=(2.8, req_to))
                 if res.status_code == 200:
                     vids = _filter_vids(res.json().get("videos", []))
-                    if not vids and target_page > 1:
+                    if not vids and target_page > 1 and not is_scene_cancelled_ctx(min_remaining_sec=3.0):
                         params["page"] = 1
-                        res1 = requests.get(self.base_url, headers=headers, params=params, timeout=10)
+                        res1 = requests.get(self.base_url, headers=headers, params=params, timeout=(2.5, min(5.0, req_to)))
                         if res1.status_code == 200:
                             vids = _filter_vids(res1.json().get("videos", []))
                     return vids[:per_page] if len(vids) > per_page else vids
                 elif res.status_code in (401, 429):
-                    logger.warning(f"Pexels key bị giới hạn ({res.status_code}), chuyển key...")
+                    self._mark_pexels_key_limited(key, res.status_code)
                     key = self._get_active_key()
+                    continue
+                break
             except Exception as e:
                 logger.debug(f"Pexels search_videos attempt {attempt+1} error for '{query}': {e}")
-                time.sleep(1.0)
+                break
         return []
 
     def search_photos(
@@ -135,6 +165,9 @@ class StockFetcher:
                 "page": target_page,
             }
             res = requests.get(self.photo_url, headers=headers, params=params, timeout=10)
+            if res.status_code in (401, 429):
+                self._mark_pexels_key_limited(key, res.status_code)
+                return []
             if res.status_code == 200:
                 data = res.json().get("photos", [])
                 if not data and target_page > 1:
@@ -610,7 +643,11 @@ class StockFetcher:
         is_hook_photo = bool(va.get("is_hook_scene") or va.get("scene_id") == 1)
         winner = None
         score = 0.0
+        should_ai = True
         try:
+            from app.agents.curation.scene_context_analyzer_mixin import is_scene_cancelled_ctx
+            if is_scene_cancelled_ctx():
+                return None
             from app.agents.visual_curation_agent import VisualCurationAgent
             winner, score, rationale, should_ai = VisualCurationAgent().curate_candidate_photos(
                 candidates=candidates,
@@ -620,7 +657,7 @@ class StockFetcher:
                 visual_keyword=query,
                 used_urls=used,
             )
-            if winner is None and should_ai and len(candidates) > 5:
+            if winner is None and should_ai and len(candidates) > 5 and not is_scene_cancelled_ctx():
                 winner, score, rationale, should_ai = VisualCurationAgent().curate_candidate_photos(
                     candidates=candidates[5:],
                     visual_analysis=va or None,
@@ -633,13 +670,11 @@ class StockFetcher:
                 winner["vision_score"] = float(score or 0.0)
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi curate ảnh: {e}")
-            winner = candidates[0]
+            winner = None
 
         if not winner:
-            if should_ai:
-                logger.info(f"[StockFetcher] 🚫 PhotoVisionAudit từ chối các ứng viên ảnh cho '{query}' -> Không lấy bừa candidates[0]!")
-                return None
-            winner = candidates[0]
+            logger.info(f"[StockFetcher] 🚫 PhotoVisionAudit từ chối hoặc chưa xác thực được ứng viên ảnh cho '{query}' -> Không lấy bừa candidates[0]!")
+            return None
         try:
             from app.agents.media_agent import register_download_fallbacks
             register_download_fallbacks(winner, candidates)
@@ -649,13 +684,7 @@ class StockFetcher:
             for va_u in (winner.get("_vision_alternates") or []):
                 if va_u and va_u not in (win_u, win_fb) and not is_media_already_used(va_u, used) and va_u not in distinct_alts:
                     distinct_alts.append(va_u)
-            for c in candidates:
-                cu = c.get("url")
-                if cu and cu not in (win_u, win_fb) and not is_media_already_used(cu, used) and cu not in distinct_alts:
-                    distinct_alts.append(cu)
-                if len(distinct_alts) >= 12:
-                    break
-            winner["alternate_urls"] = distinct_alts[:12]
+            winner["alternate_urls"] = distinct_alts[:8]
         except Exception:
             pass
         record_used_media(winner["url"], query=query, source=winner.get("source", "stock_photo"))
@@ -680,10 +709,12 @@ class StockFetcher:
         used_set = used if used is not None else set()
         from app.services.media.media_history import is_media_already_used
 
-        if v.get("source") in ("nasa_video", "pixabay_video", "wikimedia_video") and v.get("url"):
-            if not is_media_already_used(v["url"], used_set):
-                return {
-                    "url": v["url"],
+        if v.get("source") in ("nasa_video", "pixabay_video", "wikimedia_video", "pixabay_16x9_video") and v.get("url"):
+            cand_urls = [v["url"], *(v.get("_vision_alternates") or [])]
+            chosen_direct = next((u for u in cand_urls if u and not is_media_already_used(u, used_set)), None)
+            if chosen_direct:
+                out_cand = {
+                    "url": chosen_direct,
                     "title": v.get("title", f"Video: {query}"),
                     "width": v.get("width", 1080),
                     "height": v.get("height", 1920),
@@ -692,6 +723,10 @@ class StockFetcher:
                     "source": v.get("source", "video"),
                     "thumbnail": v.get("thumbnail") or v.get("image", ""),
                 }
+                for keep_k in ("web_url", "_vision_alternates", "curation_score", "curation_rationale"):
+                    if keep_k in v:
+                        out_cand[keep_k] = v[keep_k]
+                return out_cand
             return None
 
         v_dur_sec = float(v.get("duration") or 0.0)
@@ -771,7 +806,81 @@ class StockFetcher:
         narration: str = "",
         topic: str = "",
         _establishing_pass: bool = False,
+        cancel_event: Optional[threading.Event] = None,
+        deadline_ts: Optional[float] = None,
     ) -> Optional[Dict]:
+        eff_cancel = cancel_event if cancel_event is not None else (visual_analysis or {}).get("_cancel_event")
+        eff_deadline = deadline_ts if deadline_ts is not None else (visual_analysis or {}).get("_deadline_ts")
+        if str((visual_analysis or {}).get("video_format") or "").strip().lower() == "long":
+            long_qs: List[str] = []
+            for rq in [query, *((visual_analysis or {}).get("search_queries") or [])]:
+                rq_s = str(rq or "").strip()
+                if rq_s and rq_s not in long_qs:
+                    long_qs.append(rq_s)
+            return self.search_landscape_16x9_video_clip(
+                queries=long_qs or [query],
+                used_urls=used_urls,
+                topic=topic,
+                narration=narration,
+                primary_entity=str(
+                    (visual_analysis or {}).get("core_visual_entity")
+                    or (visual_analysis or {}).get("subject")
+                    or ""
+                ).strip(),
+                cancel_event=eff_cancel,
+                deadline_ts=eff_deadline,
+            )
+
+        from app.agents.curation.scene_context_analyzer_mixin import (
+            _SCENE_CANCEL_CTX,
+            _SCENE_DEADLINE_CTX,
+            bind_scene_cancellation,
+            is_scene_cancelled_ctx,
+            remaining_scene_budget_ctx,
+        )
+        prev_c_ctx = _SCENE_CANCEL_CTX.get()
+        prev_d_ctx = _SCENE_DEADLINE_CTX.get()
+        bound_local_ctx = False
+        local_cap_ts = time.monotonic() + (14.0 if _establishing_pass else 24.0)
+        target_dl = (
+            min(float(eff_deadline), local_cap_ts)
+            if eff_deadline is not None
+            else (min(prev_d_ctx, local_cap_ts) if prev_d_ctx is not None else local_cap_ts)
+        )
+        target_ev = eff_cancel if eff_cancel is not None else prev_c_ctx
+        if prev_d_ctx is None or eff_deadline is not None or eff_cancel is not None:
+            bind_scene_cancellation(cancel_event=target_ev, deadline_ts=target_dl)
+            bound_local_ctx = True
+
+        try:
+            if is_scene_cancelled_ctx(min_remaining_sec=1.8):
+                return None
+            return self._search_best_video_clip_shorts_impl(
+                query=query,
+                used_urls=used_urls,
+                visual_analysis=visual_analysis,
+                narration=narration,
+                topic=topic,
+                _establishing_pass=_establishing_pass,
+                cancel_event=target_ev,
+                deadline_ts=target_dl,
+            )
+        finally:
+            if bound_local_ctx:
+                bind_scene_cancellation(cancel_event=prev_c_ctx, deadline_ts=prev_d_ctx)
+
+    def _search_best_video_clip_shorts_impl(
+        self,
+        query: str,
+        used_urls: Optional[set] = None,
+        visual_analysis: Optional[Dict[str, Any]] = None,
+        narration: str = "",
+        topic: str = "",
+        _establishing_pass: bool = False,
+        cancel_event: Optional[threading.Event] = None,
+        deadline_ts: Optional[float] = None,
+    ) -> Optional[Dict]:
+        from app.agents.curation.scene_context_analyzer_mixin import is_scene_cancelled_ctx, remaining_scene_budget_ctx
         from app.services.media.media_history import get_recent_media_urls, record_used_media
         from app.services.media.query_broadener import build_query_ladder, is_vague_single_word
         used = set(used_urls) if used_urls else set()
@@ -841,8 +950,10 @@ class StockFetcher:
         _push(query)
 
         def _try_establishing_pass(reason: str) -> Optional[Dict]:
-            """Cảnh toàn đúng địa điểm/bối cảnh thật trước khi nhờ AI vẽ ảnh."""
-            if not establishing:
+            """Cảnh toàn đúng địa điểm/bối cảnh thật trước khi nhờ AI vẽ ảnh (chỉ chạy khi còn >= 11s ngân sách)."""
+            if not establishing or is_scene_cancelled_ctx(min_remaining_sec=11.0):
+                return None
+            if deadline_ts is not None and (deadline_ts - time.monotonic()) < 11.0:
                 return None
             logger.info(f"[StockFetcher] {reason} -> thử cảnh toàn đúng bối cảnh: {establishing[:3]}")
             est_va = dict(visual_analysis or {})
@@ -869,6 +980,8 @@ class StockFetcher:
                 narration=est_narr,
                 topic=topic,
                 _establishing_pass=True,
+                cancel_event=cancel_event,
+                deadline_ts=deadline_ts,
             )
 
         collected_candidates = []
@@ -899,8 +1012,14 @@ class StockFetcher:
                 for q_try in candidate_queries[:3]
             ]
 
-        # Bổ sung nguồn Wikimedia Commons Video (Public Domain / CC BY sạch 100%)
-        if not (visual_analysis or {}).get("clean_stock_only") and candidate_queries:
+        # Chỉ truy vấn bổ sung Wikimedia Commons Video khi Pexels/Pixabay trả về ít (< 4 mục) và vẫn còn >= 8s ngân sách
+        total_initial_items = sum(len(b.get("items") or []) for b in branch_buckets)
+        if (
+            not (visual_analysis or {}).get("clean_stock_only")
+            and candidate_queries
+            and total_initial_items < 4
+            and not is_scene_cancelled_ctx(min_remaining_sec=8.0)
+        ):
             try:
                 wiki_vids = self.search_wikimedia_videos(candidate_queries[0], per_page=4)
                 if wiki_vids:
@@ -956,6 +1075,9 @@ class StockFetcher:
 
         if collected_candidates:
             try:
+                from app.agents.curation.scene_context_analyzer_mixin import is_scene_cancelled_ctx
+                if is_scene_cancelled_ctx():
+                    return None
                 from app.agents.visual_curation_agent import VisualCurationAgent
                 curator = VisualCurationAgent()
                 v_analysis = dict(visual_analysis or {
@@ -1030,10 +1152,17 @@ class StockFetcher:
         topic: str = "",
         narration: str = "",
         prefer_pixabay: bool = False,
+        primary_entity: str = "",
+        cancel_event: Optional[Any] = None,
+        deadline_ts: Optional[float] = None,
+        claim_in_used: bool = True,
+        **kwargs,
     ) -> Optional[Dict[str, Any]]:
         """
-        Tìm kiếm nhanh Video B-Roll chuẩn ngang 16:9 (1920x1080 / 1280x720, width > height) đa nguồn
-        (Pexels 16:9 HD + Pixabay 16:9 HD + Wikimedia Commons 16:9) dành riêng cho Video Dài (Long-Form 16:9 Documentary).
+        Tìm kiếm Video B-Roll chuẩn ngang 16:9 (1920x1080 / 1280x720, width > height) đa nguồn
+        (Pexels 16:9 HD + Pixabay 16:9 HD) kèm thẩm định ngữ nghĩa trực tiếp bằng Multimodal Gemini Vision
+        (`VisualCurationAgent.curate_candidate_videos`) dành riêng cho Video Dài (Long-Form 16:9 Documentary).
+        Hỗ trợ chạy song song không khóa (lock-free) và hủy sớm hợp tác (`cancel_event` / `deadline_ts`).
         """
         from app.services.media.media_history import (
             extract_media_identity,
@@ -1042,18 +1171,31 @@ class StockFetcher:
             record_used_media,
         )
         from app.services.media.entity_detector import is_incongruent_stock_image
+        from app.services.media.query_broadener import conflicts_with_topic_biome
+
+        def _is_cancelled() -> bool:
+            return (cancel_event is not None and cancel_event.is_set()) or (
+                deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.0
+            )
+
+        if _is_cancelled():
+            return None
 
         used = set(used_urls) if used_urls else set()
         used.update(get_recent_media_urls(limit=120))
 
-        search_q_list: List[str] = []
+        # Ưu tiên toàn bộ các truy vấn gốc khác nhau (bao gồm cả truy vấn tách đơn thực thể 'Entity A', 'Entity B')
+        # trước khi chèn bản rút gọn 2 từ để kho Pexels/Pixabay luôn quét được cả 2 thực thể!
+        primary_q_list: List[str] = []
+        short_q_list: List[str] = []
         for raw_q in (queries or []):
             q_c = clean_scene_search_query(str(raw_q or ""), max_words=4) or str(raw_q or "").strip()
-            if q_c and q_c not in search_q_list:
-                search_q_list.append(q_c)
+            if q_c and q_c not in primary_q_list:
+                primary_q_list.append(q_c)
             q_short = clean_scene_search_query(str(raw_q or ""), max_words=2)
-            if q_short and q_short not in search_q_list:
-                search_q_list.append(q_short)
+            if q_short and q_short not in primary_q_list and q_short not in short_q_list:
+                short_q_list.append(q_short)
+        search_q_list: List[str] = primary_q_list[:5] + [q for q in short_q_list if q not in primary_q_list][:3]
 
         _STOP_TOK = {
             "the", "and", "with", "from", "into", "over", "under", "slow",
@@ -1084,7 +1226,7 @@ class StockFetcher:
             "farm", "barn", "pasture", "beach", "resort", "marina", "vacation",
             "tourist", "palm tree", "swimming pool", "bikini",
         )
-        ctx_all_low = f"{topic} {narration} {' '.join(search_q_list)}".lower()
+        ctx_all_low = f"{topic} {primary_entity} {narration} {' '.join(search_q_list)}".lower()
         is_animal_or_scifi_ctx = any(
             w in ctx_all_low
             for w in (
@@ -1101,6 +1243,17 @@ class StockFetcher:
                 return -100
             if is_incongruent_stock_image(d_low, topic=f"{topic} {q_try}".strip(), narration=narration):
                 return -100
+            if conflicts_with_topic_biome(d_low, topic):
+                return -100
+            for sp_g in (
+                "giraffe", "elephant", "zebra", "rhino", "rhinoceros", "hippo", "hippopotamus",
+                "buffalo", "bison", "camel", "lion", "tiger", "cheetah", "hyena", "kangaroo",
+                "koala", "panda", "penguin", "flamingo", "ostrich", "deer", "moose", "gazelle",
+                "wildebeest", "horse", "cow", "cattle", "sheep", "goat", "pig", "dog", "puppy",
+                "kitten", "dolphin", "whale", "orca", "seal", "walrus",
+            ):
+                if sp_g not in ctx_all_low and re.search(rf"\b{re.escape(sp_g)}s?\b", d_low):
+                    return -100
             if not is_animal_or_scifi_ctx:
                 for bad_w in _OFF_DOMAIN_ANIMALS_AND_ALIENS:
                     if re.search(rf"\b{re.escape(bad_w)}s?\b", d_low) and bad_w not in q_try.lower():
@@ -1115,51 +1268,41 @@ class StockFetcher:
                 return -10
             return (len(matched_strong) * 30) + (len(matched_q) * 15)
 
-        def _try_pixabay_for_q(q_try: str) -> Optional[Dict[str, Any]]:
-            px_vids = self.search_pixabay_videos(q_try, per_page=12)
-            scored_px: List[Tuple[int, Dict[str, Any], str, str, int, int]] = []
+        scored_pool: List[Tuple[int, Dict[str, Any]]] = []
+        seen_cand_keys: set = set()
+
+        def _collect_pixabay_for_q(q_try: str, boost: int = 0) -> None:
+            px_vids = self.search_pixabay_videos(q_try, per_page=10)
             for pv in (px_vids or []):
                 p_url = str(pv.get("url") or "")
                 px_id_key = f"pixabay_vid_{pv.get('id') or p_url}"
                 pw = int(pv.get("width") or 0)
                 ph = int(pv.get("height") or 0)
                 p_title = f"{pv.get('title') or ''} {pv.get('tags') or ''}"
-                if not p_url or pw <= ph or ph < 720 or px_id_key in used or is_media_already_used(p_url, used):
+                if (
+                    not p_url
+                    or pw <= ph
+                    or ph < 720
+                    or px_id_key in used
+                    or px_id_key in seen_cand_keys
+                    or is_media_already_used(p_url, used)
+                ):
                     continue
                 sc = _score_candidate_text(p_title, q_try)
                 if sc < 0:
                     continue
-                res_bonus = 15 if ph >= 1080 else 5
-                scored_px.append((sc + res_bonus, pv, p_url, px_id_key, pw, ph))
-            if not scored_px:
-                return None
-            scored_px.sort(key=lambda x: x[0], reverse=True)
-            _, best_pv, best_url, best_px_key, b_pw, b_ph = scored_px[0]
-            record_used_media(best_url, query=q_try, source="pixabay_16x9_video")
-            ids = extract_media_identity(best_url)
-            used.update(ids)
-            used.add(best_url)
-            used.add(best_px_key)
-            if used_urls is not None:
-                used_urls.update(ids)
-                used_urls.add(best_url)
-                used_urls.add(best_px_key)
-            return {
-                "url": best_url,
-                "title": best_pv.get("title", f"Pixabay 16:9 HD: {q_try}"),
-                "width": b_pw,
-                "height": b_ph,
-                "duration": float(best_pv.get("duration") or 10.0),
-                "media_type": "video",
-                "source": "pixabay_16x9_video",
-            }
+                seen_cand_keys.add(px_id_key)
+                res_bonus = (15 if ph >= 1080 else 5) + boost
+                pv_copy = dict(pv)
+                pv_copy["source"] = "pixabay_16x9_video"
+                pv_copy["_cand_key"] = px_id_key
+                scored_pool.append((sc + res_bonus, pv_copy))
 
-        def _try_pexels_for_q(q_try: str) -> Optional[Dict[str, Any]]:
-            vids = self.search_videos(q_try, per_page=15, orientation="landscape")
-            scored_pe: List[Tuple[int, Dict[str, Any], Dict[str, Any], str, str]] = []
+        def _collect_pexels_for_q(q_try: str, boost: int = 0) -> None:
+            vids = self.search_videos(q_try, per_page=12, orientation="landscape")
             for v in (vids or []):
                 v_id_key = f"pexels_vid_{v.get('id') or v.get('url')}"
-                if v_id_key in used:
+                if v_id_key in used or v_id_key in seen_cand_keys:
                     continue
                 raw_v_url = str(v.get("url") or "")
                 m_slug = re.search(r"/video/([a-zA-Z0-9-]+)-\d+/?", raw_v_url)
@@ -1168,74 +1311,160 @@ class StockFetcher:
                 if sc < 0:
                     continue
                 v_files = v.get("video_files") or []
-                landscape_1080p = [
-                    vf for vf in v_files
-                    if int(vf.get("width") or 0) == 1920
-                    and int(vf.get("height") or 0) == 1080
-                    and (str(vf.get("link", "")).endswith(".mp4") or "mp4" in str(vf.get("file_type", "")))
-                ]
-                landscape_files = landscape_1080p or [
+                landscape_files = [
                     vf for vf in v_files
                     if int(vf.get("width") or 0) > int(vf.get("height") or 0)
-                    and int(vf.get("height") or 0) >= 720
-                    and int(vf.get("height") or 0) <= 1080
+                    and 720 <= int(vf.get("height") or 0) <= 1080
                     and int(vf.get("width") or 0) <= 1920
                     and (str(vf.get("link", "")).endswith(".mp4") or "mp4" in str(vf.get("file_type", "")))
+                    and not is_media_already_used(str(vf.get("link") or ""), used)
                 ]
                 if not landscape_files:
                     continue
-                landscape_files.sort(
-                    key=lambda vf: (
-                        4000 if abs(int(vf.get("height") or 0) - 1080) <= 20 and int(vf.get("width") or 0) >= 1920 else (
-                            3000 if int(vf.get("height") or 0) >= 1080 else 1500
-                        ),
-                        int(vf.get("width") or 0),
-                    ),
-                    reverse=True,
-                )
-                best = landscape_files[0]
-                link = str(best.get("link") or "")
-                if link and not is_media_already_used(link, used):
-                    res_bonus = 15 if int(best.get("height") or 0) >= 1080 else 5
-                    scored_pe.append((sc + res_bonus, v, best, link, v_id_key))
-            if not scored_pe:
-                return None
-            scored_pe.sort(key=lambda x: x[0], reverse=True)
-            _, best_v, best_file, best_link, best_vid_key = scored_pe[0]
-            record_used_media(best_link, query=q_try, source="pexels_16x9_video")
-            ids = extract_media_identity(best_link)
-            used.update(ids)
-            used.add(best_link)
-            used.add(best_vid_key)
-            if used_urls is not None:
-                used_urls.update(ids)
-                used_urls.add(best_link)
-                used_urls.add(best_vid_key)
-            return {
-                "url": best_link,
-                "title": f"Pexels 16:9 HD: {best_v.get('url', q_try)}",
-                "width": int(best_file.get("width") or 1920),
-                "height": int(best_file.get("height") or 1080),
-                "duration": float(best_v.get("duration") or 10.0),
-                "media_type": "video",
-                "source": "pexels_16x9_video",
-            }
+                seen_cand_keys.add(v_id_key)
+                has_1080p = any(int(vf.get("height") or 0) >= 1080 for vf in landscape_files)
+                res_bonus = (15 if has_1080p else 5) + boost
+                v_copy = dict(v)
+                v_copy["video_files"] = landscape_files
+                v_copy["_cand_key"] = v_id_key
+                scored_pool.append((sc + res_bonus, v_copy))
+
+        def _collect_wikimedia_for_q(q_try: str, boost: int = 0) -> None:
+            try:
+                wm_vids = self.search_wikimedia_videos(q_try, per_page=6)
+                for wv in (wm_vids or []):
+                    w_url = str(wv.get("url") or "")
+                    wm_id_key = f"wikimedia_vid_{w_url}"
+                    ww = int(wv.get("width") or 0)
+                    wh = int(wv.get("height") or 0)
+                    w_title = f"{wv.get('title') or ''} {wv.get('tags') or ''}"
+                    if (
+                        not w_url
+                        or ww <= wh
+                        or wh < 720
+                        or wm_id_key in used
+                        or wm_id_key in seen_cand_keys
+                        or is_media_already_used(w_url, used)
+                    ):
+                        continue
+                    sc = _score_candidate_text(w_title, q_try)
+                    if sc < 0:
+                        continue
+                    seen_cand_keys.add(wm_id_key)
+                    wv_copy = dict(wv)
+                    wv_copy["source"] = "wikimedia_16x9_video"
+                    wv_copy["_cand_key"] = wm_id_key
+                    scored_pool.append((sc + 12 + boost, wv_copy))
+            except Exception:
+                pass
 
         for idx_q, q_try in enumerate(search_q_list[:6]):
+            if _is_cancelled():
+                return None
             use_px_first = prefer_pixabay if idx_q == 0 else ((idx_q % 2 == 1) ^ prefer_pixabay)
+            pref_boost = 8 if idx_q == 0 else 0
             if use_px_first:
-                res_px = _try_pixabay_for_q(q_try)
-                if res_px:
-                    return res_px
-                res_pe = _try_pexels_for_q(q_try)
-                if res_pe:
-                    return res_pe
+                _collect_pixabay_for_q(q_try, boost=pref_boost + 4)
+                if not _is_cancelled():
+                    _collect_pexels_for_q(q_try, boost=pref_boost)
             else:
-                res_pe = _try_pexels_for_q(q_try)
-                if res_pe:
-                    return res_pe
-                res_px = _try_pixabay_for_q(q_try)
-                if res_px:
-                    return res_px
+                _collect_pexels_for_q(q_try, boost=pref_boost + 4)
+                if not _is_cancelled():
+                    _collect_pixabay_for_q(q_try, boost=pref_boost)
+            if idx_q < 2 and not _is_cancelled():
+                _collect_wikimedia_for_q(q_try, boost=pref_boost + 2)
+            if len(scored_pool) >= 12:
+                break
 
-        return None
+        if not scored_pool or _is_cancelled():
+            return None
+
+        scored_pool.sort(key=lambda pair: pair[0], reverse=True)
+        top_candidates = [pair[1] for pair in scored_pool[:8]]
+
+        try:
+            from app.agents.visual_curation_agent import VisualCurationAgent
+            curator = VisualCurationAgent()
+            # Ưu tiên mục tiêu thị giác riêng của phân cảnh (`search_q_list[0]`: thực thể chính, thực thể đối đầu, hoặc môi trường tự nhiên của cảnh)
+            # đặt trong ngữ cảnh chủ đề tổng thể, tránh ép cứng mọi cảnh B-Roll môi trường phải xuất hiện duy nhất `primary_entity`!
+            scene_visual_target = (
+                (search_q_list[0] if search_q_list else "")
+                or str(primary_entity or "").strip()
+                or topic
+            )
+            prim_clean = str(primary_entity or "").strip()
+            if prim_clean and scene_visual_target.lower() != prim_clean.lower():
+                resolved_subj = f"{scene_visual_target} (B-Roll thuộc chủ đề: {topic or prim_clean})"
+            else:
+                resolved_subj = prim_clean or scene_visual_target or topic
+            v_analysis_16x9 = {
+                "video_format": "long",
+                "subject": resolved_subj,
+                "core_visual_entity": scene_visual_target,
+                "expected_visual_content": (
+                    f"Cảnh quay 16:9 thực tế sắc nét (0 chữ, 0 khách du lịch/thuyền du lịch, 0 thú nuôi/sở thú) "
+                    f"thể hiện '{scene_visual_target}' hoặc thực thể/hệ sinh thái tự nhiên thuộc '{topic or prim_clean}'"
+                ),
+                "topic": topic or resolved_subj,
+                "search_queries": search_q_list[:5],
+            }
+            if _is_cancelled():
+                return None
+            winner, score, rationale, should_ai = curator.curate_candidate_videos(
+                candidates=top_candidates,
+                visual_analysis=v_analysis_16x9,
+                narration=narration or resolved_subj,
+                used_urls=used,
+                topic=topic or resolved_subj,
+            )
+            if winner and score >= 7.0 and not should_ai and winner.get("url"):
+                chosen_url = str(winner["url"])
+                alt_list = [str(a) for a in (winner.get("_vision_alternates") or []) if a]
+                if is_media_already_used(chosen_url, used):
+                    for alt_u in alt_list:
+                        if not is_media_already_used(alt_u, used):
+                            chosen_url = alt_u
+                            break
+                if chosen_url and not is_media_already_used(chosen_url, used):
+                    src_out = str(winner.get("source") or "pexels_16x9_video")
+                    if "pixabay" in src_out.lower():
+                        src_out = "pixabay_16x9_video"
+                    else:
+                        src_out = "pexels_16x9_video"
+                    q_used = search_q_list[0] if search_q_list else (topic or "16x9_broll")
+                    if claim_in_used:
+                        record_used_media(chosen_url, query=q_used, source=src_out)
+                        ids = extract_media_identity(chosen_url)
+                        used.update(ids)
+                        used.add(chosen_url)
+                        if winner.get("web_url"):
+                            used.add(str(winner["web_url"]))
+                        if used_urls is not None:
+                            used_urls.update(ids)
+                            used_urls.add(chosen_url)
+                            if winner.get("web_url"):
+                                used_urls.add(str(winner["web_url"]))
+                    alt_clean = [u for u in alt_list if u != chosen_url]
+                    return {
+                        "url": chosen_url,
+                        "web_url": str(winner.get("web_url") or ""),
+                        "alternate_urls": alt_clean,
+                        "_vision_alternates": alt_clean,
+                        "query_used": q_used,
+                        "title": str(winner.get("title") or f"16:9 HD: {q_used}"),
+                        "width": int(winner.get("width") or 1920),
+                        "height": int(winner.get("height") or 1080),
+                        "duration": float(winner.get("duration") or 10.0),
+                        "media_type": "video",
+                        "source": src_out,
+                        "vision_curated": True,
+                        "vision_score": round(float(score), 2),
+                    }
+            logger.info(
+                f"[StockFetcher 16:9] 🚫 Gemini Vision từ chối clip stock 16:9 không khớp ngữ cảnh "
+                f"(score={score:.1f}, reason={str(rationale)[:90]}) → Chuyển sang Chapter Pool 16:9 / Ảnh thực tế!"
+            )
+            return None
+        except Exception as e_vis_16x9:
+            logger.debug(f"[StockFetcher 16:9] Vision curation error: {e_vis_16x9}")
+            return None

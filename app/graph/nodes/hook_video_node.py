@@ -13,6 +13,8 @@ Tích hợp trực tiếp toàn bộ quy trình vào trong hàm tạo Hook `node
    - Nếu KHÔNG ĐẠT (hoặc Gemini trả về `"scene"`): Chuyển về tạo cảnh / tìm ảnh truyền thống tại `node_fetch_media`.
 """
 
+import asyncio
+import contextvars
 import os
 import re
 import json
@@ -21,12 +23,17 @@ import logging
 import subprocess
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 import requests
 from config.settings import settings
+from app.agents.curation.scene_context_analyzer_mixin import (
+    _VISION_SEM,
+    bind_scene_cancellation,
+    is_scene_cancelled_ctx,
+)
 from app.graph.state import VideoWorkflowState
 from app.services.media import license_policy
 from app.utils.langsmith_tracer import trace_custom_span
@@ -403,7 +410,80 @@ def _ensure_hook_clip_sharpness_and_luma(
 @trace_custom_span("HookVideoNode.produce_and_score_hook", run_type="chain")
 async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[str, Any]:
     """
-    Hàm Tạo Hook Chuyên Biệt (`node_produce_and_score_hook_video` — Chạy TRƯỚC `node_fetch_media`):
+    Wrapper bất đồng bộ (non-blocking `asyncio.to_thread`) cho node tạo Hook Cảnh 1,
+    kèm ngân sách thời gian cứng 78s–82s (`bind_scene_cancellation`) để không bao giờ
+    khóa event loop hoặc treo job quá 82s.
+    """
+    script_data = state.get("script_data") or {}
+    script_scenes = list(script_data.get("scenes") or [])
+    scenes_media = list(state.get("scenes_media") or [])
+    base_scenes = scenes_media if scenes_media else script_scenes
+    if not base_scenes:
+        return {"current_step": "HOOK_VIDEO_SKIPPED", "pre_resolved_hook_media": {}}
+
+    video_format = str(
+        state.get("video_format")
+        or script_data.get("video_format")
+        or ("long" if len(base_scenes) >= 14 else "short")
+    ).strip().lower()
+    if video_format == "long":
+        logger.info(
+            "🎬 [HookVideoNode] Chế độ Video Dài 16:9 (Long-Form): "
+            "Bỏ qua săn YouTube Shorts dọc 9:16, chuyển sang luồng tải đồng loạt 16:9 Bilibili Safe-Crop & Documentary HD tại node_fetch_media."
+        )
+        return {
+            "current_step": "HOOK_VIDEO_LONGFORM_BYPASS",
+            "pre_resolved_hook_media": {},
+            "progress_percent": 50,
+            "progress_message": "🎬 Video Dài 16:9: Chuyển sang luồng săn đồng loạt 16:9 Bilibili Safe-Crop & Documentary HD...",
+        }
+
+    cancel_event = threading.Event()
+    hook_deadline_ts = time.monotonic() + 78.0
+
+    def _entry() -> Dict[str, Any]:
+        with bind_scene_cancellation(cancel_event, hook_deadline_ts):
+            return _produce_and_score_hook_video_sync(
+                state,
+                cancel_event=cancel_event,
+                hook_deadline_ts=hook_deadline_ts,
+            )
+
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=82.0)
+    except asyncio.TimeoutError:
+        cancel_event.set()
+        logger.warning(
+            "⏱️ [HookVideoNode] Chạm trần ngân sách 82s -> Hủy sớm worker nền và chuyển Cảnh 1 sang node_fetch_media."
+        )
+        out_timeout: Dict[str, Any] = {
+            "pre_resolved_hook_media": {},
+            "hook_video_eval": {
+                "mode": "TIMEOUT_DELEGATED_TO_FETCH_MEDIA",
+                "edit_mode": "TIMEOUT_DELEGATED_TO_FETCH_MEDIA",
+                "overall_score": None,
+                "passed": False,
+                "hook_visual_mode": "video",
+                "evaluated_by": "timeout_guard",
+                "best_reason": "Hook node exceeded 82s wall-clock cap; delegated cleanly to fetch_media",
+                "spliced_scenes": [],
+            },
+            "current_step": "HOOK_VIDEO_READY",
+            "progress_percent": 58,
+            "progress_message": "⏱️ Đã chuyển Hook Cảnh 1 sang luồng săn Video nhanh tại fetch_media...",
+        }
+        if scenes_media:
+            out_timeout["scenes_media"] = scenes_media
+        return out_timeout
+
+
+def _produce_and_score_hook_video_sync(
+    state: VideoWorkflowState,
+    cancel_event: Optional[threading.Event] = None,
+    hook_deadline_ts: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Hàm Tạo Hook Chuyên Biệt (`_produce_and_score_hook_video_sync` — Chạy TRƯỚC `node_fetch_media`):
     Tích hợp trực tiếp cả 4 bước ngay bên trong hàm tạo Hook:
     1. Gemini quyết định `hook_visual_mode`: `"video"` (săn & cắt video Short) hay `"scene"` (tạo cảnh / tìm ảnh truyền thống)
        cùng `is_abstract_keyword` (True/False) và `climax_scene_id` (vị trí cảnh cao trào trong thân video).
@@ -417,6 +497,19 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     4. Cắt & ghép đoạn Peak đạt chuẩn vào ĐẦU VIDEO (Cảnh 1) và vào TRONG THÂN VIDEO (`climax_scene_id`).
     """
     from app.utils.key_rotator import KeyRotator
+
+    def _hook_cancelled(min_rem_sec: float = 1.0) -> bool:
+        if cancel_event is not None and cancel_event.is_set():
+            return True
+        if is_scene_cancelled_ctx():
+            return True
+        if hook_deadline_ts is not None and (hook_deadline_ts - time.monotonic()) <= min_rem_sec:
+            return True
+        return False
+
+    def _pool_map_ctx(pool: ThreadPoolExecutor, fn, items):
+        futs = [pool.submit(contextvars.copy_context().run, fn, item) for item in items]
+        return [f.result() for f in futs]
 
     work_dir = Path(state.get("work_dir", "storage/cache"))
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -603,15 +696,19 @@ Return ONLY valid JSON:
   "search_queries": ["peak query 1", "peak query 2", "peak query 3", "peak query 4", "peak query 5"],
   "atmosphere_fx": "action | psychology | mystery | history"
 }}"""
-        for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=5):
+        t_distill_end = time.monotonic() + 14.0
+        for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=3):
+            if _hook_cancelled(8.0) or time.monotonic() >= t_distill_end:
+                break
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
                 payload = {
                     "contents": [{"parts": [{"text": plan_prompt}]}],
                     "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.15),
                 }
+                rem_d = max(3.5, min(11.0, t_distill_end - time.monotonic()))
                 t_req0 = time.monotonic()
-                resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(14))
+                resp = requests.post(url, json=payload, timeout=(3.0, rem_d))
                 req_elapsed = time.monotonic() - t_req0
                 if resp.status_code == 200:
                     rotator.record_model_success(key, model_name, req_elapsed)
@@ -778,29 +875,30 @@ Return ONLY valid JSON:
         raw_flat_cands: List[Dict[str, Any]] = []
         try:
             import yt_dlp
-            # Bước 1: Quét trực tiếp kệ YouTube Shorts dọc 9:16 (`shortsLockupViewModel` / `/shorts/`)
-            native_entries = license_policy.search_youtube_native_shorts_flat(q, max_results=12)
+            # Bước 1: Quét trực tiếp kệ YouTube Shorts dọc 9:16 + video ngắn từ ytInitialData (0.8s)
+            native_entries = license_policy.search_youtube_native_shorts_flat(q, max_results=16)
             seen_q_ids = {str(x.get("id") or "") for x in native_entries if x.get("id")}
             combined_entries: List[Dict[str, Any]] = list(native_entries)
 
-            # Bước 2 (Luôn bổ sung song song): Quét cả video YouTube thường 16:9 HD/4K quay thật (không khóa ở < 8)
-            flat_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "extract_flat": "in_playlist",
-                "skip_download": True,
-                "socket_timeout": 8,
-                "ignoreerrors": True,
-            }
-            with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=10)) as ydl_flat:
-                flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=10), download=False)
-            for e_flat_item in ((flat_res or {}).get("entries") or []):
-                if isinstance(e_flat_item, dict):
-                    eid = str(e_flat_item.get("id") or "").strip()
-                    if eid and eid not in seen_q_ids:
-                        seen_q_ids.add(eid)
-                        e_flat_item["is_vertical_short"] = license_policy.is_entry_vertical_short(e_flat_item)
-                        combined_entries.append(e_flat_item)
+            # Bước 2: Chỉ gọi yt_dlp ytsearch chậm nếu HTTP scraper trả về < 4 kết quả
+            if len(native_entries) < 4:
+                flat_opts = {
+                    "quiet": True,
+                    "no_warnings": True,
+                    "extract_flat": "in_playlist",
+                    "skip_download": True,
+                    "socket_timeout": 6,
+                    "ignoreerrors": True,
+                }
+                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=8)) as ydl_flat:
+                    flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=8), download=False)
+                for e_flat_item in ((flat_res or {}).get("entries") or []):
+                    if isinstance(e_flat_item, dict):
+                        eid = str(e_flat_item.get("id") or "").strip()
+                        if eid and eid not in seen_q_ids:
+                            seen_q_ids.add(eid)
+                            e_flat_item["is_vertical_short"] = license_policy.is_entry_vertical_short(e_flat_item)
+                            combined_entries.append(e_flat_item)
 
             for entry in combined_entries:
                 if not isinstance(entry, dict):
@@ -900,9 +998,9 @@ Return ONLY valid JSON:
             logger.debug(f"[HookVideoNode] yt_dlp flat pre-filter skip ({q}): {e_flat}")
         return q_idx, q, raw_flat_cands
 
-    if yt_queries_to_run:
+    if yt_queries_to_run and not _hook_cancelled(10.0):
         with ThreadPoolExecutor(max_workers=min(5, len(yt_queries_to_run))) as flat_pool:
-            flat_results = list(flat_pool.map(_run_flat_search_for_query, enumerate(yt_queries_to_run)))
+            flat_results = _pool_map_ctx(flat_pool, _run_flat_search_for_query, enumerate(yt_queries_to_run))
         for q_idx, q, raw_flat_cands in sorted(flat_results, key=lambda x: x[0]):
             if not raw_flat_cands:
                 continue
@@ -934,8 +1032,8 @@ Return ONLY valid JSON:
 
     @trace_custom_span("HookVideoNode.select_hottest_yt_shorts_llm", run_type="llm")
     def _select_hottest_yt_shorts_with_llm(candidates_pool: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        if len(candidates_pool) <= 3:
-            return candidates_pool
+        if len(candidates_pool) <= 6 or _hook_cancelled(22.0):
+            return candidates_pool[:8]
         compact_list = [
             {
                 "id": c["id"],
@@ -979,15 +1077,19 @@ Return ONLY valid JSON:
   "selected_ids": ["id1", "id2", "id3", "id4", "id5", "id6"],
   "selection_reasoning": "1-sentence explanation of why #1 and #2 were chosen for the Peak Hook"
 }}"""
-        for m_scout, k_scout in rotator.iter_best_model_key_pairs(max_total_attempts=4):
+        t_scout_end = time.monotonic() + 11.0
+        for m_scout, k_scout in rotator.iter_best_model_key_pairs(max_total_attempts=3):
+            if _hook_cancelled(15.0) or time.monotonic() >= t_scout_end:
+                break
             try:
                 u_sc = f"https://generativelanguage.googleapis.com/v1beta/models/{m_scout}:generateContent?key={k_scout}"
                 p_sc = {
                     "contents": [{"parts": [{"text": scout_prompt}]}],
                     "generationConfig": KeyRotator.build_fast_json_gen_config(m_scout, temperature=0.15),
                 }
+                rem_sc = max(3.5, min(9.0, t_scout_end - time.monotonic()))
                 t_req_sc = time.monotonic()
-                r_sc = requests.post(u_sc, json=p_sc, timeout=KeyRotator.fast_timeout(12))
+                r_sc = requests.post(u_sc, json=p_sc, timeout=(3.0, rem_sc))
                 sc_elapsed = time.monotonic() - t_req_sc
                 if r_sc.status_code == 200:
                     rotator.record_model_success(k_scout, m_scout, sc_elapsed)
@@ -1096,7 +1198,7 @@ Return ONLY valid JSON:
                 min_sharpness=5.4,
                 check_watermark=True,
                 allow_snow=True,
-                auto_sanitize=True,
+                auto_sanitize=False,
             )
             if not gate_res.get("passed", False):
                 # Thử cửa sổ Peak thứ 2 (cắt né vùng chữ/intro tại peak_offset_sec) trước khi loại bỏ video Short!
@@ -1132,7 +1234,7 @@ Return ONLY valid JSON:
                             min_sharpness=5.4,
                             check_watermark=True,
                             allow_snow=True,
-                            auto_sanitize=True,
+                            auto_sanitize=False,
                         )
                         if gate_res.get("passed", False):
                             peak_offset_sec, peak_duration_sec = alt_offset, alt_dur
@@ -1186,8 +1288,11 @@ Return ONLY valid JSON:
                     break
 
         wave1_cands = list(enumerate(wave1_selected))
-        with ThreadPoolExecutor(max_workers=min(4, len(wave1_cands))) as dl_pool:
-            dl_batches = list(dl_pool.map(_download_and_extract_single_short, wave1_cands))
+        if wave1_cands and not _hook_cancelled(8.0):
+            with ThreadPoolExecutor(max_workers=min(4, len(wave1_cands))) as dl_pool:
+                dl_batches = _pool_map_ctx(dl_pool, _download_and_extract_single_short, wave1_cands)
+        else:
+            dl_batches = []
         for batch in dl_batches:
             for _dl_i, v_str, peak_meta in batch:
                 if v_str in validated_peaks or v_str in candidate_videos:
@@ -1195,17 +1300,17 @@ Return ONLY valid JSON:
                 validated_peaks[v_str] = peak_meta
                 if peak_meta.get("passed") and len(candidate_videos) < 8:
                     candidate_videos.append(v_str)
-        if len(candidate_videos) < 2 and len(top_curated_yt_cands) > len(wave1_selected):
-            # Fast-Drop 'A vs B' ở Wave 2: Bỏ qua các video 'vs' còn lại, chỉ tải clip đơn chủ thể sạch!
+        if len(candidate_videos) == 0 and len(top_curated_yt_cands) > len(wave1_selected) and not _hook_cancelled(14.0):
+            # Fast-Drop 'A vs B' ở Wave 2: Bỏ qua các video 'vs' còn lại, chỉ tải tối đa 2 clip đơn chủ thể sạch!
             rem_non_vs = [
                 c for c in top_curated_yt_cands
                 if c.get("id") not in wave1_ids and not has_versus_pattern(c.get("title", ""))
             ]
             if not rem_non_vs:
                 rem_non_vs = [c for c in top_curated_yt_cands if c.get("id") not in wave1_ids]
-            wave2_cands = list(enumerate(rem_non_vs[:4], start=4))
-            with ThreadPoolExecutor(max_workers=min(4, len(wave2_cands))) as dl_pool2:
-                dl_batches2 = list(dl_pool2.map(_download_and_extract_single_short, wave2_cands))
+            wave2_cands = list(enumerate(rem_non_vs[:2], start=4))
+            with ThreadPoolExecutor(max_workers=min(2, len(wave2_cands))) as dl_pool2:
+                dl_batches2 = _pool_map_ctx(dl_pool2, _download_and_extract_single_short, wave2_cands)
             for batch in dl_batches2:
                 for _dl_i, v_str, peak_meta in batch:
                     if v_str in validated_peaks or v_str in candidate_videos:
@@ -1238,11 +1343,13 @@ Return ONLY valid JSON:
                 if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
                 else (canonical_subject or primary_entity or topic)
             )
-            max_broll_q = 4
+            max_broll_q = 2
             broll_queries_to_run = list(enumerate(multi_beat_queries[:max_broll_q]))
 
             def _fetch_single_multisrc_beat(mb_pair: tuple[int, str]) -> Optional[tuple[int, str, str, Dict[str, Any], Dict[str, Any]]]:
                 mb_idx, st_q_hook = mb_pair
+                if _hook_cancelled(8.0):
+                    return None
                 try:
                     m_agent = MediaAgent()
                     va_multi_src = {
@@ -1250,14 +1357,21 @@ Return ONLY valid JSON:
                         "subject": combined_hook_subjects,
                         "core_visual_entity": combined_hook_subjects,
                         "topic": topic,
-                        "search_queries": [st_q_hook] + [q for q in multi_beat_queries[:3] if q != st_q_hook],
+                        "search_queries": [st_q_hook] + [q for q in multi_beat_queries[:4] if q != st_q_hook],
                         "is_hook_scene": True,
+                        "skip_establishing_pass": True,
                     }
+                    ms_deadline = min(
+                        hook_deadline_ts if hook_deadline_ts is not None else (time.monotonic() + 18.0),
+                        time.monotonic() + 18.0,
+                    )
                     best_multi_v = m_agent.search_best_video_clip(
                         query=st_q_hook,
                         visual_analysis=va_multi_src,
                         narration=hook_narration,
                         topic=topic,
+                        cancel_event=cancel_event,
+                        deadline_ts=ms_deadline,
                     )
                     v_url_ms = (best_multi_v or {}).get("url")
                     if not v_url_ms:
@@ -1306,9 +1420,9 @@ Return ONLY valid JSON:
                     logger.debug(f"[HookVideoNode] Multi-source beat worker skip ({st_q_hook}): {e_b_worker}")
                 return None
 
-            if broll_queries_to_run:
-                with ThreadPoolExecutor(max_workers=min(4, len(broll_queries_to_run))) as ms_pool:
-                    ms_results = list(ms_pool.map(_fetch_single_multisrc_beat, broll_queries_to_run))
+            if broll_queries_to_run and not _hook_cancelled(8.0):
+                with ThreadPoolExecutor(max_workers=min(2, len(broll_queries_to_run))) as ms_pool:
+                    ms_results = _pool_map_ctx(ms_pool, _fetch_single_multisrc_beat, broll_queries_to_run)
                 seen_multi_urls: set = set()
                 for ms_item in ms_results:
                     if not ms_item or len(candidate_videos) >= 6:
@@ -1337,12 +1451,15 @@ Return ONLY valid JSON:
     best_candidate: Optional[Dict[str, Any]] = None
     _early_stop_lock = threading.Lock()
     _strong_passing_count = 0
+    _passing_count = 0
 
     def _grade_single_hook_candidate(idx_pair: tuple[int, str]) -> Optional[tuple[int, Dict[str, Any]]]:
-        nonlocal _strong_passing_count
+        nonlocal _strong_passing_count, _passing_count
         idx, v_path = idx_pair
+        if _hook_cancelled(4.0):
+            return None
         with _early_stop_lock:
-            if _strong_passing_count >= 2:
+            if _strong_passing_count >= 1 or _passing_count >= 2:
                 return None
         pre_v = validated_peaks.get(v_path)
         if pre_v and pre_v.get("passed"):
@@ -1455,7 +1572,13 @@ Return ONLY valid JSON:
 {{"recommended_hook_mode": "video", "entity_match_score": 8.5, "motion_action_score": 8.5, "scroll_stop_score": 8.2, "clean_frame_score": 8.5, "reason": "..."}}"""
 
         score_res: Optional[Dict[str, Any]] = None
-        for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=5):
+        for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=2):
+            if _hook_cancelled(3.5):
+                break
+            with _early_stop_lock:
+                if _strong_passing_count >= 1 or _passing_count >= 2:
+                    return None
+            _sem_ok = _VISION_SEM.acquire(timeout=3.5)
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
                 payload = {
@@ -1470,7 +1593,12 @@ Return ONLY valid JSON:
                     "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
                 }
                 t_req_v1 = time.monotonic()
-                resp = requests.post(url, json=payload, timeout=(3.5, 8.5))
+                try:
+                    resp = requests.post(url, json=payload, timeout=(3.0, 7.5))
+                finally:
+                    if _sem_ok:
+                        _VISION_SEM.release()
+                        _sem_ok = False
                 v1_elapsed = time.monotonic() - t_req_v1
                 if resp.status_code == 200:
                     rotator.record_model_success(key, model_name, v1_elapsed)
@@ -1521,14 +1649,16 @@ Return ONLY valid JSON:
                 logger.debug(f"[HookVideoNode] Gemini Vision Peak score error ({model_name}): {e_vis}")
 
         # Nếu cửa sổ Peak #1 của video Short chưa đạt (do đoạn đầu bị khuất/chưa xuất hiện chủ thể hoặc chưa tới đoạn cao trào):
-        # Tự động quét cửa sổ Peak #2 (loại trừ vùng Peak #1) ngay trong cùng video Short đó và kiểm định lại bằng Gemini Vision!
-        _skip_w2 = False
-        if score_res is not None and score_res.get("passed") and float(score_res.get("overall_score", 0.0)) >= 8.0:
+        # Tự động quét cửa sổ Peak #2 (loại trừ vùng Peak #1) chỉ khi chưa có clip nào đạt và còn ngân sách >= 14s!
+        _skip_w2 = _hook_cancelled(14.0)
+        if score_res is not None and score_res.get("passed"):
             with _early_stop_lock:
-                _strong_passing_count += 1
+                _passing_count += 1
+                if float(score_res.get("overall_score", 0.0)) >= 8.2:
+                    _strong_passing_count += 1
         elif score_res is not None and not score_res.get("passed"):
             with _early_stop_lock:
-                _skip_w2 = _strong_passing_count >= 2
+                _skip_w2 = _skip_w2 or (_passing_count >= 1) or (_strong_passing_count >= 1)
         if score_res is not None and not score_res.get("passed") and not _skip_w2:
             try:
                 alt_excl_v = [(max(0.0, peak_offset_sec - 1.5), peak_offset_sec + 5.5)]
@@ -1573,7 +1703,10 @@ Return ONLY valid JSON:
                             )
                             if alt_sheet.exists() and alt_sheet.stat().st_size > 5_000:
                                 b64_alt2 = base64.b64encode(alt_sheet.read_bytes()).decode("ascii")
-                                for m_n2, k_2 in rotator.iter_best_model_key_pairs(max_total_attempts=4):
+                                for m_n2, k_2 in rotator.iter_best_model_key_pairs(max_total_attempts=2):
+                                    if _hook_cancelled(3.5):
+                                        break
+                                    _sem_ok2 = _VISION_SEM.acquire(timeout=3.0)
                                     try:
                                         u2 = f"https://generativelanguage.googleapis.com/v1beta/models/{m_n2}:generateContent?key={k_2}"
                                         p2 = {
@@ -1588,7 +1721,12 @@ Return ONLY valid JSON:
                                             "generationConfig": KeyRotator.build_fast_json_gen_config(m_n2, temperature=0.1),
                                         }
                                         t_req_v2 = time.monotonic()
-                                        r2 = requests.post(u2, json=p2, timeout=(3.5, 8.5))
+                                        try:
+                                            r2 = requests.post(u2, json=p2, timeout=(3.0, 7.0))
+                                        finally:
+                                            if _sem_ok2:
+                                                _VISION_SEM.release()
+                                                _sem_ok2 = False
                                         v2_elapsed = time.monotonic() - t_req_v2
                                         if r2.status_code == 200:
                                             rotator.record_model_success(k_2, m_n2, v2_elapsed)
@@ -1684,9 +1822,29 @@ Return ONLY valid JSON:
         )
         return idx, score_res
 
-    if candidate_videos:
-        with ThreadPoolExecutor(max_workers=min(4, len(candidate_videos))) as grade_pool:
-            graded_pairs = list(grade_pool.map(_grade_single_hook_candidate, enumerate(candidate_videos)))
+    if candidate_videos and not _hook_cancelled(4.0):
+        graded_pairs: List[Optional[tuple[int, Dict[str, Any]]]] = []
+        with ThreadPoolExecutor(max_workers=min(3, len(candidate_videos))) as grade_pool:
+            grade_futs = [
+                grade_pool.submit(contextvars.copy_context().run, _grade_single_hook_candidate, pair)
+                for pair in enumerate(candidate_videos)
+            ]
+            for g_fut in as_completed(grade_futs):
+                try:
+                    g_res = g_fut.result()
+                except Exception as e_gf:
+                    logger.debug(f"[HookVideoGrader] Worker exception: {e_gf}")
+                    g_res = None
+                if g_res:
+                    graded_pairs.append(g_res)
+                with _early_stop_lock:
+                    should_stop = (_strong_passing_count >= 1) or (_passing_count >= 2)
+                if should_stop or _hook_cancelled(3.5):
+                    for pend_f in grade_futs:
+                        if not pend_f.done():
+                            pend_f.cancel()
+                    break
+        graded_pairs.sort(key=lambda pair: pair[0] if pair else 999)
         for g_item in graded_pairs:
             if not g_item:
                 continue
@@ -1915,113 +2073,140 @@ Return ONLY valid JSON:
                 scene_1["hook_sharpness"] = hook_sh_round_a
                 scenes_media[0] = scene_1
     else:
-        # CỨU HỘ TẦNG 1.5 (YOUTUBE SHORTS PEAK CLONE TRƯỚC TIÊN) -> CHỈ XOAY SANG PEXELS/STOCK NẾU CHỦ ĐỀ QUÁ KHÓ KIẾM TRÊN YT SHORTS
+        # CỨU HỘ TẦNG 1.5 (YOUTUBE SHORTS PEAK CLONE CHỈ KHI CHƯA QUÉT WAVE 1/2) -> SAU ĐÓ ƯU TIÊN PEXELS/STOCK HD VIDEO (4s)
         stock_hook_ok = False
-        try:
-            from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
-            rescue_subj = (
-                f"{beat_1_subject} / {beat_2_subject}"
-                if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
-                else (canonical_subject or primary_entity or topic)
-            )
-            rescue_yt_queries = [
-                q for q in dict.fromkeys([
-                    *(queries or []),
-                    beat_1_query,
-                    beat_2_query,
-                    canonical_subject or visual_keyword or topic,
-                ]) if q
-            ][:3]
-            t15_deadline_ts = time.monotonic() + 38.0
-            for rq_idx, st_q in enumerate(rescue_yt_queries):
-                if (t15_deadline_ts - time.monotonic()) <= 3.0:
-                    break
-                fb_q = rescue_yt_queries[rq_idx + 1] if (rq_idx + 1) < len(rescue_yt_queries) else topic
-                st_res = execute_youtube_short_peak_clone_sync(
-                    search_query=st_q,
-                    output_path=hook_output_clip,
-                    target_duration_sec=target_hook_duration_sec,
-                    fallback_query=fb_q,
-                    clip_role="HOOK",
-                    subject_entity=rescue_subj,
-                    topic=topic,
-                    narration=hook_narration,
-                    search_scope="SCRIPT_OVERALL",
-                    overall_script_query=topic or st_q,
-                    job_id=job_id,
-                    scene_id=1,
-                    channel_id=channel_id,
-                    skip_youtube_search=False,
-                    allow_3d_cgi_monster=is_3d_cgi_subject,
-                    deadline_ts=t15_deadline_ts,
+        if not top_curated_yt_cands:
+            try:
+                from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                rescue_subj = (
+                    f"{beat_1_subject} / {beat_2_subject}"
+                    if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
+                    else (canonical_subject or primary_entity or topic)
                 )
-                if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
-                    ok_st_sharp, st_sh_val = _ensure_hook_clip_sharpness_and_luma(st_res["media_path"], min_sharpness=12.5)
-                    if ok_st_sharp or st_sh_val >= 12.0:
-                        stock_hook_ok = True
-                        final_hook_visual_mode = "video"
-                        hook_mode = str(st_res.get("production_method") or "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK")
-                        full_pk_p = str(st_res.get("full_peak_path") or st_res["media_path"])
-                        full_pk_d = float(st_res.get("full_peak_duration_sec") or target_hook_duration_sec)
-                        st_yt_id = str(st_res.get("youtube_id") or "")
-                        st_src_url = str(st_res.get("source_url") or (f"https://www.youtube.com/watch?v={st_yt_id}" if len(st_yt_id) == 11 else full_pk_p))
-                        st_ov_score = float(st_res.get("vision_score") or 8.2)
-                        st_sh_round = round(float(st_sh_val), 2)
-                        pre_resolved_hook_media[1] = {
-                            "media_path": st_res["media_path"],
-                            "media_type": "hook_ready_video",
-                            "production_method": hook_mode,
-                            "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                            "full_peak_path": full_pk_p,
-                            "full_peak_duration_sec": full_pk_d,
-                            "youtube_id": st_yt_id,
-                            "source_url": st_src_url,
-                            "hook_verified": True,
-                            "hook_overall_score": st_ov_score,
-                            "hook_clean_score": 8.2,
-                            "hook_sharpness": st_sh_round,
-                            "strategy_rationale": f"Tier-1.5 YT Short Peak Hook ({st_res.get('title', st_q)[:45]})",
-                        }
-                        scene_1["media_path"] = st_res["media_path"]
-                        scene_1["media_type"] = "hook_ready_video"
-                        scene_1["production_method"] = hook_mode
-                        scene_1["full_peak_path"] = full_pk_p
-                        scene_1["full_peak_duration_sec"] = full_pk_d
-                        scene_1["youtube_id"] = st_yt_id
-                        scene_1["source_url"] = st_src_url
-                        scene_1["hook_verified"] = True
-                        scene_1["hook_overall_score"] = st_ov_score
-                        scene_1["hook_clean_score"] = 8.2
-                        scene_1["hook_sharpness"] = st_sh_round
-                        if scenes_media:
-                            scenes_media[0] = scene_1
-                        logger.info(f"🔥 [HookVideoNode Tier-1.5 YT Short Rescue] Đã nạp Peak Video cho Cảnh 1: {st_res['media_path']}")
+                rescue_yt_queries = [
+                    q for q in dict.fromkeys([
+                        *(queries or []),
+                        beat_1_query,
+                        beat_2_query,
+                        canonical_subject or visual_keyword or topic,
+                    ]) if q
+                ][:2]
+                t15_deadline_ts = min(
+                    (hook_deadline_ts - 4.0) if hook_deadline_ts is not None else (time.monotonic() + 16.0),
+                    time.monotonic() + 16.0,
+                )
+                for rq_idx, st_q in enumerate(rescue_yt_queries):
+                    if _hook_cancelled(6.0) or (t15_deadline_ts - time.monotonic()) <= 3.0:
                         break
-        except Exception as e_st_hk:
-            logger.debug(f"[HookVideoNode] Tier-1.5 YT Short hook rescue skip: {e_st_hk}")
+                    fb_q = rescue_yt_queries[rq_idx + 1] if (rq_idx + 1) < len(rescue_yt_queries) else topic
+                    st_res = execute_youtube_short_peak_clone_sync(
+                        search_query=st_q,
+                        output_path=hook_output_clip,
+                        target_duration_sec=target_hook_duration_sec,
+                        fallback_query=fb_q,
+                        clip_role="HOOK",
+                        subject_entity=rescue_subj,
+                        topic=topic,
+                        narration=hook_narration,
+                        search_scope="SCRIPT_OVERALL",
+                        overall_script_query=topic or st_q,
+                        job_id=job_id,
+                        scene_id=1,
+                        channel_id=channel_id,
+                        skip_youtube_search=False,
+                        allow_3d_cgi_monster=is_3d_cgi_subject,
+                        deadline_ts=t15_deadline_ts,
+                    )
+                    if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
+                        ok_st_sharp, st_sh_val = _ensure_hook_clip_sharpness_and_luma(st_res["media_path"], min_sharpness=12.5)
+                        if ok_st_sharp or st_sh_val >= 12.0:
+                            stock_hook_ok = True
+                            final_hook_visual_mode = "video"
+                            hook_mode = str(st_res.get("production_method") or "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK")
+                            full_pk_p = str(st_res.get("full_peak_path") or st_res["media_path"])
+                            full_pk_d = float(st_res.get("full_peak_duration_sec") or target_hook_duration_sec)
+                            st_yt_id = str(st_res.get("youtube_id") or "")
+                            st_src_url = str(st_res.get("source_url") or (f"https://www.youtube.com/watch?v={st_yt_id}" if len(st_yt_id) == 11 else full_pk_p))
+                            st_ov_score = float(st_res.get("vision_score") or 8.2)
+                            st_sh_round = round(float(st_sh_val), 2)
+                            pre_resolved_hook_media[1] = {
+                                "media_path": st_res["media_path"],
+                                "media_type": "hook_ready_video",
+                                "production_method": hook_mode,
+                                "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
+                                "full_peak_path": full_pk_p,
+                                "full_peak_duration_sec": full_pk_d,
+                                "youtube_id": st_yt_id,
+                                "source_url": st_src_url,
+                                "hook_verified": True,
+                                "hook_overall_score": st_ov_score,
+                                "hook_clean_score": 8.2,
+                                "hook_sharpness": st_sh_round,
+                                "strategy_rationale": f"Tier-1.5 YT Short Peak Hook ({st_res.get('title', st_q)[:45]})",
+                            }
+                            scene_1["media_path"] = st_res["media_path"]
+                            scene_1["media_type"] = "hook_ready_video"
+                            scene_1["production_method"] = hook_mode
+                            scene_1["full_peak_path"] = full_pk_p
+                            scene_1["full_peak_duration_sec"] = full_pk_d
+                            scene_1["youtube_id"] = st_yt_id
+                            scene_1["source_url"] = st_src_url
+                            scene_1["hook_verified"] = True
+                            scene_1["hook_overall_score"] = st_ov_score
+                            scene_1["hook_clean_score"] = 8.2
+                            scene_1["hook_sharpness"] = st_sh_round
+                            if scenes_media:
+                                scenes_media[0] = scene_1
+                            logger.info(f"🔥 [HookVideoNode Tier-1.5 YT Short Rescue] Đã nạp Peak Video cho Cảnh 1: {st_res['media_path']}")
+                            break
+            except Exception as e_st_hk:
+                logger.debug(f"[HookVideoNode] Tier-1.5 YT Short hook rescue skip: {e_st_hk}")
 
-        if not stock_hook_ok:
+        if not stock_hook_ok and not _hook_cancelled(6.0):
             try:
                 from app.agents.media_agent import MediaAgent
                 ma_s1 = MediaAgent()
                 s1_q_cands = [
                     q for q in dict.fromkeys([
-                        *(queries or []),
                         *(stock_broll_queries or []),
+                        *(queries or []),
                         canonical_subject or primary_entity or visual_keyword or topic,
                     ]) if q
-                ]
-                for s1_q in s1_q_cands[:4]:
-                    best_s1_vid = ma_s1.search_best_video_clip(
-                        s1_q,
-                        set(),
-                        None,
-                        hook_narration,
-                        topic,
+                ][:4]
+                if s1_q_cands:
+                    s1_primary_q = s1_q_cands[0]
+                    s1_va = {
+                        "analysis_source": "ai",
+                        "subject": canonical_subject or primary_entity or topic,
+                        "core_visual_entity": canonical_subject or primary_entity or topic,
+                        "topic": topic,
+                        "is_hook_scene": True,
+                        "skip_establishing_pass": True,
+                        "search_queries": s1_q_cands,
+                    }
+                    s1_broll_deadline = min(
+                        (hook_deadline_ts - 3.0) if hook_deadline_ts is not None else (time.monotonic() + 16.0),
+                        time.monotonic() + 16.0,
                     )
+                    best_s1_vid = ma_s1.search_best_video_clip(
+                        query=s1_primary_q,
+                        used_urls=set(),
+                        visual_analysis=s1_va,
+                        narration=hook_narration,
+                        topic=topic,
+                        cancel_event=cancel_event,
+                        deadline_ts=s1_broll_deadline,
+                    )
+                    s1_cand_urls = []
                     if best_s1_vid and best_s1_vid.get("url"):
-                        s1_raw_url = str(best_s1_vid["url"])
-                        s1_raw_title = str(best_s1_vid.get("title") or s1_q)
+                        s1_cand_urls.append(str(best_s1_vid["url"]))
+                        for alt_u in (best_s1_vid.get("_vision_alternates") or [])[:2]:
+                            if alt_u and str(alt_u) not in s1_cand_urls:
+                                s1_cand_urls.append(str(alt_u))
+                    for s1_raw_url in s1_cand_urls:
+                        if _hook_cancelled(3.5):
+                            break
+                        s1_raw_title = str((best_s1_vid or {}).get("title") or s1_primary_q)
                         if not rag.try_claim_in_job_video(
                             job_id=job_id, vid_id=s1_raw_url, url=s1_raw_url, title=s1_raw_title, scene_id=1
                         ):
@@ -2060,10 +2245,10 @@ Return ONLY valid JSON:
                                     final_hook_visual_mode = "video"
                                     hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
                                     is_broll_verified = bool(
-                                        best_s1_vid.get("vision_curated") or best_s1_vid.get("vision_verified")
+                                        (best_s1_vid or {}).get("vision_curated") or (best_s1_vid or {}).get("vision_verified")
                                     )
                                     broll_ov_score = float(
-                                        best_s1_vid.get("curation_score") or best_s1_vid.get("vision_score") or 8.0
+                                        (best_s1_vid or {}).get("curation_score") or (best_s1_vid or {}).get("vision_score") or 8.0
                                     )
                                     broll_sh_round = round(float(s1_broll_sh), 2)
                                     pre_resolved_hook_media[1] = {
@@ -2088,7 +2273,7 @@ Return ONLY valid JSON:
                                     scene_1["hook_sharpness"] = broll_sh_round
                                     if scenes_media:
                                         scenes_media[0] = scene_1
-                                    logger.info(f"🎬 [HookVideoNode B-Roll Rescue] Đã nạp Video chuyển động thật cho Cảnh 1: '{s1_q}'")
+                                    logger.info(f"🎬 [HookVideoNode B-Roll Rescue] Đã nạp Video chuyển động thật cho Cảnh 1: '{s1_primary_q}'")
                                     break
                                 else:
                                     Path(hook_output_clip).unlink(missing_ok=True)

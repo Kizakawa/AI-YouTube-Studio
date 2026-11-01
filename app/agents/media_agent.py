@@ -208,6 +208,7 @@ class MediaAgent:
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
         topic: str = "",
+        **kwargs: Any,
     ) -> Optional[Dict]:
         return self._stock.search_best_video_clip(
             query=query,
@@ -215,6 +216,7 @@ class MediaAgent:
             visual_analysis=visual_analysis,
             narration=narration,
             topic=topic,
+            **kwargs,
         )
 
     # ──────────────────────────────────────────────────────────────────────────

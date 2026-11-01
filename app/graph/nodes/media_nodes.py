@@ -494,8 +494,14 @@ def _fetch_longform_16x9_broll_clip_sync(
     prefer_px = (slot_in_4 == 3) or (chapter_num % 2 == 0)
 
     now_ts = time.monotonic()
+    chapter_num_2 = ((int(scene_id) - 1) // 2) + 1
+    existing_ch2_master = media_dir / "chapter_pool" / f"chapter_{chapter_num_2:02d}_master.mp4"
+    # Nếu chương chẵn (slot_in_4 == 3) đã có sẵn master 16:9 tải ở Phase A trên ổ cứng, cắt local ngay (~1.5s) thay vì chờ mạng 45s!
+    if not output_override_path and slot_in_4 == 3 and existing_ch2_master.exists() and existing_ch2_master.stat().st_size > 80_000:
+        prefer_stock_first = False
+
     if prefer_stock_first or bool(output_override_path):
-        st_first_dl = min(deadline_ts - 28.0, now_ts + 45.0) if (deadline_ts is not None and (deadline_ts - now_ts) > 36.0) else deadline_ts
+        st_first_dl = min(deadline_ts - 22.0, now_ts + 24.0) if (deadline_ts is not None and (deadline_ts - now_ts) > 28.0) else deadline_ts
         st_res = _try_stock_16x9_landscape(prefer_pixabay=prefer_px, sub_deadline_ts=st_first_dl)
         if st_res:
             return st_res
@@ -3769,26 +3775,48 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if is_lf_refine and not _refine_cancelled():
                 try:
                     out_lf_ref = str(media_dir / f"scene_{scene_id:03d}_refined_16x9_r{retry_count}.mp4")
-                    lf_ref_res = await asyncio.to_thread(
-                        _fetch_longform_16x9_broll_clip_sync,
-                        scene_id=scene_id,
-                        query=clean_kw_q or overall_refine_q,
-                        primary_entity=primary_entity or subj_refine,
-                        topic=state.get("topic", ""),
-                        narration=narr or state.get("topic", ""),
-                        target_duration_sec=sc_dur_sec,
-                        media_dir=media_dir,
-                        used_bvids=refine_used_bvids,
-                        used_urls=used_refine_urls,
-                        bvid_lock=refine_url_lock,
-                        media_agent=media_agent,
-                        is_scifi=is_scifi_val,
-                        job_id=job_id_refine,
-                        output_override_path=out_lf_ref,
-                        cancel_event=cancel_event,
-                        deadline_ts=deadline_ts,
-                    )
-                    if not (lf_ref_res and lf_ref_res.get("media_path") and Path(lf_ref_res["media_path"]).exists()):
+                    lf_ref_res = None
+                    # Ưu tiên số 1 (~1.5–2.5s trên ổ cứng): Cắt lát mới không trùng từ kho Chapter Master 16:9 đã tải sẵn
+                    if not has_semantic_vision_defect:
+                        from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
+                        lf_local_res = await asyncio.to_thread(
+                            slice_any_available_chapter_master_for_scene,
+                            media_dir=media_dir,
+                            scene_id=scene_id,
+                            target_duration_sec=sc_dur_sec,
+                            job_id=job_id_refine,
+                            output_override_path=out_lf_ref,
+                        )
+                        if lf_local_res and lf_local_res.get("media_path") and Path(lf_local_res["media_path"]).exists():
+                            ok_loc_clean, _ = await asyncio.to_thread(
+                                _verify_and_sanitize_refined_media, lf_local_res["media_path"], True, scene_id
+                            )
+                            if ok_loc_clean:
+                                lf_ref_res = lf_local_res
+                            else:
+                                Path(lf_local_res["media_path"]).unlink(missing_ok=True)
+                    # Ưu tiên số 2 (chỉ khi cắt local chưa đạt hoặc lỗi ngữ nghĩa): Tìm nguồn mạng 16:9 mới
+                    if not lf_ref_res and not _refine_cancelled():
+                        lf_ref_res = await asyncio.to_thread(
+                            _fetch_longform_16x9_broll_clip_sync,
+                            scene_id=scene_id,
+                            query=clean_kw_q or overall_refine_q,
+                            primary_entity=primary_entity or subj_refine,
+                            topic=state.get("topic", ""),
+                            narration=narr or state.get("topic", ""),
+                            target_duration_sec=sc_dur_sec,
+                            media_dir=media_dir,
+                            used_bvids=refine_used_bvids,
+                            used_urls=used_refine_urls,
+                            bvid_lock=refine_url_lock,
+                            media_agent=media_agent,
+                            is_scifi=is_scifi_val,
+                            job_id=job_id_refine,
+                            output_override_path=out_lf_ref,
+                            cancel_event=cancel_event,
+                            deadline_ts=deadline_ts,
+                        )
+                    if not (lf_ref_res and lf_ref_res.get("media_path") and Path(lf_ref_res["media_path"]).exists()) and not _refine_cancelled():
                         from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
                         lf_ref_res = await asyncio.to_thread(
                             slice_any_available_chapter_master_for_scene,
@@ -4188,8 +4216,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             item["hook_verified"] = False
             item.pop("hook_sharpness", None)
 
-    refine_sem = asyncio.Semaphore(4 if is_lf_refine else 6)
-    refine_item_timeout = 75.0 if is_lf_refine else 40.0
+    refine_sem = asyncio.Semaphore(8 if is_lf_refine else 6)
+    refine_item_timeout = 48.0 if is_lf_refine else 38.0
 
     async def _guarded_refine_single_item(item: Dict[str, Any]) -> None:
         if item.get("scene_id") not in failed_ids:

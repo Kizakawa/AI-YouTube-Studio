@@ -28,18 +28,37 @@ from app.utils.ffmpeg.color_and_motion import (
 # CHECKPOINT B: Cắt + Ghép N clips
 # ──────────────────────────────────────────────
 
+import threading
+
+_peak_metrics_cache_lock = threading.Lock()
+_peak_metrics_cache: Dict[Tuple[str, int, int, float, int], Dict[str, Any]] = {}
+
+
 def _scan_video_peak_metrics(
     input_path: str,
-    max_scan_sec: float = 120.0,
+    max_scan_sec: float = 90.0,
     sample_fps: int = 4,
 ) -> Optional[Dict[str, Any]]:
     """
-    Quét siêu tốc 1 lượt duy nhất (4fps @ 90x160 RGB24) để đo đồng thời:
+    Quét siêu tốc 1 lượt duy nhất (4fps @ 90x160 RGB24) có bộ nhớ đệm (memoize theo path + size + mtime_ns) để đo đồng thời:
     - Độ sáng (`lums`) & Độ tương phản (`contrasts`)
     - Chuyển động vùng trung tâm chủ thể 9:16 (`motions`: 65% Center-ROI + 35% Full-Frame)
     - Độ sắc nét & cuốn hút thị giác vùng trung tâm (`intrigues`: Center-ROI Edge Saliency)
-    Giúp phát hiện chính xác khoảnh khắc hành động bùng nổ nhất (Peak Burst) mà không cần gọi FFmpeg 2 lần.
+    Giúp phát hiện chính xác khoảnh khắc hành động bùng nổ nhất (Peak Burst) mà không bao giờ phải giải mã lại cùng 1 file 2-3 lần.
     """
+    cache_key: Optional[Tuple[str, int, int, float, int]] = None
+    try:
+        p_obj = Path(input_path)
+        if p_obj.exists():
+            st_info = p_obj.stat()
+            cache_key = (str(p_obj.resolve()), int(st_info.st_size), int(st_info.st_mtime_ns), float(max_scan_sec), int(sample_fps))
+            with _peak_metrics_cache_lock:
+                cached_m = _peak_metrics_cache.get(cache_key)
+                if cached_m is not None:
+                    return cached_m
+    except Exception:
+        cache_key = None
+
     try:
         src_sec = get_duration_ms(input_path) / 1000.0
         if src_sec <= 0.5:
@@ -106,7 +125,7 @@ def _scan_video_peak_metrics(
         if len(motions) > 1:
             motions[0] = motions[1]
 
-        return {
+        out_metrics = {
             "src_sec": src_sec,
             "sample_fps": sample_fps,
             "n_frames": n_frames,
@@ -115,6 +134,12 @@ def _scan_video_peak_metrics(
             "motions": motions,
             "intrigues": intrigues,
         }
+        if cache_key is not None:
+            with _peak_metrics_cache_lock:
+                if len(_peak_metrics_cache) >= 128:
+                    _peak_metrics_cache.pop(next(iter(_peak_metrics_cache)), None)
+                _peak_metrics_cache[cache_key] = out_metrics
+        return out_metrics
     except Exception as e:
         logger.debug(f"[_scan_video_peak_metrics] Lỗi quét frame metrics: {e}")
         return None
@@ -253,6 +278,7 @@ def find_hook_peak_window(
     min_duration: float = 3.5,
     max_duration: float = 15.0,
     exclude_ranges: Optional[List[Tuple[float, float]]] = None,
+    _precomputed_metrics: Optional[Dict[str, Any]] = None,
 ) -> Tuple[float, float]:
     """
     Phát hiện trọn vẹn khoảng thời gian ĐỈNH CAO LIÊN TỤC (start_offset_sec, full_peak_duration_sec)
@@ -265,7 +291,7 @@ def find_hook_peak_window(
     min_dur = max(2.5, float(min_duration or 3.5))
     max_dur = max(min_dur, float(max_duration or 15.0))
     try:
-        metrics = _precomputed_metrics if "_precomputed_metrics" in locals() else _scan_video_peak_metrics(input_path, max_scan_sec=120.0, sample_fps=4)
+        metrics = _precomputed_metrics if _precomputed_metrics is not None else _scan_video_peak_metrics(input_path, max_scan_sec=90.0, sample_fps=4)
         if not metrics:
             return 0.0, round(min_dur, 2)
         src_sec = float(metrics["src_sec"])

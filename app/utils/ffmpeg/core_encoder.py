@@ -192,10 +192,10 @@ def detect_hardware_encoder(force_recheck: bool = False) -> Dict[str, Any]:
 
     candidates = [
         ("h264_nvenc", ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "19", "-pix_fmt", "yuv420p"], "NVIDIA NVENC (GPU)"),
-        ("h264_mf", ["-c:v", "h264_mf", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Windows Media Foundation (GPU/DirectX)"),
-        ("h264_qsv", ["-c:v", "h264_qsv", "-global_quality", "20", "-pix_fmt", "nv12"], "Intel QuickSync (GPU)"),
-        ("h264_videotoolbox", ["-c:v", "h264_videotoolbox", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Apple VideoToolbox (GPU)"),
+        ("h264_qsv", ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "20", "-pix_fmt", "nv12"], "Intel QuickSync (GPU)"),
         ("h264_amf", ["-c:v", "h264_amf", "-quality", "quality", "-b:v", "10M", "-pix_fmt", "yuv420p"], "AMD AMF (GPU)"),
+        ("h264_videotoolbox", ["-c:v", "h264_videotoolbox", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Apple VideoToolbox (GPU)"),
+        ("h264_mf", ["-c:v", "h264_mf", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Windows Media Foundation (GPU/DirectX)"),
     ]
 
     if forced_encoder:
@@ -213,7 +213,7 @@ def detect_hardware_encoder(force_recheck: bool = False) -> Dict[str, Any]:
         try:
             probe_cmd = [
                 ffmpeg_bin, "-v", "error",
-                "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1",
+                "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
                 *test_args,
                 "-f", "null", "-"
             ]
@@ -226,7 +226,13 @@ def detect_hardware_encoder(force_recheck: bool = False) -> Dict[str, Any]:
                 }
                 logger.info(f"🚀 [HardwareAcceleration] Đã phát hiện và kích hoạt thành công GPU Video Encoder: '{enc_name}' ({disp_name})! Tốc độ render tăng 3x-10x.")
                 return _cached_hardware_encoder
-        except Exception:
+            elif enc_name in ("h264_nvenc", "h264_qsv", forced_encoder):
+                err_msg = (r.stderr or b"").decode("utf-8", errors="ignore").strip().splitlines()
+                short_err = err_msg[0][:180] if err_msg else f"returncode={r.returncode}"
+                logger.warning(f"⚠️ [HardwareAcceleration] Probe '{enc_name}' không khả dụng ({short_err}) -> thử GPU kế tiếp.")
+        except Exception as e_probe:
+            if enc_name in ("h264_nvenc", forced_encoder):
+                logger.debug(f"[HardwareAcceleration] Probe '{enc_name}' exception: {e_probe}")
             continue
 
     # Nếu tất cả GPU thất bại, dùng CPU
@@ -261,6 +267,20 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
                 "-cq", "18",
                 "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
             ]
+        if encoder == "h264_qsv":
+            return [
+                "-c:v", "h264_qsv",
+                "-preset", "veryfast",
+                "-global_quality", "18",
+                "-pix_fmt", "nv12", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            ]
+        if encoder == "h264_amf":
+            return [
+                "-c:v", "h264_amf",
+                "-quality", "speed",
+                "-b:v", "8M",
+                "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            ]
         return [
             "-threads", "2",
             "-c:v", "libx264",
@@ -273,19 +293,42 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
         if encoder == "h264_nvenc":
             return [
                 "-c:v", "h264_nvenc",
-                "-preset", "p1",
-                "-cq", "22",
-                "-b:v", "2.8M",
-                "-maxrate", "3.6M",
-                "-bufsize", "7.2M",
+                "-preset", "p2",
+                "-cq", "19",
+                "-b:v", "4.6M",
+                "-maxrate", "6.0M",
+                "-bufsize", "12M",
+                "-spatial-aq", "1",
+                "-aq-strength", "8",
+                "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            ]
+        if encoder == "h264_qsv":
+            return [
+                "-c:v", "h264_qsv",
+                "-preset", "veryfast",
+                "-global_quality", "19",
+                "-b:v", "4.6M",
+                "-maxrate", "6.0M",
+                "-bufsize", "12M",
+                "-pix_fmt", "nv12", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            ]
+        if encoder == "h264_amf":
+            return [
+                "-c:v", "h264_amf",
+                "-quality", "balanced",
+                "-rc", "cbr",
+                "-b:v", "4.6M",
                 "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
             ]
         return [
             "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-crf", "22",
-            "-maxrate", "3.5M",
-            "-bufsize", "7M",
+            "-preset", "superfast",
+            "-crf", "19",
+            "-b:v", "4.5M",
+            "-maxrate", "6.0M",
+            "-bufsize", "12M",
+            "-aq-mode", "3",
+            "-aq-strength", "0.8",
             "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
 
@@ -316,11 +359,12 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
     elif encoder == "h264_qsv":
         return [
             "-c:v", "h264_qsv",
+            "-preset", "veryfast",
             "-global_quality", "20" if is_high else "22",
             "-b:v", "5M" if is_high else "4M",
             "-maxrate", "6.5M" if is_high else "5.5M",
             "-bufsize", "13M" if is_high else "11M",
-            "-pix_fmt", "nv12",
+            "-pix_fmt", "nv12", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     elif encoder == "h264_videotoolbox":
         return [
@@ -458,6 +502,60 @@ def get_duration_ms(file_path: str) -> int:
         except (KeyError, ValueError):
             pass
     return 0
+
+
+_INCOMPLETE_MP4_NAME_TOKENS = (
+    "_fftmp_",
+    ".tmp",
+    "_tmp",
+    ".stitch",
+    ".vtrim",
+    "_raw",
+    ".part",
+    "_fullpeak",
+)
+
+
+def is_completed_clean_mp4(
+    file_path: Union[str, Path],
+    min_size_bytes: int = 15_000,
+    min_duration_ms: int = 1000,
+    allow_raw_source: bool = False,
+) -> bool:
+    """
+    Kiểm tra nghiêm ngặt một file video `.mp4` đã hoàn tất ghi đĩa (có đầy đủ `moov` atom,
+    thời lượng `>= min_duration_ms`, không phải file tạm FFmpeg/yt-dlp đang ghi dở).
+    """
+    try:
+        p = Path(file_path)
+        if not p.is_file():
+            return False
+        name_low = p.name.lower()
+        blocked_tokens = (
+            tuple(tok for tok in _INCOMPLETE_MP4_NAME_TOKENS if tok != "_raw")
+            if allow_raw_source
+            else _INCOMPLETE_MP4_NAME_TOKENS
+        )
+        if any(tok in name_low for tok in blocked_tokens):
+            return False
+        if p.stat().st_size < min_size_bytes:
+            return False
+        return get_duration_ms(str(p)) >= min_duration_ms
+    except Exception:
+        return False
+
+
+def get_video_dimensions(file_path: Union[str, Path]) -> Tuple[int, int]:
+    """Đọc kích thước thực tế `(width, height)` của luồng video đầu tiên qua `ffprobe`."""
+    info = probe_file(str(file_path))
+    if info and isinstance(info.get("streams"), list):
+        for st in info["streams"]:
+            if st.get("codec_type") == "video":
+                w = int(st.get("width") or 0)
+                h = int(st.get("height") or 0)
+                if w > 0 and h > 0:
+                    return w, h
+    return 0, 0
 
 
 def run_ffmpeg(args: List[str], timeout: int = FFMPEG_TIMEOUT) -> subprocess.CompletedProcess:

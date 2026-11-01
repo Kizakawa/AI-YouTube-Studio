@@ -709,24 +709,30 @@ class VisualCritic:
         if not keys:
             return {}
 
-        tw, th = 220, 390
+        is_widescreen_sheet = any(
+            "16X9" in str(it.get("production_method") or "").upper()
+            or str(it.get("media_path") or "").lower().endswith("_16x9.mp4")
+            for it in scenes_media
+        ) or len(scenes_media) >= 14
+        tw, th = (320, 180) if is_widescreen_sheet else (220, 390)
+        from concurrent.futures import ThreadPoolExecutor
+
         thumbs: List[tuple[int, Image.Image, str]] = []
         with tempfile.TemporaryDirectory() as td:
-            for item in scenes_media:
+            def _extract_cs_thumb(item: Dict[str, Any]) -> Optional[tuple[int, Image.Image, str]]:
                 sid = int(item.get("scene_id") or 0)
                 mpath = str(item.get("media_path") or "")
                 prod_m_cs = str(item.get("production_method") or "")
                 narr = str(item.get("narration") or item.get("visual_keyword") or "")
                 if sid <= 0 or not mpath or not Path(mpath).exists():
-                    continue
+                    return None
                 if bool(item.get("hook_verified")):
-                    continue
+                    return None
                 if (
                     "DOODLE_2D" in prod_m_cs
-                    or "16X9" in prod_m_cs
-                    or mpath.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4", "_16x9.mp4"))
+                    or mpath.lower().endswith(("_doodle_2d.mp4", "_doodle.mp4"))
                 ):
-                    continue
+                    return None
                 p = Path(mpath)
                 im_obj: Optional[Image.Image] = None
                 try:
@@ -758,83 +764,91 @@ class VisualCritic:
                     draw.text((8, 7), f"SCENE #{sid}", fill=(255, 230, 0))
                     vis_kw_t = str(item.get("visual_keyword") or "").strip()
                     label_desc = f"[Target Visual: {vis_kw_t}] {narr[:90]}" if vis_kw_t else narr[:90]
-                    thumbs.append((sid, im_obj, label_desc))
+                    return (sid, im_obj, label_desc)
+                return None
+
+            with ThreadPoolExecutor(max_workers=min(max(len(scenes_media), 1), 8)) as cs_thumb_pool:
+                for t_res in cs_thumb_pool.map(_extract_cs_thumb, scenes_media):
+                    if t_res is not None:
+                        thumbs.append(t_res)
 
         if not thumbs:
             return {}
 
-        cols = min(4, len(thumbs))
-        rows = (len(thumbs) + cols - 1) // cols
-        sheet = Image.new("RGB", (cols * tw, rows * th), (12, 12, 12))
-        scene_lines: List[str] = []
-        for idx, (sid, im_t, narr_t) in enumerate(thumbs):
-            r_i = idx // cols
-            c_i = idx % cols
-            sheet.paste(im_t, (c_i * tw, r_i * th))
-            scene_lines.append(f"- SCENE #{sid}: \"{narr_t}\"")
+        rotator = KeyRotator(settings.get_gemini_keys_pool())
+        vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
+        all_out_reasons: Dict[int, str] = {}
+        batch_chunk_size = 20
+        for b_start in range(0, len(thumbs), batch_chunk_size):
+            chunk_thumbs = thumbs[b_start : b_start + batch_chunk_size]
+            cols = min(4, len(chunk_thumbs))
+            rows = (len(chunk_thumbs) + cols - 1) // cols
+            sheet = Image.new("RGB", (cols * tw, rows * th), (12, 12, 12))
+            scene_lines: List[str] = []
+            for idx, (sid, im_t, narr_t) in enumerate(chunk_thumbs):
+                r_i = idx // cols
+                c_i = idx % cols
+                sheet.paste(im_t, (c_i * tw, r_i * th))
+                scene_lines.append(f"- SCENE #{sid}: \"{narr_t}\"")
 
-        buf = io.BytesIO()
-        sheet.save(buf, format="JPEG", quality=78)
-        b64_sheet = base64.b64encode(buf.getvalue()).decode("ascii")
+            buf = io.BytesIO()
+            sheet.save(buf, format="JPEG", quality=80)
+            b64_sheet = base64.b64encode(buf.getvalue()).decode("ascii")
 
-        prompt = f"""You are a strict Visual Continuity & Quality Director inspecting the final scene frames of a YouTube Short BEFORE rendering.
+            prompt = f"""You are a strict Visual Continuity & Quality Director inspecting the final scene frames of a YouTube {'16:9 Documentary' if is_widescreen_sheet else 'Short'} BEFORE rendering.
 Primary Protagonist / Anchor Entity of this video: "{primary_entity}"
 Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ... along with each scene's [Target Visual] and spoken narration):
 {chr(10).join(scene_lines)}
 
 Inspect every labeled tile carefully and flag ONLY scenes that have severe visual defects:
-1. Magazine / Textbook / Infographic / Burned-in Subtitle, Mirrored Text, or AI Generator Corner Watermark clutter: Frames containing paragraphs of explanatory text, anatomy callout arrows/labels, big channel logos/banners, burned-in third-party TikTok/Shorts subtitles/mirrored text at the top or bottom, OR any AI video generator corner badge/sparkle icon (CHECK ALL 4 CORNERS CLOSELY — especially a small white/translucent 4-point diamond/star sparkle icon `✦` in the bottom-right corner from Gemini/Veo, or Sora/Kling/Runway/Pika/CapCut badges).
+1. Magazine / Textbook / Infographic / Burned-in Subtitle, Uploader Watermark ("By: ..."), Black Letterbox/Pillarbox Bars, or AI Generator Corner Watermark clutter: Frames containing explanatory text, anatomy callout arrows/labels, channel logos/banners, creator watermarks (including Chinese/foreign "By: ..." text at the top/corners), black horizontal letterbox or vertical pillarbox borders, burned-in third-party subtitles, OR any AI video generator corner badge/sparkle icon (`✦`).
 2. Surreal AI Deformities: Frames showing grotesque AI hallucinations (e.g. a human arm/leg grafted onto an animal, gibberish digital meters, or mutated body parts).
-3. Wrong Animal Family / Missing Subject / Unrelated Object (2-TIER DOCUMENTARY B-ROLL & FAMILY-LEVEL CHECK):
-   - 2-TIER B-ROLL RULE FOR MULTI-ENTITY SCENES: When a scene mentions two entities interacting, a clean wild shot showing AT LEAST ONE of them (EITHER "{primary_entity}" OR any secondary entity named in that scene) is 100% VALID documentary cutaway B-Roll. NEVER fail a scene for "missing the other entity" when "{primary_entity}" or the scene's named entity is clearly visible!
-   - SUB-SPECIES TOLERANCE: Accept closely-related wild sub-species within the exact same ecological predator/prey guild and genus/family (e.g., wild predatory requiem/mackerel sharks like reef/tiger/bull/great white shark for bull shark, or wild crocodile/alligator for saltwater crocodile — but DO NOT substitute gentle filter-feeding whale sharks for apex predatory sharks, or domestic pets for wild predators). Flag ONLY when the frame shows a different animal guild/family (e.g., whale shark for bull shark, lion instead of bear, domestic pet instead of wild predator, human office/DJ mixer/car) OR an empty background texture where NO relevant animal/subject is visible at all.
-   - HABITAT/POSE TOLERANCE (ONLY WHEN RULES 1 & 2 ARE 100% CLEAN): If Rules 1 & 2 are 100% clean (zero watermarks, zero burned-in subtitles, zero AI corner sparkle icons `✦`, zero AI deformities) and a valid entity from the scene or "{primary_entity}" is clearly shown, PASS IT.
+3. Wrong Animal Family / Wrong Ecosystem / Contradictory Subject (2-TIER DOCUMENTARY B-ROLL & FAMILY-LEVEL CHECK):
+   - 2-TIER B-ROLL RULE FOR MULTI-ENTITY & HABITAT SCENES: When a scene mentions multiple entities or describes their wild ecosystem/river/forest/ocean/historical setting, a clean shot showing AT LEAST ONE of the named entities OR a clean wild establishing shot of that exact named ecosystem/habitat (with ZERO tourists/boats/unrelated animals) is 100% VALID documentary cutaway B-Roll.
+   - STRICT WRONG-SPECIES / WRONG-CONTINENT REJECTION: IMMEDIATELY FAIL any scene showing animals/prey from a completely different continent or family not mentioned in the video (e.g., African savanna zebra/giraffe/lion/elephant in an Amazonian story, whale shark for predatory shark, domestic pet/livestock instead of wild predator, or modern human office/DJ mixer/car/snowboarder).
 
 Return ONLY valid JSON in this exact format:
 {{
   "failed_scenes": [
-    {{"scene_id": 4, "reason": "Contains magazine infographic text labels and HOW IT WORKS watermark"}}
+    {{"scene_id": 4, "reason": "Contains creator watermark or wrong continent species"}}
   ]
 }}"""
 
-        rotator = KeyRotator(settings.get_gemini_keys_pool())
-        vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
-        for model_name, api_key in rotator.iter_best_model_key_pairs(vision_models, max_total_attempts=3):
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt},
-                            {"inline_data": {"mime_type": "image/jpeg", "data": b64_sheet}},
-                        ]
-                    }
-                ],
-                "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
-            }
-            try:
-                t_req_cs = time.monotonic()
-                resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(14))
-                cs_elapsed = time.monotonic() - t_req_cs
-                if resp.status_code == 200:
-                    rotator.record_model_success(api_key, model_name, cs_elapsed)
-                    cands = resp.json().get("candidates") or []
-                    if cands:
-                        txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
-                        m = re.search(r"\{.*\}", txt, re.DOTALL)
-                        if m:
-                            data = json.loads(m.group(0))
-                            out_reasons: Dict[int, str] = {}
-                            for item_f in (data.get("failed_scenes") or []):
-                                if isinstance(item_f, dict) and item_f.get("scene_id"):
-                                    out_reasons[int(item_f["scene_id"])] = str(item_f.get("reason") or "Lệch chủ đề/chứa chữ rác")
-                            return out_reasons
-                elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
-                    rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
-            except Exception as e_v:
-                rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_v))
-                continue
-        return {}
+            for model_name, api_key in rotator.iter_best_model_key_pairs(vision_models, max_total_attempts=4):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": prompt},
+                                {"inline_data": {"mime_type": "image/jpeg", "data": b64_sheet}},
+                            ]
+                        }
+                    ],
+                    "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
+                }
+                try:
+                    t_req_cs = time.monotonic()
+                    resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(15))
+                    cs_elapsed = time.monotonic() - t_req_cs
+                    if resp.status_code == 200:
+                        rotator.record_model_success(api_key, model_name, cs_elapsed)
+                        cands = resp.json().get("candidates") or []
+                        if cands:
+                            txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []) if not p.get("thought"))
+                            m = re.search(r"\{.*\}", txt, re.DOTALL)
+                            if m:
+                                data = json.loads(m.group(0))
+                                for item_f in (data.get("failed_scenes") or []):
+                                    if isinstance(item_f, dict) and item_f.get("scene_id"):
+                                        all_out_reasons[int(item_f["scene_id"])] = str(item_f.get("reason") or "Lệch chủ đề/chứa chữ rác")
+                                break
+                    elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
+                        rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
+                except Exception as e_v:
+                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_v))
+                    continue
+        return all_out_reasons
 
     @trace_custom_span("VisualCritic.evaluate_media", run_type="chain")
     def evaluate_media(
@@ -1062,23 +1076,24 @@ Return ONLY valid JSON in this exact format:
                 "is_long_peak_cont": is_long_peak_cont,
             }
 
-        max_workers = min(max(len(scenes_media), 1), 8)
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            inspected_list = list(pool.map(_inspect_single_scene, scenes_media))
-
+        max_workers = min(max(len(scenes_media), 1), 12)
         vision_semantic_failures: Dict[int, str] = {}
-        try:
-            vision_semantic_failures = self._gemini_vision_audit_contact_sheet(
-                scenes_media=scenes_media,
-                primary_entity=primary_entity,
+        with ThreadPoolExecutor(max_workers=max_workers + 1) as pool:
+            cs_future = pool.submit(
+                self._gemini_vision_audit_contact_sheet,
+                scenes_media,
+                primary_entity,
             )
-            if vision_semantic_failures:
-                logger.warning(
-                    f"👁️ [VisualCritic ContactSheet Vision] Phát hiện {len(vision_semantic_failures)} cảnh lệch nội dung/chứa chữ tạp chí: "
-                    f"{vision_semantic_failures}"
-                )
-        except Exception as e_cs:
-            logger.debug(f"[VisualCritic ContactSheet Vision] skip: {e_cs}")
+            inspected_list = list(pool.map(_inspect_single_scene, scenes_media))
+            try:
+                vision_semantic_failures = cs_future.result(timeout=35.0) or {}
+                if vision_semantic_failures:
+                    logger.warning(
+                        f"👁️ [VisualCritic ContactSheet Vision] Phát hiện {len(vision_semantic_failures)} cảnh lệch nội dung/chứa chữ tạp chí: "
+                        f"{vision_semantic_failures}"
+                    )
+            except Exception as e_cs:
+                logger.debug(f"[VisualCritic ContactSheet Vision] skip: {e_cs}")
 
         scene_scores: List[SceneVisualScore] = []
         failed_scene_ids: List[int] = []

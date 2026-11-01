@@ -49,9 +49,19 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     target_w = 1920 if is_lf_pre else 1080
     target_h = 1080 if is_lf_pre else 1920
     render_retry_count = int(state.get("render_retry_count", 0) or 0)
+    # Giữ lại các clip_*.mp4 còn nguyên vẹn & có mtime >= media_path để VideoAgent tái sử dụng tức thì khi QA retry
     if render_retry_count > 0:
-        for _stale_clip in (work_dir / "clips").glob("clip_*.mp4"):
-            _stale_clip.unlink(missing_ok=True)
+        active_mtimes = {
+            int(m.get("scene_id") or 0): Path(str(m.get("media_path"))).stat().st_mtime
+            for m in scenes_media
+            if isinstance(m, dict) and m.get("scene_id") and m.get("media_path") and Path(str(m.get("media_path"))).exists()
+        }
+        for _cand_clip in (work_dir / "clips").glob("clip_*.mp4"):
+            m_cid = __import__("re").search(r"clip_(\d+)\.mp4$", _cand_clip.name)
+            cid_int = int(m_cid.group(1)) if m_cid else -1
+            src_mt = active_mtimes.get(cid_int)
+            if src_mt is None or _cand_clip.stat().st_size <= 25_000 or _cand_clip.stat().st_mtime < src_mt:
+                _cand_clip.unlink(missing_ok=True)
 
     for idx_m, m in enumerate(scenes_media):
         if not isinstance(m, dict):
@@ -65,6 +75,29 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         cur_media_path = str(m.get("media_path") or "")
         cur_media_type = str(m.get("media_type") or "image")
         if sc_id == 1 and cur_media_path and Path(cur_media_path).exists():
+            if is_lf_pre and (
+                not cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
+                or "hook_motion_" in Path(cur_media_path).name.lower()
+            ):
+                try:
+                    from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
+                    lf_s1_out = str(work_dir / "media" / "scene_001_prerender_sharp_16x9.mp4")
+                    lf_s1_res = slice_any_available_chapter_master_for_scene(
+                        media_dir=work_dir / "media",
+                        scene_id=1,
+                        target_duration_sec=max(dur_ms / 1000.0, 2.5) + 0.2,
+                        job_id=job_id,
+                        output_override_path=lf_s1_out,
+                    )
+                    if lf_s1_res and lf_s1_res.get("media_path") and Path(lf_s1_res["media_path"]).exists():
+                        cur_media_path = lf_s1_res["media_path"]
+                        cur_media_type = "hook_ready_video"
+                        m["media_path"] = cur_media_path
+                        m["media_type"] = cur_media_type
+                        m["pose_images"] = []
+                        logger.info(f"[RenderNode 16:9] Đã nâng cấp Cảnh 1 sang Video 16:9 sắc nét: {Path(cur_media_path).name}")
+                except Exception as _e_lf_s1:
+                    logger.debug(f"[RenderNode 16:9] Pre-render Scene 1 pool upgrade skip: {_e_lf_s1}")
             if not cur_media_path.lower().endswith((".mp4", ".mov", ".webm")):
                 try:
                     from app.utils.ffmpeg_helper import render_opening_hook_multi_cut
@@ -96,7 +129,29 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             ):
                 try:
                     from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-                    _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=12.4 if render_retry_count > 0 else 12.0)
+                    ok_pre_sh, pre_sh_val = _ensure_hook_clip_sharpness_and_luma(
+                        cur_media_path,
+                        min_sharpness=12.8 if is_lf_pre else (12.4 if render_retry_count > 0 else 12.0),
+                    )
+                    if not ok_pre_sh and is_lf_pre:
+                        from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
+                        lf_s1_sharp = str(work_dir / "media" / "scene_001_prerender_sharp_rescue_16x9.mp4")
+                        lf_s1_r2 = slice_any_available_chapter_master_for_scene(
+                            media_dir=work_dir / "media",
+                            scene_id=1,
+                            target_duration_sec=max(dur_ms / 1000.0, 2.5) + 0.2,
+                            job_id=job_id,
+                            output_override_path=lf_s1_sharp,
+                        )
+                        if lf_s1_r2 and lf_s1_r2.get("media_path") and Path(lf_s1_r2["media_path"]).exists():
+                            cur_media_path = lf_s1_r2["media_path"]
+                            cur_media_type = "hook_ready_video"
+                            m["media_path"] = cur_media_path
+                            m["media_type"] = cur_media_type
+                            m["pose_images"] = []
+                            logger.info(
+                                f"[RenderNode 16:9] Cảnh 1 độ nét thấp ({pre_sh_val:.2f} < 12.8) -> Đã thay bằng Video 16:9 sắc nét: {Path(cur_media_path).name}"
+                            )
                 except Exception as e_s1_pre:
                     logger.debug(f"[RenderNode] Pre-render hook sharpness check skip: {e_s1_pre}")
 
@@ -234,7 +289,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             clean_thumb_source = final_output
             best_src_score = -1.0
             with tempfile.TemporaryDirectory() as td_th:
-                for idx_th, sc_th in enumerate(enriched_scenes):
+                for idx_th, sc_th in enumerate(enriched_scenes[:12]):
                     mp_th = str(
                         (sc_th.get("media_path") if isinstance(sc_th, dict) else getattr(sc_th, "media_path", ""))
                         or ""
@@ -325,6 +380,17 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
     video_score = eval_res.get("score", 0)
     combined_passed = bool(qa_report.passed and eval_res.get("passed", True))
     combined_issues = list(dict.fromkeys(list(qa_report.issues) + list(eval_res.get("issues", []))))
+
+    # Hard-block bất kỳ video nào còn sót thẻ chữ xanh dương placeholder (_graphic.png)
+    graphic_scenes = [
+        int(sc_m.get("scene_id") or 0)
+        for sc_m in (state.get("scenes_media") or [])
+        if isinstance(sc_m, dict) and str(sc_m.get("media_path") or "").lower().endswith("_graphic.png")
+    ]
+    if graphic_scenes:
+        video_score = max(0, video_score - 30)
+        combined_passed = False
+        combined_issues.append(f"Còn sót thẻ chữ placeholder (_graphic.png) ở cảnh {graphic_scenes}")
 
     logger.info(
         f"🎬 [VideoQA] File: {Path(qa_report.video_path).name} | "

@@ -44,6 +44,43 @@ def _infer_media_type(media_path: Optional[str]) -> str:
     return "video" if suffix in _VIDEO_EXTENSIONS else "image"
 
 
+_system_awake_lock = __import__("threading").Lock()
+_active_awake_pipelines = 0
+
+
+def _acquire_system_awake_guard() -> None:
+    """Ngăn Windows tự động rơi vào Modern Standby / Sleep làm đứt kết nối mạng khi tiến trình dựng video chạy ngầm."""
+    global _active_awake_pipelines
+    if os.name != "nt":
+        return
+    with _system_awake_lock:
+        _active_awake_pipelines += 1
+        if _active_awake_pipelines == 1:
+            try:
+                import ctypes
+                # ES_CONTINUOUS (0x80000000) | ES_SYSTEM_REQUIRED (0x00000001) | ES_AWAYMODE_REQUIRED (0x00000040)
+                res = ctypes.windll.kernel32.SetThreadExecutionState(0x80000041)
+                if not res:
+                    ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+            except Exception:
+                pass
+
+
+def _release_system_awake_guard() -> None:
+    """Trả lại trạng thái quản lý năng lượng bình thường cho Windows khi tất cả Job dựng video đã hoàn tất."""
+    global _active_awake_pipelines
+    if os.name != "nt":
+        return
+    with _system_awake_lock:
+        _active_awake_pipelines = max(0, _active_awake_pipelines - 1)
+        if _active_awake_pipelines == 0:
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+            except Exception:
+                pass
+
+
 class VideoPipeline:
     """
     Orchestrator cho 1 VideoJob.
@@ -69,6 +106,11 @@ class VideoPipeline:
         self._image_agent = ImageAgent()
         self._visual_curation_agent = VisualCurationAgent()
         self._last_db_pct: int = -20
+        try:
+            from app.utils.log_config import ensure_file_logging_attached
+            ensure_file_logging_attached()
+        except Exception:
+            pass
 
     async def _report_progress(self, stage: str, message: str, percent: int = 0):
         """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard kèm phần trăm % (gộp DB write tránh nghẽn Cloud Pooler)."""
@@ -109,6 +151,8 @@ class VideoPipeline:
         """
         try:
             # [FIX] Kiểm tra dung lượng đĩa trước khi bắt đầu render — tránh crash giữa chừng do đĩa đầy
+            render_succeeded = False
+            _acquire_system_awake_guard()
             import shutil as _shutil
             _temp_dir_for_check = Path(settings.TEMP_DIR)
             _temp_dir_for_check.mkdir(parents=True, exist_ok=True)
@@ -424,6 +468,7 @@ class VideoPipeline:
             await self._report_progress("ERROR", f"❌ Quá trình dựng video thất bại: {e}")
             raise
         finally:
+            _release_system_awake_guard()
             # Chỉ xóa thư mục tạm khi job đã hoàn thành thành công (giữ lại audio & media cache nếu lỗi để retry tức thì!)
             if render_succeeded:
                 try:
@@ -862,16 +907,19 @@ class VideoPipeline:
                     f"[Job {self.job_id}] ⚠️ PHÁT HIỆN TRÙNG HÌNH ẢNH: Cảnh {enriched_scene.scene_id} "
                     f"trùng với Cảnh #{duplicate_scene_id}! Đang tự động sinh ảnh/video AI độc bản thay thế..."
                 )
+                is_lf_dedup = len(scenes) >= 14 or str(getattr(self, "video_format", "") or "").lower() == "long"
+                target_ar = "16:9" if is_lf_dedup else "9:16"
+                shot_orient = "widescreen 16:9 horizontal" if is_lf_dedup else "vertical 9:16"
                 unique_ai_prompt = (
-                    f"Cinematic 8k vertical shot, {enriched_scene.visual_prompt or enriched_scene.visual_keyword or topic}, "
-                    f"scene {enriched_scene.scene_id} unique composition, photorealistic, dramatic atmosphere, 9:16 composition"
+                    f"Cinematic 8k {shot_orient} shot, {enriched_scene.visual_prompt or enriched_scene.visual_keyword or topic}, "
+                    f"scene {enriched_scene.scene_id} unique composition, photorealistic, dramatic atmosphere, {target_ar} composition"
                 )
                 replacement_path = str(Path(media_dir) / f"scene_{enriched_scene.scene_id:03d}_dedup_unique.jpg")
                 res_unique = await asyncio.to_thread(
                     self._image_agent.generate_scene_image,
                     unique_ai_prompt,
                     replacement_path,
-                    "9:16",
+                    target_ar,
                     "cinematic",
                     enriched_scene.scene_id,
                     unique_ai_prompt,
@@ -880,17 +928,18 @@ class VideoPipeline:
                 )
                 if res_unique and Path(res_unique).exists() and Path(res_unique).stat().st_size > 2000:
                     final_path = res_unique
-                    anim_p = str(Path(media_dir) / f"scene_{enriched_scene.scene_id:03d}_dedup_anim.mp4")
-                    res_anim = await asyncio.to_thread(
-                        ai_video_agent.animate_thematic_image,
-                        image_path=res_unique,
-                        output_path=anim_p,
-                        duration_seconds=max(float(getattr(enriched_scene, 'actual_duration_seconds', 3.5) or 3.5), 2.0),
-                        camera_motion=getattr(enriched_scene, 'camera_motion', None) or "zoom_out",
-                        is_hook=(enriched_scene.scene_id == 1),
-                    )
-                    if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
-                        final_path = res_anim
+                    if not is_lf_dedup:
+                        anim_p = str(Path(media_dir) / f"scene_{enriched_scene.scene_id:03d}_dedup_anim.mp4")
+                        res_anim = await asyncio.to_thread(
+                            ai_video_agent.animate_thematic_image,
+                            image_path=res_unique,
+                            output_path=anim_p,
+                            duration_seconds=max(float(getattr(enriched_scene, 'actual_duration_seconds', 3.5) or 3.5), 2.0),
+                            camera_motion=getattr(enriched_scene, 'camera_motion', None) or "zoom_out",
+                            is_hook=(enriched_scene.scene_id == 1),
+                        )
+                        if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                            final_path = res_anim
 
                     result[enriched_idx] = enriched_scene.model_copy(update={
                         "media_path": final_path,
@@ -1766,7 +1815,8 @@ class VideoPipeline:
         if not p.exists() or p.stat().st_size < 1000:
             return False
         if p.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv"):
-            return p.stat().st_size > 5000
+            from app.utils.ffmpeg_helper import is_completed_clean_mp4
+            return is_completed_clean_mp4(path_str, min_size_bytes=5000, min_duration_ms=800, allow_raw_source=True)
         return VideoPipeline._is_valid_image_file(path_str)
 
     @staticmethod

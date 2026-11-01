@@ -71,6 +71,54 @@ class ColorConsoleFormatter(logging.Formatter):
         return line
 
 
+def ensure_file_logging_attached(level: str = "INFO") -> None:
+    """
+    Gắn idempotent RotatingFileHandler -> storage/logs/app.log nếu tiến trình chạy qua CLI/Script/Batch
+    chưa gọi configure_logging() từ run.py (không xóa stdout handler hiện có).
+    """
+    try:
+        from logging.handlers import RotatingFileHandler
+        from pathlib import Path
+
+        root = logging.getLogger()
+        log_dir = Path("storage/logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        target_log = (log_dir / "app.log").resolve()
+
+        for h in list(root.handlers):
+            base_fn = getattr(h, "baseFilename", None)
+            if base_fn:
+                try:
+                    if Path(base_fn).resolve() == target_log:
+                        return
+                except Exception:
+                    pass
+
+        level_val = getattr(logging, (os.getenv("LOG_LEVEL") or level or "INFO").upper(), logging.INFO)
+        if root.level == logging.NOTSET or root.level > level_val:
+            root.setLevel(level_val)
+
+        file_handler = RotatingFileHandler(
+            target_log,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(level_val)
+        file_handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s -- %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        ))
+        root.addHandler(file_handler)
+
+        for noisy_lib in ("httpx", "httpcore", "urllib3",
+                          "googleapiclient.discovery", "google.auth",
+                          "google.auth.transport"):
+            logging.getLogger(noisy_lib).setLevel(logging.WARNING)
+    except Exception:
+        pass
+
+
 def configure_logging(level: str = "INFO", log_format: Optional[str] = None) -> None:
     """
     Goi 1 lan duy nhat tai run.py.

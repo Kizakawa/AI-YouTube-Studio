@@ -70,6 +70,11 @@ class GraphRunner:
         job_id: int,
         progress_callback: Optional[Callable[[str, str, int], Awaitable[None]]] = None
     ):
+        try:
+            from app.utils.log_config import ensure_file_logging_attached
+            ensure_file_logging_attached()
+        except Exception:
+            pass
         self.job_id = job_id
         self.progress_callback = progress_callback
         self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
@@ -147,10 +152,20 @@ class GraphRunner:
             try:
                 import inspect
                 sig = inspect.signature(self.progress_callback)
-                if len(sig.parameters) >= 3:
-                    await self.progress_callback(stage, message, percent)
+                coro = (
+                    self.progress_callback(stage, message, percent)
+                    if len(sig.parameters) >= 3
+                    else self.progress_callback(stage, message)
+                )
+                if percent >= 100:
+                    await asyncio.wait_for(coro, timeout=3.5)
                 else:
-                    await self.progress_callback(stage, message)
+                    async def _fire_cb(_c):
+                        try:
+                            await asyncio.wait_for(_c, timeout=3.0)
+                        except Exception:
+                            pass
+                    asyncio.create_task(_fire_cb(coro))
             except Exception as e:
                 logger.warning(f"Lỗi khi gọi progress_callback: {e}")
 

@@ -55,6 +55,9 @@ class VideoAgent:
         """
         work_dir = Path(job.output_path).parent / f"render_tmp_{job.job_id}"
         work_dir.mkdir(parents=True, exist_ok=True)
+        from config.settings import settings as _va_settings
+        clips_cache_dir = Path(_va_settings.TEMP_DIR) / f"job_{job.job_id}" / "clips"
+        clips_cache_dir.mkdir(parents=True, exist_ok=True)
 
         async def report(msg: str, pct: int):
             if progress_callback:
@@ -69,7 +72,7 @@ class VideoAgent:
             # ── Step 1: Chuẩn bị scene clips với Ken Burns đa chế độ ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Chuẩn bị {len(job.scenes)} scene clips (Ken Burns cinematic)...")
             await report(f"🎬 Đang chuẩn bị {len(job.scenes)} phân cảnh video 9:16 với hiệu ứng Ken Burns...", 65)
-            scene_clips = await asyncio.to_thread(self._prepare_scene_clips, job.scenes, str(work_dir), job)
+            scene_clips = await asyncio.to_thread(self._prepare_scene_clips, job.scenes, str(clips_cache_dir), job)
 
             # ── Step 2: Concat tất cả scenes → 1 video silent với xfade transition ──
             total_scenes = len(job.scenes)
@@ -211,18 +214,28 @@ class VideoAgent:
             motion = (scene.camera_motion if scene.camera_motion in ("hyper_zoom", "warp_zoom", "zoom_in") else "zoom_in") if is_hook else scene.resolved_camera_motion
 
             # Kiểm tra media_path tồn tại trước khi render (kèm cơ chế tự động khôi phục file media thật trong thư mục job)
-            media_ok = scene.media_path and Path(scene.media_path).exists()
+            from app.utils.ffmpeg_helper import get_video_dimensions, is_completed_clean_mp4
+            is_vid_check = bool(scene.media_path and str(scene.media_path).lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
+            media_ok = bool(
+                scene.media_path
+                and Path(scene.media_path).exists()
+                and (
+                    is_completed_clean_mp4(scene.media_path, min_size_bytes=12_000, min_duration_ms=800)
+                    if is_vid_check
+                    else Path(scene.media_path).stat().st_size > 500
+                )
+            )
             if not media_ok:
                 recovered_path = None
                 recovered_type = "video"
-                media_search_dirs = [Path(work_dir).parent / "media", Path(work_dir)]
+                media_search_dirs = [Path(work_dir).parent / "media", Path(work_dir) / "media", Path(work_dir)]
                 for m_dir in media_search_dirs:
                     if not m_dir.exists():
                         continue
                     sc_vids = sorted(
                         [
                             p for p in m_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4")
-                            if p.is_file() and p.stat().st_size > 15_000 and not p.name.endswith("_fullpeak.mp4")
+                            if is_completed_clean_mp4(p, min_size_bytes=15_000, min_duration_ms=1000)
                         ],
                         key=lambda p: p.stat().st_mtime,
                         reverse=True,
@@ -250,7 +263,7 @@ class VideoAgent:
                         donor_vids = sorted(
                             [
                                 p for p in m_dir.glob("*.mp4")
-                                if p.is_file() and p.stat().st_size > 25_000
+                                if is_completed_clean_mp4(p, min_size_bytes=25_000, min_duration_ms=2000)
                             ],
                             key=lambda p: p.stat().st_size,
                             reverse=True,
@@ -343,35 +356,38 @@ class VideoAgent:
             elif raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 if is_already_rendered and job.resolution_w == 1920:
                     from app.utils.ffmpeg_helper import get_duration_ms
+                    actual_w, actual_h = get_video_dimensions(scene.media_path)
                     actual_v_sec = get_duration_ms(scene.media_path) / 1000.0
-                    if abs(actual_v_sec - duration) <= 0.08:
-                        logger.info(
-                            f"  Scene {scene.scene_id}: ⚡ 16:9 Ready Clip ({Path(scene.media_path).name}, {actual_v_sec:.2f}s == {duration:.2f}s) → copy trực tiếp sang Single-Pass Concat"
-                        )
-                        if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
-                            shutil.copy2(scene.media_path, clip_path)
-                        return (scene.scene_id, clip_path)
-                    elif actual_v_sec > duration + 0.08:
-                        import subprocess as _sp_trim
-                        logger.info(
-                            f"  Scene {scene.scene_id}: ⚡ 16:9 Exact Duration Sync ({Path(scene.media_path).name}, {actual_v_sec:.2f}s → {duration:.2f}s)"
-                        )
-                        _sp_trim.run(
-                            [
-                                "ffmpeg", "-y", "-v", "error",
-                                "-i", str(scene.media_path),
-                                "-t", f"{duration:.3f}",
-                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                                "-pix_fmt", "yuv420p", "-r", str(job.fps), "-an",
-                                str(clip_path),
-                            ],
-                            stdout=_sp_trim.DEVNULL,
-                            stderr=_sp_trim.DEVNULL,
-                            timeout=30,
-                            check=False,
-                        )
-                        if Path(clip_path).exists() and Path(clip_path).stat().st_size > 20_000:
+                    if actual_w == job.resolution_w and actual_h == job.resolution_h:
+                        if abs(actual_v_sec - duration) <= 0.08:
+                            logger.info(
+                                f"  Scene {scene.scene_id}: ⚡ 16:9 Ready Clip ({Path(scene.media_path).name}, {actual_v_sec:.2f}s == {duration:.2f}s) → copy trực tiếp sang Single-Pass Concat"
+                            )
+                            if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
+                                shutil.copy2(scene.media_path, clip_path)
                             return (scene.scene_id, clip_path)
+                        elif actual_v_sec > duration + 0.08:
+                            import subprocess as _sp_trim
+                            logger.info(
+                                f"  Scene {scene.scene_id}: ⚡ 16:9 Exact Duration Sync ({Path(scene.media_path).name}, {actual_v_sec:.2f}s → {duration:.2f}s)"
+                            )
+                            _sp_trim.run(
+                                [
+                                    "ffmpeg", "-y", "-v", "error",
+                                    "-i", str(scene.media_path),
+                                    "-t", f"{duration:.3f}",
+                                    "-vf", "setsar=1",
+                                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                                    "-pix_fmt", "yuv420p", "-r", str(job.fps), "-an",
+                                    str(clip_path),
+                                ],
+                                stdout=_sp_trim.DEVNULL,
+                                stderr=_sp_trim.DEVNULL,
+                                timeout=30,
+                                check=False,
+                            )
+                            if is_completed_clean_mp4(clip_path, min_size_bytes=20_000, min_duration_ms=800):
+                                return (scene.scene_id, clip_path)
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
                     f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
@@ -393,13 +409,21 @@ class VideoAgent:
                         preserve_continuous_flow=True,
                     )
                 except Exception as e_trim:
-                    from app.utils.ffmpeg_helper import get_duration_ms
                     logger.warning(f"  Scene {scene.scene_id}: ⚠️ Clip gốc bị lỗi ({e_trim}), tự động phục hồi từ kho video sạch trong job...")
-                    media_dir_fallback = Path(work_dir) / "media"
                     donor_vid = None
-                    for cand_mp4 in sorted(media_dir_fallback.glob("scene_*_16x9.mp4")) + sorted(media_dir_fallback.glob("*.mp4")):
-                        if cand_mp4.is_file() and str(cand_mp4) != str(scene.media_path) and get_duration_ms(str(cand_mp4)) >= 3000:
-                            donor_vid = str(cand_mp4)
+                    fallback_dirs = [Path(work_dir).parent / "media", Path(work_dir) / "media", Path(work_dir)]
+                    for fb_dir in fallback_dirs:
+                        if not fb_dir.exists():
+                            continue
+                        cand_pool = sorted(fb_dir.glob("scene_*_16x9.mp4")) + sorted(fb_dir.glob("*.mp4"))
+                        for cand_mp4 in cand_pool:
+                            if (
+                                str(cand_mp4.resolve()) != str(Path(scene.media_path).resolve())
+                                and is_completed_clean_mp4(cand_mp4, min_size_bytes=25_000, min_duration_ms=3000)
+                            ):
+                                donor_vid = str(cand_mp4)
+                                break
+                        if donor_vid:
                             break
                     if donor_vid:
                         trim_video(

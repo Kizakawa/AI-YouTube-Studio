@@ -1,11 +1,13 @@
 """
 app.agents.curation.scene_context_analyzer_mixin — Phân tích ngữ cảnh kịch bản toàn cục, giải mã hàm ý/đại từ & tạo truy vấn sát ý.
 """
+import contextvars as _contextvars
 import json
 import logging
 import os as _os
 import re
 import threading as _threading
+import time as _time_mod
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import settings
@@ -16,7 +18,64 @@ logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
-_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "4") or 4)))
+_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "6") or 6)))
+
+_SCENE_CANCEL_CTX: _contextvars.ContextVar[Optional[_threading.Event]] = _contextvars.ContextVar(
+    "_SCENE_CANCEL_CTX", default=None
+)
+_SCENE_DEADLINE_CTX: _contextvars.ContextVar[Optional[float]] = _contextvars.ContextVar(
+    "_SCENE_DEADLINE_CTX", default=None
+)
+
+
+class _SceneCancellationScope:
+    """Hỗ trợ cả gọi trực tiếp `bind_scene_cancellation(...)` lẫn dùng `with bind_scene_cancellation(...):` an toàn."""
+
+    __slots__ = ("_tok_ev", "_tok_dl")
+
+    def __init__(self, tok_ev: Any, tok_dl: Any) -> None:
+        self._tok_ev = tok_ev
+        self._tok_dl = tok_dl
+
+    def __enter__(self) -> "_SceneCancellationScope":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        try:
+            _SCENE_CANCEL_CTX.reset(self._tok_ev)
+            _SCENE_DEADLINE_CTX.reset(self._tok_dl)
+        except Exception:
+            pass
+        return False
+
+
+def bind_scene_cancellation(
+    cancel_event: Optional[_threading.Event] = None,
+    deadline_ts: Optional[float] = None,
+) -> _SceneCancellationScope:
+    """Gắn cờ hủy và deadline của phân cảnh hiện tại vào ContextVar (tự động kế thừa qua asyncio.to_thread)."""
+    tok_ev = _SCENE_CANCEL_CTX.set(cancel_event)
+    tok_dl = _SCENE_DEADLINE_CTX.set(deadline_ts)
+    return _SceneCancellationScope(tok_ev, tok_dl)
+
+
+def is_scene_cancelled_ctx(min_remaining_sec: float = 1.2) -> bool:
+    """Kiểm tra xem phân cảnh gọi luồng hiện tại đã bị timeout/hủy hay chưa để thoát tức thì (0s zombie thread)."""
+    ev = _SCENE_CANCEL_CTX.get()
+    if ev is not None and ev.is_set():
+        return True
+    dl = _SCENE_DEADLINE_CTX.get()
+    if dl is not None and (dl - _time_mod.monotonic()) <= min_remaining_sec:
+        return True
+    return False
+
+
+def remaining_scene_budget_ctx(default_sec: float = 15.0) -> float:
+    """Trả về số giây còn lại của phân cảnh hiện tại."""
+    dl = _SCENE_DEADLINE_CTX.get()
+    if dl is None:
+        return default_sec
+    return max(0.0, dl - _time_mod.monotonic())
 
 _GENERIC_SUBJECTS = {
     "", "scene", "visual", "image", "photo", "thing", "things", "something", "people", "world",
@@ -135,7 +194,7 @@ class SceneContextAnalyzerMixin:
         max_attempts: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         """Gọi Gemini API trả về JSON với KeyRotator, thread-local Session và giới hạn tổng wall-clock."""
-        if not self.rotator:
+        if not self.rotator or is_scene_cancelled_ctx():
             return None
 
         import time as _time
@@ -155,16 +214,24 @@ class SceneContextAnalyzerMixin:
             http_sess = requests.Session()
             tls.session = http_sess
 
-        per_req_timeout = max(4.0, float(timeout or 15))
-        active_http_budget_sec = max(per_req_timeout * 2.8, 32.0)
-        spent_http_sec = 0.0
+        t_call_entry = _time.monotonic()
+        per_req_timeout = min(max(4.0, float(timeout or 10)), 9.0)
+        total_wall_budget_sec = min(max(per_req_timeout * 1.85, 12.5), 18.5)
+        call_deadline_ts = t_call_entry + min(
+            total_wall_budget_sec,
+            max(2.0, remaining_scene_budget_ctx(total_wall_budget_sec + 1.0) - 0.8),
+        )
 
         conn_errors = 0
-        for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=max_attempts or 8):
-            remaining_http = active_http_budget_sec - spent_http_sec
-            if remaining_http <= 1.5:
+        default_attempts = 2 if images else 3
+        eff_attempts = min(int(max_attempts or default_attempts), 3 if not images else 2)
+        for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=eff_attempts):
+            if is_scene_cancelled_ctx():
+                return None
+            remaining_wall = call_deadline_ts - _time.monotonic()
+            if remaining_wall <= 1.8:
                 logger.warning(
-                    f"[VisualCurationAgent] Đạt ngưỡng active HTTP budget ({active_http_budget_sec:.1f}s) cho gemini_json -> thoát sớm chống treo."
+                    f"[VisualCurationAgent] Đạt ngưỡng tổng wall-clock budget ({total_wall_budget_sec:.1f}s) cho gemini_json -> thoát sớm chống treo."
                 )
                 break
             if images and model.startswith("gemma-"):
@@ -175,14 +242,19 @@ class SceneContextAnalyzerMixin:
                 "contents": [{"parts": parts}],
                 "generationConfig": gen_cfg,
             }
-            if not _VISION_SEM.acquire(timeout=45.0):
-                logger.warning("[VisualCurationAgent] Quá hạn chờ _VISION_SEM (45s) -> thoát sớm tránh dồn hàng đợi.")
+            sem_wait = min(5.5, max(0.5, remaining_wall - 3.5))
+            if not _VISION_SEM.acquire(timeout=sem_wait):
+                logger.warning(f"[VisualCurationAgent] Quá hạn chờ _VISION_SEM ({sem_wait:.1f}s) -> thoát sớm tránh dồn hàng đợi.")
                 break
             t_req_start = _time.monotonic()
             req_elapsed = 0.0
             try:
-                eff_read = min(per_req_timeout, max(4.5, active_http_budget_sec - spent_http_sec))
-                res = http_sess.post(url, json=payload, timeout=KeyRotator.fast_timeout(eff_read))
+                remaining_after_sem = call_deadline_ts - t_req_start
+                if is_scene_cancelled_ctx() or remaining_after_sem <= 1.6:
+                    return None
+                eff_read = min(per_req_timeout, max(3.5, remaining_after_sem - 0.4))
+                eff_conn = min(3.2, max(1.5, eff_read * 0.45))
+                res = http_sess.post(url, json=payload, timeout=(eff_conn, eff_read))
                 req_elapsed = max(0.05, _time.monotonic() - t_req_start)
             except requests.exceptions.Timeout as e:
                 self.rotator.mark_model_rate_limited(key, model, status_code=504, error_text=f"Timeout: {e}")
@@ -196,7 +268,6 @@ class SceneContextAnalyzerMixin:
                 logger.debug(f"[VisualCurationAgent] Gemini call error on {model}: {e}")
                 continue
             finally:
-                spent_http_sec += max(0.05, _time.monotonic() - t_req_start)
                 _VISION_SEM.release()
 
             try:
