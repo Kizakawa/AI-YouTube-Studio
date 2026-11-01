@@ -545,8 +545,8 @@ def download_and_crop_bilibili_broll_clip(
     is_16x9 = str(aspect_ratio or "9:16").strip() in ("16:9", "long", "landscape", "horizontal")
     info = get_bilibili_video_info_and_streams(
         url_or_id,
-        min_height=720 if is_16x9 else 0,
-        require_landscape=is_16x9,
+        min_height=720 if is_16x9 else 480,
+        require_landscape=True,
     )
     if not info or not info.get("video_stream_url"):
         return None
@@ -554,7 +554,7 @@ def download_and_crop_bilibili_broll_clip(
     stream_url = info["video_stream_url"]
     dl_headers = dict(info.get("http_headers") or _BILI_HEADERS)
     min_16x9_bytes = 26 * 1024 * 1024 if (is_16x9 and target_duration_sec >= 24.0) else (15 * 1024 * 1024)
-    eff_range_bytes = max(int(max_range_bytes), min_16x9_bytes) if is_16x9 else int(max_range_bytes)
+    eff_range_bytes = max(int(max_range_bytes), min_16x9_bytes) if is_16x9 else min(int(max_range_bytes), 6 * 1024 * 1024)
     dl_headers["Range"] = f"bytes=0-{eff_range_bytes - 1}"
 
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -589,14 +589,18 @@ def download_and_crop_bilibili_broll_clip(
 
         max_allowed_dur = (48.0 if preserve_continuous_master else 18.0) if is_16x9 else 8.0
         req_dur = min(max(3.2, float(target_duration_sec)), max_allowed_dur, max(3.2, avail_dur_s - 0.5))
-        try:
-            peak_start, peak_len = find_hook_peak_window(
-                str(raw_m4s),
-                min_duration=req_dur,
-                max_duration=min(max_allowed_dur, avail_dur_s),
-            )
-        except Exception:
-            peak_start = min(2.0, max(0.0, avail_dur_s - req_dur))
+        if is_16x9:
+            try:
+                peak_start, peak_len = find_hook_peak_window(
+                    str(raw_m4s),
+                    min_duration=req_dur,
+                    max_duration=min(max_allowed_dur, avail_dur_s),
+                )
+            except Exception:
+                peak_start = min(2.0, max(0.0, avail_dur_s - req_dur))
+                peak_len = req_dur
+        else:
+            peak_start = min(15.0, max(3.5, min(avail_dur_s * 0.48, avail_dur_s - req_dur - 1.0)))
             peak_len = req_dur
 
         clip_dur = min(max(req_dur, peak_len), max_allowed_dur, max(3.2, avail_dur_s - peak_start))
@@ -648,21 +652,24 @@ def download_and_crop_bilibili_broll_clip(
                     str(output_path),
                 ]
         else:
-            vf_chain = (
-                "crop=iw:ih*0.64:0:ih*0.09,"
-                "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
-                "crop=1080:1920,"
-                "unsharp=5:5:0.75:5:5:0.0,"
-                "setsar=1,fps=30"
+            fc_short = (
+                "[0:v]crop=iw*0.86:ih*0.68:iw*0.07:ih*0.10,split=2[v_fg][v_bg];"
+                "[v_bg]scale=1080:1920:force_original_aspect_ratio=increase:flags=fast_bilinear,"
+                "crop=1080:1920,boxblur=24:4,eq=brightness=-0.16:saturation=1.15[bg];"
+                "[v_fg]scale=1080:1320:force_original_aspect_ratio=increase:flags=lanczos,"
+                "crop=1080:1320,unsharp=5:5:0.85:5:5:0.0,eq=contrast=1.04:saturation=1.06[fg];"
+                "[bg][fg]overlay=0:(H-h)/2,setsar=1,fps=30,format=yuv420p[vout]"
             )
             cmd = [
                 "ffmpeg", "-y", "-v", "error",
                 "-ss", f"{max(0.0, peak_start):.2f}",
                 "-t", f"{clip_dur:.2f}",
                 "-i", str(raw_m4s),
-                "-vf", vf_chain,
+                "-filter_complex", fc_short,
+                "-map", "[vout]",
                 "-an",
-                *get_video_encoder_args(quality="intermediate"),
+                "-threads", "2",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19",
                 *BT709_COLOR_ARGS,
                 str(output_path),
             ]

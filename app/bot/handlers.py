@@ -247,8 +247,37 @@ def is_authorized(update: Update) -> bool:
     user = update.effective_user
     chat = update.effective_chat
 
-    # 1. Chủ sở hữu hệ thống luôn luôn được cấp quyền
+    # 1. Chủ sở hữu hệ thống luôn luôn được cấp quyền (đồng thời tự động lưu chat.id nếu đang ở trong Group/Supergroup mới)
     if user and user.id in (7177163590, 8498162618):
+        if chat and chat.type in ("group", "supergroup") and getattr(chat, "id", 0) < 0:
+            try:
+                is_new_grp = settings.register_discovered_group(chat.id, getattr(chat, "title", "") or "")
+                if is_new_grp:
+                    logger.info(f"✨ [AutoDiscovery] Đã tự động ghi nhận nhóm Telegram mới '{getattr(chat, 'title', '')}' (chat_id={chat.id})")
+                pend_file = settings.BASE_DIR / "storage" / "pending_group_preview.json"
+                if pend_file.exists():
+                    import json as _j_p
+                    import requests as _r_p
+                    p_data = _j_p.loads(pend_file.read_text(encoding="utf-8"))
+                    sent_c = [str(x) for x in (p_data.get("sent_chats") or [])]
+                    if str(chat.id) not in sent_c and p_data.get("file_id") and settings.TELEGRAM_BOT_TOKEN:
+                        r_fw = _r_p.post(
+                            f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendVideo",
+                            data={
+                                "chat_id": str(chat.id),
+                                "video": p_data["file_id"],
+                                "caption": p_data.get("caption", ""),
+                                "parse_mode": "HTML",
+                                "supports_streaming": "true",
+                            },
+                            timeout=15,
+                        )
+                        if r_fw.status_code == 200:
+                            sent_c.append(str(chat.id))
+                            p_data["sent_chats"] = sent_c
+                            pend_file.write_text(_j_p.dumps(p_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
         return True
 
     allowed_users = settings.get_allowed_users()
@@ -347,7 +376,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_admin = (db_user.role == "admin") or (user.id in settings.get_allowed_users() and settings.get_allowed_users()[user.id] == "admin")
 
         log_activity(db, user.id, user.username, "START_BOT",
-                     f"Khởi động bot từ {chat.type} '{chat.title or user.first_name}' (Role: {db_user.role})")
+                     f"Khởi động bot từ {chat.type} '{chat.title or user.first_name}' (chat_id={chat.id}, Role: {db_user.role})")
 
     scope_text = f"nhóm **{chat.title}**" if is_group else f"bạn **{user.first_name}**"
     role_badge = f"👑 **Quyền hạn:** Quản trị viên (Admin) • `ID: {user.id}`\n*(Có đặc quyền phê duyệt thiết bị truy cập Web Studio)*" if is_admin else f"👤 **Quyền hạn:** Thành viên sáng tạo (Creator) • `ID: {user.id}`"

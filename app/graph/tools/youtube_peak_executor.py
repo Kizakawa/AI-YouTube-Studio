@@ -570,6 +570,38 @@ def execute_youtube_short_peak_clone_sync(
     if _is_cancelled() or _remaining_sec() <= 2.5:
         return None
 
+    allow_bili_fallback = (
+        os.getenv("ALLOW_BILIBILI_BROLL_FALLBACK", "true").strip().lower() not in ("0", "false", "no", "off")
+        and (allow_3d_cgi_monster or (not allow_low_risk_yt) or prefer_non_yt)
+    )
+
+    # Khi PREFER_NON_YOUTUBE_SOURCES=true, luồng gọi (HookVideoNode / media_nodes) ĐÃ thử Pexels/Pixabay trước đó,
+    # nên ưu tiên chạy Bilibili Safe-Crop ngay để không lãng phí 15s lặp lại tìm kiếm Stock!
+    if prefer_non_yt and allow_bili_fallback:
+        bili_res = _try_bilibili_broll_fallback(
+            search_phrases=search_phrases,
+            search_query=search_query,
+            subject_entity=subject_entity,
+            topic=topic,
+            narration=narration,
+            overall_script_query=overall_script_query,
+            effective_scope=effective_scope,
+            output_path=output_path,
+            target_duration_sec=target_duration_sec,
+            clip_role=clip_role,
+            allow_3d_cgi_monster=allow_3d_cgi_monster,
+            used=used,
+            job_id=job_id,
+            eff_scene_id=eff_scene_id,
+            cancel_event=cancel_event,
+            deadline_ts=(max(time.monotonic() + 14.0, min(deadline_ts - 8.0, time.monotonic() + 26.0)) if deadline_ts is not None else None),
+        )
+        if bili_res:
+            return bili_res
+
+    if _is_cancelled() or _remaining_sec() <= 2.5:
+        return None
+
     # ── TẦNG 2 (ƯU TIÊN SỐ 2): PEXELS HD / PIXABAY HD / WIKIMEDIA STOCK VIDEO SẠCH 100% (TẢI SIÊU TỐC, KHÔNG DÍNH SUB TRUNG) ──
     stock_res = _try_licensed_stock_video_fallback(
         search_phrases=search_phrases,
@@ -597,11 +629,7 @@ def execute_youtube_short_peak_clone_sync(
         return None
 
     # ── TẦNG 3 (DỰ PHÒNG NON-YOUTUBE / CGI / CỨU HỘ ĐA NỀN TẢNG): SĂN B-ROLL TRÊN BILIBILI (SAFE-CROP & DUYỆT VISION) ──
-    allow_bili_fallback = (
-        os.getenv("ALLOW_BILIBILI_BROLL_FALLBACK", "true").strip().lower() not in ("0", "false", "no", "off")
-        and (allow_3d_cgi_monster or (not allow_low_risk_yt) or prefer_non_yt)
-    )
-    if allow_bili_fallback:
+    if allow_bili_fallback and not prefer_non_yt:
         bili_res = _try_bilibili_broll_fallback(
             search_phrases=search_phrases,
             search_query=search_query,

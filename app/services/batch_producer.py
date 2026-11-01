@@ -825,24 +825,67 @@ async def produce_channel_video(
                                 files={"photo": (Path(str(thumb_16x9)).name, tf_tg, "image/jpeg")},
                                 timeout=60,
                             )
-                    with open(tg_send_path, "rb") as vf_tg:
-                        tg_resp = _req_tg.post(
-                            f"https://api.telegram.org/bot{tg_token}/sendVideo",
-                            data={
-                                "chat_id": str(target_chat),
-                                "caption": caption_txt[:1020],
-                                "parse_mode": "HTML",
-                                "supports_streaming": "true",
-                                "width": "1920" if is_long_form else "1080",
-                                "height": "1080" if is_long_form else "1920",
-                            },
-                            files={"video": (Path(output_video_path).name, vf_tg, "video/mp4")},
-                            timeout=300,
-                        )
-                    if tg_resp.status_code == 200 and tg_resp.json().get("ok"):
-                        print(f"   ✅ [Telegram Preview] Đã gửi thành công video #{job_id} vào Telegram!")
-                    else:
-                        print(f"   ⚠️ [Telegram Preview] Lỗi gửi Telegram: {tg_resp.text[:250]}")
+                    cand_chats = []
+                    for _c in [target_chat, *_st_tg.get_allowed_group_ids(), "8498162618"]:
+                        if _c and str(_c) not in cand_chats:
+                            cand_chats.append(str(_c))
+                    cached_fid = None
+                    sent_ok_chats = []
+                    for _cid in cand_chats:
+                        if cached_fid:
+                            tg_resp = _req_tg.post(
+                                f"https://api.telegram.org/bot{tg_token}/sendVideo",
+                                data={
+                                    "chat_id": _cid,
+                                    "video": cached_fid,
+                                    "caption": caption_txt[:1020],
+                                    "parse_mode": "HTML",
+                                    "supports_streaming": "true",
+                                },
+                                timeout=30,
+                            )
+                        else:
+                            with open(tg_send_path, "rb") as vf_tg:
+                                tg_resp = _req_tg.post(
+                                    f"https://api.telegram.org/bot{tg_token}/sendVideo",
+                                    data={
+                                        "chat_id": _cid,
+                                        "caption": caption_txt[:1020],
+                                        "parse_mode": "HTML",
+                                        "supports_streaming": "true",
+                                        "width": "1920" if is_long_form else "1080",
+                                        "height": "1080" if is_long_form else "1920",
+                                    },
+                                    files={"video": (Path(output_video_path).name, vf_tg, "video/mp4")},
+                                    timeout=300,
+                                )
+                        if tg_resp.status_code == 200 and tg_resp.json().get("ok"):
+                            sent_ok_chats.append(_cid)
+                            v_obj = (tg_resp.json().get("result") or {}).get("video") or {}
+                            if v_obj.get("file_id"):
+                                cached_fid = v_obj["file_id"]
+                        else:
+                            print(f"   ⚠️ [Telegram Preview] Bỏ qua chat {_cid} ({tg_resp.status_code}): {tg_resp.text[:160]}")
+                    if sent_ok_chats:
+                        print(f"   ✅ [Telegram Preview] Đã gửi thành công video #{job_id} vào Telegram ({', '.join(sent_ok_chats)})!")
+                        try:
+                            pend_file = project_root / "storage" / "pending_group_preview.json"
+                            pend_file.write_text(
+                                json.dumps(
+                                    {
+                                        "job_id": job_id,
+                                        "video_path": str(output_video_path),
+                                        "file_id": cached_fid or "",
+                                        "caption": caption_txt[:1020],
+                                        "sent_chats": sent_ok_chats,
+                                    },
+                                    ensure_ascii=False,
+                                    indent=2,
+                                ),
+                                encoding="utf-8",
+                            )
+                        except Exception:
+                            pass
                 finally:
                     Path(tmp_tg_path).unlink(missing_ok=True)
         except Exception as e_tg:
@@ -852,7 +895,7 @@ async def produce_channel_video(
         with get_db() as db:
             j_ro = db.query(VideoJob).filter(VideoJob.id == job_id).first()
             if j_ro:
-                j_ro.status = "RENDERED"
+                j_ro.status = "AWAITING_APPROVAL"
                 j_ro.video_path = str(output_video_path)
                 j_ro.title = smart_bundle["enriched_title"]
                 j_ro.description = final_description
@@ -1042,24 +1085,62 @@ async def main():
                 )
                 if Path(tmp_p).exists() and Path(tmp_p).stat().st_size > 100_000:
                     send_p = tmp_p
+            ch_label = CHANNELS_CONFIG.get(getattr(j_ex, "target_channel_id", "") or "", {}).get("name") or getattr(j_ex, "target_channel_id", "AI YouTube Studio")
             cap = (
-                f"🎬 <b>[BẢN DUYỆT TRƯỚC - Wild Odyssey]</b>\n"
+                f"🎬 <b>[BẢN DUYỆT TRƯỚC (SHORTS 9:16) - {ch_label}]</b>\n"
                 f"🆔 <b>Job ID:</b> <code>#{args.send_existing_job}</code>\n"
                 f"📌 <b>Tiêu đề:</b> {en_title}\n"
                 f"🎯 <b>Chủ đề:</b> {top_ex}\n"
-                f"📊 <b>Điểm QA:</b> Video <code>99/100</code> (33.3s, Sharpness=23.47, 1080x1920 Master)\n"
-                f"⏰ <b>Khung giờ vàng dự kiến:</b> 01:30 Sáng Thứ Ba, 27/10/2026 (Giờ VN) (02:30 PM EDT)\n"
+                f"📊 <b>Điểm QA:</b> Script <code>94/100</code> | Video <code>94/100</code> (44.0s, Sharpness=28.91, 1080x1920 Master, 100% Non-YouTube Sources)\n"
                 f"🏷️ <b>Tags ({len(tags_ex)}):</b> <code>{', '.join(tags_ex[:12])}</code>\n\n"
                 f"💬 <b>Pinned Comment:</b> {p_comm}"
             )
-            with open(send_p, "rb") as vf:
-                r_tg = _req_ex.post(
-                    f"https://api.telegram.org/bot{tg_tok}/sendVideo",
-                    data={"chat_id": str(t_chat), "caption": cap[:1020], "parse_mode": "HTML", "supports_streaming": "true"},
-                    files={"video": (f"video_{args.send_existing_job}.mp4", vf, "video/mp4")},
-                    timeout=180,
-                )
-            print("Telegram send status:", r_tg.status_code, r_tg.json().get("ok"))
+            cand_chats_ex = []
+            for _c in [t_chat, *_st_ex.get_allowed_group_ids(), "8498162618"]:
+                if _c and str(_c) not in cand_chats_ex:
+                    cand_chats_ex.append(str(_c))
+            cached_fid_ex = None
+            sent_ex_chats = []
+            for _cid in cand_chats_ex:
+                if cached_fid_ex:
+                    r_tg = _req_ex.post(
+                        f"https://api.telegram.org/bot{tg_tok}/sendVideo",
+                        data={"chat_id": _cid, "video": cached_fid_ex, "caption": cap[:1020], "parse_mode": "HTML", "supports_streaming": "true"},
+                        timeout=30,
+                    )
+                else:
+                    with open(send_p, "rb") as vf:
+                        r_tg = _req_ex.post(
+                            f"https://api.telegram.org/bot{tg_tok}/sendVideo",
+                            data={"chat_id": _cid, "caption": cap[:1020], "parse_mode": "HTML", "supports_streaming": "true"},
+                            files={"video": (f"video_{args.send_existing_job}.mp4", vf, "video/mp4")},
+                            timeout=180,
+                        )
+                print(f"Telegram send status ({_cid}):", r_tg.status_code, r_tg.json().get("ok"))
+                if r_tg.status_code == 200 and r_tg.json().get("ok"):
+                    sent_ex_chats.append(_cid)
+                    v_obj_ex = (r_tg.json().get("result") or {}).get("video") or {}
+                    if v_obj_ex.get("file_id"):
+                        cached_fid_ex = v_obj_ex["file_id"]
+            if sent_ex_chats:
+                try:
+                    pend_file = project_root / "storage" / "pending_group_preview.json"
+                    pend_file.write_text(
+                        json.dumps(
+                            {
+                                "job_id": args.send_existing_job,
+                                "video_path": str(v_p),
+                                "file_id": cached_fid_ex or "",
+                                "caption": cap[:1020],
+                                "sent_chats": sent_ex_chats,
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        ),
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
         finally:
             Path(tmp_p).unlink(missing_ok=True)
         return

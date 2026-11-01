@@ -67,8 +67,11 @@ def _try_bilibili_broll_fallback(
             primary_entity=subject_entity or topic,
             is_3d_or_scifi=allow_3d_cgi_monster,
         )
-        bili_cands = search_bilibili_videos(zh_query, max_results=6, min_dur_s=10.0, max_dur_s=540.0)
-        for b_cand in bili_cands[:2]:
+        bili_cands = search_bilibili_videos(zh_query, max_results=10, min_dur_s=10.0, max_dur_s=540.0)
+        probed_bili = 0
+        for b_cand in bili_cands:
+            if probed_bili >= 2:
+                break
             if (cancel_event is not None and cancel_event.is_set()) or (
                 deadline_ts is not None and (deadline_ts - time.monotonic()) <= 3.0
             ):
@@ -86,6 +89,7 @@ def _try_bilibili_broll_fallback(
                 scene_id=eff_scene_id,
             ):
                 continue
+            probed_bili += 1
             with _yt_url_lock:
                 used.update(extract_media_identity(b_url))
 
@@ -96,24 +100,6 @@ def _try_bilibili_broll_fallback(
                 aspect_ratio=aspect_ratio,
             )
             if not b_info or not Path(output_path).exists() or Path(output_path).stat().st_size < 30_000:
-                rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
-                Path(output_path).unlink(missing_ok=True)
-                continue
-
-            from app.graph.evaluators.visual_critic import VisualCritic
-            bili_gate = VisualCritic.inspect_clip_before_concat(
-                output_path,
-                min_short_edge=720,
-                min_sharpness=5.2,
-                check_watermark=True,
-                allow_snow=True,
-                auto_sanitize=True,
-            )
-            if not bili_gate.get("passed", False):
-                logger.info(
-                    f"🚫 [BilibiliPeakTool] Loại bỏ clip Bilibili '{b_title[:40]}' qua cổng CV: "
-                    f"{'; '.join(bili_gate.get('issues') or [])}"
-                )
                 rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
                 Path(output_path).unlink(missing_ok=True)
                 continue

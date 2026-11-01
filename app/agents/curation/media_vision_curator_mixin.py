@@ -447,9 +447,13 @@ TRẢ VỀ JSON DUY NHẤT:
                 "glow", "fire", "flame", "flames", "sand", "rock", "ground", "walking", "standing",
                 "running", "hunting", "attack", "aerial", "valley", "island", "arctic", "tundra",
                 "snow", "winter", "tropical", "deep", "underwater", "predator", "prey", "species",
+                "dog", "dogs", "cat", "cats", "bird", "birds", "fish", "man", "woman", "human",
+                "pet", "pets", "breed", "rescue", "cinematic", "motion", "closeup", "dramatic",
+                "intense", "atmospheric", "sunny", "relaxing", "outdoors",
             }
+            eff_subj_str = f"{subject_req} {expected_vis} {scene_queries_str} {topic_ctx}".strip()
             core_subj_tokens = {
-                w for w in _re_fb.findall(r"[a-zA-Z]{3,}", f"{subject_req} {expected_vis} {scene_queries_str}".lower())
+                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", eff_subj_str.lower())
                 if w not in _stop_fb and w not in _habitat_generic_fb
             }
             scene_intent_tokens = {

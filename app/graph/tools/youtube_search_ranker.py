@@ -220,13 +220,13 @@ Return ONLY valid JSON:
         }
 
         from app.agents.curation.scene_context_analyzer_mixin import _VISION_SEM
-        for model_name, api_key in rotator.iter_best_model_key_pairs(max_total_attempts=5):
+        from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
+        vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
+        for model_name, api_key in rotator.iter_best_model_key_pairs(vision_models, max_total_attempts=8):
             if cancel_event is not None and cancel_event.is_set():
                 return False, 0.0, "Cancelled by parent task"
             if deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.0:
                 break
-            if model_name.startswith("gemma-"):
-                continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             gen_cfg = KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1)
             req_payload = {
