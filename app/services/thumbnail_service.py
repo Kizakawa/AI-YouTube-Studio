@@ -246,11 +246,15 @@ class ThumbnailService:
 
             candidate_clips = []
             for media_dir in candidate_dirs:
-                for p_clip in sorted(media_dir.glob("scene_*_16x9.mp4")) + sorted(media_dir.glob("scene_*.mp4")):
+                for p_clip in (
+                    sorted(media_dir.glob("scene_*_16x9.mp4"))
+                    + sorted(media_dir.glob("scene_*.mp4"))
+                    + sorted(media_dir.glob("scene_*.jpg"))
+                ):
                     name_low = p_clip.name.lower()
                     if (
                         p_clip.exists()
-                        and p_clip.stat().st_size > 40_000
+                        and p_clip.stat().st_size > 35_000
                         and not name_low.endswith(("_doodle.mp4", "_doodle_2d.mp4", "_prerender_rescue.mp4"))
                         and str(p_clip) not in candidate_clips
                     ):
@@ -261,7 +265,7 @@ class ThumbnailService:
             best_score = -1.0
             best_img_path = None
             with tempfile.TemporaryDirectory() as tmp_d:
-                for idx_c, clip_p in enumerate(candidate_clips[:15]):
+                for idx_c, clip_p in enumerate(candidate_clips[:24]):
                     clip_name = Path(clip_p).name.lower()
                     m_sc = re.search(r"scene_0*(\d+)", clip_name)
                     sc_num = int(m_sc.group(1)) if m_sc else (idx_c + 1)
@@ -277,14 +281,19 @@ class ThumbnailService:
                     elif sc_num in (1, 2):
                         entity_mult = 1.45
 
-                    for t_idx, ts_sec in enumerate((0.6, 1.4, 2.3)):
-                        probe_jpg = str(Path(tmp_d) / f"cand_{sc_num}_{t_idx}.jpg")
-                        subprocess.run(
-                            ["ffmpeg", "-v", "error", "-y", "-ss", str(ts_sec), "-i", clip_p, "-frames:v", "1", "-q:v", "2", probe_jpg],
-                            capture_output=True,
-                            timeout=6,
-                            check=False,
-                        )
+                    is_static_img = clip_name.endswith((".jpg", ".jpeg", ".png"))
+                    probe_timestamps = (0.0,) if is_static_img else (0.6, 1.4, 2.3)
+                    for t_idx, ts_sec in enumerate(probe_timestamps):
+                        if is_static_img:
+                            probe_jpg = clip_p
+                        else:
+                            probe_jpg = str(Path(tmp_d) / f"cand_{sc_num}_{t_idx}.jpg")
+                            subprocess.run(
+                                ["ffmpeg", "-v", "error", "-y", "-ss", str(ts_sec), "-i", clip_p, "-frames:v", "1", "-q:v", "2", probe_jpg],
+                                capture_output=True,
+                                timeout=6,
+                                check=False,
+                            )
                         if not os.path.exists(probe_jpg) or os.path.getsize(probe_jpg) < 4000:
                             continue
                         with Image.open(probe_jpg) as im_p:
