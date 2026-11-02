@@ -348,3 +348,92 @@ Return ONLY valid JSON:
             except Exception as e_v:
                 logger.debug(f"[Bilibili3x3] Vision narration warning: {e_v}")
         return []
+
+    def extract_and_translate_bilibili_audio_direct(
+        self,
+        audio_m4s_path: str,
+        video_title: str,
+        target_language: str = "pt",
+        num_segments: int = 10,
+    ) -> List[str]:
+        """
+        KHÔNG VIẾT KỊCH BẢN MỚI: Nghe trực tiếp file âm thanh tiếng Trung gốc (`audio.m4s`) của video Bilibili
+        bằng Gemini 2.5 Flash Native Audio (`audio/mp4`) và dịch thẳng lời thuyết minh gốc của pháp sư Bilibili
+        sang ngôn ngữ đích (`pt`, `en`, `vi`) theo đúng thứ tự thời gian từ đầu đến cuối!
+        """
+        import requests
+        from config.settings import settings
+        from app.utils.key_rotator import GEMINI_PRIORITY_MODELS, KeyRotator
+
+        if not audio_m4s_path or not Path(audio_m4s_path).exists():
+            return []
+
+        lang_map = {
+            "pt": "Brazilian Portuguese (Português do Brasil)",
+            "en": "English",
+            "vi": "Vietnamese (Tiếng Việt)",
+            "es": "Spanish (Español)",
+        }
+        lang_name = lang_map.get(str(target_language or "pt").lower()[:2], "Brazilian Portuguese")
+
+        # Nén nhẹ audio gốc sang MP3 mono 32kbps (< 2MB cho 3-5 phút) để gửi inline qua Gemini siêu tốc trong 1 request
+        with tempfile.TemporaryDirectory() as td:
+            compact_mp3 = str(Path(td) / "bili_orig_speech.mp3")
+            subprocess.run(
+                [
+                    get_ffmpeg_exe(), "-y", "-v", "error",
+                    "-i", str(audio_m4s_path),
+                    "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k",
+                    compact_mp3,
+                ],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=25, check=False,
+            )
+            if not Path(compact_mp3).exists() or Path(compact_mp3).stat().st_size < 5_000:
+                return []
+            b64_audio = base64.b64encode(Path(compact_mp3).read_bytes()).decode("ascii")
+
+        keys = settings.get_gemini_keys_pool()
+        rotator = KeyRotator(keys) if keys else None
+        if not rotator or not rotator.has_keys:
+            return []
+
+        prompt = f"""Listen to this original Chinese narration from the Bilibili video "{video_title}" and translate/adapt it directly into {lang_name} divided into {num_segments} chronological segments from start to finish:
+1. DO NOT invent a new unrelated script — follow the exact chronological story, creatures, facts, and events spoken in the original Bilibili audio!
+2. Remove any Chinese channel self-promotions ("Follow my Bilibili channel", "Triple-click like/coin", etc.) and adapt each segment into natural, gripping documentary narration in {lang_name} (48 to 58 words per segment).
+3. Return ONLY valid JSON with key "segments" containing exactly {num_segments} translated strings in {lang_name}:
+{{"segments": ["Segment 1 in {lang_name}...", "Segment 2 in {lang_name}..."]}}"""
+
+        audio_models = [m for m in GEMINI_PRIORITY_MODELS if "flash" in str(m).lower() and not str(m).startswith("gemma-")]
+        for model_name, api_key in rotator.iter_best_model_key_pairs(audio_models, max_total_attempts=4):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": "audio/mp3", "data": b64_audio}},
+                    ]
+                }],
+                "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.2),
+            }
+            try:
+                resp = requests.post(url, json=payload, timeout=(4.0, 30.0))
+                if resp.status_code == 200:
+                    cands = resp.json().get("candidates") or []
+                    if cands:
+                        txt = "".join(
+                            p.get("text", "")
+                            for p in cands[0].get("content", {}).get("parts", [])
+                            if isinstance(p, dict) and not p.get("thought")
+                        )
+                        m = re.search(r"\{.*\}", txt, re.DOTALL)
+                        if m:
+                            data = json.loads(m.group(0))
+                            segs = data.get("segments") or []
+                            if isinstance(segs, list) and len(segs) >= max(1, num_segments - 2):
+                                while len(segs) < num_segments and segs:
+                                    segs.append(segs[-1])
+                                return [str(s).strip() for s in segs[:num_segments]]
+            except Exception as e_aud:
+                logger.debug(f"[BilibiliDirectDub] Audio translation warning: {e_aud}")
+        return []
+
