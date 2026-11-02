@@ -24,18 +24,18 @@ logger = logging.getLogger(__name__)
 
 
 # Khung 10 chương DỰ PHÒNG trung lập theo chủ đề (chỉ dùng khi LLM outline trả thiếu chương).
-# Tuyệt đối không chứa nội dung của một ngách cụ thể — mọi premise/query đều suy ra từ `{topic}`.
+# Tuân thủ Kiến trúc Giữ Chân "Delayed Main-Event Payoff" (Treo Trùm Cuối ở Chương 1 -> Leo thang Chương 2-7 -> Đại chiến Tiêu đề ở Chương 8-9 -> Kết luận Chương 10).
 DEFAULT_10_CHAPTER_ROLES = [
-    ("THE COLD OPEN", "The single most shocking real moment or fact about {topic}, shown before any explanation."),
-    ("THE ORIGIN", "Where {topic} comes from: the setting, era, or environment that makes it possible."),
-    ("THE HIDDEN MECHANISM", "How {topic} actually works, explained through one concrete, visual everyday comparison."),
-    ("THE FIRST CASE", "A documented real-world case or encounter that proves the mechanism of {topic}."),
-    ("THE MID-POINT TWIST", "The counter-intuitive detail about {topic} that overturns what most viewers assumed."),
-    ("THE ESCALATION", "The most extreme recorded instance or highest-stakes version of {topic}."),
-    ("THE WEAK POINT", "The limit, vulnerability, or counter-move that defeats or explains {topic}."),
-    ("THE SECOND CASE", "A contrasting real case that shows a different outcome of {topic}."),
-    ("THE AFTERMATH", "What {topic} changed afterwards — consequences for people, nature, or history."),
-    ("THE VERDICT", "Final synthesis that answers the cold-open question and loops back to its opening image."),
+    ("THE COLD-OPEN TEASE & SUSPENDED CLIMAX", "Plunge into the most intense moment of {topic}, then freeze the outcome as an unresolved Open Loop and launch the escalating countdown from the first tier."),
+    ("TIER 1 — THE OPENING THRESHOLD", "The entry-level encounter or first layer of {topic} that sets the baseline scale before the stakes multiply."),
+    ("TIER 2 — THE HIDDEN SPEED TRAP", "An unexpected ambush mechanism in {topic} that outpaces ordinary reflexes and escalates the danger past Tier 1."),
+    ("TIER 3 — THE ARMOR & PRESSURE TEST", "A heavier documented case of {topic} where brute force meets specialized biological or structural defense."),
+    ("TIER 4 — THE MID-POINT PARADOX (5-MINUTE TWIST)", "The counter-intuitive weapon or unseen threat in {topic} that neutralizes size advantage in a split second."),
+    ("TIER 5 — THE EXTREME ENVIRONMENT", "Entering the lethal zone of {topic} where normal survivors fail and only apex adaptations operate."),
+    ("TIER 6 — THE PENULTIMATE CHALLENGER", "The second-deadliest rival or crisis in {topic} that pushes every physical limit right before the main event."),
+    ("THE MAIN EVENT SHOWDOWN (ACT I — THE CLASH)", "Finally unleashing the headline matchup promised in the title of {topic}: the initial collision of apex weapons."),
+    ("THE MAIN EVENT SHOWDOWN (ACT II — THE COUNTER-TWIST)", "The decisive turning point in the headline battle of {topic} where a hidden counter-mechanism flips the outcome."),
+    ("THE FINAL VERDICT & COLD-OPEN RESOLUTION", "Closing synthesis that resolves the exact cliffhanger suspended in Chapter 1 and crowns the ultimate survivor of {topic}."),
 ]
 
 
@@ -220,7 +220,13 @@ DESIGN A 10-CHAPTER MASTER DOCUMENTARY OUTLINE (TARGET: 9-10 MINUTES / 30 SCENES
      (D) Complete Tier / Record Compendium (@disastersexplained1 style): e.g. "Every Covert Manipulation Tactic Explained in 10 Minutes".
 2. `hook`: Scene 1 Cold-Open Psychological-Visual Hook in {target_lang_display} (10-16 words, declarative statement/observation, NO '?' questions, NEVER repeats title verbatim).
 3. `thumbnail_text`: MAXIMUM 2 TO 3 ULTRA-PUNCHY ALL-CAPS WORDS (e.g. "TOO EASY?", "TURN INVISIBLE.", "512 MPH!", "4-SECOND SILENCE") following the YAML Competitor Blueprint.
-4. `chapters`: Exactly 10 distinct Documentary Chapters / Rounds (`chapter_id` 1 to 10). Follow the active niche's YAML `competitor_blueprint` (e.g. Forensic Case-Study + Verbatim Dialogue -> Neural Mechanism -> Surgical Counter-Move, or Round-by-Round Gauntlet escalation, or Every Record/Depth Tier Explained) with ZERO repetition across chapters!
+4. `chapters`: Exactly 10 distinct Documentary Chapters / Rounds (`chapter_id` 1 to 10) following the **DELAYED MAIN-EVENT PAYOFF ARCHITECTURE (ANTI-2-MINUTE-DROPOFF LAW)**:
+   - **CRITICAL RETENTION RULE (NEVER SPOIL THE TITLE MATCHUP IN CHAPTERS 1–2!)**: If viewers get the full resolution of the Title's main matchup in Chapter 2 (~1m55s), they exit at the 2-minute mark! Instead, you MUST structure the 10 chapters as an ascending escalation ladder:
+     * **Chapter 1 (`00:00 - 00:58` — THE COLD-OPEN TEASE & SUSPENDED CLIMAX)**: Plunge straight into the highest-stakes moment of the Title's Main Entity/Matchup, then **SUSPEND THE OUTCOME** as an unresolved Open Loop and launch the ascending escalation ladder from Tier 1.
+     * **Chapters 2 to 7 (`01:00 - 06:55` — STRICT ASCENDING ESCALATION GAUNTLET: TIER 1 -> TIER 6)**: Order Chapters 2 through 7 from the lightest/shallowest/entry-level challenger (Chapter 2) up to progressively heavier, deeper, or deadlier cases (Chapters 3 -> 4 -> 5 -> 6 -> 7). **STRICT BAN**: NEVER finish the Title's headline matchup in Chapter 2 and then drop down to a smaller/weaker subject in Chapter 3! Every chapter MUST have higher stakes than the chapter before it!
+     * **Chapter 8 (`07:00 - 07:58` — THE MAIN EVENT SHOWDOWN: ACT I)**: Finally unleash the headline battle / apex case promised in the Title!
+     * **Chapter 9 (`07:58 - 08:55` — THE MAIN EVENT SHOWDOWN: ACT II COUNTER-TWIST)**: Reveal the hidden anatomical/psychological counter-mechanism that decides the winner of the headline battle!
+     * **Chapter 10 (`08:55 - 09:50` — THE FINAL VERDICT & COLD-OPEN RESOLUTION)**: Answer the exact cliffhanger suspended in Chapter 1 and crown the ultimate survivor.
 5. `chapter_master_query`: For each chapter, provide a distinct 3-5 word English search query for 16:9 documentary video footage matching that specific chapter's subject/challenger/setting. Every chapter MUST have a completely different visual environment!
 
 Return ONLY valid JSON:
@@ -302,8 +308,18 @@ Return ONLY valid JSON:
         from app.services.niche_manager import build_million_view_showrunner_prose_dna
         prose_dna_block = build_million_view_showrunner_prose_dna(channel_niche, language=language)
         is_doodle_niche = False
+        next_ch_after_b = chapters_list[batch_idx * 2 + 2] if (batch_idx * 2 + 2) < len(chapters_list) else None
+        next_b_title = next_ch_after_b.get("chapter_title", f"CHAPTER {ch_b_id + 1}") if next_ch_after_b else "THE FINAL VERDICT"
+        next_b_prem = next_ch_after_b.get("chapter_premise", "") if next_ch_after_b else ""
         slot_3_rule = (
-            f"* Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+5}): **Decisive Turning Point / Counter-Move + Open-Loop Cliffhanger Bridge** — Deliver the chapter's concrete turning point or counter-move, and for Chapters 1–9, end the final sentence with a smooth causal bridge into the next Chapter!"
+            f"* Slot 3 of Chapter {ch_a_id} (Scene {start_sid+2}): **Decisive Turning Point + Mandatory Open-Loop Bridge into Chapter {ch_b_id}** — "
+            f"NEVER end Scene {start_sid+2} with a closed summary! Its final sentence MUST be a high-tension cliffhanger that pivots directly into Chapter {ch_b_id} ('{ch_b_title}: {ch_b_prem[:90]}')!\n"
+            + (
+                f"  * Slot 3 of Chapter {ch_b_id} (Scene {start_sid+5}, THE CRITICAL {ch_b_id}-MINUTE RETENTION BRIDGE): **Mandatory Anti-Drop-Off Cliffhanger into Chapter {ch_b_id+1}** — "
+                f"STRICTLY FORBIDDEN to end Scene {start_sid+5} with a closed conclusion or summary sentence! The final sentence of Scene {start_sid+5} MUST leave an unresolved tension hook that pulls the viewer straight into Chapter {ch_b_id+1} ('{next_b_title}: {next_b_prem[:90]}') AND reminds them that the ultimate headline showdown awaits ahead!"
+                if next_ch_after_b
+                else f"  * Slot 3 of Chapter {ch_b_id} (Scene {start_sid+5}, FINAL DOCUMENTARY RESOLUTION): Deliver the ultimate synthesis that resolves the Cold-Open question from Scene 1 with cinematic finality."
+            )
         )
         slot_3_visual_rule = (
             f"* For Scene {start_sid+2} and Scene {start_sid+5} (Slot 3 of each Chapter), write a DIFFERENT 3–5 word wide environmental or action query in English completely distinct from Slots 1 & 2 (e.g. '{ch_a_mq} wide action', 'submarine sonar gauge closeup', 'deep ocean pressure hull') — STRICTLY FORBIDDEN: NEVER write '2D doodle', 'diagram', 'icon', or 'hourglass'!"

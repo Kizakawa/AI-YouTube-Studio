@@ -278,15 +278,38 @@ def stitch_two_16x9_clips_no_loop(
     half_a = min(max(2.5, dur_a - 0.15), round(req_dur * 0.50, 2))
     half_b = max(2.5, round(req_dur - half_a + 0.10, 2))
     crf_val = "17" if scene_id == 1 else "18"
-    filter_complex = (
-        f"[0:v]trim=start=0.00:duration={half_a:.2f},setpts=PTS-STARTPTS,"
-        f"scale=1980:1114:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop=1920:1080,eq=contrast=1.04:saturation=1.06,fps=30,format=yuv420p[v0];"
-        f"[1:v]trim=start=0.00:duration={half_b:.2f},setpts=PTS-STARTPTS,"
-        f"scale=2040:1148:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop=1920:1080,eq=contrast=1.05:saturation=1.07,vignette=PI/7,fps=30,format=yuv420p[v1];"
-        f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
-    )
+    if req_dur >= 11.0 and half_a >= 4.4 and half_b >= 4.4:
+        q_a1 = round(half_a * 0.50, 2)
+        q_a2 = round(half_a - q_a1, 2)
+        q_b1 = round(half_b * 0.50, 2)
+        q_b2 = round(half_b - q_b1, 2)
+        filter_complex = (
+            f"[0:v]trim=start=0.00:duration={half_a:.2f},setpts=PTS-STARTPTS,fps=30,split=2[va1][va2];"
+            f"[va1]trim=start=0.00:duration={q_a1:.2f},setpts=PTS-STARTPTS,"
+            f"scale=1980:1114:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop=1920:1080:30:17,eq=contrast=1.04:saturation=1.06,setsar=1[v0];"
+            f"[va2]trim=start={q_a1:.2f}:duration={q_a2:.2f},setpts=PTS-STARTPTS,"
+            f"scale=2112:1188:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop=1920:1080:96:54,eq=contrast=1.06:saturation=1.08,setsar=1[v1];"
+            f"[1:v]trim=start=0.00:duration={half_b:.2f},setpts=PTS-STARTPTS,fps=30,split=2[vb1][vb2];"
+            f"[vb1]trim=start=0.00:duration={q_b1:.2f},setpts=PTS-STARTPTS,"
+            f"scale=2016:1134:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop=1920:1080:48:27,eq=contrast=1.04:saturation=1.06,setsar=1[v2];"
+            f"[vb2]trim=start={q_b1:.2f}:duration={q_b2:.2f},setpts=PTS-STARTPTS,"
+            f"scale=2150:1210:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop=1920:1080:115:65,eq=contrast=1.06:saturation=1.08,vignette=PI/7,setsar=1[v3];"
+            f"[v0][v1][v2][v3]concat=n=4:v=1:a=0,fps=30,format=yuv420p[vout]"
+        )
+    else:
+        filter_complex = (
+            f"[0:v]trim=start=0.00:duration={half_a:.2f},setpts=PTS-STARTPTS,"
+            f"scale=1980:1114:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop=1920:1080,eq=contrast=1.04:saturation=1.06,fps=30,format=yuv420p[v0];"
+            f"[1:v]trim=start=0.00:duration={half_b:.2f},setpts=PTS-STARTPTS,"
+            f"scale=2040:1148:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop=1920:1080,eq=contrast=1.05:saturation=1.07,vignette=PI/7,fps=30,format=yuv420p[v1];"
+            f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
+        )
     out_p = Path(output_path)
     tmp_stitch = str(out_p.parent / f"_fftmp_stitch2_{threading.get_ident()}_{out_p.name}")
     cmd = [
@@ -946,7 +969,72 @@ def extract_longform_scene_with_internal_jumpcut(
                 )
             )
         )
-        # Nếu cảnh dài >= 11.0s (Phim tài liệu 10 phút) và file master đủ độ dư (không đè lên cảnh khác), thực hiện Jump-Cut 3 cú máy:
+        # Nếu cảnh dài >= 14.0s (Phim tài liệu 10 phút) và file master đủ độ dư, thực hiện Fast 4-Shot Documentary Multi-Cut (~4.7s/shot):
+        can_jc4 = (
+            allow_internal_jumpcut
+            and req_dur >= 14.0
+            and (safe_start + req_dur + 2.4) <= master_dur
+            and scene_id != 1
+            and not (
+                job_id
+                and _is_master_interval_overlapping(
+                    job_id, eff_master_key, scene_id, safe_start, safe_start + req_dur + 2.55, min_gap_sec=0.5
+                )
+            )
+        )
+        if can_jc4:
+            p1 = round(req_dur * 0.25, 2)
+            p2 = round(req_dur * 0.25, 2)
+            p3 = round(req_dur * 0.25, 2)
+            p4 = round(req_dur - p1 - p2 - p3 + 0.16, 2)
+            s1 = safe_start
+            s2 = round(s1 + p1 + 0.75, 2)
+            s3 = round(s2 + p2 + 0.75, 2)
+            s4 = round(s3 + p3 + 0.75, 2)
+            filter_complex = (
+                f"[0:v]setpts=PTS-STARTPTS,"
+                f"scale=1980:1114:flags=lanczos,crop=1920:1080:30:17,eq=contrast=1.03:saturation=1.05,setsar=1[v0];"
+                f"[1:v]setpts=PTS-STARTPTS,"
+                f"scale=2060:1158:flags=lanczos,crop=1920:1080:45:39,eq=contrast=1.05:saturation=1.07,setsar=1[v1];"
+                f"[2:v]setpts=PTS-STARTPTS,"
+                f"scale=2120:1192:flags=lanczos,crop=1920:1080:125:56,eq=contrast=1.05:saturation=1.07,setsar=1[v2];"
+                f"[3:v]setpts=PTS-STARTPTS,"
+                f"scale=2180:1226:flags=lanczos,crop=1920:1080:130:73,eq=contrast=1.06:saturation=1.08,"
+                f"vignette=PI/7,setsar=1[v3];"
+                f"[v0][v1][v2][v3]concat=n=4:v=1:a=0,fps=30,format=yuv420p[vout]"
+            )
+            out_p4 = Path(output_path)
+            tmp_out4 = str(out_p4.parent / f"_fftmp_jc4_{threading.get_ident()}_{out_p4.name}")
+            cmd4 = [
+                "ffmpeg", "-y", "-v", "error",
+                "-ss", f"{s1:.2f}", "-t", f"{p1:.2f}", "-i", master_path,
+                "-ss", f"{s2:.2f}", "-t", f"{p2:.2f}", "-i", master_path,
+                "-ss", f"{s3:.2f}", "-t", f"{p3:.2f}", "-i", master_path,
+                "-ss", f"{s4:.2f}", "-t", f"{p4:.2f}", "-i", master_path,
+                "-filter_complex", filter_complex,
+                "-map", "[vout]",
+                "-t", f"{req_dur:.2f}",
+                "-threads", "2",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                "-an", "-dn", "-sn",
+                tmp_out4,
+            ]
+            encode_ok4 = False
+            try:
+                subprocess.run(cmd4, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
+                if Path(tmp_out4).exists() and Path(tmp_out4).stat().st_size > 35_000 and get_duration_ms(tmp_out4) >= int(max(1.5, req_dur - 0.35) * 1000):
+                    encode_ok4 = True
+                    if _is_clip_window_clean(tmp_out4, [0.45, max(1.2, req_dur * 0.68)]):
+                        Path(tmp_out4).replace(output_path)
+                        return True
+            except Exception:
+                pass
+            finally:
+                Path(tmp_out4).unlink(missing_ok=True)
+            if encode_ok4:
+                continue
+
+        # Nếu cảnh dài >= 11.0s và file master đủ độ dư, thực hiện Jump-Cut 3 cú máy:
         if can_jc3:
             part_a = round(req_dur * 0.34, 2)
             part_b = round(req_dur * 0.33, 2)
@@ -1073,6 +1161,35 @@ def extract_longform_scene_with_internal_jumpcut(
                 preserve_continuous_flow=True,
             )
             if Path(tmp_out1).exists() and Path(tmp_out1).stat().st_size > 30_000 and get_duration_ms(tmp_out1) >= int(max(1.5, req_dur - 0.35) * 1000):
+                if allow_internal_jumpcut and req_dur >= 9.0:
+                    tmp_focal3 = str(out_p1.parent / f"_fftmp_f3_{threading.get_ident()}_{out_p1.name}")
+                    try:
+                        t_a = round(req_dur * 0.33, 2)
+                        t_b = round(req_dur * 0.67, 2)
+                        fc_3 = (
+                            f"[0:v]fps=30,split=3[s0][s1][s2];"
+                            f"[s0]trim=0:{t_a:.2f},setpts=PTS-STARTPTS,scale=1920:1080,setsar=1[v0];"
+                            f"[s1]trim={t_a:.2f}:{t_b:.2f},setpts=PTS-STARTPTS,"
+                            f"scale=2092:1176:flags=lanczos,crop=1920:1080:86:48,eq=contrast=1.04:saturation=1.05,setsar=1[v1];"
+                            f"[s2]trim={t_b:.2f}:{req_dur:.2f},setpts=PTS-STARTPTS,"
+                            f"scale=2220:1248:flags=lanczos,crop=1920:1080:150:84,eq=contrast=1.05:saturation=1.07,setsar=1[v2];"
+                            f"[v0][v1][v2]concat=n=3:v=1:a=0,fps=30,format=yuv420p[vout]"
+                        )
+                        subprocess.run(
+                            [
+                                "ffmpeg", "-y", "-v", "error", "-i", tmp_out1,
+                                "-filter_complex", fc_3, "-map", "[vout]", "-t", f"{req_dur:.2f}",
+                                "-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                                "-an", "-dn", "-sn", tmp_focal3,
+                            ],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=35, check=False,
+                        )
+                        if Path(tmp_focal3).exists() and Path(tmp_focal3).stat().st_size > 30_000 and get_duration_ms(tmp_focal3) >= int((req_dur - 0.35) * 1000):
+                            Path(tmp_focal3).replace(tmp_out1)
+                    except Exception:
+                        pass
+                    finally:
+                        Path(tmp_focal3).unlink(missing_ok=True)
                 if _is_clip_window_clean(tmp_out1, [0.45, max(1.2, req_dur * 0.68)]):
                     Path(tmp_out1).replace(output_path)
                     return True
