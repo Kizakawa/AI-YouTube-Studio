@@ -67,8 +67,10 @@ class SeoTagsMixin:
         # Làm sạch tiêu đề gốc (bỏ mọi chuỗi #hashtag ở cuối)
         base_title = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', (title or "").strip()).strip()
         base_title = re.sub(r'#shorts\b', '', base_title, flags=re.IGNORECASE).strip()
+        clean_topic = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', (topic or "").strip()).strip()
+        clean_topic = re.sub(r'#shorts\b', '', clean_topic, flags=re.IGNORECASE).strip()
         if not base_title:
-            base_title = (topic or ("Documentary Video" if is_long_form else "Shorts Video")).strip()
+            base_title = (clean_topic or ("Documentary Video" if is_long_form else "Shorts Video")).strip()
 
         # Danh sách từ khóa cấm / sai chính tả / từ đơn lẻ vô nghĩa bị tách từ tiêu đề
         BLACKLIST_TAGS = {
@@ -84,9 +86,10 @@ class SeoTagsMixin:
             "crushes", "deadliest", "clue", "hidden", "stop", "trick", "watch", "body",
             "language", "sperm", "whale", "squid", "colossal", "harpy", "eagle", "howler",
             "king", "cobra", "polar", "bears", "diante", "treme", "branco", "enfrentar",
-            "odeiam", "choque", "ferve", "perigosa", "erro",
+            "odeiam", "choque", "ferve", "perigosa", "erro", "finally", "realized",
+            "quit", "wait", "moment", "first", "never", "always",
         }
-        text_context = f"{base_title} {topic or ''}".lower()
+        text_context = f"{base_title} {clean_topic}".lower()
 
         # Cấu hình bộ Hashtag Tiêu đề & Tags SEO cốt lõi theo từng Ngách + Ngôn ngữ
         if any(k in raw_niche for k in ("wildlife", "predator")):
@@ -95,21 +98,21 @@ class SeoTagsMixin:
                 niche_core_tags = [
                     "vida selvagem", "animais", "natureza", "mundo animal", "predadores",
                     "reino animal", "curiosidades animais", "batalha animal", "documentario animal",
-                    "selva", "brasil", "Shorts", "shorts", "ytshorts", "viral",
+                    "selva", "brasil", "curiosidades", "Shorts", "shorts", "ytshorts", "viral",
                 ]
             else:
                 niche_title_hashes = ["wildlife", "animals", "nature"]
                 niche_core_tags = [
                     "wildlife", "animals", "nature", "animal kingdom", "apex predator",
                     "wild animals", "nature documentary", "animal facts", "wildlife battle",
-                    "predator", "usa", "Shorts", "shorts", "ytshorts", "viral",
+                    "predator", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
                 ]
         elif "psychology" in raw_niche:
             niche_title_hashes = ["psychology", "humanbehavior", "mindset"]
             niche_core_tags = [
                 "psychology", "human behavior", "body language", "dark psychology",
                 "psychology facts", "mindset", "social skills", "subconscious mind",
-                "behavioral psychology", "usa", "Shorts", "shorts", "ytshorts", "viral",
+                "behavioral psychology", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
             ]
         elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery", "earth")):
             if is_br:
@@ -124,7 +127,7 @@ class SeoTagsMixin:
                 niche_core_tags = [
                     "mystery", "science facts", "unexplained mysteries", "deep sea",
                     "ocean mysteries", "earth mysteries", "scientific discovery", "nature mystery",
-                    "facts", "usa", "Shorts", "shorts", "ytshorts", "viral",
+                    "facts", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
                 ]
         elif any(k in raw_niche for k in ("history", "what_if", "alternate")):
             niche_title_hashes = ["history", "whatif", "documentary"]
@@ -132,21 +135,21 @@ class SeoTagsMixin:
                 "history", "alternate history", "what if", "what if history",
                 "historical facts", "crazy history", "historical disasters",
                 "world history", "american history", "history documentary",
-                "biggest mistakes in history", "butterfly effect", "cold war",
-                "dark history", "usa", "Shorts", "shorts", "ytshorts", "viral",
+                "biggest mistakes in history", "butterfly effect",
+                "dark history", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
             ]
         elif any(k in raw_niche for k in ("rescue", "pet", "animal_rescue")):
             niche_title_hashes = ["animalrescue", "dogrescue", "wholesome"]
             niche_core_tags = [
                 "animal rescue", "dog rescue", "cat rescue", "wholesome", "saved animals",
                 "heartwarming", "pet rescue", "stray dog", "faith in humanity",
-                "usa", "Shorts", "shorts", "ytshorts", "viral",
+                "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
             ]
         else:
             niche_title_hashes = ["facts", "mystery", "viral"]
-            niche_core_tags = ["facts", "mystery", "documentary", "Shorts", "shorts", "ytshorts", "viral"]
+            niche_core_tags = ["facts", "mystery", "documentary", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral"]
 
-        # Chặn các tag chéo ngách nếu nội dung thực tế của video không hề nhắc tới
+        # Chặn các tag chéo ngách hoặc chéo chủ đề nếu nội dung thực tế của video không hề nhắc tới
         CROSS_NICHE_GUARDS = {
             "space": ("space", "planet", "galaxy", "nasa", "black hole", "astronaut", "universe", "espaco", "planeta", "spacecraft", "espaçonaves"),
             "titanic": ("titanic", "shipwreck", "iceberg", "1912"),
@@ -157,6 +160,15 @@ class SeoTagsMixin:
             "big cat": ("lion", "lions", "tiger", "jaguar", "leopard", "cheetah", "cougar", "puma", "panther", "big cat", "onça", "leão", "tigre", "leopardo"),
             "amazonia": ("amazon", "amazônia", "amazonia", "pantanal", "selva", "onça", "sucuri", "jacaré", "harpia", "ariranha", "poraquê", "preguiça"),
             "amazônia": ("amazon", "amazônia", "amazonia", "pantanal", "selva", "onça", "sucuri", "jacaré", "harpia", "ariranha", "poraquê", "preguiça"),
+            "casino": ("casino", "gambling", "slot", "vegas"),
+            "courtroom": ("court", "courtroom", "judge", "trial", "jury"),
+            "money trap": ("money", "wealth", "casino", "rich", "spending", "marshmallow"),
+            "fbi": ("fbi", "interrogation", "detective", "polygraph", "suspect", "profiling", "profiler"),
+            "cold war": ("cold war", "soviet", "ussr", "nuclear", "nuke", "tsar bomba", "arkhipov", "b-59", "chernobyl", "1945", "1961", "1962", "1986"),
+            "nuclear": ("nuclear", "nuke", "atomic", "tsar bomba", "arkhipov", "b-59", "chernobyl", "megaton", "hiroshima"),
+            "megaproject": ("megaproject", "dam", "canal", "tower", "grid", "tunnel", "bridge"),
+            "mariana": ("mariana", "challenger deep", "11,000", "36,000"),
+            "saintbernard": ("saint bernard",),
         }
 
         def _is_tag_allowed(raw_t: str) -> bool:
@@ -178,19 +190,24 @@ class SeoTagsMixin:
             elif isinstance(src, str):
                 custom_tags.extend(x.strip() for x in re.split(r'[,;#]+', src) if x.strip())
 
-        # 2. Trích xuất thực thể chủ đề nổi bật TRỰC TIẾP TỪ TIÊU ĐỀ (đúng ngôn ngữ kênh EN vs pt-BR)
+        # 2. Trích xuất thực thể chủ đề nổi bật TRỰC TIẾP TỪ TIÊU ĐỀ (ưu tiên khớp tiêu đề trước, đúng ngôn ngữ kênh EN vs pt-BR)
         KNOWN_SUBJECTS_EN = [
             "honey badger", "komodo dragon", "sperm whale", "colossal squid", "giant squid",
-            "orca", "killer whale", "great white shark", "saltwater crocodile", "nile crocodile",
-            "nile hippo", "hippo", "polar bear", "grizzly bear", "siberian tiger", "bengal tiger",
+            "orca", "killer whale", "great white shark", "goblin shark", "saltwater crocodile", "nile crocodile",
+            "nile hippo", "hippo", "polar bear", "grizzly bear", "brown bear", "siberian tiger", "bengal tiger",
             "snow leopard", "jaguar", "leopard", "cheetah", "lion", "lions", "hyena", "harpy eagle",
-            "howler monkey", "secretary bird", "water buffalo", "cassowary", "king cobra",
-            "black mamba", "wolverine", "electric eel", "mantis shrimp", "pistol shrimp",
+            "howler monkey", "secretary bird", "water buffalo", "cape buffalo", "cassowary", "king cobra",
+            "black mamba", "reticulated python", "wolverine", "electric eel", "mantis shrimp", "pistol shrimp",
+            "coconut crab", "seahorse", "sea turtle", "jellyfish", "moray eel", "octopus", "black dragonfish",
             "sloth", "sloths", "walrus", "giant otter", "otter", "shark", "crocodile",
-            "blind dog", "shelter puppy", "stray kitten", "orphan puppy", "wheelchair dog", "puppy", "kitten", "dog",
+            "newfoundland", "poodle", "golden retriever", "blind dog", "shelter puppy", "stray kitten",
+            "orphan puppy", "wheelchair dog", "stray dog", "puppy", "kitten", "dog", "cat",
             "mariana trench", "bermuda triangle", "boiling river", "amazon river", "amazon",
             "point nemo", "spacecraft graveyard", "saturation divers", "divers",
-            "antarctica", "sahara", "krakatoa", "yellowstone", "pompeii", "roman empire", "rome",
+            "antarctica", "brinicle", "lake nyos", "darvaza", "naica cave", "death valley", "eternal flame",
+            "sahara", "krakatoa", "yellowstone", "pompeii", "roman empire", "rome",
+            "spanish armada", "spartans", "hannibal", "kublai khan", "kamikaze", "nikola tesla",
+            "carrington", "mongols", "zheng he", "vasili arkhipov", "red army",
             "steam engine", "titanic", "cold war", "world war 1", "world war 2", "ww2", "ww1",
             "ancient egypt", "giza", "alexandria", "alexander", "emperor qin",
             "chernobyl", "tsunami", "lituya bay", "alaska", "goldsboro", "north carolina",
@@ -198,7 +215,10 @@ class SeoTagsMixin:
             "panama canal", "emu war", "tsar bomba", "nuclear", "nuke", "nukes", "b52",
             "napoleon", "genghis khan", "vikings", "sparta", "pearl harbor", "d day",
             "soviet", "rockefeller", "apollo", "spacecraft", "kraken", "abyss", "deep ocean",
-            "body language", "eye contact", "fbi", "lie detector", "lie detection", "micro expressions",
+            "marshmallow test", "marshmallow", "stanford prison", "milgram experiment", "asch experiment",
+            "bystander effect", "orfield labs", "pratfall effect", "benjamin franklin",
+            "polygraph", "interrogation", "dark empath", "casino", "dopamine",
+            "body language", "eye contact", "fbi", "cia", "lie detector", "lie detection", "micro expressions",
             "narcissist", "sociopath", "psychopath", "gaslighting", "gaslighters", "love bombed", "manipulators",
             "manipulating", "mind control", "serial killers", "negotiator", "liars", "liar", "fake smile",
             "silence", "envy", "anger", "loneliness", "confidence", "confident",
@@ -206,26 +226,35 @@ class SeoTagsMixin:
         KNOWN_SUBJECTS_PT = [
             "onça pintada", "onça", "sucuri", "jacaré açu", "jacaré", "poraquê", "ariranha", "lobo guará",
             "tatu canastra", "águia harpia", "gavião real", "harpia", "bicho preguiça", "preguiça",
-            "lagosta boxeadora", "tamarutaca", "dragão de komodo", "komodo", "hipopótamo", "crocodilo",
-            "tubarão branco", "tubarão", "orca", "baleia", "cachalote", "lula colossal",
-            "hiena", "leopardo das neves", "leopardo", "texugo do mel", "ratel", "mangusto", "javali",
-            "leões", "leão", "tigre siberiano", "tigre", "urso pardo", "urso polar", "cobra rei", "mamba negra",
-            "taiga", "amazônia", "pantanal", "cerrado", "fossa das marianas", "triângulo das bermudas",
-            "ponto nemo", "espaçonaves", "mergulhadores", "rio fervente", "caverna movile", "caverna",
-            "oceano", "navios", "ilha", "silêncio", "gelo", "rússia",
+            "guepardo", "avestruz", "casuar", "queixadas", "crocodilo do nilo", "búfalo",
+            "lagosta boxeadora", "camarão pistola", "tamarutaca", "dragão de komodo", "komodo",
+            "polvo de anéis azuis", "polvo", "moreia", "tartaruga de couro", "caravela portuguesa",
+            "tubarão duende", "peixe diabo", "tubarão branco", "tubarão", "orca", "baleia", "cachalote", "lula colossal",
+            "hipopótamo", "crocodilo", "hiena", "leopardo das neves", "leopardo", "texugo do mel", "ratel",
+            "mangusto", "javali", "leões", "leão", "tigre siberiano", "tigre", "urso pardo", "urso polar",
+            "cobra rei", "mamba negra", "taiga", "amazônia", "pantanal", "cerrado",
+            "fossa das marianas", "triângulo das bermudas", "ponto nemo", "espaçonaves", "mergulhadores",
+            "rio fervente", "caverna movile", "caverna de naica", "caverna", "lago nyos", "lago natron",
+            "danakil", "catatumbo", "brinicle", "oceano", "navios", "ilha", "silêncio", "gelo", "rússia",
         ]
         subject_pool = KNOWN_SUBJECTS_PT if is_br else KNOWN_SUBJECTS_EN
         title_lower = re.sub(r'[\-_]+', ' ', base_title.lower())
-        topic_lower = re.sub(r'[\-_]+', ' ', f"{base_title} {topic or ''}".lower())
+        topic_lower = re.sub(r'[\-_]+', ' ', f"{base_title} {clean_topic}".lower())
         extracted_topic_tags: List[str] = []
         topic_hashtag_candidates: List[str] = []
+        # Ưu tiên 1: Các thực thể xuất hiện trực tiếp trong base_title (đảm bảo #hashtag trên tiêu đề khớp 100% với tiêu đề)
         for subj in subject_pool:
             subj_norm = re.sub(r'[\-_]+', ' ', subj.lower()).strip()
-            if re.search(rf'\b{re.escape(subj_norm)}\b', topic_lower):
+            if re.search(rf'\b{re.escape(subj_norm)}\b', title_lower):
                 extracted_topic_tags.append(subj_norm)
                 h_subj = re.sub(r'[^a-z0-9à-ỹçãõáéíóúâêô]+', '', subj_norm)
                 if 3 <= len(h_subj) <= 18 and h_subj not in topic_hashtag_candidates:
                     topic_hashtag_candidates.append(h_subj)
+        # Ưu tiên 2: Các thực thể bổ sung trong topic (chỉ thêm vào tags phụ, không đè lên hashtag tiêu đề)
+        for subj in subject_pool:
+            subj_norm = re.sub(r'[\-_]+', ' ', subj.lower()).strip()
+            if subj_norm not in extracted_topic_tags and re.search(rf'\b{re.escape(subj_norm)}\b', topic_lower):
+                extracted_topic_tags.append(subj_norm)
 
         # Khử các tag thực thể động vật khác không xuất hiện nguyên từ trong tiêu đề khỏi custom_tags
         ALL_ANIMAL_ENTITIES = set(KNOWN_SUBJECTS_EN + KNOWN_SUBJECTS_PT)

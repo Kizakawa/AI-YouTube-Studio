@@ -19,29 +19,44 @@ logger = logging.getLogger(__name__)
 
 
 class MetadataHealerMixin:
+    @staticmethod
+    def _parse_iso8601_duration_seconds(dur_str: str) -> int:
+        if not dur_str:
+            return 0
+        m = re.match(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$", str(dur_str).strip())
+        if not m:
+            return 0
+        h = int(m.group(1) or 0)
+        mins = int(m.group(2) or 0)
+        secs = int(m.group(3) or 0)
+        return h * 3600 + mins * 60 + secs
+
     def verify_and_heal_video_metadata(self, video_id: str, **kwargs) -> bool:
         """
         Tự động kiểm tra và sửa chữa (Self-Healing) metadata của video trên YouTube:
         - Nếu categoryId bị lệch khỏi resolve_locked_category_id() (đặc biệt nếu dính cat=27) -> Tự động đổi về chuẩn ('22' hoặc '15').
-        - Tự động làm sạch hashtag sai ngách, gỡ link affiliate rò rỉ / mẫu BREAKDOWN cứng và gắn đầy đủ bộ Hashtags + Tags chuẩn ngách (`build_smart_video_tags_and_hashtags`).
-        - Nếu thiếu defaultLanguage / defaultAudioLanguage hoặc recordingDetails.location (US/BR Geo-Lock) -> Tự động vá ngay.
+        - Tự động làm sạch hashtag sai ngách/chủ đề, gỡ link affiliate rò rỉ / mẫu BREAKDOWN cứng và gắn đầy đủ bộ Hashtags + Tags chuẩn ngách & quốc gia (`build_smart_video_tags_and_hashtags`).
+        - Nếu thiếu defaultLanguage / defaultAudioLanguage hoặc localizations (US/BR Geo-Lock) -> Tự động vá ngay.
         """
         if not self.service or not video_id:
             return False
         try:
-            vres = self.service.videos().list(id=video_id, part="snippet,recordingDetails").execute()
+            vres = self.service.videos().list(id=video_id, part="snippet,contentDetails,localizations").execute()
             items = vres.get("items", [])
             if not items:
                 return False
             vobj = items[0]
             snip = vobj.get("snippet", {})
-            rec = vobj.get("recordingDetails", {}) or {}
+            cdet = vobj.get("contentDetails", {}) or {}
+            locs = vobj.get("localizations", {}) or {}
+
+            dur_sec = self._parse_iso8601_duration_seconds(cdet.get("duration", ""))
+            is_long_form_vid = bool(dur_sec > 65)
 
             expected_cat = self.resolve_locked_category_id()
             cfg_lang = str(self.channel_config.get("language") or "").strip().lower()
             is_br = cfg_lang.startswith("pt")
             expected_lang = "pt-BR" if is_br else "en-US"
-            expected_loc = "Sao Paulo, Brazil" if is_br else "New York, United States"
 
             needs_update = False
             raw_title = str(snip.get("title") or "").strip()
@@ -50,6 +65,7 @@ class MetadataHealerMixin:
                 title=raw_title,
                 topic=raw_title,
                 extra_tags=cur_tags,
+                is_long_form=is_long_form_vid,
             )
             healed_title = smart["enriched_title"]
             if healed_title and healed_title != raw_title:
@@ -130,25 +146,15 @@ class MetadataHealerMixin:
                 snip["defaultAudioLanguage"] = expected_lang
                 needs_update = True
 
-            rec_loc = rec.get("location") or {}
-            if rec_loc.get("latitude") is None or rec_loc.get("longitude") is None:
-                rec = {
-                    "locationDescription": expected_loc,
-                    "location": {
-                        "latitude": -23.5505 if is_br else 40.7128,
-                        "longitude": -46.6333 if is_br else -74.0060,
-                        "altitude": 0.0,
-                    },
-                }
+            if expected_lang not in locs:
                 needs_update = True
 
             if needs_update:
                 self.service.videos().update(
-                    part="snippet,recordingDetails,localizations",
+                    part="snippet,localizations",
                     body={
                         "id": video_id,
                         "snippet": snip,
-                        "recordingDetails": rec,
                         "localizations": {
                             expected_lang: {
                                 "title": str(snip.get("title") or "")[:100],
