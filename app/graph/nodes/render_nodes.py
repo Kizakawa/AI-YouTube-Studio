@@ -396,7 +396,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             clean_thumb_source = final_output
             best_src_score = -1.0
             with tempfile.TemporaryDirectory() as td_th:
-                for idx_th, sc_th in enumerate(enriched_scenes[:12]):
+                for idx_th, sc_th in enumerate(enriched_scenes[:4]):
                     mp_th = str(
                         (sc_th.get("media_path") if isinstance(sc_th, dict) else getattr(sc_th, "media_path", ""))
                         or ""
@@ -419,14 +419,11 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                 g_p = im_p.convert("L").resize((180, 320))
                                 luma_mean = float(ImageStat.Stat(g_p).mean[0])
                                 e_p = g_p.filter(ImageFilter.FIND_EDGES)
-                                top_e = float(ImageStat.Stat(e_p.crop((0, 0, 180, 56))).mean[0])
-                                bot_e = float(ImageStat.Stat(e_p.crop((0, 264, 180, 320))).mean[0])
-                                mid_e = float(ImageStat.Stat(e_p.crop((0, 70, 180, 250))).mean[0])
-                                # Ưu tiên clip tràn viền thật (top_e & bot_e sắc nét), phạt các clip hạt/lưới sợi trừu tượng nền đen (mid_e > 44 hoặc luma < 28)
-                                is_full_bleed = 1.0 if (top_e >= 6.5 and bot_e >= 6.5) else 0.35
-                                natural_subject_bonus = 1.35 if (32.0 <= luma_mean <= 185.0 and 12.0 <= mid_e <= 42.0) else 0.35
-                                early_scene_bonus = 1.25 if idx_th < 6 else 1.0
-                                sc_val = mid_e * is_full_bleed * natural_subject_bonus * early_scene_bonus
+                                mid_e = float(ImageStat.Stat(e_p.crop((24, 56, 156, 264))).mean[0])
+                                center_std = float(ImageStat.Stat(g_p.crop((24, 56, 156, 264))).stddev[0])
+                                natural_subject_bonus = 1.40 if (32.0 <= luma_mean <= 195.0 and 8.0 <= mid_e <= 44.0) else 0.45
+                                early_scene_bonus = 1.65 if idx_th == 0 else (1.35 if idx_th == 1 else 1.0)
+                                sc_val = (mid_e * 0.6 + center_std * 0.8) * natural_subject_bonus * early_scene_bonus
                                 if sc_val > best_src_score:
                                     best_src_score = sc_val
                                     clean_thumb_source = mp_th

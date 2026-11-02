@@ -1495,6 +1495,11 @@ def slim_storage_and_archive_to_rag(cache_max_age_hours: float = 6.0) -> Dict[st
                         p_val = getattr(j, p_attr, None)
                         if p_val:
                             protected_files.add(Path(p_val).name)
+                    protected_files.add(f"video_{j.id}.mp4")
+                    protected_files.add(f"video_{j.id}.thumb.jpg")
+                    protected_files.add(f"thumb_{j.id}_16x9.jpg")
+                    protected_files.add(f"thumb_{j.id}_9x16.jpg")
+                    protected_files.add(f"clean_broll_thumb_base_{j.id}.jpg")
                     protected_files.add(f"thumb_{j.id}.jpg")
                     protected_files.add(f"thumb_{j.id}.png")
                     protected_files.add(f"thumb_vert_{j.id}.jpg")

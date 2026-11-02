@@ -65,6 +65,8 @@ CHANNELS_CONFIG = {
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict English only."
         ),
         "topics": [
+            "Orca Pod vs 4,000-Pound Great White Shark: How Killer Whales Flip Ocean Apex Predators Into Tonic Immobility in 3 Seconds",
+            "Box Jellyfish 60 Venomous Tentacles vs Sea Turtle: Why Venom That Stops a Human Heart in 120 Seconds Can't Stop This Armored Reptile",
             "Portuguese Man O' War vs Loggerhead Sea Turtle: How a 400-Pound Armored Reptile Devours 165-Foot Venomous Tentacles",
             "400°C Black Smoker Hydrothermal Vent vs Giant Tube Worms: How Deep-Sea Creatures Survive Boiling Acid at 8,000 Feet Without Sunlight",
             "Blue-Ringed Octopus vs Giant Moray Eel: How a 5-Inch Ocean Creature Carries Tetrodotoxin Venom 1,200 Times Deadlier Than Cyanide",
@@ -109,6 +111,8 @@ CHANNELS_CONFIG = {
             "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology style). Strict English only."
         ),
         "topics": [
+            "FBI Cognitive Load Reverse-Order Test vs Rehearsed Alibis: Why Telling a Story Backward Collapses a Liar's Brain in 8 Seconds",
+            "1972 Stanford Marshmallow Delay Test vs Dopamine Impulse: How Prefrontal Cortex Self-Control Predicts Wealth 40 Years Later",
             "1961 Yale Milgram Experiment vs 450-Volt Authority Switch: Why 65% of Ordinary People Obeyed the Final Lethal Command",
             "FBI Foot-Freeze Interrogation Test vs Trained Liars: Why Guilty Suspects Control Their Face But Betray Deception Below the Desk",
             "Water Cup Barrier Test vs Guilty Suspects: Why Detectives Place a Paper Cup 6 Inches From Your Hand to Expose Deception",
@@ -154,6 +158,8 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, adrenaline-pumping, National Geographic documentary style. Strict English only."
         ),
         "topics": [
+            "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive to Hurl Prey Off Ledges",
+            "Honey Badger vs Puff Adder Venom: How Loose 6mm Skin Armor and Mutated Receptors Shrug Off a Lethal Snake Bite",
             "Hippopotamus vs Nile Crocodile: How a 4,000-Pound River Titan Snaps 16-Foot Reptiles in Half With Foot-Long Ivory Tusks",
             "Spotted Hyena Clan vs African Leopard: How Bone-Splintering Jaws Steal Kills From a 150-Pound Stealth Cat",
             "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive to Hurl Prey Off Ledges",
@@ -194,6 +200,8 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin documentary style. Strict English only."
         ),
         "topics": [
+            "1812 Napoleon's 600,000 Grande Armée vs Russian -40°C Winter: How Scorched Earth and Frostbite Erased 500,000 Troops in 5 Months",
+            "1983 Stanislav Petrov vs Soviet Satellite Glitch: How One Officer Stopped 5 False Nuclear Launch Alarms From Triggering WW3",
             "1588 Spanish Armada 130 Warships vs English Fire Ships: How 8 Burning Hulks at Midnight Shattered the World's Richest Empire",
             "1986 Chernobyl Divers vs 20-Megaton Steam Explosion: How 3 Volunteers Drained 20,000 Tons of Radioactive Water to Save Europe",
             "1281 Kamikaze Mega-Typhoon vs Kublai Khan 4,400 Warships: How a 2-Day Hurricane Sank 140,000 Troops and Saved Samurai Japan",
@@ -234,6 +242,8 @@ CHANNELS_CONFIG = {
             "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Onça-Pintada vs Bando de 100 Queixadas: Como Mandíbulas Batendo em Sincronia Fazem o Maior Felino das Américas Subir nas Árvores",
+            "Guepardo a 110 km/h vs Avestruz de 140 Quilos: Como um Único Chute de 2.000 Quilos de Força Pode Virar a Caçada na Savana",
             "Dragão-de-Komodo de 130 Quilos vs Búfalo-Asiático de 500 Quilos: Como Glândulas de Veneno Anticoagulante Derrubam um Gigante",
             "Casuar de 60 Quilos vs Predadores da Selva: Como uma Garra-Adaga de 12 Centímetros Rasga Qualquer Rival na Floresta",
             "Águia-Real vs Cabra-da-Montanha de 70 Quilos: Como um Mergulho a 240 km/h Derruba Gigantes de Penhascos Verticais",
@@ -273,6 +283,8 @@ CHANNELS_CONFIG = {
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Fossa das Marianas a 11.000 Metros vs Submarino de Titânio: Como 1.086 Atmosferas de Pressão Esmagam Aço no Ponto Mais Profundo do Mar",
+            "Dedo Gélido da Morte (Brinicle) a -2°C vs Fundo do Mar da Antártida: Como um Tornado de Gelo Submarino Congela Estrelas-do-Mar em Segundos",
             "Polvo-de-Anéis-Azuis de 12 Centímetros vs Moreia-Gigante: Como a Tetrodotoxina 1.200 Vezes Mais Letal Que Cianeto Paralisa em Segundos",
             "Chaminés Hidrotermais Negras a 400°C vs Vermes-Tubulares Gigantes: Como Criaturas Abissais Sobrevivem Sem Sol a 2.500 Metros no Mar",
             "Caravela-Portuguesa vs Tartaruga-de-Couro: Como uma Gigante de 700 Quilos Devora Tentáculos Venenosos de 50 Metros no Mar",

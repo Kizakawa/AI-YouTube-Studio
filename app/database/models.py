@@ -35,6 +35,7 @@ CANONICAL_CHANNEL_MAP = {
     # 4. Wild Odyssey (EN)
     "ch_wild_odyssey": "ch_wild_odyssey",
     "channel_wildlife": "ch_wild_odyssey",
+    "channel_2_wildlife": "ch_wild_odyssey",
     "uclsjhbvjjxi-j16vzxxs68a": "ch_wild_odyssey",
     "@wildodysseyhq": "ch_wild_odyssey",
     # 5. Alternate History & "What If?" (EN)

@@ -356,6 +356,8 @@ class GraphRunner:
                         j.audio_path = final_state.get("full_audio_path")
                         j.subtitle_path = final_state.get("subtitle_path")
                         j.audio_duration_ms = final_state.get("total_audio_duration_ms")
+                        if final_state.get("thumbnail_path"):
+                            j.thumbnail_path = final_state.get("thumbnail_path")
                         if final_state.get("drive_link"):
                             j.drive_link = final_state.get("drive_link")
                         

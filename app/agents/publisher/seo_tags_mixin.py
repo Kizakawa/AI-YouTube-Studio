@@ -586,6 +586,12 @@ def build_youtube_chapters_from_scenes(
         return cleaned
 
     def _extract_clean_chapter_label(sc: Any, chap_num: int, is_first: bool = False) -> str:
+        ch_title_raw = str(_get_field(sc, "chapter_title") or "").strip()
+        if ch_title_raw and ch_title_raw.lower() != "null" and len(ch_title_raw) >= 4:
+            clean_ct = re.sub(r"^(?:chapter|capítulo|phần|chương)\s*\d+\s*[:\-–—]\s*", "", ch_title_raw, flags=re.IGNORECASE).strip(" :—–-|")
+            if len(clean_ct) >= 4:
+                return f"{intro_prefix} — {clean_ct}" if is_first else (f"Capítulo {chap_num}: {clean_ct}" if is_pt else f"Chapter {chap_num}: {clean_ct}")
+
         for field_name in ("overlay_badge", "visual_reasoning"):
             raw_val = str(_get_field(sc, field_name) or "").strip()
             if raw_val and raw_val.lower() != "null":
@@ -593,22 +599,24 @@ def build_youtube_chapters_from_scenes(
                 if m_ch:
                     clean_b = m_ch.group(1).strip()
                     clean_b = re.sub(r"\b(?:visual intent|documentary beat)\b", "", clean_b, flags=re.IGNORECASE).strip(" :—–-")
-                    if len(clean_b) >= 4:
+                    if len(clean_b) >= 4 and not (is_pt or is_vi):
                         title_b = clean_b.title()
                         return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else f"Chapter {chap_num}: {title_b}")
                 elif field_name == "overlay_badge" and 4 <= len(raw_val) <= 32:
                     title_b = raw_val.strip(" :—–-|").title()
                     return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else f"Chapter {chap_num}: {title_b}")
 
-        vk = str(_get_field(sc, "visual_keyword") or "").strip()
-        if vk and vk.lower() != "null":
-            vk_words = [
-                w for w in vk.split()
-                if w.lower() not in {"4k", "hd", "footage", "video", "clip", "cinematic", "realistic", "close", "up", "shot"}
-            ]
-            vk_clean = " ".join(_strip_dangling_words(vk_words[:4])).title()
-            if len(vk_clean) >= 4:
-                return f"{intro_prefix} — {vk_clean}" if is_first else (f"Capítulo {chap_num}: {vk_clean}" if is_pt else f"Chapter {chap_num}: {vk_clean}")
+        # Với kênh Tiếng Anh (không phải PT/VI), có thể dùng visual_keyword làm nhãn chương ngắn gọn
+        if not (is_pt or is_vi):
+            vk = str(_get_field(sc, "visual_keyword") or "").strip()
+            if vk and vk.lower() != "null":
+                vk_words = [
+                    w for w in vk.split()
+                    if w.lower() not in {"4k", "hd", "footage", "video", "clip", "cinematic", "realistic", "close", "up", "shot"}
+                ]
+                vk_clean = " ".join(_strip_dangling_words(vk_words[:4])).title()
+                if len(vk_clean) >= 4:
+                    return f"{intro_prefix} — {vk_clean}" if is_first else f"Chapter {chap_num}: {vk_clean}"
 
         narration = str(_get_field(sc, "narration") or "").strip()
         if narration:

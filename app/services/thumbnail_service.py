@@ -172,57 +172,141 @@ class ThumbnailService:
             logger.debug(f"Frame extraction error: {e}")
         return None
 
-    def _select_sharpest_clean_broll_frame(self, video_path: str, job_id: int) -> Optional[str]:
+    def _select_sharpest_clean_broll_frame(self, video_path: str, job_id: int, title: str = "") -> Optional[str]:
         """
-        Quét các file B-Roll gốc sạch (chưa đóng phụ đề hay badge '[ // CHAPTER 1 // ]') trong `media/scene_XXX_16x9.mp4`
-        và chấm điểm Độ sắc nét (Laplacian Variance) + Độ tương phản để chọn ra khung hình 16:9 bắt mắt nhất làm nền Thumbnail.
+        Quét các file B-Roll gốc sạch (chưa đóng phụ đề hay badge) trong `media/scene_XXX_16x9.mp4` bằng FFmpeg + PIL
+        (không phụ thuộc cv2), kết hợp đối sánh Thực thể chính trên Tiêu đề (Primary Entity Match) + Độ sắc nét vùng trung tâm
+        để chọn ra khung hình 16:9 bắt mắt nhất làm nền Thumbnail.
         """
-        if not video_path or not os.path.exists(video_path):
-            return None
+        import subprocess
+        import tempfile
+        from PIL import ImageStat
+
         try:
-            import cv2
-            v_dir = Path(video_path).parent
-            media_dir = v_dir / "media"
+            from config.settings import settings
+            candidate_dirs = []
+            if video_path and os.path.exists(video_path):
+                v_dir = Path(video_path).parent
+                if (v_dir / "media").exists():
+                    candidate_dirs.append(v_dir / "media")
+                if v_dir.name == "media" and v_dir.exists():
+                    candidate_dirs.append(v_dir)
+            if job_id:
+                temp_media_dir = Path(settings.TEMP_DIR) / f"job_{job_id}" / "media"
+                if temp_media_dir.exists() and temp_media_dir not in candidate_dirs:
+                    candidate_dirs.append(temp_media_dir)
+
+            # Đọc metadata kịch bản để biết phân cảnh nào chứa Thực thể chính (Primary Subject) trên tiêu đề
+            scene_kw_map: Dict[int, str] = {}
+            if job_id:
+                try:
+                    import json as _json
+                    from app.database.models import get_db, VideoJob
+                    with get_db() as db:
+                        j_row = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                        if j_row:
+                            if not title:
+                                title = str(j_row.title or j_row.topic or "")
+                            sc_obj = _json.loads(j_row.scenes_json or "{}")
+                            for s_item in (sc_obj.get("scenes") or []):
+                                if isinstance(s_item, dict) and s_item.get("scene_id"):
+                                    scene_kw_map[int(s_item["scene_id"])] = str(
+                                        s_item.get("visual_keyword", "")
+                                    ).lower()
+                    if not scene_kw_map:
+                        ckpt_p = Path(settings.TEMP_DIR) / f"job_{job_id}" / "step_checkpoint.json"
+                        if ckpt_p.exists():
+                            ck_obj = _json.loads(ckpt_p.read_text(encoding="utf-8"))
+                            nodes_d = ck_obj.get("nodes") or ck_obj.get("steps") or {}
+                            for n_key in ("fetch_media", "visual_director", "generate_audio"):
+                                sc_list = (nodes_d.get(n_key) or {}).get("scenes_media") or (
+                                    ((nodes_d.get(n_key) or {}).get("script_data") or {}).get("scenes")
+                                ) or []
+                                for s_item in sc_list:
+                                    if isinstance(s_item, dict) and s_item.get("scene_id"):
+                                        scene_kw_map[int(s_item["scene_id"])] = str(
+                                            s_item.get("visual_keyword", "")
+                                        ).lower()
+                except Exception:
+                    pass
+
+            # Trích xuất từ khóa Thực thể chính từ visual_keyword của Cảnh 1 (luôn cùng ngôn ngữ EN với visual_keyword của các cảnh)
+            stop_words = {
+                "the", "and", "for", "with", "inside", "how", "why", "what", "when", "who", "from", "into",
+                "water", "river", "ocean", "deep", "dark", "wildlife", "closeup", "close", "slow", "motion",
+                "swimming", "walking", "stalking", "hunting", "underwater", "blue", "amazon", "forest", "riverbank",
+                "tree", "branch", "watching",
+            }
+            s1_kw = scene_kw_map.get(1, "")
+            hero_tokens = [w for w in re.findall(r"[a-zA-Z]{4,}", s1_kw) if w not in stop_words][:2]
+
             candidate_clips = []
-            if media_dir.exists():
-                for pat in ("scene_001_16x9.mp4", "scene_002_16x9.mp4", "scene_004_16x9.mp4", "scene_005_16x9.mp4", "scene_001*.mp4"):
-                    for p_clip in sorted(media_dir.glob(pat)):
-                        if p_clip.exists() and p_clip.stat().st_size > 40_000 and str(p_clip) not in candidate_clips:
-                            candidate_clips.append(str(p_clip))
+            for media_dir in candidate_dirs:
+                for p_clip in sorted(media_dir.glob("scene_*_16x9.mp4")) + sorted(media_dir.glob("scene_*.mp4")):
+                    name_low = p_clip.name.lower()
+                    if (
+                        p_clip.exists()
+                        and p_clip.stat().st_size > 40_000
+                        and not name_low.endswith(("_doodle.mp4", "_doodle_2d.mp4", "_prerender_rescue.mp4"))
+                        and str(p_clip) not in candidate_clips
+                    ):
+                        candidate_clips.append(str(p_clip))
             if not candidate_clips:
                 return None
 
             best_score = -1.0
-            best_frame_bgr = None
-            for clip_p in candidate_clips[:4]:
-                cap = cv2.VideoCapture(clip_p)
-                if not cap.isOpened():
-                    continue
-                fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
-                total_f = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-                for ratio in (0.22, 0.45, 0.68):
-                    target_f = max(1, min(total_f - 2, int(total_f * ratio))) if total_f > 10 else int(fps * 1.2)
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, target_f)
-                    ret, frame = cap.read()
-                    if not ret or frame is None:
-                        continue
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    mean_luma = float(gray.mean())
-                    if mean_luma < 28.0 or mean_luma > 235.0:
-                        continue
-                    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-                    contrast = float(gray.std())
-                    score = sharpness * 0.65 + contrast * 1.35
-                    if score > best_score:
-                        best_score = score
-                        best_frame_bgr = frame.copy()
-                cap.release()
+            best_img_path = None
+            with tempfile.TemporaryDirectory() as tmp_d:
+                for idx_c, clip_p in enumerate(candidate_clips[:15]):
+                    clip_name = Path(clip_p).name.lower()
+                    m_sc = re.search(r"scene_0*(\d+)", clip_name)
+                    sc_num = int(m_sc.group(1)) if m_sc else (idx_c + 1)
+                    kw_text = scene_kw_map.get(sc_num, "")
 
-            if best_frame_bgr is not None:
-                out_clean = str(self.output_dir / f"clean_broll_thumb_base_{job_id}.jpg")
-                cv2.imwrite(out_clean, best_frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 96])
-                if os.path.exists(out_clean) and os.path.getsize(out_clean) > 5000:
-                    return out_clean
+                    # Ưu tiên phân cảnh có mặt Thực thể chính (Hero Entity) trong visual_keyword
+                    entity_mult = 1.0
+                    if hero_tokens and kw_text:
+                        if any(tok in kw_text for tok in hero_tokens):
+                            entity_mult = 2.5
+                        else:
+                            entity_mult = 0.22
+                    elif sc_num in (1, 2):
+                        entity_mult = 1.45
+
+                    for t_idx, ts_sec in enumerate((0.6, 1.4, 2.3)):
+                        probe_jpg = str(Path(tmp_d) / f"cand_{sc_num}_{t_idx}.jpg")
+                        subprocess.run(
+                            ["ffmpeg", "-v", "error", "-y", "-ss", str(ts_sec), "-i", clip_p, "-frames:v", "1", "-q:v", "2", probe_jpg],
+                            capture_output=True,
+                            timeout=6,
+                            check=False,
+                        )
+                        if not os.path.exists(probe_jpg) or os.path.getsize(probe_jpg) < 4000:
+                            continue
+                        with Image.open(probe_jpg) as im_p:
+                            rgb_p = im_p.convert("RGB").resize((320, 180))
+                            g_p = rgb_p.convert("L")
+                            luma_mean = float(ImageStat.Stat(g_p).mean[0])
+                            if luma_mean < 28.0 or luma_mean > 225.0:
+                                continue
+                            # Chấm điểm vùng chủ thể trung tâm (Center ROI) + Độ bão hòa màu sắc, phạt nhiễu lưới/cành cây dày đặc (edge_mean > 32)
+                            roi_g = g_p.crop((64, 32, 256, 152))
+                            roi_edges = roi_g.filter(ImageFilter.FIND_EDGES)
+                            edge_mean = float(ImageStat.Stat(roi_edges).mean[0])
+                            contrast_std = float(ImageStat.Stat(roi_g).stddev[0])
+                            hsv_p = rgb_p.convert("HSV")
+                            sat_mean = float(ImageStat.Stat(hsv_p.crop((64, 32, 256, 152))).mean[1])
+                            lead_scene_bonus = 1.45 if sc_num == 1 else (1.20 if sc_num in (2, 4) else 1.0)
+                            mesh_penalty = 0.55 if edge_mean > 31.0 else 1.0
+                            score = (min(26.0, edge_mean) * 1.2 + contrast_std * 1.65 + sat_mean * 0.45) * entity_mult * lead_scene_bonus * mesh_penalty
+                            if score > best_score:
+                                best_score = score
+                                out_clean = str(self.output_dir / f"clean_broll_thumb_base_{job_id}.jpg")
+                                im_p.convert("RGB").save(out_clean, "JPEG", quality=96)
+                                best_img_path = out_clean
+
+            if best_img_path and os.path.exists(best_img_path) and os.path.getsize(best_img_path) > 5000:
+                return best_img_path
         except Exception as e_best:
             logger.debug(f"Clean B-roll thumbnail frame selection skip: {e_best}")
         return None
@@ -249,11 +333,13 @@ class ThumbnailService:
             # Resize & Crop chuẩn tỷ lệ
             im = self._crop_to_aspect(im, target_w, target_h)
 
-            # Tăng độ tương phản nhẹ và độ bão hòa màu để ảnh hút mắt hơn (+18% saturation, +14% contrast)
+            # Tăng độ sắc nét chi tiết (UnsharpMask), độ bão hòa màu (+22%) và độ tương phản (+16%) để ảnh bìa nổi khối bắt mắt
+            rgb_base = im.convert("RGB").filter(ImageFilter.UnsharpMask(radius=1.8, percent=135, threshold=3))
+            im = rgb_base.convert("RGBA")
             enh_col = ImageEnhance.Color(im)
-            im = enh_col.enhance(1.18)
+            im = enh_col.enhance(1.22)
             enh_con = ImageEnhance.Contrast(im)
-            im = enh_con.enhance(1.14)
+            im = enh_con.enhance(1.16)
 
             # Chuẩn hóa text_hook về ĐÚNG 2–3 từ giật gân (không emoji, ALL CAPS) chuẩn @FossilVideos & @IFinity_What
             clean_text_hook = self.compact_punchy_hook_text(text_hook)
@@ -321,17 +407,46 @@ class ThumbnailService:
             stroke_color = pal["stroke"]    # Pitch Black (0, 0, 0)
             accent_color = pal.get("accent", (255, 230, 0))  # High-Voltage Yellow or Crimson Red
 
-            start_y = int(target_h * 0.08) if aspect_ratio == "16:9" else int(target_h * 0.14)
+            # Tự động nhận diện vị trí mặt/mắt chủ thể (Upper-Center vs Lower-Center) để đặt chữ KHÔNG BAO GIỜ che mắt chủ thể
+            place_at_bottom = False
+            if aspect_ratio == "16:9":
+                try:
+                    from PIL import ImageStat
+                    edges_map = im.convert("L").filter(ImageFilter.FIND_EDGES)
+                    up_box = (int(target_w * 0.32), int(target_h * 0.10), int(target_w * 0.68), int(target_h * 0.34))
+                    dn_box = (int(target_w * 0.32), int(target_h * 0.68), int(target_w * 0.68), int(target_h * 0.92))
+                    up_edge = float(ImageStat.Stat(edges_map.crop(up_box)).mean[0])
+                    dn_edge = float(ImageStat.Stat(edges_map.crop(dn_box)).mean[0])
+                    # Nếu vùng đầu/mặt chính giữa phía trên (y=10%..34%) có chi tiết chủ thể (up_edge >= 12.5), chuyển chữ xuống đáy để mở trọn đôi mắt chủ thể!
+                    if up_edge >= 12.5 or (up_edge > dn_edge * 1.05 and up_edge >= 9.5):
+                        place_at_bottom = True
+                except Exception:
+                    place_at_bottom = False
 
-            # Phủ dải Vignette Gradient mượt ở phần trên ảnh (không dùng hộp vuông thô che mặt chủ thể!)
+            total_text_block_h = sum(line_heights) + max(0, len(lines) - 1) * 18
+            if place_at_bottom:
+                start_y = max(int(target_h * 0.55), target_h - total_text_block_h - int(target_h * 0.085))
+            else:
+                start_y = int(target_h * 0.065) if aspect_ratio == "16:9" else int(target_h * 0.14)
+
+            # Phủ dải Vignette Gradient mượt ở vùng đặt chữ (trên hoặc dưới, không dùng hộp vuông thô che mặt chủ thể!)
             grad_overlay = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
             g_draw = ImageDraw.Draw(grad_overlay)
-            grad_end_y = min(target_h, start_y + sum(line_heights) + len(lines) * 28 + 70)
-            for y_pos in range(0, grad_end_y):
-                progress = y_pos / max(1.0, float(grad_end_y))
-                alpha = int(185 * ((1.0 - progress) ** 1.35))
-                if alpha > 0:
-                    g_draw.line([(0, y_pos), (target_w, y_pos)], fill=(0, 0, 0, alpha))
+            if place_at_bottom:
+                grad_start_y = max(0, start_y - 80)
+                span_h = max(1.0, float(target_h - grad_start_y))
+                for y_pos in range(grad_start_y, target_h):
+                    progress = (y_pos - grad_start_y) / span_h
+                    alpha = int(195 * (progress ** 1.30))
+                    if alpha > 0:
+                        g_draw.line([(0, y_pos), (target_w, y_pos)], fill=(0, 0, 0, alpha))
+            else:
+                grad_end_y = min(target_h, start_y + total_text_block_h + 75)
+                for y_pos in range(0, grad_end_y):
+                    progress = y_pos / max(1.0, float(grad_end_y))
+                    alpha = int(190 * ((1.0 - progress) ** 1.35))
+                    if alpha > 0:
+                        g_draw.line([(0, y_pos), (target_w, y_pos)], fill=(0, 0, 0, alpha))
 
             im = Image.alpha_composite(im, grad_overlay)
             draw = ImageDraw.Draw(im)
@@ -437,7 +552,7 @@ class ThumbnailService:
             chosen_base = str(base_image_path)
         elif video_path and os.path.exists(video_path):
             # Ưu tiên số 1: Quét chọn khung hình B-Roll gốc sắc nét & tương phản cao nhất (chưa dính phụ đề/badge)
-            chosen_base = self._select_sharpest_clean_broll_frame(video_path, job_id)
+            chosen_base = self._select_sharpest_clean_broll_frame(video_path, job_id, title=viral_title or topic)
             if not chosen_base:
                 v_dir = Path(video_path).parent
                 theme_frames = sorted(v_dir.glob("_theme_frame_*.jpg"))
@@ -499,7 +614,7 @@ class ThumbnailService:
         if background_image_path and os.path.exists(str(background_image_path)):
             chosen_base = str(background_image_path)
         elif video_path and os.path.exists(video_path):
-            chosen_base = self._select_sharpest_clean_broll_frame(video_path, job_id)
+            chosen_base = self._select_sharpest_clean_broll_frame(video_path, job_id, title=title)
             if not chosen_base:
                 v_dir = Path(video_path).parent
                 theme_frames = sorted(v_dir.glob("_theme_frame_*.jpg"))
