@@ -440,7 +440,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
         }
 
     cancel_event = threading.Event()
-    hook_deadline_ts = time.monotonic() + 42.0
+    hook_deadline_ts = time.monotonic() + 58.0
 
     def _entry() -> Dict[str, Any]:
         with bind_scene_cancellation(cancel_event, hook_deadline_ts):
@@ -451,11 +451,11 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
             )
 
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=45.0)
+        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=60.0)
     except asyncio.TimeoutError:
         cancel_event.set()
         logger.warning(
-            "⏱️ [HookVideoNode] Chạm trần ngân sách 45s -> Hủy sớm worker nền và chuyển Cảnh 1 sang node_fetch_media."
+            "⏱️ [HookVideoNode] Chạm trần ngân sách 60s -> Hủy sớm worker nền và chuyển Cảnh 1 sang node_fetch_media."
         )
         out_timeout: Dict[str, Any] = {
             "pre_resolved_hook_media": {},
@@ -466,7 +466,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
                 "passed": False,
                 "hook_visual_mode": "video",
                 "evaluated_by": "timeout_guard",
-                "best_reason": "Hook node exceeded 45s wall-clock cap; delegated cleanly to fetch_media",
+                "best_reason": "Hook node exceeded 60s wall-clock cap; delegated cleanly to fetch_media",
                 "spliced_scenes": [],
             },
             "current_step": "HOOK_VIDEO_READY",
@@ -1152,14 +1152,25 @@ Return ONLY valid JSON:
         q_idx = int(rc_cand.get("q_idx") or dl_idx)
         out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{dl_idx}_%(id)s.%(ext)s")
         import time as _hk_time
-        t_hk_dl_start = _hk_time.monotonic()
+        t_hk_transfer_start: List[Optional[float]] = [None]
 
         def _hook_fast_switch_progress(d: Dict[str, Any]) -> None:
+            if _hook_cancelled(2.0):
+                raise TimeoutError(f"Cooperative cancel while downloading {vid_url_dl}")
             if d.get("status") == "downloading":
-                el_hk = _hk_time.monotonic() - t_hk_dl_start
-                spd_hk = d.get("speed")
-                if el_hk > 6.5 or (el_hk > 2.0 and spd_hk is not None and float(spd_hk) < 180 * 1024):
-                    raise TimeoutError(f"Hook candidate slow/timeout ({el_hk:.1f}s) for {vid_url_dl} -> fast-switch")
+                dl_bytes = int(d.get("downloaded_bytes") or 0)
+                tot_bytes = int(d.get("total_bytes") or d.get("total_bytes_estimate") or 0)
+                pct_done = (dl_bytes / tot_bytes) if tot_bytes > 0 else 0.0
+                spd_hk = float(d.get("speed") or 0.0)
+                # Chỉ bắt đầu đếm giờ truyền tải sau khi yt-dlp giải mã xong player (extract_info) và nhận > 32KB
+                if dl_bytes > 32768 and t_hk_transfer_start[0] is None:
+                    t_hk_transfer_start[0] = _hk_time.monotonic()
+                if pct_done >= 0.50 and spd_hk >= 150 * 1024:
+                    return
+                if t_hk_transfer_start[0] is not None:
+                    el_hk = _hk_time.monotonic() - t_hk_transfer_start[0]
+                    if (el_hk > 8.5 and pct_done < 0.70) or (el_hk > 2.5 and dl_bytes < 380 * 1024 and 0.0 < spd_hk < 100 * 1024):
+                        raise TimeoutError(f"Hook candidate slow/timeout ({el_hk:.1f}s) for {vid_url_dl} -> fast-switch")
 
         dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
@@ -2121,96 +2132,100 @@ Return ONLY valid JSON:
                 scene_1["hook_sharpness"] = hook_sh_round_a
                 scenes_media[0] = scene_1
     else:
-        # CỨU HỘ TẦNG 1.5 (YOUTUBE SHORTS PEAK CLONE CHỈ KHI CHƯA QUÉT WAVE 1/2) -> SAU ĐÓ ƯU TIÊN PEXELS/STOCK HD VIDEO (4s)
+        # CỨU HỘ TẦNG 1.5 (YOUTUBE SHORTS PEAK CLONE + TẦNG 2 STOCK HD + TẦNG 3 BILIBILI DOCUMENTARY):
+        # Luôn chạy khi `passing_candidates` trống: nếu Wave 1/2 đã quét YouTube nhưng bị loại (hoặc không bật YT),
+        # truyền `skip_youtube_search=True` để nhảy thẳng vào Stock HD + Bilibili Documentary lấy Video thật 100%!
         stock_hook_ok = False
-        if not top_curated_yt_cands:
-            try:
-                from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
-                rescue_subj = (
-                    f"{beat_1_subject} / {beat_2_subject}"
-                    if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
-                    else (canonical_subject or primary_entity or topic)
+        try:
+            from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+            rescue_subj = (
+                f"{beat_1_subject} / {beat_2_subject}"
+                if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
+                else (canonical_subject or primary_entity or topic)
+            )
+            rescue_yt_queries = [
+                q for q in dict.fromkeys([
+                    *(stock_broll_queries or []),
+                    *(queries or []),
+                    beat_1_query,
+                    beat_2_query,
+                    canonical_subject or visual_keyword or topic,
+                ]) if q
+            ][:2]
+            t15_deadline_ts = min(
+                (hook_deadline_ts - 2.5) if hook_deadline_ts is not None else (time.monotonic() + 25.0),
+                time.monotonic() + 25.0,
+            )
+            skip_yt_in_rescue = (not allow_yt_hook) or bool(top_curated_yt_cands)
+            for rq_idx, st_q in enumerate(rescue_yt_queries):
+                if _hook_cancelled(3.5) or (t15_deadline_ts - time.monotonic()) <= 3.5:
+                    break
+                fb_q = rescue_yt_queries[rq_idx + 1] if (rq_idx + 1) < len(rescue_yt_queries) else topic
+                st_res = execute_youtube_short_peak_clone_sync(
+                    search_query=st_q,
+                    output_path=hook_output_clip,
+                    target_duration_sec=target_hook_duration_sec,
+                    fallback_query=fb_q,
+                    clip_role="HOOK",
+                    subject_entity=rescue_subj,
+                    topic=topic,
+                    narration=hook_narration,
+                    search_scope="SCRIPT_OVERALL",
+                    overall_script_query=topic or st_q,
+                    job_id=job_id,
+                    scene_id=1,
+                    channel_id=channel_id,
+                    skip_youtube_search=skip_yt_in_rescue,
+                    allow_3d_cgi_monster=is_3d_cgi_subject,
+                    storyline_queries=list(stock_broll_queries or queries or []),
+                    deadline_ts=t15_deadline_ts,
                 )
-                rescue_yt_queries = [
-                    q for q in dict.fromkeys([
-                        *(queries or []),
-                        beat_1_query,
-                        beat_2_query,
-                        canonical_subject or visual_keyword or topic,
-                    ]) if q
-                ][:2]
-                t15_deadline_ts = min(
-                    (hook_deadline_ts - 4.0) if hook_deadline_ts is not None else (time.monotonic() + 16.0),
-                    time.monotonic() + 16.0,
-                )
-                for rq_idx, st_q in enumerate(rescue_yt_queries):
-                    if _hook_cancelled(6.0) or (t15_deadline_ts - time.monotonic()) <= 3.0:
+                if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
+                    ok_st_sharp, st_sh_val = _ensure_hook_clip_sharpness_and_luma(st_res["media_path"], min_sharpness=12.5)
+                    if ok_st_sharp or st_sh_val >= 12.0:
+                        stock_hook_ok = True
+                        final_hook_visual_mode = "video"
+                        hook_mode = str(st_res.get("production_method") or "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK")
+                        full_pk_p = str(st_res.get("full_peak_path") or st_res["media_path"])
+                        full_pk_d = float(st_res.get("full_peak_duration_sec") or target_hook_duration_sec)
+                        st_yt_id = str(st_res.get("youtube_id") or "")
+                        st_src_url = str(st_res.get("source_url") or (f"https://www.youtube.com/watch?v={st_yt_id}" if len(st_yt_id) == 11 else full_pk_p))
+                        st_ov_score = float(st_res.get("vision_score") or 8.2)
+                        st_sh_round = round(float(st_sh_val), 2)
+                        pre_resolved_hook_media[1] = {
+                            "media_path": st_res["media_path"],
+                            "media_type": "hook_ready_video",
+                            "production_method": hook_mode,
+                            "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
+                            "full_peak_path": full_pk_p,
+                            "full_peak_duration_sec": full_pk_d,
+                            "youtube_id": st_yt_id,
+                            "source_url": st_src_url,
+                            "hook_verified": True,
+                            "hook_overall_score": st_ov_score,
+                            "hook_clean_score": 8.2,
+                            "hook_sharpness": st_sh_round,
+                            "strategy_rationale": f"Tier-1.5 Multi-Source Video Hook ({st_res.get('title', st_q)[:45]})",
+                        }
+                        scene_1["media_path"] = st_res["media_path"]
+                        scene_1["media_type"] = "hook_ready_video"
+                        scene_1["production_method"] = hook_mode
+                        scene_1["full_peak_path"] = full_pk_p
+                        scene_1["full_peak_duration_sec"] = full_pk_d
+                        scene_1["youtube_id"] = st_yt_id
+                        scene_1["source_url"] = st_src_url
+                        scene_1["hook_verified"] = True
+                        scene_1["hook_overall_score"] = st_ov_score
+                        scene_1["hook_clean_score"] = 8.2
+                        scene_1["hook_sharpness"] = st_sh_round
+                        if scenes_media:
+                            scenes_media[0] = scene_1
+                        logger.info(f"🔥 [HookVideoNode Tier-1.5 Video Rescue] Đã nạp Peak Video thật cho Cảnh 1: {st_res['media_path']}")
                         break
-                    fb_q = rescue_yt_queries[rq_idx + 1] if (rq_idx + 1) < len(rescue_yt_queries) else topic
-                    st_res = execute_youtube_short_peak_clone_sync(
-                        search_query=st_q,
-                        output_path=hook_output_clip,
-                        target_duration_sec=target_hook_duration_sec,
-                        fallback_query=fb_q,
-                        clip_role="HOOK",
-                        subject_entity=rescue_subj,
-                        topic=topic,
-                        narration=hook_narration,
-                        search_scope="SCRIPT_OVERALL",
-                        overall_script_query=topic or st_q,
-                        job_id=job_id,
-                        scene_id=1,
-                        channel_id=channel_id,
-                        skip_youtube_search=(not allow_yt_hook),
-                        allow_3d_cgi_monster=is_3d_cgi_subject,
-                        deadline_ts=t15_deadline_ts,
-                    )
-                    if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
-                        ok_st_sharp, st_sh_val = _ensure_hook_clip_sharpness_and_luma(st_res["media_path"], min_sharpness=12.5)
-                        if ok_st_sharp or st_sh_val >= 12.0:
-                            stock_hook_ok = True
-                            final_hook_visual_mode = "video"
-                            hook_mode = str(st_res.get("production_method") or "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK")
-                            full_pk_p = str(st_res.get("full_peak_path") or st_res["media_path"])
-                            full_pk_d = float(st_res.get("full_peak_duration_sec") or target_hook_duration_sec)
-                            st_yt_id = str(st_res.get("youtube_id") or "")
-                            st_src_url = str(st_res.get("source_url") or (f"https://www.youtube.com/watch?v={st_yt_id}" if len(st_yt_id) == 11 else full_pk_p))
-                            st_ov_score = float(st_res.get("vision_score") or 8.2)
-                            st_sh_round = round(float(st_sh_val), 2)
-                            pre_resolved_hook_media[1] = {
-                                "media_path": st_res["media_path"],
-                                "media_type": "hook_ready_video",
-                                "production_method": hook_mode,
-                                "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                                "full_peak_path": full_pk_p,
-                                "full_peak_duration_sec": full_pk_d,
-                                "youtube_id": st_yt_id,
-                                "source_url": st_src_url,
-                                "hook_verified": True,
-                                "hook_overall_score": st_ov_score,
-                                "hook_clean_score": 8.2,
-                                "hook_sharpness": st_sh_round,
-                                "strategy_rationale": f"Tier-1.5 YT Short Peak Hook ({st_res.get('title', st_q)[:45]})",
-                            }
-                            scene_1["media_path"] = st_res["media_path"]
-                            scene_1["media_type"] = "hook_ready_video"
-                            scene_1["production_method"] = hook_mode
-                            scene_1["full_peak_path"] = full_pk_p
-                            scene_1["full_peak_duration_sec"] = full_pk_d
-                            scene_1["youtube_id"] = st_yt_id
-                            scene_1["source_url"] = st_src_url
-                            scene_1["hook_verified"] = True
-                            scene_1["hook_overall_score"] = st_ov_score
-                            scene_1["hook_clean_score"] = 8.2
-                            scene_1["hook_sharpness"] = st_sh_round
-                            if scenes_media:
-                                scenes_media[0] = scene_1
-                            logger.info(f"🔥 [HookVideoNode Tier-1.5 YT Short Rescue] Đã nạp Peak Video cho Cảnh 1: {st_res['media_path']}")
-                            break
-            except Exception as e_st_hk:
-                logger.debug(f"[HookVideoNode] Tier-1.5 YT Short hook rescue skip: {e_st_hk}")
+        except Exception as e_st_hk:
+            logger.debug(f"[HookVideoNode] Tier-1.5 video hook rescue skip: {e_st_hk}")
 
-        if not stock_hook_ok and not _hook_cancelled(6.0):
+        if not stock_hook_ok and not _hook_cancelled(4.0):
             try:
                 from app.agents.media_agent import MediaAgent
                 ma_s1 = MediaAgent()
@@ -2403,92 +2418,15 @@ Return ONLY valid JSON:
                 logger.debug(f"[HookVideoNode] Tier-2 local candidate motion rescue skip: {e_t2_lc}")
 
         if not stock_hook_ok:
-            # CHẾ ĐỘ HOOK ĐA ẢNH DỰ PHÒNG CUỐI CÙNG (LUÔN TẠO FILE MP4 2 NHỊP CẮT `hook_motion_001.mp4`, CẤM TRẢ VỀ `output_clip: null`)
+            # CẤM KHÓA SLIDE ẢNH (`CLIMAX_IMAGES_LIVE_FX`) VÀO `pre_resolved_hook_media[1]`!
+            # Nếu HookVideoNode hết ngân sách thời gian trước khi tải xong Video chuyển động thật,
+            # để trống `pre_resolved_hook_media` để `node_fetch_media` chạy trọn vẹn 65s săn Video 3 tầng (YouTube Peak + Stock HD + Bilibili) cho Cảnh 1!
             final_hook_visual_mode = "video"
-            pose_list = list(scene_1.get("pose_images") or ([existing_path] if existing_path and Path(existing_path).exists() else []))
-            if len(pose_list) < 2:
-                try:
-                    from app.graph.tools.media_tools import execute_google_cinematic_image_sync
-                    img_hook_q = queries[0] if queries else (canonical_subject or visual_keyword or topic)
-                    out_hook_img = str(hook_cand_dir / "hook_peak_img_001.jpg")
-                    img_hook_res = execute_google_cinematic_image_sync(
-                        smart_query=img_hook_q,
-                        output_path=out_hook_img,
-                        narration=hook_narration,
-                        topic=topic,
-                        is_hook_scene=True,
-                        subject_entity=canonical_subject or primary_entity or topic,
-                        search_scope="SCRIPT_OVERALL",
-                        overall_script_query=img_hook_q,
-                        job_id=job_id,
-                        scene_id=1,
-                        target_image_count=2,
-                    )
-                    if img_hook_res and img_hook_res.get("pose_images"):
-                        pose_list = list(img_hook_res["pose_images"])[:2]
-                except Exception as e_img_hk:
-                    logger.debug(f"[HookVideoNode] Multi-image peak hook fetch skip: {e_img_hk}")
-
-            if len(pose_list) < 2:
-                try:
-                    from app.agents.image_agent import ImageAgent
-                    ia_hk = ImageAgent()
-                    for shot_i in range(len(pose_list) + 1, 3):
-                        out_ai_hk = str(hook_cand_dir / f"hook_ai_rescue_shot_{shot_i}.jpg")
-                        shot_angle = "extreme close-up intense action shot" if shot_i == 1 else "dynamic dramatic wide angle confrontation"
-                        gen_hk_p = ia_hk.generate_scene_image(
-                            prompt=f"{canonical_subject or primary_entity or topic}, {visual_keyword}, {shot_angle}, 8k sharp focus",
-                            output_path=out_ai_hk,
-                            aspect_ratio="9:16",
-                            niche=atmosphere_fx,
-                            scene_id=1,
-                        )
-                        if gen_hk_p and Path(gen_hk_p).exists():
-                            pose_list.append(gen_hk_p)
-                except Exception as e_ai_hk:
-                    logger.debug(f"[HookVideoNode] AI image hook rescue skip: {e_ai_hk}")
-
-            if pose_list:
-                if len(pose_list) == 1:
-                    pose_list = [pose_list[0], pose_list[0]]
-                else:
-                    pose_list = pose_list[:2]
-                num_cuts = 2
-                logger.info(
-                    f"⚡ [HookVideoNode] Dựng Hook Đa Ảnh Peak Sống Động ({len(pose_list)} shots, {num_cuts} cuts + 3D Motion & Live FX) -> {hook_output_clip}"
-                )
-                render_opening_hook_multi_cut(
-                    image_paths=pose_list,
-                    duration_seconds=target_hook_duration_sec,
-                    output_path=hook_output_clip,
-                    width=1080,
-                    height=1920,
-                    fps=30,
-                    min_cuts=num_cuts,
-                    is_scifi=is_scifi,
-                    niche=atmosphere_fx,
-                    is_hook_scene=True,
-                )
-                if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
-                    _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.5)
-                    hook_mode = f"CLIMAX_IMAGES_LIVE_FX_{atmosphere_fx.upper()}_{len(pose_list)}SHOTS"
-                    pre_resolved_hook_media[1] = {
-                        "media_path": hook_output_clip,
-                        "media_type": "hook_ready_video",
-                        "pose_images": pose_list,
-                        "production_method": hook_mode,
-                        "visual_strategy": "HOOK_MULTI_IMAGE_RAPID_PEAK",
-                        "strategy_rationale": f"Rapid {len(pose_list)}-image Peak Hook with 3D motion & Live FX",
-                    }
-                    scene_1["media_path"] = hook_output_clip
-                    scene_1["media_type"] = "hook_ready_video"
-                    scene_1["production_method"] = hook_mode
-                    if scenes_media:
-                        scenes_media[0] = scene_1
-                else:
-                    hook_mode = f"TRADITIONAL_SCENE_FALLBACK_{atmosphere_fx.upper()}"
-            else:
-                hook_mode = f"TRADITIONAL_SCENE_FALLBACK_{atmosphere_fx.upper()}"
+            hook_mode = "DELEGATED_TO_FETCH_MEDIA_VIDEO_FIRST"
+            logger.warning(
+                "⚡ [HookVideoNode] Chưa chốt được Video chuyển động thật trong ngân sách HookNode -> "
+                "Ủy quyền Cảnh 1 sang node_fetch_media (ngân sách 65s Video-First, cấm khóa slide ảnh sớm)."
+            )
 
     # Dọn dẹp triệt để thư mục `hook_candidates/*.mp4` sau khi Cảnh 1 đã xong để KHÔNG BAO GIỜ có node phía sau cắt lại ứng viên của Cảnh 1!
     try:
