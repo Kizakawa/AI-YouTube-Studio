@@ -961,13 +961,13 @@ class VoiceAgent:
         # YouTube yêu cầu video dài >= 08:00 (480s) để bật Mid-Roll Ads (tăng 2x-3.5x doanh thu RPM).
         # Nếu tổng thời lượng giọng đọc Long-Form đang ở mức 4m00s - 8m17s, tự động giãn nhịp kể chuyện nhẹ nhàng
         # (atempo 0.84 - 0.96 + khoảng nghỉ chuyển cảnh tự nhiên) để cam kết 100% video xuất ra đạt >= 08:18 (498s - 515s).
-        LONGFORM_MIDROLL_FLOOR_MS = 498_000
-        LONGFORM_MIDROLL_TARGET_MS = 508_000
-        if is_long_form and len(enriched_scenes) >= 14 and 240_000 <= total_raw_ms < LONGFORM_MIDROLL_FLOOR_MS:
-            lf_tempo_factor = max(0.82, min(0.96, total_raw_ms / float(LONGFORM_MIDROLL_TARGET_MS)))
+        LONGFORM_MIDROLL_FLOOR_MS = 555_000
+        LONGFORM_MIDROLL_TARGET_MS = 585_000
+        if is_long_form and len(enriched_scenes) >= 14 and 180_000 <= total_raw_ms < LONGFORM_MIDROLL_FLOOR_MS:
+            lf_tempo_factor = max(0.84, min(0.96, total_raw_ms / float(LONGFORM_MIDROLL_TARGET_MS)))
             logger.info(
-                f"🎬 [VoiceAgent MidRollFloorGate] Tổng audio Long-Form={total_raw_ms/1000:.1f}s (< 498s / 08m18s) "
-                f"-> Tự động điều chỉnh nhịp phim tài liệu x{lf_tempo_factor:.3f} để cam kết vượt ngưỡng 08:00 Mid-Roll Ads (~{total_raw_ms/lf_tempo_factor/1000:.1f}s)!"
+                f"🎬 [VoiceAgent MidRollFloorGate] Tổng audio Long-Form={total_raw_ms/1000:.1f}s (< 555s / 09m15s) "
+                f"-> Tự động điều chỉnh nhịp phim tài liệu x{lf_tempo_factor:.3f} để cam kết đạt chuẩn ~10 phút Mid-Roll Ads (~{total_raw_ms/lf_tempo_factor/1000:.1f}s)!"
             )
             from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
 

@@ -562,7 +562,7 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         prompt = f"""You are an elite YouTube {'Widescreen 16:9 Documentary' if is_long_form else 'Shorts'} Master Showrunner, Spoken Creator Voice Architect (Zack D. Films / Casual Geographic / Charisma on Command / IFinity What / The Dodo / Você Sabia?), and Viral Retention Director for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'
 Target Language: {language} ({target_lang_display})
-Video Format Mode: {'LONG-FORM 16:9 DOCUMENTARY (16-22 scenes, 360-560 words, ~3.5 minutes, NO #Shorts tag in title)' if is_long_form else 'VERTICAL 9:16 YOUTUBE SHORTS (7-8 scenes, 95-130 words, ~38 seconds, ZERO #hashtags in title)'}
+Video Format Mode: {'LONG-FORM 16:9 DOCUMENTARY (30-36 scenes across 10 Chapters, 1,500-1,750 words, ~10 minutes, NO #Shorts tag in title)' if is_long_form else 'VERTICAL 9:16 YOUTUBE SHORTS (7-8 scenes, 95-130 words, ~38 seconds, ZERO #hashtags in title)'}
 {lang_instruction}
 {regional_hook_instruction}
 {director_block}
@@ -570,10 +570,10 @@ Video Format Mode: {'LONG-FORM 16:9 DOCUMENTARY (16-22 scenes, 360-560 words, ~3
 {deep_blueprint_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
-MASTER-CLASS YOUTUBE {'LONG-FORM 5-CHAPTER DOCUMENTARY (3–4.5 MINUTES | 360–560 WORDS | 16–22 SCENES)' if is_long_form else 'SHORTS ARCHITECTURE (34–42 SECONDS | 95–130 WORDS | AUTHENTIC SPOKEN YOUTUBER VOICE)'}
+MASTER-CLASS YOUTUBE {'LONG-FORM 10-CHAPTER DOCUMENTARY (9–10.5 MINUTES | 1,500–1,750 WORDS | 30–36 SCENES)' if is_long_form else 'SHORTS ARCHITECTURE (34–42 SECONDS | 95–130 WORDS | AUTHENTIC SPOKEN YOUTUBER VOICE)'}
 YouTube rewards TWO metrics simultaneously:
-1. Viewed vs. Swiped-Away > 75%: Achieved by explicitly naming the primary entity/situation in `title` (under 58 chars, ZERO `#hashtags`, ZERO `PSI`/`Newtons`) AND opening `Scene 1 Hook` ({'8–14 words' if is_long_form else '6–13 words'}) with a natural spoken creator hook (using contractions in English / colloquial cadence in pt-BR — NEVER passive `"X sat in a..."`, NEVER flat stock captions, and NEVER `"Look closely at..."`).
-2. High Retention + Authentic Spoken Creator Voice ({'360–560 words across 16–22 widescreen scenes, 18–26 words per body scene' if is_long_form else '95–130 words, 34–42s across 7–8 scenes, 12–18 words per body scene'}):
+1. Viewed vs. Swiped-Away > 75%: Achieved by explicitly naming the primary entity/situation in `title` (under 58 chars, ZERO `#hashtags`, ZERO `PSI`/`Newtons`) AND opening `Scene 1 Hook` ({'10–16 words' if is_long_form else '6–13 words'}) with a natural spoken creator hook (using contractions in English / colloquial cadence in pt-BR — NEVER passive `"X sat in a..."`, NEVER flat stock captions, and NEVER `"Look closely at..."`).
+2. High Retention + Authentic Spoken Creator Voice ({'1,500–1,750 words across 30–36 widescreen scenes (10 Chapters), 48–58 words per body scene' if is_long_form else '95–130 words, 34–42s across 7–8 scenes, 12–18 words per body scene'}):
    - Write 100% like a real human YouTuber talking into a mic across a kitchen table! In English, naturally weave in **at least 3–5 spoken contractions** (`it's`, `doesn't`, `don't`, `can't`, `you'd`, `didn't`, `would've`, `hadn't`, `wasn't`, `they're`, `that's`, `he'd`) and plain `$1` words. In `pt-BR`, use colloquial spoken Brazilian YouTuber Portuguese (`pra`, `pro`, `tá`, `bicho`, `na hora`, `num piscar de olhos`, `só que`, `em vez de` — ZERO formal enclitics like `imobilizá-lo`).
    - {'For LONG-FORM 16:9 mode: Structure the 16–22 scenes across 5 gripping Documentary Chapters using one of the 3 Competitor Million-View Blueprints:\n     * (A) `@FossilVideos` Gauntlet / Survival Tier-List (Wildlife): Chapter 1 (Scenes 1–3: Cold Open & Contender Stats), Chapter 2 (Scenes 4–7: Round 1 & Round 2 Challengers), Chapter 3 (Scenes 8–12: Round 3 Armored/Venom Threat & Mid-Point Twist), Chapter 4 (Scenes 13–17: Round 4 Pack/Apex Confrontation), Chapter 5 (Scenes 18–20: The Final Boss & Ultimate Verdict).\n     * (B) `@disastersexplained1` "Every X Record/Type Explained" (Mysteries/Ocean): Open Scene 1 with a 2nd-person sensory danger hook ("You notice a calm line on the water... You think you still have time. That is the mistake."), then escalate Chapter 1 -> Chapter 5 from the strangest warning sign to the deadliest unbroken record.\n     * (C) `@IFinity_What` "What If YOU..." 2nd-Person Timeline Escalation (Alternate History & Psychology): Frame directly around "YOU" escalating from Chapter 1 (Minute 1: The Superpower/Control Illusion) -> Chapter 2 (Hour 12: The First Hidden Glitch) -> Chapter 3 (Day 3: Systemic/Neural Overload) -> Chapter 4 (Day 7: Complete Collapse) -> Chapter 5 (The Final Aftermath).\n     * Put clean Chapter HUD badges like "[ // CHAPTER 1: THE SILENT TRAP // ]" or "[ // ROUND 1: THE SPEED TEST // ]" in `overlay_badge` ONLY on the first scene of each chapter (Scenes 1, 4, 8, 13, 18) and `null` on all other scenes!' if is_long_form else 'For SHORTS 9:16 mode: Keep 100% of all 7–8 scenes locked on the exact 1v1 duel or single phenomenon promised in the `title`! NEVER split a 35-second Short into "Round One / Round Two / Round Three" or switch to a 3rd unannounced opponent!'}
    - Every scene MUST be a 100% grammatically complete spoken sentence. NEVER chop one sentence across two scenes!
@@ -650,7 +650,7 @@ YouTube rewards TWO metrics simultaneously:
 
 8. COHERENT, FULL-BODIED STORYTELLING (NEVER ABRUPT OR TRUNCATED):
    - Make sure every idea is fully developed and explained before moving to the next point.
-   - Connect scenes with smooth narrative flow so the entire {'360–560 word (16–22 scenes) widescreen documentary' if is_long_form else '85–120 word (7–8 scenes) script'} reads like a seamless, gripping documentary from start to finish.
+   - Connect scenes with smooth narrative flow so the entire {'1,500–1,750 word (30–36 scenes / 10 Chapters, ~10 min) widescreen documentary' if is_long_form else '85–120 word (7–8 scenes) script'} reads like a seamless, gripping documentary from start to finish.
 
 9. HOOK VISUAL MODE DECISION (`hook_visual_mode`: ALWAYS `"video"`, `is_abstract_keyword`, & `climax_scene_id`):
    - ALWAYS set `"hook_visual_mode": "video"` and `"is_abstract_keyword": false` across ALL niches so Scene 1 (0.0s–3.0s) opens with high-retention real moving video footage (Dual-Beat Fast-Cut).
@@ -677,15 +677,15 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   ],
   "hook_visual_mode": "video | scene",
   "is_abstract_keyword": false,
-  "climax_scene_id": {8 if is_long_form else 3},
+  "climax_scene_id": {20 if is_long_form else 3},
   "hook_search_queries": ["bare noun + action/format (2-4 words)", "bare noun + angle (2-4 words)"],
-  "full_narration": "Complete, smooth, well-developed spoken story without stage directions ({'360-560 words across 16-22 scenes (~3.5 min 5-Chapter Documentary)' if is_long_form else '92-118 words, 34-42s High-APV 5-Act story'} with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
+  "full_narration": "Complete, smooth, well-developed spoken story without stage directions ({'1,500-1,750 words across 30-36 scenes (~10-Min 10-Chapter Documentary)' if is_long_form else '92-118 words, 34-42s High-APV 5-Act story'} with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
   "thumbnail_text": "STRICTLY 2-3 PUNCHY ALL-CAPS WORDS IN {target_lang_display} WITH ZERO DRY PHYSICS UNITS ({'e.g. FÁCIL DEMAIS?, ESMAGA CRÂNIOS!, RECORDE MORTAL!' if str(language or '').lower().startswith('pt') else 'e.g. TOO EASY?, TURN INVISIBLE., CRUSHES SKULLS!'})",
   "scenes": [
     {{
       "scene_id": 1,
       "visual_reasoning": "Narrative and visual intent of this scene",
-      "narration": "Complete, natural spoken sentence for this scene ({'Scene 1: 8-14 words; Body scenes: 18-26 words flowing naturally, 16 to 22 scenes total' if is_long_form else 'Scene 1: 6-10 words using 1 of the 4 Psychological-Visual Hook Archetypes without repeating title; Body scenes: 11-16 words flowing naturally, 7 to 8 scenes total'})",
+      "narration": "Complete, natural spoken sentence for this scene ({'Scene 1: 12-18 words; Body scenes: 48-58 words flowing naturally, 30 to 36 scenes total (~10 minutes)' if is_long_form else 'Scene 1: 6-10 words using 1 of the 4 Psychological-Visual Hook Archetypes without repeating title; Body scenes: 11-16 words flowing naturally, 7 to 8 scenes total'})",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic {'16:9 widescreen ' if is_long_form else ''}visual description fitting the overall story mood",
       "stock_query": "simple subject/mood query for stock video (2-4 English words)",
@@ -694,7 +694,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
       "sfx_cue": "impact_boom | whoosh_heavy | riser_tension | heartbeat_thump | glitch | reveal",
       "highlight_words": ["WORD1", "WORD2"],
       "overlay_badge": "[ // THE REAL TRAP // ] or null",
-      "estimated_seconds": {8.5 if is_long_form else 4.0}
+      "estimated_seconds": {19.5 if is_long_form else 4.0}
     }}
   ],
   "tags": {json.dumps(["documentary", "viral"] if is_long_form else ["shorts", "viral"])},

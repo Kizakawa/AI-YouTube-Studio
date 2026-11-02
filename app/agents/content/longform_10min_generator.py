@@ -331,9 +331,9 @@ YOUR ASSIGNED CHAPTERS TO WRITE RIGHT NOW (6 SCENES TOTAL: SCENES {start_sid} TO
    - Premise: {ch_b_prem}
    - Chapter 16:9 Visual Motif: "{ch_b_mq}"
 
-MANDATORY PACING, VIRAL DOCUMENTARY STORYTELLING & WORD COUNT (~17.0–18.0 SECONDS PER SCENE AT DOCUMENTARY CADENCE):
-- {'For Scene 1 (scene_id=1): Start with a gripping, visceral In-Medias-Res Cold-Open Hook ("' + doc_hook + '") followed by 2 high-stakes sentences (total 38–46 words for Scene 1, ZERO "?" questions).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 3 complete, rich, gripping documentary sentences totaling 45 to 54 WORDS PER SCENE (~17.0–18.0 seconds of spoken narration per scene).'}
-- For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 45 to 54 words of deep, vivid storytelling. NEVER write short 12-word Shorts sentences!
+MANDATORY PACING, VIRAL DOCUMENTARY STORYTELLING & WORD COUNT (~19.5–21.0 SECONDS PER SCENE AT DOCUMENTARY CADENCE FOR TRUE 10-MINUTE TOTAL DURATION):
+- {'For Scene 1 (scene_id=1): Start with a gripping, visceral In-Medias-Res Cold-Open Hook ("' + doc_hook + '") followed by 2–3 high-stakes sentences (total 48–56 words for Scene 1, ZERO "?" questions).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 3–4 complete, rich, gripping documentary sentences totaling 52 to 62 WORDS PER SCENE (~19.5–21.0 seconds of spoken narration per scene, so 30 scenes = ~1,650 words = 10 full minutes).'}
+- For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 52 to 62 words of deep, vivid storytelling. NEVER write short 15-word Shorts sentences or 30-word summaries!
 - VIRAL COMPETITOR 3-BEAT CHAPTER ARCHITECTURE (JCS / Charisma on Command / @IFinity_What / @FossilVideos Formula — ZERO 'Studies show...' ACADEMIC OPENERS):
   * Slot 1 of each Chapter (Scenes {start_sid} & {start_sid+3}): **Case-Study / Verbatim Reconstruction ("Show, Don't Tell")** — NEVER start with "Studies show..." or "Research reveals...". Jump straight into the specific chronological event, physical clash, or documented record assigned to this specific chapter.
   * Slot 2 of each Chapter (Scenes {start_sid+1} & {start_sid+4}): **Hidden Mechanism + Counter-Intuitive Myth-Breaker** — Explain WHY it works using a crystal-clear everyday comparison or physical sensation that shatters a popular assumption about {topic} (STRICTLY FORBIDDEN: NEVER dump dry textbook physics/lab units like PSI, Newtons, kPa, Joules, LD50, or stiff university jargon!).
@@ -368,9 +368,9 @@ Return ONLY valid JSON with key "scenes" containing exactly 6 scene objects (`sc
             "close up detail",
             "cinematic wide environment",
         ]
-        for attempt_b in range(2):
+        for attempt_b in range(3):
             try:
-                raw_b = agent._call_api(batch_prompt, json_mode=True, timeout=36, max_total_seconds=58)
+                raw_b = agent._call_api(batch_prompt, json_mode=True, timeout=45, max_total_seconds=75)
                 b_dict = _extract_json_dict(raw_b)
                 b_scenes = b_dict.get("scenes") or []
                 if isinstance(b_scenes, list) and len(b_scenes) >= 5:
@@ -453,23 +453,36 @@ Return ONLY valid JSON with key "scenes" containing exactly 6 scene objects (`sc
                             sc_item["overlay_badge"] = f"[ // {ch_lbl.upper()} // ]"
                         else:
                             sc_item["overlay_badge"] = None
-                        sc_item["estimated_seconds"] = round(max(15.5, len(narr_txt.split()) / 2.55), 1)
+                        sc_item["estimated_seconds"] = round(max(19.0, len(narr_txt.split()) / 2.55), 1)
                         normalized_b.append(sc_item)
                     return normalized_b
             except Exception as e_b:
                 logger.warning(f"[LongForm10Min] Batch {batch_idx+1}/5 attempt {attempt_b+1} warning: {e_b}")
 
-        # Fallback an toàn nếu 1 batch gặp lỗi mạng
+        # Fallback an toàn theo đúng ngôn ngữ kênh & chủ đề nếu 1 batch gặp lỗi mạng
         fallback_b: List[Dict[str, Any]] = []
+        is_pt_lang = str(language or "").lower().startswith("pt")
+        is_vi_lang = str(language or "").lower().startswith("vi")
         for idx_local in range(6):
             target_id = start_sid + idx_local
             ch_cur = ch_a if idx_local < 3 else ch_b
-            premise_clean = str(ch_cur.get("chapter_premise") or "behavioral power dynamics in high-stakes negotiation").strip().rstrip(".")
-            m_query = str(ch_cur.get("chapter_master_query") or "tense executive boardroom meeting").strip()
-            narr_fb = (
-                f"Notice what happens during {premise_clean.lower()}: ninety percent of people react within two seconds out of pure conditioned habit. "
-                f"Hold steady eye contact for four full seconds without speaking, and their entire script falls apart on the spot as every hidden instinct surfaces."
-            )
+            premise_clean = str(ch_cur.get("chapter_premise") or topic).strip().rstrip(".")
+            m_query = str(ch_cur.get("chapter_master_query") or doc_entity or "documentary footage").strip()
+            if is_pt_lang:
+                narr_fb = (
+                    f"{premise_clean}. Na natureza implacável, cada fração de segundo define quem sobrevive e quem vira presa imediata, "
+                    f"porque a anatomia extrema e os reflexos evoluídos durante milhões de anos entram em ação antes mesmo que o oponente perceba o ataque."
+                )
+            elif is_vi_lang:
+                narr_fb = (
+                    f"{premise_clean}. Trong môi trường khắc nghiệt đó, từng phần mười giây đều quyết định ranh giới sống còn, "
+                    f"khi cấu trúc cơ thể và phản xạ sinh tồn tiến hóa qua hàng triệu năm lập tức kích hoạt trước khi đối thủ kịp nhận ra mối đe dọa."
+                )
+            else:
+                narr_fb = (
+                    f"{premise_clean}. In this unforgiving environment, every split second decides the outcome on the spot, "
+                    f"as specialized anatomy and hair-trigger reflexes honed over millions of years lock in before the opponent even registers the strike."
+                )
             ch_title_fb = str(ch_cur.get("chapter_title") or f"CHAPTER {ch_cur.get('chapter_id', 1)}").strip().upper()
             ch_badge = f"[ // {ch_title_fb} // ]" if idx_local in (0, 3) else None
             fallback_b.append({
@@ -482,9 +495,9 @@ Return ONLY valid JSON with key "scenes" containing exactly 6 scene objects (`sc
                 "media_type": "video",
                 "camera_motion": "zoom_in" if idx_local % 2 == 0 else "pan_right",
                 "sfx_cue": "none",
-                "highlight_words": ["FOUR", "SECONDS"],
+                "highlight_words": [],
                 "overlay_badge": ch_badge,
-                "estimated_seconds": 17.0,
+                "estimated_seconds": 19.5,
             })
         return fallback_b
 
