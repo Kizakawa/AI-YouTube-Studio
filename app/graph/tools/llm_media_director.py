@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 from app.graph.tools.tool_schemas import (
     MEDIA_DIRECTOR_TOOLS,
     _clean_yt_search_phrase,
+    _extract_subject_anchor_tokens,
     _sanitize_tool_arg,
     build_single_entity_stock_queries,
 )
@@ -362,7 +363,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             if init_story_qs:
                 d["storyline_search_queries"] = init_story_qs[:3]
 
-            d["scope_audited"] = bool(is_long_form_dir and total_scenes >= 28)
+            d["scope_audited"] = False
             final_plan.append(d)
             continue
 
@@ -451,6 +452,111 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
     return final_plan
 
 
+_ANALOGY_SYNTAX_RE = re.compile(
+    r"\b(?:like a|like an|as if|acting like|acts like|basically a|built-in)\b",
+    re.IGNORECASE,
+)
+
+
+def _ensure_subject_anchored_decisions(
+    decisions: List[Dict[str, Any]],
+    primary_entity: Optional[str],
+    topic: str,
+) -> List[Dict[str, Any]]:
+    """
+    Cổng bảo vệ gắn kết chủ thể không phụ thuộc chủ đề (Topic-Agnostic Subject Anchor Gate):
+    Nếu bất kỳ phân cảnh nào có câu truy vấn chính hoặc dự phòng hoàn toàn KHÔNG chứa token neo
+    của `primary_entity` / `topic` (ví dụ câu ẩn dụ hoặc câu phong cảnh bị trôi mất chủ thể),
+    tự động ghép danh từ chủ thể đơn gọn (`lead_ent`) lên đầu truy vấn.
+    """
+    anchor_toks = _extract_subject_anchor_tokens(primary_entity or "", topic or "", "")
+    if not anchor_toks:
+        return decisions
+
+    single_ents = build_single_entity_stock_queries(
+        raw_queries=[str(primary_entity or ""), str(topic or "")],
+        subject_entity=str(primary_entity or ""),
+        topic=str(topic or ""),
+        max_words=2,
+    )
+    default_lead_ent = single_ents[0] if single_ents else _clean_yt_search_phrase(
+        str(primary_entity or topic or ""), max_words=2, strip_distractor_props=True
+    )
+
+    out_decisions: List[Dict[str, Any]] = []
+    for raw_d in decisions:
+        if not isinstance(raw_d, dict):
+            out_decisions.append(raw_d)
+            continue
+        item = dict(raw_d)
+        scene_subj = str(item.get("subject_entity") or "").strip()
+        scene_subj_toks = set(re.findall(r"[a-zA-Z]{3,}", scene_subj.lower()))
+        if scene_subj and (scene_subj_toks & anchor_toks):
+            scene_ents = build_single_entity_stock_queries(
+                raw_queries=[scene_subj],
+                subject_entity=scene_subj,
+                topic=str(topic or ""),
+                max_words=2,
+            )
+            lead_ent = scene_ents[0] if scene_ents else default_lead_ent
+        else:
+            lead_ent = default_lead_ent
+            if lead_ent and not item.get("creature_name"):
+                item["subject_entity"] = lead_ent
+        if not lead_ent:
+            out_decisions.append(item)
+            continue
+
+        # Kiểm tra câu truy vấn chính của tool
+        for q_key in ("youtube_search_query", "primary_stock_query", "action_or_concept_query", "human_action_query", "smart_image_query"):
+            q_val = str(item.get(q_key) or "").strip()
+            if not q_val:
+                continue
+            q_toks = set(re.findall(r"[a-zA-Z]{3,}", q_val.lower()))
+            if not (q_toks & anchor_toks):
+                anchored_q = _clean_yt_search_phrase(
+                    f"{lead_ent} {q_val}",
+                    subject_entity=lead_ent,
+                    max_words=5,
+                )
+                if anchored_q:
+                    item[q_key] = anchored_q
+
+        # Kiểm tra câu truy vấn dự phòng Stock
+        for fb_key in ("fallback_broad_query", "secondary_stock_query"):
+            fb_val = str(item.get(fb_key) or "").strip()
+            if not fb_val:
+                continue
+            fb_toks = set(re.findall(r"[a-zA-Z]{3,}", fb_val.lower()))
+            if not (fb_toks & anchor_toks):
+                anchored_fb = _clean_yt_search_phrase(
+                    f"{lead_ent} {fb_val}",
+                    subject_entity=lead_ent,
+                    max_words=4,
+                )
+                if anchored_fb:
+                    item[fb_key] = anchored_fb
+
+        # Đảm bảo storyline_search_queries đồng bộ
+        prim_q = str(
+            item.get("youtube_search_query")
+            or item.get("primary_stock_query")
+            or item.get("action_or_concept_query")
+            or item.get("human_action_query")
+            or item.get("smart_image_query")
+            or ""
+        ).strip()
+        sec_q = str(item.get("secondary_storyline_query") or "").strip()
+        fb_q = str(item.get("fallback_broad_query") or item.get("secondary_stock_query") or "").strip()
+        merged_story_qs = [q_x for q_x in dict.fromkeys([prim_q, sec_q, fb_q]) if q_x]
+        if merged_story_qs:
+            item["storyline_search_queries"] = merged_story_qs
+        item["scope_audited"] = True
+        out_decisions.append(item)
+
+    return out_decisions
+
+
 def audit_and_decide_search_scopes_with_llm_sync(
     topic: str,
     scenes: List[Dict[str, Any]],
@@ -463,22 +569,23 @@ def audit_and_decide_search_scopes_with_llm_sync(
     LLM Node Đánh Giá & Phê Duyệt Quyết Định Tìm Kiếm (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`):
     Đọc toàn bộ kịch bản gốc (`full_script_text`) đối chiếu với từng câu văn đã chia nhỏ (`scenes`)
     và bản kế hoạch `proposed_decisions`.
+    Với kịch bản dài (`len(scenes) >= 14`), tự động lọc ra các phân cảnh chưa có token neo chủ thể
+    hoặc có cấu trúc so sánh/ẩn dụ để LLM thẩm định sâu trong 1 lượt gọi nhanh (~4s), sau đó
+    áp dụng cổng bảo vệ gắn kết chủ thể (`_ensure_subject_anchored_decisions`) cho toàn bộ 40 cảnh.
     """
     if not scenes or not proposed_decisions:
-        return proposed_decisions
-    if len(scenes) >= 32:
-        for d_item in proposed_decisions:
-            if isinstance(d_item, dict):
-                d_item["scope_audited"] = True
         return proposed_decisions
 
     full_script_text = " ".join(str(s.get("narration") or "").strip() for s in scenes if s.get("narration"))
     review_items = []
     dec_map = {int(d.get("scene_id") or 0): dict(d) for d in proposed_decisions if isinstance(d, dict)}
+    anchor_toks = _extract_subject_anchor_tokens(primary_entity or "", topic or "", "")
+    is_large_batch = len(scenes) >= 14
 
     for idx, s in enumerate(scenes):
         sid = int(s.get("scene_id") or (idx + 1))
         d = dec_map.get(sid, {})
+        narr_txt = str(s.get("narration") or "")
         q_cur = (
             d.get("youtube_search_query")
             or d.get("primary_stock_query")
@@ -489,9 +596,20 @@ def audit_and_decide_search_scopes_with_llm_sync(
             or ""
         )
         fb_cur = d.get("fallback_broad_query") or d.get("secondary_stock_query") or s.get("stock_query") or ""
+        if is_large_batch and anchor_toks:
+            q_toks = set(re.findall(r"[a-zA-Z]{3,}", str(q_cur).lower()))
+            fb_toks = set(re.findall(r"[a-zA-Z]{3,}", str(fb_cur).lower()))
+            needs_llm_audit = (
+                not (q_toks & anchor_toks)
+                or not (fb_toks & anchor_toks)
+                or bool(_ANALOGY_SYNTAX_RE.search(narr_txt))
+            )
+            if not needs_llm_audit:
+                continue
+
         review_items.append({
             "scene_id": sid,
-            "split_sentence": s.get("narration", ""),
+            "split_sentence": narr_txt,
             "scene_visual_hint": s.get("visual_keyword", ""),
             "proposed_tool": d.get("tool_name", "search_google_cinematic_image"),
             "proposed_scope": d.get("search_scope", "SCENE_SPECIFIC"),
@@ -500,6 +618,11 @@ def audit_and_decide_search_scopes_with_llm_sync(
             "proposed_fallback_stock_query": fb_cur,
             "overall_script_query": d.get("overall_script_query", ""),
         })
+
+    if not review_items:
+        return _ensure_subject_anchored_decisions(proposed_decisions, primary_entity, topic)
+    if is_large_batch and len(review_items) > 16:
+        review_items = review_items[:16]
 
     from app.services.niche_manager import build_video_search_strategy_prompt_block
     yaml_search_strategy_block = build_video_search_strategy_prompt_block(channel_niche or "general")
@@ -645,6 +768,9 @@ Return ONLY a valid JSON object in this exact format:
                                         item["scope_audited"] = True
                                         audited_list.append(item)
 
+                                    audited_list = _ensure_subject_anchored_decisions(
+                                        audited_list, primary_entity, topic
+                                    )
                                     verdict_log = ", ".join(
                                         f"S{x.get('scene_id')}:{x.get('tool_name')}[{x.get('search_scope')}]"
                                         for x in audited_list
@@ -663,4 +789,4 @@ Return ONLY a valid JSON object in this exact format:
     except Exception as ex:
         logger.debug(f"[LLM Scope Judge] Fallback pass: {ex}")
 
-    return proposed_decisions
+    return _ensure_subject_anchored_decisions(proposed_decisions, primary_entity, topic)

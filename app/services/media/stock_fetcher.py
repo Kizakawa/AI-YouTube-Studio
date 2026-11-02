@@ -178,7 +178,10 @@ class StockFetcher:
                 results = []
                 for p in data:
                     src = p.get("src", {})
-                    img_url = src.get("portrait") or src.get("large2x") or src.get("large") or src.get("original")
+                    if str(orientation).lower() == "landscape":
+                        img_url = src.get("landscape") or src.get("large2x") or src.get("large") or src.get("original")
+                    else:
+                        img_url = src.get("portrait") or src.get("large2x") or src.get("large") or src.get("original")
                     if not img_url:
                         continue
 
@@ -358,7 +361,7 @@ class StockFetcher:
             logger.debug(f"Wikimedia video search error for '{query}': {e}")
         return []
 
-    def search_pixabay_photos(self, query: str, per_page: int = 4) -> List[Dict]:
+    def search_pixabay_photos(self, query: str, per_page: int = 4, orientation: str = "vertical") -> List[Dict]:
         """Tìm kiếm ảnh chất lượng cao trên Pixabay API."""
         import time as _time
         key = self._pixabay_key
@@ -367,7 +370,8 @@ class StockFetcher:
 
         try:
             clean_q = clean_scene_search_query(query, max_words=3) or query
-            url = f"https://pixabay.com/api/?key={key}&q={urllib.parse.quote(clean_q)}&image_type=photo&orientation=vertical&per_page={max(per_page, 3)}&safesearch=true&order=popular"
+            pix_orient = "horizontal" if str(orientation).lower() in ("landscape", "horizontal") else "vertical"
+            url = f"https://pixabay.com/api/?key={key}&q={urllib.parse.quote(clean_q)}&image_type=photo&orientation={pix_orient}&per_page={max(per_page, 3)}&safesearch=true&order=popular"
             res = requests.get(url, timeout=6)
             if res.status_code == 429:
                 StockFetcher._pixabay_rate_limited_until = _time.time() + 180.0

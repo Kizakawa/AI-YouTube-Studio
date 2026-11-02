@@ -890,6 +890,20 @@ Return ONLY valid JSON in this exact format:
                     "sig": [],
                 }
 
+            if p.name.lower().endswith("_graphic.png") or str(item.get("production_method") or "").upper() == "EMERGENCY_GRAPHIC_CARD":
+                return {
+                    "scene_id": scene_id,
+                    "media_path": media_path,
+                    "rel_score": 1.0,
+                    "entity_score": 1.0,
+                    "aes_score": 1.0,
+                    "valid_bitmap": False,
+                    "issues": ["Còn sót thẻ chữ placeholder (_graphic.png) chưa được thay bằng tư liệu thật"],
+                    "failed": True,
+                    "img_hash": "",
+                    "sig": [],
+                }
+
             failed = False
             prod_m_raw = str(item.get("production_method") or "")
             is_doodle_clip = False

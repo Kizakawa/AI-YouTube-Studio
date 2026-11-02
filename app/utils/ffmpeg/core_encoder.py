@@ -93,6 +93,12 @@ _cached_ffmpeg_version: Optional[str] = None
 _cached_supports_fps_mode: Optional[bool] = None
 
 
+def get_ffmpeg_exe() -> str:
+    """Đảm bảo FFmpeg đã nằm trong PATH và trả về đường dẫn/tên thực thi chuẩn."""
+    _ensure_ffmpeg_in_path()
+    return shutil.which("ffmpeg") or "ffmpeg"
+
+
 def _supports_fps_mode() -> bool:
     """Kiểm tra xem phiên bản FFmpeg hiện tại có hỗ trợ flag -fps_mode hay không (FFmpeg >= 5.1)"""
     global _cached_supports_fps_mode
@@ -190,13 +196,16 @@ def detect_hardware_encoder(force_recheck: bool = False) -> Dict[str, Any]:
 
     ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
 
+    # Lưu ý kỹ thuật: KHÔNG tự động kích hoạt `h264_mf` (Windows Media Foundation MFT) vì trên Windows FFmpeg,
+    # `h264_mf` khóa đơn luồng D3D11 MFT gây nghẽn hàng đợi 2-4 phút khi chạy đa luồng và làm sai lệch NAL/PTS khi ghép `-f concat`.
     candidates = [
         ("h264_nvenc", ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "19", "-pix_fmt", "yuv420p"], "NVIDIA NVENC (GPU)"),
         ("h264_qsv", ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "20", "-pix_fmt", "nv12"], "Intel QuickSync (GPU)"),
         ("h264_amf", ["-c:v", "h264_amf", "-quality", "quality", "-b:v", "10M", "-pix_fmt", "yuv420p"], "AMD AMF (GPU)"),
         ("h264_videotoolbox", ["-c:v", "h264_videotoolbox", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Apple VideoToolbox (GPU)"),
-        ("h264_mf", ["-c:v", "h264_mf", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Windows Media Foundation (GPU/DirectX)"),
     ]
+    if forced_encoder == "h264_mf":
+        candidates.insert(0, ("h264_mf", ["-c:v", "h264_mf", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Windows Media Foundation (Forced)"))
 
     if forced_encoder:
         if forced_encoder == "libx264":

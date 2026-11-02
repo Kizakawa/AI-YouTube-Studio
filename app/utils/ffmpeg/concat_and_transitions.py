@@ -44,11 +44,12 @@ def concat_videos(
         "-f", "concat",
         "-safe", "0",
         "-i", list_file,
+        "-map", "0:v:0",
         *enc_args,
         *BT709_COLOR_ARGS,
         "-r", str(fps),
     ] + fps_flag + [
-        "-an",
+        "-an", "-dn", "-sn",
         output_path
     ]
     run_ffmpeg_with_gpu_fallback(args)
@@ -194,23 +195,47 @@ def concat_videos_with_xfade(
             "-f", "concat",
             "-safe", "0",
             "-i", list_file,
+            "-map", "0:v:0",
             "-vf", ",".join(vf_chain_parts),
             *enc_args,
             *BT709_COLOR_ARGS,
             "-r", str(fps),
             *fps_flag,
-            "-an",
+            "-an", "-dn", "-sn",
             output_path,
         ]
         try:
             run_ffmpeg_with_gpu_fallback(fast_concat_args, timeout=FFMPEG_TIMEOUT * (2 if has_sub else 1))
             out_dur_s = get_duration_ms(output_path) / 1000.0
-            if out_dur_s >= expected_total_s * 0.80:
+            if out_dur_s >= expected_total_s * 0.95:
                 logger.info(
                     f"[concat] ⚡ Ghép tuần tự Single-Pass {n} clips ({out_dur_s:.1f}s)"
                     f"{' + Subtitles' if has_sub else ''} → {output_path}"
                 )
                 return output_path
+            logger.warning(
+                f"[concat] Thời lượng Single-Pass ({out_dur_s:.1f}s < {expected_total_s * 0.95:.1f}s) bị hụt -> chuẩn hóa lại bitstream và ghép lại!"
+            )
+            for idx_fix, vp_fix in enumerate(video_paths):
+                r_chk = subprocess.run(
+                    ["ffmpeg", "-v", "error", "-i", vp_fix, "-f", "null", "-"],
+                    capture_output=True, text=True, timeout=15,
+                )
+                if (r_chk.stderr or "").strip():
+                    vp_tmp = str(Path(vp_fix).with_name(f"_repaired_{Path(vp_fix).name}"))
+                    subprocess.run(
+                        [
+                            "ffmpeg", "-y", "-v", "error", "-i", vp_fix,
+                            "-map", "0:v:0", "-t", f"{max(0.5, float(durations[idx_fix])):.3f}",
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                            "-pix_fmt", "yuv420p", "-r", str(fps), "-an", "-dn", "-sn", vp_tmp,
+                        ],
+                        capture_output=True, timeout=30,
+                    )
+                    if Path(vp_tmp).exists() and get_duration_ms(vp_tmp) >= 800:
+                        Path(vp_tmp).replace(vp_fix)
+                    else:
+                        Path(vp_tmp).unlink(missing_ok=True)
         except Exception as e_fc:
             logger.warning(f"[concat] Single-Pass concat+sub warning ({e_fc}), chuyển sang 2-pass concat_videos...")
         if has_sub:

@@ -571,12 +571,12 @@ def _resolve_adaptive_search_queries(
         )
     )
 
-    if q_scene:
+    if scope_norm == "SCRIPT_OVERALL":
+        base_list = [*clean_story_qs, q_overall, q_scene, q_fallback, *single_entity_fallbacks[:2]]
+    elif q_scene:
         base_list = [q_scene, *clean_story_qs, q_fallback, *single_entity_fallbacks[:2], q_overall]
-    elif scope_norm == "SCRIPT_OVERALL":
-        base_list = [*clean_story_qs, q_overall, q_fallback, *single_entity_fallbacks[:2]]
     else:
-        base_list = [*clean_story_qs, q_fallback, q_overall, *single_entity_fallbacks[:2]]
+        base_list = [*clean_story_qs, q_fallback, *single_entity_fallbacks[:2]]
 
     ordered: List[str] = []
     seen_q: Set[str] = set()

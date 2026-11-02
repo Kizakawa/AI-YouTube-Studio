@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 _chapter_locks_guard = threading.Lock()
 _chapter_locks: Dict[str, threading.Lock] = {}
 _yt_longform_dl_sem = threading.BoundedSemaphore(6)
+_MASTER_VISION_SEM = threading.BoundedSemaphore(6)
 _job_dhash_lock = threading.Lock()
 _JOB_SCENE_DHASHES: Dict[int, Dict[int, int]] = {}
 _JOB_SCENE_SIGNATURES: Dict[int, Dict[int, List[str]]] = {}
@@ -168,7 +169,7 @@ def stitch_two_16x9_clips_no_loop(
         f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
     )
     out_p = Path(output_path)
-    tmp_stitch = str(out_p.parent / f"_fftmp_stitch2_{out_p.name}")
+    tmp_stitch = str(out_p.parent / f"_fftmp_stitch2_{threading.get_ident()}_{out_p.name}")
     cmd = [
         "ffmpeg", "-y", "-v", "error",
         "-i", clip_a,
@@ -177,7 +178,7 @@ def stitch_two_16x9_clips_no_loop(
         "-map", "[vout]",
         "-t", f"{req_dur:.2f}",
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", crf_val,
-        "-an",
+        "-an", "-dn", "-sn",
         tmp_stitch,
     ]
     try:
@@ -213,10 +214,10 @@ def _search_youtube_16x9_documentary_candidates(
     primary_entity: str,
     topic: str,
     used_urls: Set[str],
-    max_results: int = 10,
+    max_results: int = 20,
 ) -> List[Dict[str, Any]]:
     """
-    Tìm các video YouTube ngang 16:9 (thời lượng 22s – 210s) phù hợp làm Master Footage cho cả 1 Chương.
+    Tìm các video YouTube ngang 16:9 (thời lượng 34s – 420s) phù hợp làm Master Footage cho cả 1 Chương.
     """
     import yt_dlp
     from app.graph.tools.tool_schemas import (
@@ -227,27 +228,25 @@ def _search_youtube_16x9_documentary_candidates(
 
     q_first = [p.strip() for p in str(query or "").split("|||") if p.strip()]
     base_phrase = q_first[0] if q_first else (query or primary_entity or topic)
-    clean_q = _clean_yt_search_phrase(base_phrase, max_words=5) or _clean_yt_search_phrase(primary_entity or topic, max_words=5) or topic
-    # Luôn neo ngữ cảnh chủ đề/thực thể để khử hoàn toàn hiện tượng đồng âm thương hiệu (vd: tên loài trùng tên xe hơi/công nghệ) hoặc hành động rời rạc
+    clean_q = _clean_yt_search_phrase(base_phrase, max_words=6) or _clean_yt_search_phrase(primary_entity or topic, max_words=5) or topic
+    # Chỉ bổ sung 1 từ khóa thực thể gốc nếu truy vấn chương chưa nhắc tới bất kỳ thực thể nào trong chủ đề (giữ tính đa dạng 14 chương!)
     topic_anchor_words = [
         w for w in (_clean_yt_search_phrase(f"{primary_entity} {topic}", max_words=7) or "").split()
         if len(w) >= 3 and w.lower() not in {"the", "and", "for", "with", "inside", "from", "into", "vs"}
     ]
-    missing_anchors = [w for w in topic_anchor_words if w.lower() not in clean_q.lower()]
-    if missing_anchors:
-        clean_q = _clean_yt_search_phrase(f"{clean_q} {' '.join(missing_anchors[:2])}", max_words=7) or clean_q
+    if topic_anchor_words and not any(w.lower() in clean_q.lower() for w in topic_anchor_words[:4]):
+        clean_q = _clean_yt_search_phrase(f"{topic_anchor_words[0]} {clean_q}", max_words=7) or clean_q
 
     alt_phrase = q_first[1] if len(q_first) > 1 else (primary_entity or topic)
-    clean_alt = _clean_yt_search_phrase(alt_phrase, max_words=5) or clean_q
-    missing_alt_anchors = [w for w in topic_anchor_words if w.lower() not in clean_alt.lower()]
-    if missing_alt_anchors:
-        clean_alt = _clean_yt_search_phrase(f"{clean_alt} {' '.join(missing_alt_anchors[:2])}", max_words=7) or clean_alt
+    clean_alt = _clean_yt_search_phrase(alt_phrase, max_words=6) or clean_q
+    if topic_anchor_words and not any(w.lower() in clean_alt.lower() for w in topic_anchor_words[:4]):
+        clean_alt = _clean_yt_search_phrase(f"{topic_anchor_words[0]} {clean_alt}", max_words=7) or clean_alt
 
     search_queries = [
         f"{clean_q} 4k documentary",
     ]
     if clean_alt and clean_alt.lower() != clean_q.lower():
-        search_queries.append(f"{clean_alt} 4k documentary footage")
+        search_queries.append(f"{clean_alt} 4k wildlife documentary" if "wild" in topic.lower() else f"{clean_alt} 4k documentary footage")
     else:
         topic_doc_q = _clean_yt_search_phrase(f"{primary_entity} {topic}", max_words=6) or clean_q
         search_queries.append(f"{topic_doc_q} 4k documentary footage")
@@ -290,8 +289,8 @@ def _search_youtube_16x9_documentary_candidates(
                     continue
 
                 dur = float(entry.get("duration") or 0.0)
-                # Ưu tiên video ngắn-trung bình (22s - 240s) để tải tức thì trong vài giây, tránh tải file bài giảng 10 phút (>100MB)
-                if dur < 22.0 or dur > 240.0:
+                # Yêu cầu >= 34s để mỗi Master tạo đủ 3-4 phân đoạn 11s độc lập (và <= 420s kết hợp download_ranges tải 54s siêu nhanh)
+                if dur < 34.0 or dur > 420.0:
                     continue
 
                 title = str(entry.get("title") or "")
@@ -326,6 +325,8 @@ def _search_youtube_16x9_documentary_candidates(
                         "breakdown", "expert", "body language", "spotted", "signs",
                         "ways to", "steps", "presentation", "course", "lesson", "reacts",
                         "movie clip", "official video", "official music video", "music video",
+                        "official audio", "lyric video", "lyrics", " ft. ", " ft.", " feat.", " feat ",
+                        "vevo", "remix", "concert", "live performance", "album", "soundtrack",
                         "official trailer", "gameplay", "walkthrough", "commercial", "tv spot",
                     )
                 ):
@@ -439,7 +440,6 @@ Return ONLY valid JSON:
 {{"passed": false, "clean_start_frame": 1, "reason": "short explanation"}}"""
 
     from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
-    from app.agents.curation.scene_context_analyzer_mixin import _VISION_SEM
 
     vision_models = [m for m in GEMINI_PRIORITY_MODELS if not str(m).startswith("gemma-")]
     http_sess = requests.Session()
@@ -458,7 +458,7 @@ Return ONLY valid JSON:
                 }],
                 "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
             }
-            if not _VISION_SEM.acquire(timeout=14.0):
+            if not _MASTER_VISION_SEM.acquire(timeout=26.0):
                 last_err_note = "vision_sem_timeout"
                 break
             try:
@@ -499,7 +499,7 @@ Return ONLY valid JSON:
                 rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_mv))
                 continue
             finally:
-                _VISION_SEM.release()
+                _MASTER_VISION_SEM.release()
     finally:
         http_sess.close()
     logger.warning(
@@ -684,7 +684,10 @@ def _download_youtube_chapter_master(
                         break
 
         usable_dur = max(10.0, min(float(max_master_dur_sec), raw_dur - skip_intro_s - 1.5))
-        # Chuẩn hóa về 1920x1080 Safe-Crop (cắt 6% viền trái/phải và 8% viền trên/dưới để loại bỏ mọi logo góc hoặc phụ đề dưới đáy)
+        # Chuẩn hóa về 1920x1080 Safe-Crop trên file STAGING riêng biệt (_cand_stage_*):
+        # TUYỆT ĐỐI KHÔNG ghi vào `master_out_path` trước khi Gemini Vision duyệt `v_ok == True`!
+        m_out_p = Path(master_out_path)
+        cand_stage_path = str(m_out_p.parent / f"_cand_stage_{threading.get_ident()}_{vid_id}.mp4")
         vf_master = (
             "crop=iw*0.88:ih*0.84:iw*0.06:ih*0.08,"
             "scale=1920:1080:force_original_aspect_ratio=increase,"
@@ -698,63 +701,65 @@ def _download_youtube_chapter_master(
             "-vf", vf_master,
             "-c:v", "libx264", "-preset", "superfast", "-crf", "21",
             "-maxrate", "5.5M", "-bufsize", "11M",
-            "-an",
-            master_out_path,
+            "-an", "-dn", "-sn",
+            cand_stage_path,
         ]
         try:
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
         except Exception:
             Path(raw_path).unlink(missing_ok=True)
-            Path(master_out_path).unlink(missing_ok=True)
+            Path(cand_stage_path).unlink(missing_ok=True)
             continue
         Path(raw_path).unlink(missing_ok=True)
 
-        if Path(master_out_path).exists() and Path(master_out_path).stat().st_size > 60_000:
-            m_dur = get_duration_ms(master_out_path) / 1000.0
-            if not _is_clip_window_clean(master_out_path, [1.0, max(2.0, m_dur * 0.45)]):
-                Path(master_out_path).unlink(missing_ok=True)
-                continue
-            v_ok, trim_off = _verify_16x9_master_with_gemini_vision(
-                master_path=master_out_path,
-                topic=topic,
-                primary_entity=primary_entity,
-                query=query,
-                video_title=str(cand.get("title") or vid_id),
-            )
-            if not v_ok:
-                Path(master_out_path).unlink(missing_ok=True)
-                continue
-            if trim_off > 0.5 and (m_dur - trim_off) >= 8.0:
-                m_out_p = Path(master_out_path)
-                tmp_tr = str(m_out_p.parent / f"_fftmp_vtrim_{m_out_p.name}")
-                try:
-                    subprocess.run(
-                        [
-                            "ffmpeg", "-y", "-v", "error",
-                            "-ss", f"{trim_off:.2f}",
-                            "-i", master_out_path,
-                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-an",
-                            tmp_tr,
-                        ],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        timeout=25,
-                        check=False,
-                    )
-                    if Path(tmp_tr).exists() and Path(tmp_tr).stat().st_size > 45_000 and get_duration_ms(tmp_tr) >= 5000:
-                        Path(tmp_tr).replace(master_out_path)
-                        m_dur = get_duration_ms(master_out_path) / 1000.0
-                except Exception:
-                    pass
-                finally:
-                    Path(tmp_tr).unlink(missing_ok=True)
-            return {
-                "master_path": master_out_path,
-                "duration_sec": m_dur,
-                "source_url": vid_url,
-                "title": cand.get("title") or vid_id,
-                "source_type": "YOUTUBE_16X9_CHAPTER_MASTER",
-            }
+        try:
+            if Path(cand_stage_path).exists() and Path(cand_stage_path).stat().st_size > 60_000:
+                m_dur = get_duration_ms(cand_stage_path) / 1000.0
+                if not _is_clip_window_clean(cand_stage_path, [1.0, max(2.0, m_dur * 0.45)]):
+                    continue
+                v_ok, trim_off = _verify_16x9_master_with_gemini_vision(
+                    master_path=cand_stage_path,
+                    topic=topic,
+                    primary_entity=primary_entity,
+                    query=query,
+                    video_title=str(cand.get("title") or vid_id),
+                )
+                if not v_ok:
+                    continue
+                if trim_off > 0.5 and (m_dur - trim_off) >= 8.0:
+                    tmp_tr = str(m_out_p.parent / f"_fftmp_vtrim_{threading.get_ident()}_{m_out_p.name}")
+                    try:
+                        subprocess.run(
+                            [
+                                "ffmpeg", "-y", "-v", "error",
+                                "-ss", f"{trim_off:.2f}",
+                                "-i", cand_stage_path,
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-an", "-dn", "-sn",
+                                tmp_tr,
+                            ],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=25,
+                            check=False,
+                        )
+                        if Path(tmp_tr).exists() and Path(tmp_tr).stat().st_size > 45_000 and get_duration_ms(tmp_tr) >= 5000:
+                            Path(tmp_tr).replace(cand_stage_path)
+                            m_dur = get_duration_ms(cand_stage_path) / 1000.0
+                    except Exception:
+                        pass
+                    finally:
+                        Path(tmp_tr).unlink(missing_ok=True)
+                # Chỉ sau khi Gemini Vision duyệt sạch 100% mới đổi tên nguyên tử sang `master_out_path`!
+                Path(cand_stage_path).replace(master_out_path)
+                return {
+                    "master_path": master_out_path,
+                    "duration_sec": m_dur,
+                    "source_url": vid_url,
+                    "title": cand.get("title") or vid_id,
+                    "source_type": "YOUTUBE_16X9_CHAPTER_MASTER",
+                }
+        finally:
+            Path(cand_stage_path).unlink(missing_ok=True)
 
     return None
 
@@ -805,7 +810,7 @@ def extract_longform_scene_with_internal_jumpcut(
                 f"[v0][v1][v2]concat=n=3:v=1:a=0,fps=30,format=yuv420p[vout]"
             )
             out_p3 = Path(output_path)
-            tmp_out = str(out_p3.parent / f"_fftmp_jc3_{out_p3.name}")
+            tmp_out = str(out_p3.parent / f"_fftmp_jc3_{threading.get_ident()}_{out_p3.name}")
             cmd = [
                 "ffmpeg", "-y", "-v", "error",
                 "-i", master_path,
@@ -813,7 +818,7 @@ def extract_longform_scene_with_internal_jumpcut(
                 "-map", "[vout]",
                 "-t", f"{req_dur:.2f}",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
-                "-an",
+                "-an", "-dn", "-sn",
                 tmp_out,
             ]
             try:
@@ -852,7 +857,7 @@ def extract_longform_scene_with_internal_jumpcut(
                 f"[v0][v1]concat=n=2:v=1:a=0,fps=30,format=yuv420p[vout]"
             )
             out_p2 = Path(output_path)
-            tmp_out2 = str(out_p2.parent / f"_fftmp_jc2_{out_p2.name}")
+            tmp_out2 = str(out_p2.parent / f"_fftmp_jc2_{threading.get_ident()}_{out_p2.name}")
             cmd = [
                 "ffmpeg", "-y", "-v", "error",
                 "-i", master_path,
@@ -860,7 +865,7 @@ def extract_longform_scene_with_internal_jumpcut(
                 "-map", "[vout]",
                 "-t", f"{req_dur:.2f}",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", crf_val,
-                "-an",
+                "-an", "-dn", "-sn",
                 tmp_out2,
             ]
             try:
@@ -877,7 +882,7 @@ def extract_longform_scene_with_internal_jumpcut(
 
         # Fallback cắt đơn chuẩn 1920x1080 kèm Vignette & Color Grading nhẹ (tắt hflip để không lật ngược đồng hồ/chữ số)
         out_p1 = Path(output_path)
-        tmp_out1 = str(out_p1.parent / f"_fftmp_jc1_{out_p1.name}")
+        tmp_out1 = str(out_p1.parent / f"_fftmp_jc1_{threading.get_ident()}_{out_p1.name}")
         try:
             trim_video(
                 input_path=master_path,
@@ -976,7 +981,12 @@ def fetch_or_slice_longform_chapter_clip_sync(
     try:
         if _is_cancelled():
             return None
-        if not is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000) and not failed_marker.exists():
+        if Path(master_file).exists() and not meta_file.exists():
+            try:
+                Path(master_file).unlink(missing_ok=True)
+            except Exception:
+                pass
+        if (not meta_file.exists() or not is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000)) and not failed_marker.exists():
             with bvid_lock:
                 snap_used_urls = set(used_urls)
             yt_cands = _search_youtube_16x9_documentary_candidates(
@@ -1136,7 +1146,7 @@ def fetch_or_slice_longform_chapter_clip_sync(
                                     Path(master_file).unlink(missing_ok=True)
                     except Exception as e_bili:
                         logger.debug(f"[LongForm ChapterPool] Bilibili master skip: {e_bili}")
-            if not is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000) and not _is_cancelled():
+            if not is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000) and not _is_cancelled() and len(yt_cands) <= 5:
                 try:
                     failed_marker.write_text("failed", encoding="utf-8")
                 except Exception:
@@ -1214,6 +1224,21 @@ def fetch_or_slice_longform_chapter_clip_sync(
     return None
 
 
+def get_chapter_master_meta_paths(master_path: Path) -> List[Path]:
+    """Trả về tất cả đường dẫn chứng chỉ Vision khả dĩ (`*_meta.txt` và `*.meta`) của một file Chapter Master."""
+    mp = Path(master_path)
+    candidates: List[Path] = []
+    if mp.name.endswith("_master.mp4"):
+        candidates.append(mp.with_name(mp.name[:-len("_master.mp4")] + "_meta.txt"))
+    candidates.append(mp.with_suffix(".meta"))
+    return candidates
+
+
+def has_verified_chapter_master_meta(master_path: Path) -> bool:
+    """Kiểm tra xem Chapter Master đã có chứng chỉ Vision hợp lệ (`*_meta.txt` hoặc `*.meta`) trên ổ đĩa hay chưa."""
+    return any(p.exists() and p.stat().st_size > 0 for p in get_chapter_master_meta_paths(master_path))
+
+
 def slice_any_available_chapter_master_for_scene(
     media_dir: Path,
     scene_id: int,
@@ -1239,6 +1264,7 @@ def slice_any_available_chapter_master_for_scene(
         [
             p for p in chapter_dir.glob("chapter_*_master.mp4")
             if p.name.lower() not in excl_norm
+            and has_verified_chapter_master_meta(p)
             and is_completed_clean_mp4(p, min_size_bytes=60_000, min_duration_ms=8000)
         ]
     )

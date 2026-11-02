@@ -362,36 +362,31 @@ class VideoAgent:
                     from app.utils.ffmpeg_helper import get_duration_ms
                     actual_w, actual_h = get_video_dimensions(scene.media_path)
                     actual_v_sec = get_duration_ms(scene.media_path) / 1000.0
-                    if actual_w == job.resolution_w and actual_h == job.resolution_h:
-                        if abs(actual_v_sec - duration) <= 0.08:
-                            logger.info(
-                                f"  Scene {scene.scene_id}: ⚡ 16:9 Ready Clip ({Path(scene.media_path).name}, {actual_v_sec:.2f}s == {duration:.2f}s) → copy trực tiếp sang Single-Pass Concat"
-                            )
-                            if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
-                                shutil.copy2(scene.media_path, clip_path)
+                    if actual_w == job.resolution_w and actual_h == job.resolution_h and actual_v_sec >= duration - 0.08:
+                        import subprocess as _sp_trim
+                        logger.info(
+                            f"  Scene {scene.scene_id}: ⚡ 16:9 Clean Stream Sync ({Path(scene.media_path).name}, {actual_v_sec:.2f}s → {duration:.2f}s)"
+                        )
+                        _sp_trim.run(
+                            [
+                                "ffmpeg", "-y", "-v", "error",
+                                "-i", str(scene.media_path),
+                                "-map", "0:v:0",
+                                "-t", f"{duration:.3f}",
+                                "-vf", "setsar=1,fps=" + str(job.fps) + ",format=yuv420p",
+                                "-threads", "2",
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                                "-pix_fmt", "yuv420p", "-r", str(job.fps),
+                                "-an", "-dn", "-sn",
+                                str(clip_path),
+                            ],
+                            stdout=_sp_trim.DEVNULL,
+                            stderr=_sp_trim.DEVNULL,
+                            timeout=30,
+                            check=False,
+                        )
+                        if is_completed_clean_mp4(clip_path, min_size_bytes=20_000, min_duration_ms=800):
                             return (scene.scene_id, clip_path)
-                        elif actual_v_sec > duration + 0.08:
-                            import subprocess as _sp_trim
-                            logger.info(
-                                f"  Scene {scene.scene_id}: ⚡ 16:9 Exact Duration Sync ({Path(scene.media_path).name}, {actual_v_sec:.2f}s → {duration:.2f}s)"
-                            )
-                            _sp_trim.run(
-                                [
-                                    "ffmpeg", "-y", "-v", "error",
-                                    "-i", str(scene.media_path),
-                                    "-t", f"{duration:.3f}",
-                                    "-vf", "setsar=1",
-                                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                                    "-pix_fmt", "yuv420p", "-r", str(job.fps), "-an",
-                                    str(clip_path),
-                                ],
-                                stdout=_sp_trim.DEVNULL,
-                                stderr=_sp_trim.DEVNULL,
-                                timeout=30,
-                                check=False,
-                            )
-                            if is_completed_clean_mp4(clip_path, min_size_bytes=20_000, min_duration_ms=800):
-                                return (scene.scene_id, clip_path)
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
                     f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"

@@ -173,40 +173,15 @@ def search_youtube_native_shorts_flat(query: str, max_results: int = 20) -> List
         return []
     query_is_vi = bool(_VN_EXCLUSIVE_DIACRITIC_RE.search(q_clean))
     q_with_tag = q_clean if "#short" in q_clean.lower() else f"{q_clean} #shorts"
-    search_url = f"https://www.youtube.com/results?search_query={quote_plus(q_with_tag)}&gl=US&hl=en"
-
-    data: Optional[Dict[str, Any]] = None
-    for _attempt in range(2):
-        try:
-            import requests
-            resp = requests.get(
-                search_url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                    "Accept-Language": "en-US,en;q=0.9",
-                },
-                cookies={"CONSENT": "YES+cb"},
-                timeout=7,
-            )
-            if resp.status_code != 200 or not resp.text:
-                continue
-            m = re.search(
-                r"(?:var\s+ytInitialData|window\[\"ytInitialData\"\])\s*=\s*(\{.*?\});\s*</script>",
-                resp.text,
-                re.DOTALL,
-            )
-            if not m:
-                continue
-            parsed = json.loads(m.group(1))
-            if isinstance(parsed, dict) and "shortsLockupViewModel" in resp.text:
-                data = parsed
-                break
-            if isinstance(parsed, dict) and data is None:
-                data = parsed
-        except Exception as e:
-            logger.debug(f"[LicensePolicy] search_youtube_native_shorts_flat skip ({query}): {e}")
-    if not data:
-        return []
+    candidate_queries = [q_with_tag]
+    if q_with_tag.lower() != q_clean.lower():
+        candidate_queries.append(q_clean)
+    # Nếu câu truy vấn dài >= 4 từ, bổ sung thêm bản rút gọn 3 từ cốt lõi để tránh 0 kết quả
+    q_words = [w for w in q_clean.split() if not w.startswith("#")]
+    if len(q_words) >= 4:
+        q_short3 = " ".join(q_words[:3])
+        if q_short3.lower() not in {x.lower() for x in candidate_queries}:
+            candidate_queries.append(q_short3)
 
     out: List[Dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -314,7 +289,35 @@ def search_youtube_native_shorts_flat(query: str, max_results: int = 20) -> List
             for item in node:
                 _walk(item)
 
-    _walk(data)
+    for q_try in candidate_queries:
+        if len(out) >= 3:
+            break
+        search_url = f"https://www.youtube.com/results?search_query={quote_plus(q_try)}&gl=US&hl=en"
+        try:
+            import requests
+            resp = requests.get(
+                search_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+                cookies={"CONSENT": "YES+cb"},
+                timeout=7,
+            )
+            if resp.status_code != 200 or not resp.text:
+                continue
+            m = re.search(
+                r"(?:var\s+ytInitialData|window\[\"ytInitialData\"\])\s*=\s*(\{.*?\});\s*</script>",
+                resp.text,
+                re.DOTALL,
+            )
+            if not m:
+                continue
+            parsed = json.loads(m.group(1))
+            if isinstance(parsed, dict):
+                _walk(parsed)
+        except Exception as e:
+            logger.debug(f"[LicensePolicy] search_youtube_native_shorts_flat skip ({q_try}): {e}")
     if not query_is_vi:
         out = [
             item for item in out
