@@ -257,22 +257,47 @@ class VideoAgent:
                         recovered_type = "image"
                         break
                 if not recovered_path:
+                    # Chỉ cắt lát từ các file Master dài (`*_master.mp4` >= 14s) ở mốc thời gian không chồng lấn;
+                    # TUYỆT ĐỐI KHÔNG lấy trực tiếp file `scene_YYY_*.mp4` của cảnh khác làm donor gây lặp cảnh liên tiếp!
                     for m_dir in media_search_dirs:
-                        if not m_dir.exists():
+                        ch_pool_d = m_dir / "chapter_pool"
+                        if not ch_pool_d.exists():
                             continue
-                        donor_vids = sorted(
+                        master_donors = sorted(
                             [
-                                p for p in m_dir.glob("*.mp4")
-                                if is_completed_clean_mp4(p, min_size_bytes=25_000, min_duration_ms=2000)
+                                p for p in ch_pool_d.glob("*_master.mp4")
+                                if is_completed_clean_mp4(p, min_size_bytes=50_000, min_duration_ms=14000)
                             ],
                             key=lambda p: p.stat().st_size,
                             reverse=True,
                         )
-                        if donor_vids:
-                            donor_pick = donor_vids[(scene.scene_id - 1) % len(donor_vids)]
-                            recovered_path = str(donor_pick)
-                            recovered_type = "video"
-                            break
+                        if master_donors:
+                            donor_pick = master_donors[(scene.scene_id - 1) % len(master_donors)]
+                            from app.utils.ffmpeg_helper import get_duration_ms as _get_m_dur
+                            m_tot_s = _get_m_dur(str(donor_pick)) / 1000.0
+                            m_off = round((((scene.scene_id * 37 + 13) % 89) / 89.0) * max(0.0, m_tot_s - duration - 0.5), 2)
+                            sliced_rec = str(Path(work_dir) / f"recovered_master_s{scene.scene_id:03d}.mp4")
+                            try:
+                                trim_video(
+                                    input_path=str(donor_pick),
+                                    duration_seconds=duration,
+                                    output_path=sliced_rec,
+                                    width=job.resolution_w,
+                                    height=job.resolution_h,
+                                    fps=job.fps,
+                                    start_offset_sec=m_off,
+                                    is_scifi=False,
+                                    apply_grading=True,
+                                    is_hook_scene=(scene.scene_id == 1),
+                                    fair_use_transform=True,
+                                    preserve_continuous_flow=True,
+                                )
+                                if Path(sliced_rec).exists() and Path(sliced_rec).stat().st_size > 20_000:
+                                    recovered_path = sliced_rec
+                                    recovered_type = "video"
+                                    break
+                            except Exception:
+                                pass
                 if recovered_path and Path(recovered_path).exists():
                     logger.info(
                         f"  Scene {scene.scene_id}: 🛡️ Đã tự động khôi phục media thật '{Path(recovered_path).name}' "
@@ -408,19 +433,31 @@ class VideoAgent:
                         preserve_continuous_flow=True,
                     )
                 except Exception as e_trim:
-                    logger.warning(f"  Scene {scene.scene_id}: ⚠️ Clip gốc bị lỗi ({e_trim}), tự động phục hồi từ kho video sạch trong job...")
+                    logger.warning(f"  Scene {scene.scene_id}: ⚠️ Clip gốc bị lỗi ({e_trim}), tự động phục hồi từ file cùng cảnh hoặc Master dài...")
                     donor_vid = None
+                    donor_offset = 0.0
                     fallback_dirs = [Path(work_dir).parent / "media", Path(work_dir) / "media", Path(work_dir)]
                     for fb_dir in fallback_dirs:
                         if not fb_dir.exists():
                             continue
-                        cand_pool = sorted(fb_dir.glob("scene_*_16x9.mp4")) + sorted(fb_dir.glob("*.mp4"))
-                        for cand_mp4 in cand_pool:
+                        # 1. Chỉ lấy file dự phòng của CHÍNH cảnh hiện tại (scene_{scene.scene_id:03d}_*.mp4),
+                        # hoặc file Master dài (*_master.mp4 >= 14s). Tuyệt đối không lấy clip của cảnh khác!
+                        same_sc_pool = sorted(fb_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4"))
+                        ch_master_pool = sorted((fb_dir / "chapter_pool").glob("*_master.mp4")) if (fb_dir / "chapter_pool").exists() else []
+                        for cand_mp4 in [*same_sc_pool, *ch_master_pool]:
                             if (
                                 str(cand_mp4.resolve()) != str(Path(scene.media_path).resolve())
-                                and is_completed_clean_mp4(cand_mp4, min_size_bytes=25_000, min_duration_ms=3000)
+                                and is_completed_clean_mp4(
+                                    cand_mp4,
+                                    min_size_bytes=25_000,
+                                    min_duration_ms=14000 if cand_mp4.name.endswith("_master.mp4") else 1500,
+                                )
                             ):
                                 donor_vid = str(cand_mp4)
+                                if cand_mp4.name.endswith("_master.mp4"):
+                                    from app.utils.ffmpeg_helper import get_duration_ms as _get_d_ms
+                                    d_dur_s = _get_d_ms(donor_vid) / 1000.0
+                                    donor_offset = round((((scene.scene_id * 41 + 19) % 89) / 89.0) * max(0.0, d_dur_s - duration - 0.5), 2)
                                 break
                         if donor_vid:
                             break
@@ -432,7 +469,7 @@ class VideoAgent:
                             width=job.resolution_w,
                             height=job.resolution_h,
                             fps=job.fps,
-                            start_offset_sec=1.5,
+                            start_offset_sec=donor_offset,
                             is_scifi=is_scifi_clip,
                             niche=clip_niche,
                             apply_grading=False,

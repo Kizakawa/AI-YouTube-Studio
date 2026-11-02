@@ -97,39 +97,70 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                 if not rescued_pre:
                     m_dir_pre = work_dir / "media"
                     ch_dir_pre = m_dir_pre / "chapter_pool"
-                    cand_donors = sorted(
+                    # 1. Ưu tiên khôi phục file media của CHÍNH phân cảnh sc_id trên đĩa (nếu có)
+                    same_scene_vids = sorted(
                         [
-                            p for p in [
-                                *(list(ch_dir_pre.glob("*_master.mp4")) if ch_dir_pre.exists() else []),
-                                *(list(m_dir_pre.glob("*.mp4")) if m_dir_pre.exists() else []),
-                            ]
-                            if is_completed_clean_mp4(p, min_size_bytes=25_000, min_duration_ms=2000)
+                            p for p in (list(m_dir_pre.glob(f"scene_{int(sc_id):03d}_*.mp4")) if m_dir_pre.exists() else [])
+                            if is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
                         ],
-                        key=lambda p: p.stat().st_size,
+                        key=lambda p: p.stat().st_mtime,
                         reverse=True,
                     )
-                    if cand_donors:
-                        d_pick = cand_donors[(int(sc_id) - 1) % len(cand_donors)]
-                        d_tot_s = get_duration_ms(str(d_pick)) / 1000.0
-                        d_span = max(0.0, d_tot_s - req_sc_dur - 0.5)
-                        d_off = round((((int(sc_id) * 43 + 17) % 89) / 89.0) * d_span, 2) if d_span > 0.5 else 0.0
-                        trim_video(
-                            input_path=str(d_pick),
-                            duration_seconds=req_sc_dur,
-                            output_path=out_pre_resc,
-                            width=target_w,
-                            height=target_h,
-                            fps=30,
-                            start_offset_sec=d_off,
-                            apply_grading=True,
-                            is_hook_scene=(sc_id == 1),
-                            fair_use_transform=True,
-                            preserve_continuous_flow=True,
+                    if same_scene_vids:
+                        cur_media_path = str(same_scene_vids[0])
+                        cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                        rescued_pre = True
+                    else:
+                        # 2. Chỉ cắt lát không chồng lấn từ các file Master dài (*_master.mp4 >= 14s),
+                        # TUYỆT ĐỐI KHÔNG copy các clip ngắn (scene_YYY_*.mp4) của phân cảnh khác gây lặp cảnh!
+                        from app.services.media.longform_chapter_pool import (
+                            _commit_master_used_range,
+                            _find_non_overlapping_master_offset,
+                            is_clip_visually_unique_in_job,
                         )
-                        if Path(out_pre_resc).exists() and Path(out_pre_resc).stat().st_size > 15_000:
-                            cur_media_path = out_pre_resc
-                            cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
-                            rescued_pre = True
+                        cand_masters = sorted(
+                            [
+                                p for p in (list(ch_dir_pre.glob("*_master.mp4")) if ch_dir_pre.exists() else [])
+                                if is_completed_clean_mp4(p, min_size_bytes=50_000, min_duration_ms=14000)
+                            ],
+                            key=lambda p: p.stat().st_size,
+                            reverse=True,
+                        )
+                        for d_pick in cand_masters:
+                            d_tot_s = get_duration_ms(str(d_pick)) / 1000.0
+                            d_span = max(0.0, d_tot_s - req_sc_dur - 0.5)
+                            pref_off = round((((int(sc_id) * 43 + 17) % 89) / 89.0) * d_span, 2) if d_span > 0.5 else 0.0
+                            d_off = _find_non_overlapping_master_offset(
+                                job_id=job_id,
+                                master_key=str(d_pick),
+                                scene_id=int(sc_id),
+                                preferred_offset=pref_off,
+                                req_dur=req_sc_dur,
+                                master_dur=d_tot_s,
+                            )
+                            if d_off is None:
+                                continue
+                            trim_video(
+                                input_path=str(d_pick),
+                                duration_seconds=req_sc_dur,
+                                output_path=out_pre_resc,
+                                width=target_w,
+                                height=target_h,
+                                fps=30,
+                                start_offset_sec=d_off,
+                                apply_grading=True,
+                                is_hook_scene=(sc_id == 1),
+                                fair_use_transform=True,
+                                preserve_continuous_flow=True,
+                            )
+                            if Path(out_pre_resc).exists() and Path(out_pre_resc).stat().st_size > 15_000:
+                                if is_clip_visually_unique_in_job(out_pre_resc, job_id, scene_id=int(sc_id), master_key=str(d_pick)):
+                                    _commit_master_used_range(job_id, str(d_pick), int(sc_id), d_off, min(d_tot_s, d_off + req_sc_dur))
+                                    cur_media_path = out_pre_resc
+                                    cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                    rescued_pre = True
+                                    break
+                                Path(out_pre_resc).unlink(missing_ok=True)
                 if rescued_pre:
                     m["media_path"] = cur_media_path
                     m["media_type"] = cur_media_type

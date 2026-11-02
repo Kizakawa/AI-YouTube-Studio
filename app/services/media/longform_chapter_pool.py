@@ -33,9 +33,10 @@ _chapter_locks: Dict[str, threading.Lock] = {}
 _yt_longform_dl_sem = threading.BoundedSemaphore(6)
 _MASTER_VISION_SEM = threading.BoundedSemaphore(6)
 _job_dhash_lock = threading.Lock()
-_JOB_SCENE_DHASHES: Dict[int, Dict[int, int]] = {}
+_JOB_SCENE_DHASHES: Dict[int, Dict[int, List[int]]] = {}
 _JOB_SCENE_SIGNATURES: Dict[int, Dict[int, List[str]]] = {}
 _JOB_MASTER_SLICE_SCENES: Dict[Tuple[int, str], Set[int]] = {}
+_JOB_MASTER_USED_RANGES: Dict[Tuple[int, str], List[Tuple[int, float, float]]] = {}
 
 
 def reset_longform_job_dedup(job_id: int) -> None:
@@ -49,6 +50,115 @@ def reset_longform_job_dedup(job_id: int) -> None:
         stale_keys = [k for k in _JOB_MASTER_SLICE_SCENES if k[0] == jid]
         for k in stale_keys:
             _JOB_MASTER_SLICE_SCENES.pop(k, None)
+        stale_r_keys = [k for k in _JOB_MASTER_USED_RANGES if k[0] == jid]
+        for k in stale_r_keys:
+            _JOB_MASTER_USED_RANGES.pop(k, None)
+
+
+def _compute_expected_jumpcut_span(
+    req_dur: float,
+    master_dur: float,
+    start_s: float,
+    scene_id: int = 1,
+) -> float:
+    """Tính tổng độ rộng thời gian thực tế bị chiếm trên file Master (bao gồm cả bước nhảy +2.5s/+3.0s của Internal Jump-Cut)."""
+    r_dur = max(2.5, float(req_dur))
+    if r_dur >= 11.0 and (start_s + r_dur + 3.0) <= master_dur and scene_id != 1:
+        return round(r_dur + 3.15, 2)
+    if r_dur >= 5.0 and (start_s + r_dur + 2.5) <= master_dur:
+        return round(r_dur + 2.62, 2)
+    return round(r_dur + 0.15, 2)
+
+
+def _is_master_interval_overlapping(
+    job_id: int,
+    master_key: str,
+    scene_id: int,
+    start_s: float,
+    end_s: float,
+    min_gap_sec: float = 0.8,
+) -> bool:
+    """Kiểm tra xem đoạn [start_s, end_s] trên Master có bị chồng lấn với bất kỳ cảnh nào đã cắt trước đó trong Job hay không."""
+    if not job_id or not master_key:
+        return False
+    norm_master = str(Path(master_key).name).lower()
+    sid = int(scene_id or 0)
+    with _job_dhash_lock:
+        used_ranges = list(_JOB_MASTER_USED_RANGES.get((int(job_id), norm_master), []))
+    for u_sid, u_start, u_end in used_ranges:
+        if sid > 0 and u_sid == sid:
+            continue
+        if start_s < (u_end + min_gap_sec) and end_s > (u_start - min_gap_sec):
+            return True
+    return False
+
+
+def _find_non_overlapping_master_offset(
+    job_id: int,
+    master_key: str,
+    scene_id: int,
+    preferred_offset: float,
+    req_dur: float,
+    master_dur: float,
+) -> Optional[float]:
+    """
+    Tìm mốc `offset_s` trên file Master sao cho toàn bộ khoảng thời gian cắt (kể cả bước nhảy Jump-Cut +2.5s)
+    HOÀN TOÀN KHÔNG CHỒNG LẤN với bất kỳ phân cảnh nào đã cắt trước đó trên cùng file Master.
+    Trả về `None` nếu file Master không còn khoảng trống độc lập nào đủ độ dài `req_dur`.
+    """
+    r_dur = max(2.5, float(req_dur))
+    if master_dur < r_dur + 0.3:
+        return None
+    max_start = max(0.0, master_dur - r_dur - 0.25)
+    pref = max(0.0, min(float(preferred_offset), max_start))
+
+    cand_offsets: List[float] = [round(pref, 2)]
+    step_s = max(2.2, min(4.5, r_dur * 0.45))
+    cur = 0.0
+    while cur <= max_start + 0.01:
+        c_val = round(min(cur, max_start), 2)
+        if all(abs(c_val - ex) >= 0.9 for ex in cand_offsets):
+            cand_offsets.append(c_val)
+        cur += step_s
+    # Sắp xếp ưu tiên các mốc gần preferred_offset nhất
+    cand_offsets = [cand_offsets[0]] + sorted(cand_offsets[1:], key=lambda x: abs(x - pref))
+
+    # Ưu tiên 1: Đủ chỗ cho cả Jump-Cut (+2.5s/+3.0s) và cách các đoạn đã dùng >= 0.8s
+    for c_off in cand_offsets:
+        span_jc = _compute_expected_jumpcut_span(r_dur, master_dur, c_off, scene_id=scene_id)
+        if (c_off + span_jc) <= (master_dur + 0.15):
+            if not _is_master_interval_overlapping(job_id, master_key, scene_id, c_off, c_off + span_jc, min_gap_sec=0.8):
+                return c_off
+
+    # Ưu tiên 2: Đủ chỗ cho nhát cắt liền mạch `r_dur` (không chồng lấn với bất kỳ cảnh nào khác)
+    for c_off in cand_offsets:
+        if (c_off + r_dur) <= (master_dur + 0.1):
+            if not _is_master_interval_overlapping(job_id, master_key, scene_id, c_off, c_off + r_dur, min_gap_sec=0.35):
+                return c_off
+
+    return None
+
+
+def _commit_master_used_range(
+    job_id: int,
+    master_key: str,
+    scene_id: int,
+    start_s: float,
+    end_s: float,
+) -> None:
+    """Ghi nhận chính xác khoảng thời gian [start_s, end_s] đã sử dụng trên Master cho `scene_id`."""
+    if not job_id or not master_key:
+        return
+    jid = int(job_id)
+    sid = int(scene_id or 0)
+    norm_master = str(Path(master_key).name).lower()
+    with _job_dhash_lock:
+        ranges = _JOB_MASTER_USED_RANGES.setdefault((jid, norm_master), [])
+        if sid > 0:
+            for m_k, m_list in _JOB_MASTER_USED_RANGES.items():
+                if m_k[0] == jid:
+                    m_list[:] = [it for it in m_list if it[0] != sid]
+        ranges.append((sid, round(float(start_s), 2), round(float(end_s), 2)))
 
 
 def is_clip_visually_unique_in_job(
@@ -61,16 +171,18 @@ def is_clip_visually_unique_in_job(
 ) -> bool:
     """
     Kiểm tra đồng thời 3 tầng chống trùng lặp khung hình trong cùng 1 Job:
-    1. Giới hạn cứng số lần cắt trên cùng 1 file Master (`max_master_uses = 2` cảnh/Master cho toàn bộ video).
+    1. Giới hạn cứng số lần cắt trên cùng 1 file Master (`max_master_uses` cảnh/Master cho toàn bộ video).
     2. Chữ ký đa khung hình đồng bộ 100% với `VisualCritic._media_signature` & `VisualCritic._find_duplicate`
        (đảm bảo mọi clip được nhận đều vượt qua `VisualCritic.evaluate_media` với 0 lỗi trùng lặp).
-    3. Perceptual dHash (64-bit) trên khung hình trung tâm (`Hamming distance > max_hamming`).
+    3. Perceptual dHash (64-bit) trên CẢ 3 MỐC (Đầu 12% - Giữa 50% - Cuối 88% của clip) để bắt triệt để lỗi
+       nửa cuối Cảnh N trùng với nửa đầu Cảnh N+1 (`Hamming distance > max_hamming`).
     """
     if not job_id or not video_path or not Path(video_path).exists():
         return True
     jid = int(job_id)
     sid_slot = int(scene_id) if scene_id is not None else -1
     norm_master = str(Path(master_key).name).lower() if master_key else ""
+    eff_hamming_thresh = max(7, int(max_hamming))
 
     if norm_master:
         with _job_dhash_lock:
@@ -85,48 +197,55 @@ def is_clip_visually_unique_in_job(
     except Exception:
         sig = []
 
-    dhash_val: Optional[int] = None
+    dhash_list: List[int] = []
     try:
         import cv2
         cap = cv2.VideoCapture(str(video_path))
         if cap.isOpened():
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-            if total_frames > 4:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, int(total_frames * 0.45))
-            ret, frame = cap.read()
+            sample_fracs = (0.12, 0.50, 0.88) if total_frames >= 9 else (0.50,)
+            for frac in sample_fracs:
+                if total_frames > 2:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, min(total_frames - 1, int(total_frames * frac))))
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    resized = cv2.resize(gray, (9, 8), interpolation=cv2.INTER_AREA)
+                    val = 0
+                    for r in range(8):
+                        for c in range(8):
+                            val = (val << 1) | (1 if int(resized[r, c + 1]) > int(resized[r, c]) else 0)
+                    dhash_list.append(val)
             cap.release()
-            if ret and frame is not None:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                resized = cv2.resize(gray, (9, 8), interpolation=cv2.INTER_AREA)
-                val = 0
-                for r in range(8):
-                    for c in range(8):
-                        val = (val << 1) | (1 if int(resized[r, c + 1]) > int(resized[r, c]) else 0)
-                dhash_val = val
     except Exception:
-        dhash_val = None
+        dhash_list = []
 
     with _job_dhash_lock:
         sig_map = _JOB_SCENE_SIGNATURES.setdefault(jid, {})
         dhash_map = _JOB_SCENE_DHASHES.setdefault(jid, {})
         other_sigs = {k: v for k, v in sig_map.items() if k != sid_slot}
-        if max_hamming > 3 and sig and other_sigs:
+        if sig and other_sigs:
             try:
                 from app.graph.evaluators.visual_critic import VisualCritic
                 if VisualCritic._find_duplicate(sig, other_sigs) is not None:
                     return False
             except Exception:
                 pass
-        if dhash_val is not None:
-            for prev_sid, prev_h in dhash_map.items():
-                if prev_sid != sid_slot and bin(dhash_val ^ prev_h).count("1") <= max_hamming:
-                    return False
+        if dhash_list:
+            for prev_sid, prev_hashes in dhash_map.items():
+                if prev_sid == sid_slot:
+                    continue
+                prev_iter = prev_hashes if isinstance(prev_hashes, list) else [prev_hashes]
+                for cur_h in dhash_list:
+                    for prev_h in prev_iter:
+                        if bin(cur_h ^ prev_h).count("1") <= eff_hamming_thresh:
+                            return False
 
         alloc_slot = sid_slot if sid_slot > 0 else -(len(sig_map) + len(dhash_map) + 1)
         if sig:
             sig_map[alloc_slot] = sig
-        if dhash_val is not None:
-            dhash_map[alloc_slot] = dhash_val
+        if dhash_list:
+            dhash_map[alloc_slot] = dhash_list
         if norm_master:
             m_set = _JOB_MASTER_SLICE_SCENES.setdefault((jid, norm_master), set())
             if sid_slot > 0:
@@ -770,6 +889,9 @@ def extract_longform_scene_with_internal_jumpcut(
     start_offset_sec: float,
     target_duration_sec: float,
     scene_id: int = 1,
+    allow_internal_jumpcut: bool = True,
+    job_id: int = 0,
+    master_key: str = "",
 ) -> bool:
     """
     Cắt phân cảnh `target_duration_sec` (vd: 8.5s) từ file `master_path` trên ổ cứng SSD (< 0.5s),
@@ -777,7 +899,8 @@ def extract_longform_scene_with_internal_jumpcut(
     đối với cảnh dài `>= 5.0s` để:
       1. Phá 100% tính liên tục timecode của Visual Content ID.
       2. Tạo nhịp cắt 2 cú máy (Wide -> Close-up) chuẩn phim tài liệu triệu view.
-      3. Tự động kiểm tra `_is_clip_window_clean` trên clip vừa cắt; nếu vướng frame chữ/collage thì dịch mốc cắt thêm +8s.
+      3. Tự động kiểm tra `_is_clip_window_clean` và chống chồng lấn mốc thời gian (`_is_master_interval_overlapping`)
+         để nửa sau của Cảnh N không bao giờ nhảy cóc đè vào nửa đầu của Cảnh N+1!
     """
     master_dur = get_duration_ms(master_path) / 1000.0
     if master_dur <= 1.5:
@@ -785,14 +908,31 @@ def extract_longform_scene_with_internal_jumpcut(
 
     req_dur = max(2.5, float(target_duration_sec))
     max_start = max(0.0, master_dur - req_dur - 0.5)
+    eff_master_key = master_key or master_path
 
     for attempt_shift in (0.0, 8.5, 16.5):
         safe_start = max(0.0, min(start_offset_sec + attempt_shift, max_start))
         if attempt_shift > 0.0 and safe_start <= start_offset_sec + 0.5:
             break
+        if job_id and _is_master_interval_overlapping(
+            job_id, eff_master_key, scene_id, safe_start, safe_start + req_dur, min_gap_sec=0.35
+        ):
+            continue
 
-        # N?u c?nh d?i >= 11.0s (Phim t?i li?u 10 ph?t) v? file master ?? ?? d? (>= req_dur + 3.0s), th?c hi?n Jump-Cut 3 c? m?y (Wide -> Medium -> Close-up):
-        if req_dur >= 11.0 and (safe_start + req_dur + 3.0) <= master_dur and scene_id != 1:
+        can_jc3 = (
+            allow_internal_jumpcut
+            and req_dur >= 11.0
+            and (safe_start + req_dur + 3.0) <= master_dur
+            and scene_id != 1
+            and not (
+                job_id
+                and _is_master_interval_overlapping(
+                    job_id, eff_master_key, scene_id, safe_start, safe_start + req_dur + 3.15, min_gap_sec=0.5
+                )
+            )
+        )
+        # Nếu cảnh dài >= 11.0s (Phim tài liệu 10 phút) và file master đủ độ dư (không đè lên cảnh khác), thực hiện Jump-Cut 3 cú máy:
+        if can_jc3:
             part_a = round(req_dur * 0.34, 2)
             part_b = round(req_dur * 0.33, 2)
             part_c = round(req_dur - part_a - part_b + 0.15, 2)
@@ -839,9 +979,19 @@ def extract_longform_scene_with_internal_jumpcut(
             if encode_ok3:
                 continue
 
-        # N?u c?nh d?i >= 5.0s v? file master ?? ?? d? (>= req_dur + 2.4s), th?c hi?n Jump-Cut 2 n?a:
-        # Ri?ng C?nh 1 (scene_id == 1) gi? ?? ph?n gi?i g?c 1920x1080 -> 2016x1134 (zoom nh? 105%) v?i CRF 17 ?? gi? 100% ?? n?t c?ng ? gi?y m? m?n!
-        if req_dur >= 5.0 and (safe_start + req_dur + 2.5) <= master_dur:
+        can_jc2 = (
+            allow_internal_jumpcut
+            and req_dur >= 5.0
+            and (safe_start + req_dur + 2.5) <= master_dur
+            and not (
+                job_id
+                and _is_master_interval_overlapping(
+                    job_id, eff_master_key, scene_id, safe_start, safe_start + req_dur + 2.62, min_gap_sec=0.5
+                )
+            )
+        )
+        # Nếu cảnh dài >= 5.0s và file master đủ độ dư (không nhảy đè vào mốc của cảnh kế tiếp), thực hiện Jump-Cut 2 nửa:
+        if can_jc2:
             half_a = round(req_dur * 0.52, 2)
             half_b = round(req_dur - half_a + 0.12, 2)
             start_a = safe_start
@@ -1177,24 +1327,44 @@ def fetch_or_slice_longform_chapter_clip_sync(
     # tuyệt đối không bỏ phí file Master 16:9 đã tải và vượt qua kiểm duyệt Vision!
     if is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000):
         master_dur_s = get_duration_ms(master_file) / 1000.0
-        ideal_stride = max(target_duration_sec + 3.5, master_dur_s / max(1, scenes_per_chapter))
-        max_safe_stride = max(4.5, (master_dur_s - target_duration_sec - 1.5) / max(1, scenes_per_chapter - 1))
-        stride = min(ideal_stride, max_safe_stride)
+        req_dur_s = max(2.5, float(target_duration_sec))
+        # Cộng thêm +3.8s độ rộng bước nhảy Internal Jump-Cut vào stride để Cảnh 1 và Cảnh 2 KHÔNG BAO GIỜ chồng lấn mốc thời gian!
+        jc_buffer_s = 3.8 if req_dur_s >= 5.0 else 1.5
+        ideal_stride = max(req_dur_s + jc_buffer_s, master_dur_s / max(1, scenes_per_chapter))
+        max_safe_stride = max(req_dur_s + 1.2, (master_dur_s - req_dur_s - 0.8) / max(1, scenes_per_chapter - 1))
+        stride = min(ideal_stride, max_safe_stride) if master_dur_s >= (req_dur_s * max(1, scenes_per_chapter) + 2.0) else ideal_stride
         base_offset_s = round(slot_in_chapter * stride, 2)
         max_try_offsets = 4
-        usable_master_span = max(0.0, master_dur_s - max(2.5, float(target_duration_sec)) - 0.8)
+        usable_master_span = max(0.0, master_dur_s - req_dur_s - 0.5)
         for off_try in range(max_try_offsets):
-            offset_s = (
+            raw_cand_off = (
                 base_offset_s
                 if off_try == 0
-                else round((base_offset_s + off_try * max(4.5, usable_master_span / max(2, max_try_offsets))) % max(1.0, usable_master_span), 2)
+                else round((base_offset_s + off_try * max(req_dur_s + 1.5, usable_master_span / max(2, max_try_offsets))) % max(1.0, usable_master_span), 2)
             )
+            non_overlap_off = _find_non_overlapping_master_offset(
+                job_id=job_id,
+                master_key=master_file,
+                scene_id=scene_id,
+                preferred_offset=raw_cand_off,
+                req_dur=req_dur_s,
+                master_dur=master_dur_s,
+            )
+            if non_overlap_off is None:
+                logger.info(
+                    f"Scene {scene_id}: 🚫 [ChapterPool Non-Overlap Guard] Master Chương #{chapter_idx} ({master_dur_s:.1f}s) "
+                    f"đã hết khoảng thời gian trống độc lập cho {req_dur_s:.1f}s -> Chuyển sang nguồn mới!"
+                )
+                break
+            offset_s = non_overlap_off
             if not extract_longform_scene_with_internal_jumpcut(
                 master_path=master_file,
                 output_path=out_path,
                 start_offset_sec=offset_s,
-                target_duration_sec=max(2.5, float(target_duration_sec)),
+                target_duration_sec=req_dur_s,
                 scene_id=scene_id,
+                job_id=job_id,
+                master_key=master_file,
             ):
                 continue
             if int(scene_id) == 1:
@@ -1214,14 +1384,24 @@ def fetch_or_slice_longform_chapter_clip_sync(
                 job_id,
                 scene_id=scene_id,
                 master_key=master_file,
-                max_master_uses=max(int(scenes_per_chapter), 4 if master_dur_s >= 34.0 else 3),
+                max_master_uses=max(int(scenes_per_chapter), 3 if master_dur_s >= 34.0 else 2),
             ):
                 Path(out_path).unlink(missing_ok=True)
                 logger.info(f"Scene {scene_id}: 🚫 [VisualCritic Dedup] Loại bỏ clip trùng lặp/vượt trần Master từ {master_source_label}")
                 continue
+            used_span_s = _compute_expected_jumpcut_span(req_dur_s, master_dur_s, offset_s, scene_id=scene_id)
+            if _is_master_interval_overlapping(job_id, master_file, scene_id, offset_s, offset_s + used_span_s, min_gap_sec=0.5):
+                used_span_s = req_dur_s + 0.15
+            _commit_master_used_range(
+                job_id=job_id,
+                master_key=master_file,
+                scene_id=scene_id,
+                start_s=offset_s,
+                end_s=min(master_dur_s, offset_s + used_span_s),
+            )
             logger.info(
                 f"Scene {scene_id}: ⚡ [ChapterPool Local Cut] Cắt tức thì từ Master Chương #{chapter_idx} "
-                f"(slot {slot_in_chapter + 1}/{scenes_per_chapter}, offset={offset_s:.1f}s, Jump-Cut 16:9)"
+                f"(slot {slot_in_chapter + 1}/{scenes_per_chapter}, offset={offset_s:.1f}s->{min(master_dur_s, offset_s + used_span_s):.1f}s, Jump-Cut 16:9)"
             )
             return {
                 "media_path": out_path,
@@ -1260,9 +1440,10 @@ def slice_any_available_chapter_master_for_scene(
 ) -> Optional[Dict[str, Any]]:
     """
     Khi một phân cảnh bị giới hạn API mạng (429 / timeout) ở cả nguồn riêng lẫn Stock 16:9,
-    tận dụng ngay các file `chapter_*_master.mp4` 16:9 đã được Gemini Vision duyệt sạch trên ổ cứng của chính Job này,
-    cắt một phân đoạn Jump-Cut ở mốc thời gian lệch pha độc lập và kiểm tra `is_clip_visually_unique_in_job` (dHash 64-bit)
-    để đảm bảo 0% trùng khung hình và 0% rơi về bảng xanh placeholder (`scene_XXX_graphic.png`).
+    tận dụng ngay các file `chapter_*_master.mp4` 16:9 dài (>= 15s) đã được Gemini Vision duyệt sạch trên ổ cứng của chính Job này,
+    cắt một phân đoạn Jump-Cut ở mốc thời gian KHÔNG CHỒNG LẤN (`_find_non_overlapping_master_offset`)
+    và kiểm tra `is_clip_visually_unique_in_job` (3-frame dHash 64-bit) để đảm bảo 0% trùng khung hình!
+    TUYỆT ĐỐI KHÔNG lấy các file phân cảnh ngắn `scene_*16x9*.mp4` của cảnh khác làm Master!
     """
     from app.utils.ffmpeg_helper import is_completed_clean_mp4
 
@@ -1275,19 +1456,9 @@ def slice_any_available_chapter_master_for_scene(
             p for p in (*list(chapter_dir.glob("chapter_*_master.mp4")), *list(chapter_dir.glob("refine_*_master.mp4")))
             if p.name.lower() not in excl_norm
             and has_verified_chapter_master_meta(p)
-            and is_completed_clean_mp4(p, min_size_bytes=60_000, min_duration_ms=8000)
+            and is_completed_clean_mp4(p, min_size_bytes=60_000, min_duration_ms=14000)
         ]
     )
-    if len(masters) < 2 and media_dir.is_dir():
-        extra_m = sorted(
-            [
-                p for p in media_dir.glob("scene_*16x9*.mp4")
-                if p.name.lower() not in excl_norm
-                and p not in masters
-                and is_completed_clean_mp4(p, min_size_bytes=60_000, min_duration_ms=8000)
-            ]
-        )
-        masters.extend(extra_m)
     if not masters:
         return None
 
@@ -1296,7 +1467,7 @@ def slice_any_available_chapter_master_for_scene(
     n_m = len(masters)
     start_idx = (int(scene_id) * 3) % n_m
     ordered_masters = masters[start_idx:] + masters[:start_idx]
-    max_steps = 8 if max_master_uses_override else (5 if int(scene_id) == 1 else 4)
+    max_steps = 6 if max_master_uses_override else (5 if int(scene_id) == 1 else 4)
 
     tiered_masters = [(mp, False) for mp in ordered_masters] + [(mp, True) for mp in ordered_masters]
     for m_path, is_rescue_tier in tiered_masters:
@@ -1304,18 +1475,34 @@ def slice_any_available_chapter_master_for_scene(
         usable_span = max(0.0, m_dur - req_dur - 1.0)
         if usable_span <= 0.5:
             continue
-        eff_max_uses = 24 if is_rescue_tier else (int(max_master_uses_override) if max_master_uses_override else (5 if m_dur >= 34.0 else 4))
-        eff_hamming = 2 if is_rescue_tier else 10
-        # Thử nhiều mốc offset lệch pha trên mỗi Master cho tới khi đạt chuẩn độ nét (Cảnh 1 >= 13.2) và dHash xác nhận khung hình mới hoàn toàn
+        eff_max_uses = (
+            min(int(max_master_uses_override or 4), 5)
+            if is_rescue_tier
+            else (min(int(max_master_uses_override), 4) if max_master_uses_override else (3 if m_dur >= 34.0 else 2))
+        )
+        # Giữ ngưỡng Hamming >= 8 ngay cả ở tầng rescue để tuyệt đối không cho phép 2 cảnh trùng khung hình!
+        eff_hamming = 8 if is_rescue_tier else 10
         for cand_step in range(max_steps):
             frac = (((int(scene_id) * 37 + cand_step * 23) % 89) / 89.0)
-            off_s = round(frac * usable_span, 2)
+            raw_off_s = round(frac * usable_span, 2)
+            off_s = _find_non_overlapping_master_offset(
+                job_id=job_id,
+                master_key=str(m_path),
+                scene_id=scene_id,
+                preferred_offset=raw_off_s,
+                req_dur=req_dur,
+                master_dur=m_dur,
+            )
+            if off_s is None:
+                break
             if extract_longform_scene_with_internal_jumpcut(
                 master_path=str(m_path),
                 output_path=out_path,
                 start_offset_sec=off_s,
                 target_duration_sec=req_dur,
                 scene_id=scene_id,
+                job_id=job_id,
+                master_key=str(m_path),
             ):
                 if int(scene_id) == 1:
                     try:
@@ -1337,8 +1524,19 @@ def slice_any_available_chapter_master_for_scene(
                     max_hamming=eff_hamming,
                     max_master_uses=eff_max_uses,
                 ):
+                    used_span_cs = _compute_expected_jumpcut_span(req_dur, m_dur, off_s, scene_id=scene_id)
+                    if _is_master_interval_overlapping(job_id, str(m_path), scene_id, off_s, off_s + used_span_cs, min_gap_sec=0.5):
+                        used_span_cs = req_dur + 0.15
+                    _commit_master_used_range(
+                        job_id=job_id,
+                        master_key=str(m_path),
+                        scene_id=scene_id,
+                        start_s=off_s,
+                        end_s=min(m_dur, off_s + used_span_cs),
+                    )
                     logger.info(
-                        f"Scene {scene_id}: ⚡ [ChapterPool Cross-Slice Rescue] Cắt phân đoạn độc lập (offset={off_s:.1f}s, VisualCritic-unique) "
+                        f"Scene {scene_id}: ⚡ [ChapterPool Cross-Slice Rescue] Cắt phân đoạn độc lập "
+                        f"(offset={off_s:.1f}s->{min(m_dur, off_s + used_span_cs):.1f}s, VisualCritic-unique) "
                         f"từ '{m_path.name}' -> {Path(out_path).name}"
                     )
                     return {

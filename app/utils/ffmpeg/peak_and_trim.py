@@ -494,14 +494,25 @@ def trim_video(
         pass
 
     seek_args: List[str] = []
+    src_sec_for_seek = src_sec_probed if src_sec_probed > 0 else (get_duration_ms(input_path) / 1000.0)
     eff_start_sec = float(start_offset_sec or 0.0)
     if start_offset_sec is not None and start_offset_sec >= 0.20:
-        seek_args = ["-ss", f"{start_offset_sec:.2f}"]
+        eff_start_sec = float(start_offset_sec)
     elif is_hook_scene and not is_already_rendered:
         seek_sec = find_hook_peak_action_offset(input_path, duration_seconds)
         if seek_sec >= 0.25:
-            seek_args = ["-ss", f"{seek_sec:.2f}"]
             eff_start_sec = seek_sec
+    # [Anti-Frame-Loop Seek Clamp]: Nếu mốc seek quá sát cuối file khiến phần còn lại ngắn hơn duration_seconds,
+    # tự động lùi mốc cắt về trước để lấy trọn vẹn thời lượng tự nhiên, tuyệt đối không để hụt frame rồi lặp lại từ đầu!
+    if eff_start_sec >= 0.20 and src_sec_for_seek > 0.5 and (src_sec_for_seek - eff_start_sec) < duration_seconds:
+        clamped_start = max(0.0, round(src_sec_for_seek - duration_seconds - 0.08, 2))
+        logger.debug(
+            f"[trim_video] Lùi mốc seek {eff_start_sec:.2f}s -> {clamped_start:.2f}s "
+            f"(src={src_sec_for_seek:.2f}s, req={duration_seconds:.2f}s) để chống hụt thời lượng & lặp khung hình"
+        )
+        eff_start_sec = clamped_start
+    if eff_start_sec >= 0.20:
+        seek_args = ["-ss", f"{eff_start_sec:.2f}"]
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
     zw, zh = ((int(width * zoom_mult) // 2) * 2), ((int(height * zoom_mult) // 2) * 2)
@@ -547,26 +558,45 @@ def trim_video(
         f"fps={fps},format=yuv420p"
     )
 
-    # Clip ngắn hơn lời thoại một chút (≤ 1.6x) → kéo dãn slow-motion nhẹ thay vì lặp lại (lặp rất dễ bị nhận ra)
-    loop_args = ["-stream_loop", "-1"]
+    # TUYỆT ĐỐI KHÔNG dùng `-stream_loop -1` lặp lại từ đầu video (0.0s) giữa chừng phân cảnh!
+    # Nếu clip ngắn hơn lời thoại (hoặc cộng thêm 0.16s-0.43s bù xfade/tail_buffer ở bước render),
+    # dùng giãn nhịp mượt (setpts) kết hợp tpad clone frame cuối cực ngắn để 0% bị nhảy ngược về Frame 0!
+    loop_args: List[str] = []
     pts_prefix = ""
+    tpad_suffix = ""
     try:
-        src_sec = src_sec_probed if src_sec_probed > 0 else (get_duration_ms(input_path) / 1000.0)
-        eff_avail = max(0.1, src_sec - (start_offset_sec or 0.0)) if seek_args else src_sec
-        if 0.5 < eff_avail < duration_seconds:
+        src_sec = src_sec_for_seek if src_sec_for_seek > 0 else (get_duration_ms(input_path) / 1000.0)
+        eff_avail = max(0.1, src_sec - eff_start_sec) if seek_args else src_sec
+        if 0.25 < eff_avail < duration_seconds:
             factor = duration_seconds / eff_avail
-            if factor <= 1.6:
+            shortfall = duration_seconds - eff_avail
+            if shortfall <= 0.65:
+                stretch_f = min(factor + 0.015, 1.38)
+                pts_prefix = f"setpts={stretch_f:.4f}*PTS,"
+                tpad_suffix = ",tpad=stop_mode=clone:stop_duration=0.12"
+                vf_chain = pts_prefix + vf_chain + tpad_suffix
+                logger.debug(
+                    f"[trim_video] Bù đuôi mượt x{stretch_f:.3f} + tpad ({eff_avail:.2f}s → {duration_seconds:.2f}s, 0% loop)"
+                )
+            elif factor <= 2.85:
                 pts_prefix = f"setpts={factor + 0.02:.4f}*PTS,"
-                vf_chain = pts_prefix + vf_chain
-                loop_args = []
-                logger.debug(f"[trim_video] Slow-motion x{factor:.2f} thay vì lặp clip ({eff_avail:.1f}s → {duration_seconds:.1f}s)")
+                tpad_suffix = ",tpad=stop_mode=clone:stop_duration=0.10"
+                vf_chain = pts_prefix + vf_chain + tpad_suffix
+                logger.debug(
+                    f"[trim_video] Slow-motion x{factor:.2f} thay vì lặp clip ({eff_avail:.1f}s → {duration_seconds:.1f}s)"
+                )
             else:
-                logger.debug(f"[trim_video] Clip quá ngắn ({eff_avail:.1f}s cho {duration_seconds:.1f}s) → buộc phải lặp")
+                pts_prefix = "setpts=2.8500*PTS,"
+                rem_pad = max(0.15, duration_seconds - (eff_avail * 2.80))
+                tpad_suffix = f",tpad=stop_mode=clone:stop_duration={rem_pad:.2f}"
+                vf_chain = pts_prefix + vf_chain + tpad_suffix
+                logger.debug(
+                    f"[trim_video] Clip ngắn ({eff_avail:.1f}s cho {duration_seconds:.1f}s) → setpts 2.85x + tpad {rem_pad:.2f}s (cấm lặp lại từ 0.0s)"
+                )
         elif eff_avail >= duration_seconds:
             if fair_use_transform and not is_already_rendered and eff_avail >= duration_seconds * 1.06:
                 pts_prefix = "setpts=0.9615*PTS,"
                 vf_chain = pts_prefix + vf_chain
-            loop_args = []
     except Exception:
         pass
 

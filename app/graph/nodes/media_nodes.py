@@ -645,7 +645,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     from app.services.video_memory_rag import get_video_memory_rag
     rag = get_video_memory_rag()
     job_id = int(state.get("job_id") or 0)
-    if is_long_form and job_id:
+    if job_id:
         try:
             from app.services.media.longform_chapter_pool import reset_longform_job_dedup
             reset_longform_job_dedup(job_id)
@@ -708,22 +708,38 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             logger.debug(f"[MediaNodes] analyze_scenes_batch fallback: {e_batch}")
 
     pre_hook_map = state.get("pre_resolved_hook_media") or {}
-    for _ph_val in pre_hook_map.values():
+    for _ph_key, _ph_val in pre_hook_map.items():
         if isinstance(_ph_val, dict):
+            _ph_sid = int(_ph_key) if str(_ph_key).isdigit() else 1
             _ph_yt = str(_ph_val.get("youtube_id") or "").strip()
             _ph_src = str(_ph_val.get("source_url") or "").strip()
             _ph_mp = str(_ph_val.get("media_path") or "").strip()
             _ph_fp = str(_ph_val.get("full_peak_path") or "").strip()
-            if _ph_yt:
-                used_pool_urls.add(_ph_yt)
-                used_pool_urls.add(f"https://www.youtube.com/watch?v={_ph_yt}")
+            if _ph_yt or _ph_src:
+                if _ph_yt:
+                    used_pool_urls.add(_ph_yt)
+                    used_pool_urls.add(f"https://www.youtube.com/watch?v={_ph_yt}")
                 rag.try_claim_in_job_video(
                     job_id=job_id,
-                    vid_id=_ph_yt,
-                    url=_ph_src or f"https://www.youtube.com/watch?v={_ph_yt}",
+                    vid_id=_ph_yt or _ph_src,
+                    url=_ph_src or (f"https://www.youtube.com/watch?v={_ph_yt}" if _ph_yt else _ph_mp),
                     title="Pre-Resolved Hook Scene 1",
-                    scene_id=1,
+                    scene_id=_ph_sid,
                 )
+            if _ph_mp and Path(_ph_mp).exists():
+                try:
+                    rag.verify_and_commit_in_job_clip(
+                        job_id=job_id,
+                        scene_id=_ph_sid,
+                        media_path=_ph_mp,
+                        vid_id=_ph_yt or _ph_src or _ph_mp,
+                        url=_ph_src or _ph_mp,
+                        title="Pre-Resolved Hook Scene 1",
+                    )
+                    from app.services.media.longform_chapter_pool import is_clip_visually_unique_in_job as _reg_hook_uniq
+                    _reg_hook_uniq(_ph_mp, job_id, scene_id=_ph_sid)
+                except Exception:
+                    pass
             for _p_item in (_ph_src, _ph_mp, _ph_fp):
                 if _p_item:
                     used_pool_urls.add(_p_item)
@@ -2262,33 +2278,70 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             timeout=18.0,
                         )
                         if best_fresh_vid and best_fresh_vid.get("url"):
-                            cand_u = str(best_fresh_vid["url"])
+                            cand_u_list = [
+                                str(best_fresh_vid["url"]),
+                                *[str(u) for u in (best_fresh_vid.get("_vision_alternates") or []) if u],
+                            ]
+                            cand_fresh_title = str(best_fresh_vid.get("title") or fresh_q)
                             out_fresh_v = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_stock.mp4")
-                            await asyncio.wait_for(
-                                asyncio.to_thread(media_agent.download_file, cand_u, out_fresh_v),
-                                timeout=12.0,
-                            )
-                            if is_completed_clean_mp4(out_fresh_v, min_size_bytes=15_000, min_duration_ms=1000):
-                                used_pool_urls.add(cand_u)
-                                res = {
-                                    "scene_id": scene.scene_id,
-                                    "media_path": out_fresh_v,
-                                    "media_type": "video",
-                                    "pose_images": None,
-                                    "vision_curated": True,
-                                    "visual_keyword": fresh_q or scene.visual_keyword,
-                                    "visual_prompt": getattr(scene, "visual_prompt", None),
-                                    "narration": scene.narration,
-                                    "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
-                                    "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
-                                    "highlight_words": getattr(scene, "highlight_words", None),
-                                    "overlay_badge": getattr(scene, "overlay_badge", None),
-                                    "visual_strategy": "STOCK_VIDEO",
-                                    "production_method": "VIDEO_FIRST_BODY_BROLL",
-                                    "tool": "search_pexels_pixabay_stock_video",
-                                    "strategy_rationale": f"Fast-switch fresh stock video ({fresh_q})",
-                                    "source_url": cand_u,
-                                }
+                            from app.services.media.longform_chapter_pool import is_clip_visually_unique_in_job as _chk_fresh_uniq
+                            for cand_u in cand_u_list[:4]:
+                                if not cand_u:
+                                    continue
+                                if not rag.try_claim_in_job_video(
+                                    job_id=job_id,
+                                    vid_id=cand_u,
+                                    url=cand_u,
+                                    title=cand_fresh_title,
+                                    scene_id=scene.scene_id,
+                                ):
+                                    used_pool_urls.add(cand_u)
+                                    continue
+                                await asyncio.wait_for(
+                                    asyncio.to_thread(media_agent.download_file, cand_u, out_fresh_v),
+                                    timeout=12.0,
+                                )
+                                if is_completed_clean_mp4(out_fresh_v, min_size_bytes=15_000, min_duration_ms=1000):
+                                    ok_f_sig, _ = rag.verify_and_commit_in_job_clip(
+                                        job_id=job_id,
+                                        scene_id=scene.scene_id,
+                                        media_path=out_fresh_v,
+                                        vid_id=cand_u,
+                                        url=cand_u,
+                                        title=cand_fresh_title,
+                                    )
+                                    if ok_f_sig and _chk_fresh_uniq(out_fresh_v, job_id, scene_id=scene.scene_id):
+                                        used_pool_urls.add(cand_u)
+                                        res = {
+                                            "scene_id": scene.scene_id,
+                                            "media_path": out_fresh_v,
+                                            "media_type": "video",
+                                            "pose_images": None,
+                                            "vision_curated": True,
+                                            "visual_keyword": fresh_q or scene.visual_keyword,
+                                            "visual_prompt": getattr(scene, "visual_prompt", None),
+                                            "narration": scene.narration,
+                                            "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
+                                            "sfx_cue": getattr(scene, "sfx_cue", None) or "hit",
+                                            "highlight_words": getattr(scene, "highlight_words", None),
+                                            "overlay_badge": getattr(scene, "overlay_badge", None),
+                                            "visual_strategy": "STOCK_VIDEO",
+                                            "production_method": "VIDEO_FIRST_BODY_BROLL",
+                                            "tool": "search_pexels_pixabay_stock_video",
+                                            "strategy_rationale": f"Fast-switch fresh stock video ({fresh_q})",
+                                            "source_url": cand_u,
+                                        }
+                                        break
+                                    else:
+                                        Path(out_fresh_v).unlink(missing_ok=True)
+                                        rag.release_in_job_video_claim(
+                                            job_id=job_id, vid_id=cand_u, url=cand_u, title=cand_fresh_title, scene_id=scene.scene_id
+                                        )
+                                else:
+                                    Path(out_fresh_v).unlink(missing_ok=True)
+                                    rag.release_in_job_video_claim(
+                                        job_id=job_id, vid_id=cand_u, url=cand_u, title=cand_fresh_title, scene_id=scene.scene_id
+                                    )
                         if not res:
                             from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                             out_fresh_img = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_gsearch.jpg")
@@ -2500,6 +2553,39 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
     tasks = [_guarded_fetch(i, s) for i, s in enumerate(script.scenes)]
     scenes_media = list(await asyncio.gather(*tasks))
+
+    # ── Bước A.0: CỔNG RÀ SOÁT ĐỒNG BỘ CHỐNG TRÙNG VIDEO LIÊN TIẾP TRONG CÙNG 1 JOB (POST-GATHER INTRA-VIDEO DEDUP GATE) ──
+    # Đăng ký toàn bộ các clip video đã thu thập từ các luồng song song vào bộ nhớ dHash 3-mốc (Đầu-Giữa-Cuối).
+    # Nếu phát hiện bất kỳ phân cảnh sau nào vô tình trùng khung hình/nguồn với phân cảnh trước,
+    # lập tức thu hồi phân cảnh trùng đó để Bước B (`Real-Motion Floor & Ending Rescue`) tự động lấy clip mới 100% khác biệt!
+    try:
+        from app.services.media.longform_chapter_pool import is_clip_visually_unique_in_job as _post_gather_uniq
+        seen_real_video_paths: Set[str] = set()
+        for idx_pg, sc_pg in enumerate(scenes_media):
+            if not isinstance(sc_pg, dict):
+                continue
+            sid_pg = int(sc_pg.get("scene_id") or (idx_pg + 1))
+            mp_pg = str(sc_pg.get("media_path") or "").strip()
+            if not mp_pg or not mp_pg.lower().endswith((".mp4", ".mov", ".webm")) or not Path(mp_pg).exists():
+                continue
+            abs_mp_pg = str(Path(mp_pg).resolve())
+            is_dup_pg = False
+            if abs_mp_pg in seen_real_video_paths:
+                is_dup_pg = True
+            elif not _post_gather_uniq(abs_mp_pg, job_id, scene_id=sid_pg):
+                is_dup_pg = True
+            if is_dup_pg and sid_pg > 1:
+                logger.warning(
+                    f"🚫 [Post-Gather Intra-Video Dedup] Phát hiện Cảnh #{sid_pg} ('{Path(mp_pg).name}') "
+                    f"bị trùng lặp khung hình với cảnh trước -> Thu hồi ngay để tải video mới độc lập ở Bước B!"
+                )
+                sc_pg["media_path"] = ""
+                sc_pg["media_type"] = "image"
+                sc_pg["production_method"] = "DUPLICATE_DEMOTED_FOR_RESCUE"
+            else:
+                seen_real_video_paths.add(abs_mp_pg)
+    except Exception as _e_pg_dedup:
+        logger.debug(f"[Post-Gather Intra-Video Dedup] warning: {_e_pg_dedup}")
 
     # ══════════════════════════════════════════════════════════════════════════
     # BỘ LẮP GHÉP TIMELINE ƯU TIÊN VIDEO PEAK DÀI -> ẢNH TĨNH (VIDEO-FIRST TIMELINE ASSEMBLER)
@@ -3221,6 +3307,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             from app.services.media.longform_chapter_pool import has_verified_chapter_master_meta
             hc_dir_g = work_dir / "hook_candidates"
             ch_pool_dir_g = media_dir / "chapter_pool"
+            active_paths_zg, active_vids_zg = _collect_active_scene_source_paths(scenes_media)
+            # TUYỆT ĐỐI KHÔNG đưa các clip phân cảnh ngắn đã gán (`media_dir/*.mp4`, `hook_motion_*.mp4`) vào kho cắt lát,
+            # chỉ lấy các file Master dài (`chapter_*_master.mp4`) hoặc các ứng viên `hook_candidates` chưa dùng!
             all_real_mp4s = sorted(
                 [
                     p for p in [
@@ -3229,12 +3318,20 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             if ch_pool_dir_g.exists()
                             else []
                         ),
-                        *(list(hc_dir_g.glob("hook_peak_clean_*.mp4")) if hc_dir_g.exists() else []),
-                        *(list(hc_dir_g.glob("s1_stock_rescue_*.mp4")) if hc_dir_g.exists() else []),
-                        *list(media_dir.glob("*.mp4")),
-                        *list(work_dir.glob("hook_motion_*.mp4")),
+                        *(
+                            [
+                                c_p for c_p in (
+                                    *list(hc_dir_g.glob("hook_peak_clean_*.mp4")),
+                                    *list(hc_dir_g.glob("s1_stock_rescue_*.mp4")),
+                                )
+                                if str(c_p.resolve()) not in active_paths_zg
+                                and _extract_hook_candidate_vid_id(c_p) not in active_vids_zg
+                            ]
+                            if hc_dir_g.exists()
+                            else []
+                        ),
                     ]
-                    if is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1500)
+                    if is_completed_clean_mp4(p, min_size_bytes=25_000, min_duration_ms=4500)
                 ],
                 key=_safe_size,
                 reverse=True,
@@ -3357,43 +3454,76 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     )
                             best_zg_v = await asyncio.wait_for(asyncio.to_thread(_run_zg_vid), timeout=14.0)
                             if best_zg_v and best_zg_v.get("url"):
-                                zg_v_url = str(best_zg_v["url"])
+                                cand_zg_urls = [
+                                    str(best_zg_v["url"]),
+                                    *[str(u) for u in (best_zg_v.get("_vision_alternates") or []) if u],
+                                ]
+                                zg_v_title = str(best_zg_v.get("title") or zg_q)
                                 raw_zg_mp4 = str(media_dir / f"scene_{sid_g:03d}_zero_graphic_raw.mp4")
-                                await asyncio.wait_for(
-                                    asyncio.to_thread(media_agent.download_file, zg_v_url, raw_zg_mp4),
-                                    timeout=10.0,
-                                )
-                                if Path(raw_zg_mp4).exists() and _safe_size(Path(raw_zg_mp4)) > 15_000:
-                                    await asyncio.to_thread(
-                                        trim_video,
-                                        input_path=raw_zg_mp4,
-                                        duration_seconds=dur_g + 0.25,
-                                        output_path=out_g_mp4,
-                                        width=1920 if is_long_form else 1080,
-                                        height=1080 if is_long_form else 1920,
-                                        fps=30,
-                                        is_scifi=is_scifi_val,
-                                        niche=current_niche,
-                                        apply_grading=True,
-                                        is_hook_scene=False,
-                                        fair_use_transform=True,
+                                for zg_v_url in cand_zg_urls[:4]:
+                                    if not zg_v_url:
+                                        continue
+                                    if not rag.try_claim_in_job_video(
+                                        job_id=job_id,
+                                        vid_id=zg_v_url,
+                                        url=zg_v_url,
+                                        title=zg_v_title,
+                                        scene_id=sid_g,
+                                    ):
+                                        used_pool_urls.add(zg_v_url)
+                                        continue
+                                    await asyncio.wait_for(
+                                        asyncio.to_thread(media_agent.download_file, zg_v_url, raw_zg_mp4),
+                                        timeout=10.0,
                                     )
-                                    Path(raw_zg_mp4).unlink(missing_ok=True)
-                                    if Path(out_g_mp4).exists() and _safe_size(Path(out_g_mp4)) > 15_000:
-                                        if is_clip_visually_unique_in_job(out_g_mp4, job_id, scene_id=sid_g):
-                                            used_pool_urls.add(zg_v_url)
-                                            sc_g["media_path"] = out_g_mp4
-                                            sc_g["media_type"] = "video"
-                                            sc_g["pose_images"] = []
-                                            sc_g["production_method"] = "ZERO_GRAPHIC_FRESH_STOCK_VIDEO"
-                                            sc_g["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
-                                            sc_g["source_url"] = zg_v_url
-                                            replaced_g = True
-                                            logger.info(
-                                                f"  ✅ [Zero-Graphic-Card Guard] Scene {sid_g}: Đã thay thẻ placeholder bằng Video Stock HD độc lập mới ('{zg_q}')"
+                                    if Path(raw_zg_mp4).exists() and _safe_size(Path(raw_zg_mp4)) > 15_000:
+                                        await asyncio.to_thread(
+                                            trim_video,
+                                            input_path=raw_zg_mp4,
+                                            duration_seconds=dur_g + 0.25,
+                                            output_path=out_g_mp4,
+                                            width=1920 if is_long_form else 1080,
+                                            height=1080 if is_long_form else 1920,
+                                            fps=30,
+                                            is_scifi=is_scifi_val,
+                                            niche=current_niche,
+                                            apply_grading=True,
+                                            is_hook_scene=False,
+                                            fair_use_transform=True,
+                                        )
+                                        Path(raw_zg_mp4).unlink(missing_ok=True)
+                                        if Path(out_g_mp4).exists() and _safe_size(Path(out_g_mp4)) > 15_000:
+                                            ok_zg_sig, _ = rag.verify_and_commit_in_job_clip(
+                                                job_id=job_id,
+                                                scene_id=sid_g,
+                                                media_path=out_g_mp4,
+                                                vid_id=zg_v_url,
+                                                url=zg_v_url,
+                                                title=zg_v_title,
                                             )
-                                        else:
-                                            Path(out_g_mp4).unlink(missing_ok=True)
+                                            if ok_zg_sig and is_clip_visually_unique_in_job(out_g_mp4, job_id, scene_id=sid_g):
+                                                used_pool_urls.add(zg_v_url)
+                                                sc_g["media_path"] = out_g_mp4
+                                                sc_g["media_type"] = "video"
+                                                sc_g["pose_images"] = []
+                                                sc_g["production_method"] = "ZERO_GRAPHIC_FRESH_STOCK_VIDEO"
+                                                sc_g["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
+                                                sc_g["source_url"] = zg_v_url
+                                                replaced_g = True
+                                                logger.info(
+                                                    f"  ✅ [Zero-Graphic-Card Guard] Scene {sid_g}: Đã thay thẻ placeholder bằng Video Stock HD độc lập mới ('{zg_q}')"
+                                                )
+                                                break
+                                            else:
+                                                Path(out_g_mp4).unlink(missing_ok=True)
+                                                rag.release_in_job_video_claim(
+                                                    job_id=job_id, vid_id=zg_v_url, url=zg_v_url, title=zg_v_title, scene_id=sid_g
+                                                )
+                                    else:
+                                        Path(raw_zg_mp4).unlink(missing_ok=True)
+                                        rag.release_in_job_video_claim(
+                                            job_id=job_id, vid_id=zg_v_url, url=zg_v_url, title=zg_v_title, scene_id=sid_g
+                                        )
                         except Exception as _e_zgv:
                             logger.debug(f"[Zero-Graphic-Card Guard] Scene {sid_g} stock video rescue skip: {_e_zgv}")
                         finally:
