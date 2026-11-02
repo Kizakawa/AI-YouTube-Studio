@@ -210,9 +210,10 @@ class ThumbnailService:
                                 title = str(j_row.title or j_row.topic or "")
                             sc_obj = _json.loads(j_row.scenes_json or "{}")
                             sc_items = sc_obj if isinstance(sc_obj, list) else (sc_obj.get("scenes") or [])
-                            for s_item in sc_items:
-                                if isinstance(s_item, dict) and s_item.get("scene_id"):
-                                    scene_kw_map[int(s_item["scene_id"])] = str(
+                            for idx_s, s_item in enumerate(sc_items, 1):
+                                if isinstance(s_item, dict):
+                                    s_id = int(s_item.get("scene_id") or idx_s)
+                                    scene_kw_map[s_id] = str(
                                         s_item.get("visual_keyword", "")
                                     ).lower()
                     finally:
