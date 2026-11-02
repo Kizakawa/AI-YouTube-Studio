@@ -160,12 +160,12 @@ class WebImageFetcher:
         try:
             # Ưu tiên số 1: Truy vấn HTTP trực tiếp Bing /images/search (lọc ảnh kích thước lớn imagesize-large, phản hồi ~0.5s)
             url_large = f"https://www.bing.com/images/search?q={q_enc}&form=HDRSC2&first=1&qft=+filterui:imagesize-large"
-            r_large = requests.get(url_large, headers=req_headers, timeout=(1.2, 4.5))
+            r_large = requests.get(url_large, headers=req_headers, timeout=(3.0, 5.5))
             if r_large.status_code == 200 and "iusc" in r_large.text:
                 out.extend(_parse_bing_html(r_large.text))
             if len(out) < 10:
                 url_all = f"https://www.bing.com/images/search?q={q_enc}&form=HDRSC2&first=1&adlt={safe_mode}"
-                r_all = requests.get(url_all, headers=req_headers, timeout=(1.2, 4.0))
+                r_all = requests.get(url_all, headers=req_headers, timeout=(3.0, 5.0))
                 if r_all.status_code == 200 and "iusc" in r_all.text:
                     seen_u = {x["image"] for x in out}
                     for item in _parse_bing_html(r_all.text):
@@ -176,11 +176,13 @@ class WebImageFetcher:
             pass
 
         if not out:
-            url_async = f"https://www.bing.com/images/async?q={q_enc}&first=0&count={min(limit, 35)}&mmasync=1&qft=+filterui:imagesize-large"
-            res = requests.get(url_async, headers=req_headers, timeout=(1.2, 4.5))
-            if res.status_code != 200:
-                raise RuntimeError(f"Bing HTTP {res.status_code}")
-            out = _parse_bing_html(res.text)
+            try:
+                url_async = f"https://www.bing.com/images/async?q={q_enc}&first=0&count={min(limit, 35)}&mmasync=1&qft=+filterui:imagesize-large"
+                res = requests.get(url_async, headers=req_headers, timeout=(2.5, 4.5))
+                if res.status_code == 200:
+                    out = _parse_bing_html(res.text)
+            except Exception:
+                cls._engine_fail("bing", minutes=15.0)
         return out[:limit]
 
     @classmethod

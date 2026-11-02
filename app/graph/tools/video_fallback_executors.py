@@ -67,8 +67,11 @@ def _try_bilibili_broll_fallback(
             primary_entity=subject_entity or topic,
             is_3d_or_scifi=allow_3d_cgi_monster,
         )
-        bili_cands = search_bilibili_videos(zh_query, max_results=6, min_dur_s=10.0, max_dur_s=540.0)
-        for b_cand in bili_cands[:2]:
+        bili_cands = search_bilibili_videos(zh_query, max_results=10, min_dur_s=10.0, max_dur_s=540.0)
+        probed_bili = 0
+        for b_cand in bili_cands:
+            if probed_bili >= 2:
+                break
             if (cancel_event is not None and cancel_event.is_set()) or (
                 deadline_ts is not None and (deadline_ts - time.monotonic()) <= 3.0
             ):
@@ -86,6 +89,7 @@ def _try_bilibili_broll_fallback(
                 scene_id=eff_scene_id,
             ):
                 continue
+            probed_bili += 1
             with _yt_url_lock:
                 used.update(extract_media_identity(b_url))
 

@@ -126,15 +126,52 @@ class Settings:
 
     @classmethod
     def get_allowed_group_ids(cls) -> List[int]:
-        """Lấy danh sách ID nhóm chat Telegram được phép gọi bot"""
-        if not cls.ALLOWED_GROUP_IDS_RAW:
-            return []
-        groups = []
-        for g in cls.ALLOWED_GROUP_IDS_RAW.split(","):
-            g_clean = g.strip()
-            if g_clean.lstrip("-").isdigit():
-                groups.append(int(g_clean))
+        """Lấy danh sách ID nhóm chat Telegram được phép gọi bot (ưu tiên nhóm mới phát hiện tự động)"""
+        groups: List[int] = []
+        disc_file = cls.BASE_DIR / "storage" / "discovered_telegram_groups.json"
+        if disc_file.exists():
+            try:
+                import json as _json_g
+                data = _json_g.loads(disc_file.read_text(encoding="utf-8"))
+                for k in (data.get("groups") or {}).keys():
+                    if str(k).lstrip("-").isdigit():
+                        gid = int(k)
+                        if gid not in groups:
+                            groups.append(gid)
+            except Exception:
+                pass
+        if cls.ALLOWED_GROUP_IDS_RAW:
+            for g in cls.ALLOWED_GROUP_IDS_RAW.split(","):
+                g_clean = g.strip()
+                if g_clean.lstrip("-").isdigit():
+                    gid = int(g_clean)
+                    if gid not in groups:
+                        groups.append(gid)
         return groups
+
+    @classmethod
+    def register_discovered_group(cls, chat_id: int, title: str = "") -> bool:
+        """Tự động ghi nhận chat_id của supergroup/group khi Admin tương tác trong nhóm"""
+        if not chat_id or int(chat_id) >= 0:
+            return False
+        disc_file = cls.BASE_DIR / "storage" / "discovered_telegram_groups.json"
+        try:
+            import json as _json_g
+            disc_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {"groups": {}}
+            if disc_file.exists():
+                try:
+                    data = _json_g.loads(disc_file.read_text(encoding="utf-8")) or {"groups": {}}
+                except Exception:
+                    data = {"groups": {}}
+            groups_map = data.setdefault("groups", {})
+            key = str(int(chat_id))
+            is_new = key not in groups_map
+            groups_map[key] = {"title": title or groups_map.get(key, {}).get("title", ""), "chat_id": int(chat_id)}
+            disc_file.write_text(_json_g.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            return is_new
+        except Exception:
+            return False
 
     @classmethod
     def get_autopilot_enabled_channels(cls) -> List[str]:

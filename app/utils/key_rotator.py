@@ -270,15 +270,19 @@ class KeyRotator:
                             m for m in KeyRotator._verified_live_models if m != model
                         ]
                     self._model_cooldowns[f"*:{model}"] = now + min(wait_t, 25.0)
-            elif status_code == 400:
-                # Lỗi cấu hình/tham số theo model (ví dụ modality không hỗ trợ) -> chỉ khóa cặp (key:model) ngắn hạn, không khóa key toàn cục
-                self._model_cooldowns[f"{key}:{model}"] = now + (cooldown_sec or 45.0)
             elif (
                 status_code == 403
                 or "api_key_invalid" in err_low
                 or "api key not valid" in err_low
             ):
                 self._global_cooldowns[key] = now + (cooldown_sec or 3600.0)
+                if key in KeyRotator._verified_live_keys:
+                    KeyRotator._verified_live_keys = [k for k in KeyRotator._verified_live_keys if k != key]
+                self._global_cursor = (self._global_cursor + 1) % n_pool_keys
+            elif status_code == 400:
+                # Lỗi cấu hình/tham số theo model (ví dụ modality không hỗ trợ) -> chỉ khóa cặp (key:model) ngắn hạn, không khóa key toàn cục
+                self._model_cooldowns[f"{key}:{model}"] = now + (cooldown_sec or 45.0)
+                self._global_cursor = (self._global_cursor + 1) % n_pool_keys
             else:
                 retry_match = _re.search(r"retry in (\d+(?:\.\d+)?)\s*s\b", err_low)
                 parsed_retry_s = float(retry_match.group(1)) if retry_match else 0.0

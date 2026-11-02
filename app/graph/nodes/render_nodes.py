@@ -74,6 +74,69 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         cam_motion = m.get("camera_motion") or ("hyper_zoom" if sc_id == 1 else _motion_cycle[idx_m % len(_motion_cycle)])
         cur_media_path = str(m.get("media_path") or "")
         cur_media_type = str(m.get("media_type") or "image")
+        if not cur_media_path or not Path(cur_media_path).exists() or cur_media_path.lower().endswith("_graphic.png"):
+            try:
+                from app.utils.ffmpeg_helper import get_duration_ms, is_completed_clean_mp4, trim_video
+                req_sc_dur = max(dur_ms / 1000.0, 2.5) + 0.25
+                out_pre_resc = str(work_dir / "media" / f"scene_{int(sc_id):03d}_prerender_rescue.mp4")
+                rescued_pre = False
+                if is_lf_pre:
+                    from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
+                    pre_pool_res = slice_any_available_chapter_master_for_scene(
+                        media_dir=work_dir / "media",
+                        scene_id=int(sc_id),
+                        target_duration_sec=req_sc_dur,
+                        job_id=job_id,
+                        output_override_path=out_pre_resc,
+                        max_master_uses_override=24,
+                    )
+                    if pre_pool_res and pre_pool_res.get("media_path") and Path(pre_pool_res["media_path"]).exists():
+                        cur_media_path = pre_pool_res["media_path"]
+                        cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                        rescued_pre = True
+                if not rescued_pre:
+                    m_dir_pre = work_dir / "media"
+                    ch_dir_pre = m_dir_pre / "chapter_pool"
+                    cand_donors = sorted(
+                        [
+                            p for p in [
+                                *(list(ch_dir_pre.glob("*_master.mp4")) if ch_dir_pre.exists() else []),
+                                *(list(m_dir_pre.glob("*.mp4")) if m_dir_pre.exists() else []),
+                            ]
+                            if is_completed_clean_mp4(p, min_size_bytes=25_000, min_duration_ms=2000)
+                        ],
+                        key=lambda p: p.stat().st_size,
+                        reverse=True,
+                    )
+                    if cand_donors:
+                        d_pick = cand_donors[(int(sc_id) - 1) % len(cand_donors)]
+                        d_tot_s = get_duration_ms(str(d_pick)) / 1000.0
+                        d_span = max(0.0, d_tot_s - req_sc_dur - 0.5)
+                        d_off = round((((int(sc_id) * 43 + 17) % 89) / 89.0) * d_span, 2) if d_span > 0.5 else 0.0
+                        trim_video(
+                            input_path=str(d_pick),
+                            duration_seconds=req_sc_dur,
+                            output_path=out_pre_resc,
+                            width=target_w,
+                            height=target_h,
+                            fps=30,
+                            start_offset_sec=d_off,
+                            apply_grading=True,
+                            is_hook_scene=(sc_id == 1),
+                            fair_use_transform=True,
+                            preserve_continuous_flow=True,
+                        )
+                        if Path(out_pre_resc).exists() and Path(out_pre_resc).stat().st_size > 15_000:
+                            cur_media_path = out_pre_resc
+                            cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                            rescued_pre = True
+                if rescued_pre:
+                    m["media_path"] = cur_media_path
+                    m["media_type"] = cur_media_type
+                    m["pose_images"] = []
+                    logger.info(f"[RenderNode] 🛡️ Đã thay thế _graphic.png/missing ở Cảnh #{sc_id} trước khi render -> {Path(cur_media_path).name}")
+            except Exception as _e_pre_g:
+                logger.debug(f"[RenderNode] Pre-render graphic rescue skip for Scene #{sc_id}: {_e_pre_g}")
         if sc_id == 1 and cur_media_path and Path(cur_media_path).exists():
             if is_lf_pre and (
                 not cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))

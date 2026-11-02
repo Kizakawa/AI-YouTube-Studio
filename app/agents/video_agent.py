@@ -547,12 +547,36 @@ class VideoAgent:
             try:
                 import re as _re_cb
                 import subprocess as _sp_cb
-                vf_cb = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98"
+                from app.utils.ffmpeg_helper import get_duration_ms as _get_sync_ms
+                if Path(clip_path).exists():
+                    cur_c_sec = _get_sync_ms(clip_path) / 1000.0
+                    if 0.4 < cur_c_sec < duration - 0.25:
+                        sync_tmp = str(Path(clip_path).with_name(f"_sync_{Path(clip_path).name}"))
+                        _sp_cb.run(
+                            [
+                                "ffmpeg", "-y", "-v", "error",
+                                "-stream_loop", "-1", "-i", str(clip_path),
+                                "-t", f"{duration:.3f}",
+                                "-vf", f"scale={job.resolution_w}:{job.resolution_h},setsar=1,fps={job.fps},format=yuv420p",
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-threads", "2", "-an",
+                                sync_tmp,
+                            ],
+                            stdout=_sp_cb.DEVNULL,
+                            stderr=_sp_cb.DEVNULL,
+                            timeout=90,
+                            check=False,
+                        )
+                        if is_completed_clean_mp4(sync_tmp, min_size_bytes=20_000, min_duration_ms=int((duration - 0.25) * 1000)):
+                            Path(sync_tmp).replace(clip_path)
+                            logger.info(f"  Scene {scene.scene_id}: ⏱️ [AV-Sync Guard] Đã bù thời lượng clip ({cur_c_sec:.2f}s → {duration:.2f}s)")
+                        else:
+                            Path(sync_tmp).unlink(missing_ok=True)
+                vf_cb = "crop=iw*0.74:ih*0.74:iw*0.13:ih*0.13,blackdetect=d=0.10:pic_th=0.98"
                 r_cb = _sp_cb.run(
                     ["ffmpeg", "-v", "info", "-i", clip_path, "-vf", vf_cb, "-an", "-f", "null", "-"],
                     capture_output=True,
                     text=True,
-                    timeout=10,
+                    timeout=25,
                 )
                 cb_log = (r_cb.stderr or "") + "\n" + (r_cb.stdout or "")
                 cb_matches = list(
@@ -634,7 +658,7 @@ class VideoAgent:
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {executor.submit(_render_one, idx, s): s.scene_id for idx, s in enumerate(scenes)}
-            for future in as_completed(future_map, timeout=300):
+            for future in as_completed(future_map, timeout=(900 if total_scenes >= 14 else 300)):
                 scene_id = future_map[future]
                 try:
                     sid, clip_path = future.result()

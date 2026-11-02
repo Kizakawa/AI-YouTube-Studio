@@ -276,20 +276,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
                 "-cq", "18",
                 "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
             ]
-        if encoder == "h264_qsv":
-            return [
-                "-c:v", "h264_qsv",
-                "-preset", "veryfast",
-                "-global_quality", "18",
-                "-pix_fmt", "nv12", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-            ]
-        if encoder == "h264_amf":
-            return [
-                "-c:v", "h264_amf",
-                "-quality", "speed",
-                "-b:v", "8M",
-                "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-            ]
+        # Tr?nh d?ng h264_qsv / h264_amf cho intermediate clips (ch?y 6-8 lu?ng song song g?y ngh?n h?ng ??i D3D11/MediaSDK)
         return [
             "-threads", "2",
             "-c:v", "libx264",

@@ -247,8 +247,37 @@ def is_authorized(update: Update) -> bool:
     user = update.effective_user
     chat = update.effective_chat
 
-    # 1. Chủ sở hữu hệ thống luôn luôn được cấp quyền
+    # 1. Chủ sở hữu hệ thống luôn luôn được cấp quyền (đồng thời tự động lưu chat.id nếu đang ở trong Group/Supergroup mới)
     if user and user.id in (7177163590, 8498162618):
+        if chat and chat.type in ("group", "supergroup") and getattr(chat, "id", 0) < 0:
+            try:
+                is_new_grp = settings.register_discovered_group(chat.id, getattr(chat, "title", "") or "")
+                if is_new_grp:
+                    logger.info(f"✨ [AutoDiscovery] Đã tự động ghi nhận nhóm Telegram mới '{getattr(chat, 'title', '')}' (chat_id={chat.id})")
+                pend_file = settings.BASE_DIR / "storage" / "pending_group_preview.json"
+                if pend_file.exists():
+                    import json as _j_p
+                    import requests as _r_p
+                    p_data = _j_p.loads(pend_file.read_text(encoding="utf-8"))
+                    sent_c = [str(x) for x in (p_data.get("sent_chats") or [])]
+                    if str(chat.id) not in sent_c and p_data.get("file_id") and settings.TELEGRAM_BOT_TOKEN:
+                        r_fw = _r_p.post(
+                            f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendVideo",
+                            data={
+                                "chat_id": str(chat.id),
+                                "video": p_data["file_id"],
+                                "caption": p_data.get("caption", ""),
+                                "parse_mode": "HTML",
+                                "supports_streaming": "true",
+                            },
+                            timeout=15,
+                        )
+                        if r_fw.status_code == 200:
+                            sent_c.append(str(chat.id))
+                            p_data["sent_chats"] = sent_c
+                            pend_file.write_text(_j_p.dumps(p_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
         return True
 
     allowed_users = settings.get_allowed_users()
@@ -347,7 +376,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_admin = (db_user.role == "admin") or (user.id in settings.get_allowed_users() and settings.get_allowed_users()[user.id] == "admin")
 
         log_activity(db, user.id, user.username, "START_BOT",
-                     f"Khởi động bot từ {chat.type} '{chat.title or user.first_name}' (Role: {db_user.role})")
+                     f"Khởi động bot từ {chat.type} '{chat.title or user.first_name}' (chat_id={chat.id}, Role: {db_user.role})")
 
     scope_text = f"nhóm **{chat.title}**" if is_group else f"bạn **{user.first_name}**"
     role_badge = f"👑 **Quyền hạn:** Quản trị viên (Admin) • `ID: {user.id}`\n*(Có đặc quyền phê duyệt thiết bị truy cập Web Studio)*" if is_admin else f"👤 **Quyền hạn:** Thành viên sáng tạo (Creator) • `ID: {user.id}`"
@@ -362,7 +391,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• `/autopilot` - 🚀 **Tự động hóa kênh A-Z** (Ý tưởng viral ➔ Kịch bản 3s CTA hook ➔ Render 1080p ➔ Lên lịch khung giờ vàng)\n"
         f"• `/schedule` - ⏰ Xem lịch công chiếu & 2 khung giờ vàng YouTube Shorts (20:00 & 04:00 VN)\n"
         f"• `/viral` - 🔥 Gợi ý 5 ý tưởng triệu view (Công thức giữ chân 160% Retention)\n"
-        f"• `/idea <chủ đề>` - Lên kịch bản AI ngay tức thì cho kênh đang chọn\n"
+        f"• `/idea <chủ đề>` - Lên kịch bản AI ngay tức thì (thêm `--long` nếu muốn tạo video dài 16:9)\n"
+        f"• `/long <chủ đề>` - 🎬 **Tạo Phim Tài Liệu Dài 16:9 (~10 Phút)** (10 Chương, 40 Cảnh, Đa nguồn YouTube + Bilibili Safe-Crop + Pexels)\n"
+        f"• `/bilibili <từ khóa/link>` - 🅱️ **Tìm kiếm, Tải & Cắt sạch Watermark Bilibili (16:9 / 9:16)** hoặc Dịch & Reup tự động (`/bili`, `/reup`)\n"
         f"• `/videos` - 📺 Xem danh sách tất cả video trong hệ thống (kèm nút xem/tải trực tiếp)\n"
         f"• `/get <id>` - 📥 Tải file video MP4 gửi thẳng vào tin nhắn Telegram để xem ngay\n"
         f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
@@ -1160,7 +1191,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💡 **HƯỚNG DẪN TẠO Ý TƯỞNG & KỊCH BẢN CHO KÊNH `{ch_name}`**\n\n"
             "1️⃣ **Nhập chủ đề tùy ý (Chọn Ngôn ngữ & Chế độ Video Ngắn/Dài):**\n"
             "   • Video Ngắn (Shorts 9:16 ~40s): `/idea en <chủ đề>` hoặc `/idea vi <chủ đề>`\n"
-            "   • Video Dài (Documentary 16:9 ~4 phút): `/idea en <chủ đề> --long` hoặc `/idea vi <chủ đề> --long`\n"
+            "   • Video Dài (Documentary 16:9 ~10 phút, 10 chương): `/long <chủ đề>` hoặc `/idea en <chủ đề> --long`\n"
             "   • Thêm ghi chú: `/idea vi 3 bí ẩn đáy biển --long | phong cách rùng rợn, nghẹt thở`\n"
             f"   _(Ngôn ngữ mặc định kênh hiện tại: **{ch_lang_name}**)_\n\n"
             "2️⃣ **AI tự động phân tích kênh & đề xuất 5 ý tưởng triệu view:**\n"
@@ -1229,7 +1260,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channel_niche = ch.get("niche") or "history_mystery"
         channel_lang = explicit_lang or ch.get("language") or "en"
         lang_display = "🇻🇳 Tiếng Việt" if channel_lang.lower().startswith("vi") else "🇺🇸 Tiếng Anh"
-        format_display = "🎬 Video Dài 16:9 (~3.5–4.5 phút)" if video_format == "long" else "📱 Video Ngắn 9:16 (Shorts ~40s)"
+        format_display = "🎬 Video Dài 16:9 (~10 phút, 10 chương)" if video_format == "long" else "📱 Video Ngắn 9:16 (Shorts ~40s)"
 
         notes_info = f"\n🎯 **Hướng đạo diễn:** _{director_notes}_" if director_notes else ""
         switch_info = f"\n💡 *{switch_reason}*" if switch_reason else ""
@@ -1272,11 +1303,11 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 job = VideoJob(
                     user_id=user.id,
                     target_channel_id=channel_id,
-                    topic=clean_topic,
-                    title=script.title,
+                    topic=clean_topic[:1000],
+                    title=(script.title or clean_topic)[:490],
                     script=script.full_narration,
                     description=script.description,
-                    tags=",".join(script.tags),
+                    tags=",".join(script.tags)[:1500],
                     scenes_json=script.to_json_str(),   # Lưu structured data
                     status="SCRIPT_READY"
                 )
@@ -1360,6 +1391,455 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await safe_reply(update, err_text)
     finally:
         _release_action(idea_lock_key, post_cooldown_sec=5.0)
+
+
+_LONGFORM_PRESET_TOPICS = [
+    "Why Colossal Squids And Sperm Whales Fight In Complete Pitch Blackness At 2000 Meters Depth",
+    "How A Lone Siberian Tiger Tracks Prey Across Frozen Taiga Blizzards For 72 Hours",
+    "The Psychological Trap Of Sunk Cost Fallacy That Keeps Smart People In Toxic Situations",
+]
+
+_BILIBILI_QUICK_SEARCHES = [
+    "colossal squid vs sperm whale deep sea 3d",
+    "siberian tiger hunting in snowstorm documentary",
+    "golden retriever rescuing puppy in flood",
+]
+
+
+async def longform_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh tắt /long (/longform, /doc, /16x9) để tạo Phim Tài Liệu Dài 16:9 (~10 phút, 10 chương, 40 cảnh)."""
+    if not is_authorized(update):
+        return
+
+    from app.database.models import normalize_channel_id
+    if not context.args:
+        user = update.effective_user
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first() if user else None
+            active_id = normalize_channel_id(
+                db_user.active_channel_id if db_user and db_user.active_channel_id else "ch_psychology_of_the_world"
+            )
+        ch = channel_manager.get_channel(active_id) or {}
+        ch_name = ch.get("name") or active_id
+        ch_lang = ch.get("language") or "en"
+        ch_lang_name = "Tiếng Việt (vi)" if ch_lang.startswith("vi") else "Tiếng Anh (en)"
+
+        preset_buttons = [
+            [InlineKeyboardButton("🦑 Mẫu #1: Đại Chiến Mực Khổng Lồ & Cá Nhà Táng (16:9)", callback_data="bili_long_preset:0")],
+            [InlineKeyboardButton("🐅 Mẫu #2: Hổ Siberia Săn Mồi Giữa Bão Tuyết (16:9)", callback_data="bili_long_preset:1")],
+            [InlineKeyboardButton("🧠 Mẫu #3: Bẫy Tâm Lý Chi Phí Chìm Đắt Giá (16:9)", callback_data="bili_long_preset:2")],
+        ]
+        await safe_reply(
+            update,
+            f"🎬 **TRUNG TÂM SẢN XUẤT PHIM TÀI LIỆU DÀI 16:9 (~10 PHÚT)**\n"
+            f"📺 **Kênh đang chọn:** `{ch_name}` | 🌐 **Ngôn ngữ mặc định:** **{ch_lang_name}**\n\n"
+            "✨ **Kiến trúc Long-Form 16:9 Đa Nguồn (Zero Loop):**\n"
+            "• **10 Chương × 4 Phân cảnh = 40 Cảnh (~9.5 – 10.5 phút)**, ~1,450 từ giọng đọc cuốn hút.\n"
+            "• **Đa nguồn 16:9 HD (1920x1080):** Tự động kết hợp **YouTube 16:9** + **Bilibili 16:9 (Safe-Crop sạch watermark)** + **Pexels/Pixabay HD**.\n"
+            "• **Chapter-Pool Jump-Cut:** Cắt nối các đoạn hành động không trùng lặp (`used_intervals`), tuyệt đối không lặp cảnh.\n\n"
+            "📌 **Cú pháp sử dụng ngay:**\n"
+            "• `/long <chủ đề>` — Tạo kịch bản phim dài 16:9 theo ngôn ngữ mặc định của kênh\n"
+            "• `/long vi <chủ đề>` — Tạo kịch bản phim dài 16:9 bằng **Tiếng Việt**\n"
+            "• `/long en <chủ đề>` — Tạo kịch bản phim dài 16:9 bằng **Tiếng Anh**\n"
+            "• `/long <chủ đề> | <ghi chú đạo diễn>` — Kèm chỉ đạo nghệ thuật riêng\n\n"
+            "👉 **Hoặc bấm 1 chạm vào các chủ đề mẫu bên dưới để test ngay:**",
+            reply_markup=InlineKeyboardMarkup(preset_buttons),
+        )
+        return
+
+    raw_joined = " ".join(context.args)
+    if _extract_video_format_from_input(raw_joined) != "long":
+        context.args = list(context.args) + ["--long"]
+    await idea_command(update, context)
+
+
+async def bilibili_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh /bilibili (/bili, /reup, /repurpose): Tìm kiếm Bilibili, tải & cắt sạch watermark 16:9/9:16, hoặc dịch & dựng video mới."""
+    if not is_authorized(update):
+        return
+
+    from app.services.media.bilibili_fetcher import (
+        is_bilibili_source,
+        extract_bilibili_id,
+        translate_query_to_chinese,
+        search_bilibili_videos,
+        get_bilibili_video_info_and_streams,
+    )
+
+    if not context.args:
+        sample_buttons = [
+            [InlineKeyboardButton("🦑 Tìm Bilibili #1: Mực Khổng Lồ vs Cá Nhà Táng 3D", callback_data="bili_quick_search:0")],
+            [InlineKeyboardButton("🐅 Tìm Bilibili #2: Hổ Siberia Săn Mồi Bão Tuyết", callback_data="bili_quick_search:1")],
+            [InlineKeyboardButton("🐕 Tìm Bilibili #3: Giải Cứu Chó Golden Cảm Động", callback_data="bili_quick_search:2")],
+        ]
+        await safe_reply(
+            update,
+            "🅱️ **TRUNG TÂM KHAI THÁC & REUP VIDEO BILIBILI / ĐA NGUỒN (16:9 & 9:16)**\n\n"
+            "Hệ thống hỗ trợ 3 chế độ tự động (0đ phí API, tự động dịch sang tiếng Trung & cắt sạch 100% watermark góc):\n\n"
+            "1️⃣ **Tìm kiếm nguồn video Bilibili theo từ khóa bất kỳ (Việt / Anh / Trung):**\n"
+            "   • `/bilibili đại chiến mực khổng lồ và cá nhà táng`\n"
+            "   • `/bili siberian tiger hunting in snowstorm`\n\n"
+            "2️⃣ **Tải & Cắt Sạch Watermark (16:9 HD hoặc 9:16 Shorts) từ Link / Mã BV:**\n"
+            "   • `/bilibili https://www.bilibili.com/video/BV1...`\n"
+            "   • `/bili BV1xx411c7mD`\n\n"
+            "3️⃣ **Dịch Kịch Bản & Dựng Thành Video Mới (AI Lồng Tiếng + Phối Đa Nguồn):**\n"
+            "   • `/reup <link Bilibili hoặc YouTube>`\n"
+            "   *(Hoặc dán trực tiếp link `bilibili.com` / `b23.tv` vào khung chat)*\n\n"
+            "👉 **Bấm thử 1 chạm bên dưới để test tìm kiếm & cắt video Bilibili ngay:**",
+            reply_markup=InlineKeyboardMarkup(sample_buttons),
+        )
+        return
+
+    raw_query = " ".join(context.args).strip()
+
+    # Trường hợp 1: Người dùng gửi trực tiếp Link Bilibili hoặc mã BV1... / av...
+    if is_bilibili_source(raw_query):
+        wait_msg = await safe_reply(
+            update,
+            f"🅱️ **Đang kết nối Bilibili API & trích xuất luồng gốc (DASH/MP4)...**\n"
+            f"🔗 Nguồn: `{raw_query}`"
+        )
+        try:
+            info = await asyncio.to_thread(get_bilibili_video_info_and_streams, raw_query)
+            if not info:
+                parsed = extract_bilibili_id(raw_query) or {}
+                bvid_fallback = parsed.get("id") or raw_query
+                await safe_edit_text(
+                    wait_msg,
+                    f"⚠️ Không lấy được luồng trực tiếp cho `{bvid_fallback}` (video có thể bị giới hạn vùng hoặc cần tài khoản VIP Bilibili)."
+                )
+                return
+
+            bvid = info.get("bvid") or (extract_bilibili_id(raw_query) or {}).get("id") or raw_query
+            title = info.get("title") or bvid
+            desc = (info.get("description") or "").strip()
+            dur_s = float(info.get("duration") or 0.0)
+            w = int(info.get("width") or 1920)
+            h = int(info.get("height") or 1080)
+            stream_type = str(info.get("stream_type") or "dash").upper()
+
+            if context.chat_data is None:
+                context.chat_data = {}
+            bili_meta_cache = context.chat_data.setdefault("bili_meta_cache", {})
+            bili_meta_cache[bvid] = {
+                "bvid": bvid,
+                "title": title,
+                "description": desc[:500],
+                "duration": dur_s,
+                "width": w,
+                "height": h,
+                "webpage_url": f"https://www.bilibili.com/video/{bvid}",
+            }
+
+            desc_preview = f"\n📝 **Mô tả gốc:** _{desc[:180]}..._" if desc else ""
+            text = (
+                f"✅ **ĐÃ BÓC TÁCH THÀNH CÔNG VIDEO BILIBILI (`{bvid}`)**\n\n"
+                f"📌 **Tiêu đề gốc:** {title}\n"
+                f"📐 **Độ phân giải gốc:** `{w}x{h}` ({stream_type}) | ⏱️ **Thời lượng:** `{dur_s:.0f}s`\n"
+                f"🔗 **Link gốc:** https://www.bilibili.com/video/{bvid}"
+                f"{desc_preview}\n\n"
+                f"👉 **Chọn thao tác xử lý 1 chạm bên dưới:**"
+            )
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🖥️ Tải & Cắt Sạch Watermark 16:9 HD", callback_data=f"bili_dl_16x9:{bvid}"),
+                ],
+                [
+                    InlineKeyboardButton("📱 Tải & Cắt Sạch Watermark 9:16 Shorts", callback_data=f"bili_dl_9x16:{bvid}"),
+                ],
+                [
+                    InlineKeyboardButton("🎬 Dịch & Lên Phim Dài 16:9 (~10 Phút)", callback_data=f"bili_reup_long:{bvid}"),
+                ],
+                [
+                    InlineKeyboardButton("⚡ Dịch & Lên Video Shorts 9:16 (~45s)", callback_data=f"bili_reup_short:{bvid}"),
+                ],
+            ])
+            await safe_edit_text(wait_msg, text, reply_markup=kb)
+        except Exception as e:
+            logger.error(f"[BilibiliCmd] Lỗi trích xuất Bilibili {raw_query}: {e}", exc_info=True)
+            await safe_edit_text(wait_msg, f"❌ Lỗi khi phân tích nguồn Bilibili: `{e}`")
+        return
+
+    # Trường hợp 2: Người dùng gửi Link YouTube / TikTok / nền tảng khác qua lệnh /reup
+    if raw_query.startswith("http://") or raw_query.startswith("https://"):
+        wait_msg = await safe_reply(
+            update,
+            f"🌐 **Đang trích xuất dữ liệu & kịch bản từ đường dẫn...**\n"
+            f"🔗 URL: `{raw_query}`"
+        )
+        try:
+            from app.services.video_repurposer import video_repurposer
+            import hashlib
+            meta = await asyncio.to_thread(video_repurposer.get_video_metadata, raw_query)
+            if not meta:
+                await safe_edit_text(wait_msg, "❌ Không thể trích xuất dữ liệu từ URL này. Vui lòng kiểm tra lại đường dẫn!")
+                return
+            url_key = "url_" + hashlib.md5(raw_query.encode("utf-8")).hexdigest()[:10]
+            if context.chat_data is None:
+                context.chat_data = {}
+            bili_meta_cache = context.chat_data.setdefault("bili_meta_cache", {})
+            bili_meta_cache[url_key] = {
+                "bvid": url_key,
+                "title": meta.get("title") or "Viral Video",
+                "description": (meta.get("description") or "")[:500],
+                "duration": float(meta.get("duration") or 0.0),
+                "webpage_url": raw_query,
+            }
+            text = (
+                f"✅ **ĐÃ BÓC TÁCH NỘI DUNG VIDEO GỐC**\n\n"
+                f"📌 **Tiêu đề gốc:** {meta.get('title')}\n"
+                f"👤 **Kênh gốc:** `{meta.get('uploader', 'Unknown')}` | ⏱️ **Thời lượng:** `{meta.get('duration', 0)}s`\n\n"
+                f"👉 **Bạn muốn AI dịch & biên tập lại thành định dạng nào?**"
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎬 Dịch & Dựng Phim Dài 16:9 (~10 Phút)", callback_data=f"bili_reup_long:{url_key}")],
+                [InlineKeyboardButton("⚡ Dịch & Dựng Video Shorts 9:16 (~45s)", callback_data=f"bili_reup_short:{url_key}")],
+            ])
+            await safe_edit_text(wait_msg, text, reply_markup=kb)
+        except Exception as e:
+            logger.error(f"[ReupCmd] Lỗi trích xuất URL {raw_query}: {e}", exc_info=True)
+            await safe_edit_text(wait_msg, f"❌ Lỗi khi phân tích URL: `{e}`")
+        return
+
+    # Trường hợp 3: Tìm kiếm Bilibili theo từ khóa (Việt / Anh / Trung)
+    await _execute_bilibili_search_and_reply(update, context, raw_query)
+
+
+async def _execute_bilibili_search_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_query: str):
+    """Dịch từ khóa sang tiếng Trung giản thể, tìm top 5 video Bilibili và hiển thị nút bấm 1 chạm."""
+    from app.services.media.bilibili_fetcher import (
+        translate_query_to_chinese,
+        search_bilibili_videos,
+    )
+
+    wait_msg = await safe_reply(
+        update,
+        f"🅱️ **Đang dịch từ khóa sang tiếng Trung & quét kho video HD Bilibili...**\n"
+        f"🔍 Từ khóa: *\"{raw_query}\"*"
+    )
+    try:
+        query_zh = await asyncio.to_thread(translate_query_to_chinese, raw_query)
+        results = await asyncio.to_thread(
+            search_bilibili_videos,
+            query_zh,
+            5,
+            10.0,
+            1800.0,
+        )
+        if not results and query_zh != raw_query:
+            results = await asyncio.to_thread(
+                search_bilibili_videos,
+                raw_query,
+                5,
+                10.0,
+                1800.0,
+            )
+
+        if not results:
+            await safe_edit_text(
+                wait_msg,
+                f"⚠️ Không tìm thấy video Bilibili phù hợp cho từ khóa *\"{raw_query}\"* (Tiếng Trung: `{query_zh}`).\n"
+                f"👉 Hãy thử từ khóa ngắn gọn hơn (VD: `/bilibili colossal squid` hoặc `/bilibili siberian tiger`)."
+            )
+            return
+
+        if context.chat_data is None:
+            context.chat_data = {}
+        bili_meta_cache = context.chat_data.setdefault("bili_meta_cache", {})
+
+        lines = [
+            f"🅱️ **TOP {len(results)} VIDEO BILIBILI HD KHỚP VỚI: \"{raw_query}\"**",
+            f"🌐 **Truy vấn tiếng Trung:** `{query_zh}`\n",
+        ]
+        kb_rows = []
+        for idx, item in enumerate(results, 1):
+            bvid = item.get("bvid") or ""
+            title = item.get("title") or bvid
+            dur = float(item.get("duration") or 0.0)
+            play = int(item.get("view_count") or item.get("play") or 0)
+            author = item.get("uploader") or item.get("author") or "Bilibili Creator"
+            url = item.get("url") or item.get("webpage_url") or f"https://www.bilibili.com/video/{bvid}"
+            bili_meta_cache[bvid] = {
+                "bvid": bvid,
+                "title": title,
+                "description": (item.get("description") or "")[:500],
+                "duration": dur,
+                "webpage_url": url,
+                "search_query": raw_query,
+            }
+            mins = int(dur // 60)
+            secs = int(dur % 60)
+            dur_str = f"{mins}:{secs:02d}" if mins > 0 else f"{secs}s"
+            lines.append(
+                f"**#{idx}. {title[:75]}**\n"
+                f"• 🆔 `{bvid}` | ⏱️ `{dur_str}` | 👁️ `{play:,}` views | 👤 `{author}`\n"
+                f"• 🔗 {url}"
+            )
+            kb_rows.append([
+                InlineKeyboardButton(f"🖥️ Cắt 16:9 #{idx}", callback_data=f"bili_dl_16x9:{bvid}"),
+                InlineKeyboardButton(f"📱 Cắt 9:16 #{idx}", callback_data=f"bili_dl_9x16:{bvid}"),
+                InlineKeyboardButton(f"🎬 Dựng Phim 16:9 #{idx}", callback_data=f"bili_reup_long:{bvid}"),
+            ])
+
+        lines.append(
+            "\n👉 **Bấm nút tương ứng bên dưới:**\n"
+            "• **🖥️ Cắt 16:9 / 📱 Cắt 9:16**: Tải luồng HD từ Bilibili, tự động Safe-Crop 14% sạch watermark góc & gửi file MP4 thẳng vào Telegram!\n"
+            "• **🎬 Dựng Phim 16:9**: Dùng chủ đề & nội dung video này để lên kịch bản Phim Tài Liệu Dài 16:9 (~10 phút)!"
+        )
+        await safe_edit_text(wait_msg, "\n".join(lines), reply_markup=InlineKeyboardMarkup(kb_rows))
+    except Exception as e:
+        logger.error(f"[BilibiliSearch] Lỗi tìm kiếm Bilibili '{raw_query}': {e}", exc_info=True)
+        await safe_edit_text(wait_msg, f"❌ Lỗi khi tìm kiếm trên Bilibili: `{e}`")
+
+
+async def bilibili_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xử lý các nút bấm tương tác Bilibili & Long-Form 16:9 (bili_quick_search, bili_long_preset, bili_dl_16x9, bili_dl_9x16, bili_reup_long, bili_reup_short)."""
+    query = update.callback_query
+    if not is_authorized(update):
+        await safe_query_answer(query, "⛔ Bạn chưa được cấp quyền sử dụng thao tác này.", show_alert=True)
+        return
+
+    data = query.data or ""
+    user = query.from_user
+
+    # 1. Nút bấm tìm kiếm nhanh Bilibili mẫu
+    if data.startswith("bili_quick_search:"):
+        await safe_query_answer(query, "🔍 Đang quét kho video Bilibili...")
+        idx = int(data.split(":")[1])
+        sample_q = _BILIBILI_QUICK_SEARCHES[idx] if 0 <= idx < len(_BILIBILI_QUICK_SEARCHES) else _BILIBILI_QUICK_SEARCHES[0]
+        await _execute_bilibili_search_and_reply(update, context, sample_q)
+        return
+
+    # 2. Nút bấm tạo nhanh Phim Dài 16:9 theo chủ đề mẫu
+    if data.startswith("bili_long_preset:"):
+        await safe_query_answer(query, "🎬 Đang khởi tạo kịch bản Phim Dài 16:9...")
+        idx = int(data.split(":")[1])
+        preset_topic = _LONGFORM_PRESET_TOPICS[idx] if 0 <= idx < len(_LONGFORM_PRESET_TOPICS) else _LONGFORM_PRESET_TOPICS[0]
+        context.args = [preset_topic, "--long"]
+        await idea_command(update, context)
+        return
+
+    # 3. Tải & Safe-Crop sạch watermark 16:9 hoặc 9:16 từ Bilibili và gửi thẳng file MP4 vào Telegram
+    if data.startswith("bili_dl_16x9:") or data.startswith("bili_dl_9x16:"):
+        is_16x9 = data.startswith("bili_dl_16x9:")
+        bvid = data.split(":", 1)[1].strip()
+        aspect = "16:9" if is_16x9 else "9:16"
+        res_label = "1920x1080 (16:9 Ngang)" if is_16x9 else "1080x1920 (9:16 Dọc Shorts)"
+
+        dl_lock_key = f"bili_dl:{bvid}:{aspect}"
+        if not _try_acquire_action(dl_lock_key, max_inflight_sec=120.0, debounce_sec=4.0):
+            await safe_query_answer(query, f"⏳ Đang tải & cắt {bvid} ({aspect}), vui lòng đợi giây lát!", show_alert=True)
+            return
+
+        await safe_query_answer(query, f"📥 Đang tải & Safe-Crop {aspect} cho {bvid}...")
+        wait_msg = await safe_reply(
+            update,
+            f"🅱️ **Đang tải luồng HD từ Bilibili & Cắt Sạch Watermark ({res_label})...**\n"
+            f"🆔 Mã video: `{bvid}`\n"
+            f"✂️ Chế độ: **Safe-Crop 14% viền góc + Lọc phụ đề cứng + Chuẩn hóa 30fps**"
+        )
+        try:
+            from app.services.media.bilibili_fetcher import download_and_crop_bilibili_broll_clip
+            out_dir = Path(settings.TEMP_DIR) / "bilibili_telegram_previews"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            tag_ar = "16x9" if is_16x9 else "9x16"
+            out_file = out_dir / f"bili_{bvid}_{tag_ar}_{ int(time.time()) }.mp4"
+
+            clip_res = await asyncio.to_thread(
+                download_and_crop_bilibili_broll_clip,
+                bvid,
+                str(out_file),
+                20.0,
+                28 * 1024 * 1024,
+                aspect,
+                False,
+            )
+            if not clip_res or not out_file.exists() or out_file.stat().st_size < 50_000:
+                await safe_edit_text(
+                    wait_msg,
+                    f"⚠️ Không thể tải hoặc cắt video `{bvid}` ở chế độ `{aspect}` (luồng video có thể yêu cầu tài khoản Bilibili hoặc độ phân giải gốc không đủ chuẩn)."
+                )
+                return
+
+            size_mb = out_file.stat().st_size / (1024 * 1024)
+            title = clip_res.get("title") or bvid
+            dur_s = float(clip_res.get("clipped_duration") or clip_res.get("duration") or 20.0)
+
+            caption = (
+                f"✅ **ĐÃ CẮT SẠCH WATERMARK BILIBILI ({res_label})**\n\n"
+                f"📌 **Tiêu đề gốc:** {title[:100]}\n"
+                f"🆔 **Mã Bilibili:** `{bvid}`\n"
+                f"📦 **Dung lượng:** `{size_mb:.1f} MB` | ⏱️ **Đoạn trích mẫu:** `~{dur_s:.0f}s`\n"
+                f"🔗 **Nguồn:** https://www.bilibili.com/video/{bvid}\n\n"
+                f"👉 Bạn có thể bấm nút bên dưới để AI tự động lên kịch bản & dựng thành bộ phim hoàn chỉnh!"
+            )
+            followup_kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎬 Dựng Phim Dài 16:9 (~10 Phút) Từ Video Này", callback_data=f"bili_reup_long:{bvid}")],
+                [InlineKeyboardButton("⚡ Dựng Video Shorts 9:16 (~45s) Từ Video Này", callback_data=f"bili_reup_short:{bvid}")],
+            ])
+            chat_id = update.effective_chat.id
+            with open(out_file, "rb") as vf:
+                await context.bot.send_video(
+                    chat_id=chat_id,
+                    video=vf,
+                    caption=caption,
+                    parse_mode="Markdown",
+                    supports_streaming=True,
+                    reply_markup=followup_kb,
+                )
+            try:
+                await wait_msg.delete()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.error(f"[BilibiliCallback] Lỗi tải/cắt {bvid} ({aspect}): {e}", exc_info=True)
+            await safe_edit_text(wait_msg, f"❌ Lỗi khi tải & cắt video Bilibili `{bvid}`: `{e}`")
+        finally:
+            _release_action(dl_lock_key, post_cooldown_sec=3.0)
+        return
+
+    # 4. Dịch & Lên Kịch Bản Mới (16:9 Long-Form hoặc 9:16 Shorts) từ Video Bilibili / URL
+    if data.startswith("bili_reup_long:") or data.startswith("bili_reup_short:"):
+        is_long = data.startswith("bili_reup_long:")
+        bvid = data.split(":", 1)[1].strip()
+        await safe_query_answer(
+            query,
+            "🎬 Đang dịch & biên soạn kịch bản Phim Dài 16:9..." if is_long else "⚡ Đang dịch & biên soạn kịch bản Shorts 9:16...",
+        )
+
+        meta = {}
+        if context.chat_data and "bili_meta_cache" in context.chat_data:
+            meta = context.chat_data["bili_meta_cache"].get(bvid) or {}
+
+        if not meta and not bvid.startswith("url_"):
+            try:
+                from app.services.media.bilibili_fetcher import get_bilibili_video_info_and_streams
+                info = await asyncio.to_thread(get_bilibili_video_info_and_streams, bvid)
+                if info:
+                    meta = {
+                        "bvid": bvid,
+                        "title": info.get("title") or bvid,
+                        "description": (info.get("description") or "")[:400],
+                        "webpage_url": f"https://www.bilibili.com/video/{bvid}",
+                    }
+            except Exception:
+                pass
+
+        raw_title = meta.get("search_query") or meta.get("title") or bvid
+        raw_desc = (meta.get("description") or "").strip()
+        src_url = meta.get("webpage_url") or f"https://www.bilibili.com/video/{bvid}"
+
+        notes = f"Lấy cảm hứng từ nguồn video ({src_url}). Tựa gốc: {meta.get('title', raw_title)}."
+        if raw_desc:
+            notes += f" Tóm tắt bối cảnh gốc: {raw_desc[:220]}"
+
+        composed_arg = f"{raw_title} | {notes}"
+        if is_long:
+            composed_arg += " --long"
+
+        context.args = composed_arg.split()
+        await idea_command(update, context)
+        return
 
 
 # Bộ nhớ chống gửi trùng video vào nhóm Telegram: (job_id, int(chat_id)) -> timestamp
@@ -1791,6 +2271,25 @@ async def auto_resume_pending_jobs(application):
         logger.debug("Auto-Resume: Đã chạy khi khởi động, bỏ qua khi polling reconnect.")
         return
     _AUTO_RESUME_INITIALIZED = True
+
+    try:
+        from telegram import BotCommand
+        await application.bot.set_my_commands([
+            BotCommand("long", "🎬 Tạo Phim Tài Liệu Dài 16:9 (~10 phút, 10 chương)"),
+            BotCommand("bilibili", "🅱️ Tìm kiếm, Tải & Cắt sạch Watermark Bilibili (16:9/9:16)"),
+            BotCommand("reup", "🔄 Dịch Kịch Bản & Dựng Video Mới từ Bilibili/YouTube"),
+            BotCommand("idea", "💡 Lên kịch bản AI ngay tức thì cho kênh đang chọn"),
+            BotCommand("viral", "🔥 Đề xuất 5 ý tưởng triệu view theo xu hướng mới"),
+            BotCommand("autopilot", "🚀 Tự động hóa kênh A-Z (Ý tưởng -> Render -> Lên lịch)"),
+            BotCommand("videos", "📺 Danh sách video trong hệ thống (Xem/Tải MP4)"),
+            BotCommand("channels", "📡 Quản lý & chuyển đổi 7 kênh YouTube"),
+            BotCommand("schedule", "⏰ Xem lịch công chiếu & khung giờ vàng"),
+            BotCommand("kpi", "📊 Báo cáo sức khỏe tiến độ và KPI kênh"),
+            BotCommand("queue", "⏳ Xem hàng đợi Render video"),
+            BotCommand("status", "🖥️ Trạng thái hệ thống AI YouTube Studio"),
+        ])
+    except Exception as ex_cmd:
+        logger.debug(f"Không thể đăng ký menu BotCommand: {ex_cmd}")
 
     from app.services.render_queue import get_render_queue
     from config.settings import settings
@@ -3647,7 +4146,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             channel_name = ch.get("name") or channel_id
             channel_niche = ch.get("niche") or "general"
             lang_display = "🇻🇳 Tiếng Việt" if current_lang == "vi" else "🇺🇸 Tiếng Anh"
-            fmt_label = "🎬 Video Dài 16:9 (16–22 cảnh, ~3.5–4.5 phút)" if target_format == "long" else "📱 Video Ngắn 9:16 (Shorts 7–9 cảnh, ~40s)"
+            fmt_label = "🎬 Video Dài 16:9 (10 chương, 40 cảnh, ~10 phút)" if target_format == "long" else "📱 Video Ngắn 9:16 (Shorts 7–9 cảnh, ~40s)"
 
             wait_m = await safe_reply(
                 update,
@@ -5632,6 +6131,13 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await autopilot_command(update, context)
         return
 
+    # 3.5. Tự động nhận diện khi người dùng dán trực tiếp link Bilibili (bilibili.com, b23.tv) hoặc mã BV1...
+    from app.services.media.bilibili_fetcher import is_bilibili_source
+    if is_bilibili_source(clean_text):
+        context.args = [clean_text]
+        await bilibili_command(update, context)
+        return
+
     norm_txt = " ".join(clean_text.lower().split())[:100]
     txt_lock_key = f"text_msg:{user.id}:{norm_txt}"
     acquired = _try_acquire_action(txt_lock_key, max_inflight_sec=90.0, debounce_sec=6.0)
@@ -5817,6 +6323,7 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
         v_path = job.video_path
         u_id = job.user_id
         thumb_p = job.thumbnail_path or job.thumbnail_vertical_path
+        is_long_job = '"video_format": "long"' in (job.scenes_json or "") or '"aspect_ratio": "16:9"' in (job.scenes_json or "")
 
     v_file = _resolve_video_file_path(job_id, v_path)
     if not v_file or not v_file.exists():
@@ -5868,7 +6375,7 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
     video_caption = (
         f"🎬 <b>{safe_title}</b>\n\n"
         f"🆔 <b>Task:</b> #{job_id}\n"
-        f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB (Chuẩn 1080x1920 9:16 Shorts)\n"
+        f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB ({'Chuẩn 1920x1080 16:9 Documentary' if is_long_job else 'Chuẩn 1080x1920 9:16 Shorts'})\n"
         f"👉 <i>Video đã sẵn sàng bên dưới để bạn xem thử hoặc lưu về máy!</i>"
     )
 

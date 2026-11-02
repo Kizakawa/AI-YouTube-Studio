@@ -89,18 +89,38 @@ def send_telegram_broadcast(
     if inline_keyboard:
         payload_base["reply_markup"] = {"inline_keyboard": inline_keyboard}
 
-    for cid in chat_ids:
+    sent_msg_ok = False
+    for cid in list(chat_ids):
         try:
             p = dict(payload_base)
             p["chat_id"] = cid
             res = http_requests.post(url, json=p, timeout=8)
-            if res.status_code != 200:
+            if res.status_code == 200:
+                sent_msg_ok = True
+            elif res.status_code != 200 and "chat not found" not in (res.text or "").lower():
                 # Thử fallback plain text nếu lỗi markdown
                 p["text"] = re.sub(r"[*_`\[\]()<>]", "", text)
                 p.pop("parse_mode", None)
-                http_requests.post(url, json=p, timeout=8)
+                res2 = http_requests.post(url, json=p, timeout=8)
+                if res2.status_code == 200:
+                    sent_msg_ok = True
         except Exception as ex:
             logger.debug(f"[TelegramAlert] Lỗi gửi tin cho {cid}: {ex}")
+
+    if not sent_msg_ok:
+        for uid in settings.get_allowed_users().keys():
+            if uid in chat_ids:
+                continue
+            try:
+                p = dict(payload_base)
+                p["chat_id"] = uid
+                r_dm = http_requests.post(url, json=p, timeout=8)
+                if r_dm.status_code != 200:
+                    p["text"] = re.sub(r"[*_`\[\]()<>]", "", text)
+                    p.pop("parse_mode", None)
+                    http_requests.post(url, json=p, timeout=8)
+            except Exception:
+                pass
 
 
 def send_telegram_video_broadcast(
@@ -119,18 +139,20 @@ def send_telegram_video_broadcast(
         logger.debug(f"[TelegramVideoAlert] Không có token hoặc không tìm thấy file video: {video_path}")
         return False
 
-    chat_ids = set()
+    chat_ids = []
     if target_chat_ids:
         for cid in target_chat_ids:
-            chat_ids.add(cid)
+            if cid not in chat_ids:
+                chat_ids.append(cid)
     else:
         allowed_groups = settings.get_allowed_group_ids()
         if prefer_groups and allowed_groups:
             for gid in allowed_groups:
-                chat_ids.add(gid)
-        else:
-            for uid in settings.get_allowed_users().keys():
-                chat_ids.add(uid)
+                if gid not in chat_ids:
+                    chat_ids.append(gid)
+        for uid in settings.get_allowed_users().keys():
+            if uid not in chat_ids:
+                chat_ids.append(uid)
 
     if not chat_ids:
         return False
