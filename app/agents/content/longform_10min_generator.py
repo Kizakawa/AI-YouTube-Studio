@@ -198,7 +198,7 @@ def generate_10min_longform_documentary(
     niche_instructions: str,
 ) -> Optional[ScriptContract]:
     """
-    Sinh kịch bản Phim Tài Liệu Dài ~10 Phút (10 Chương / 40 Phân cảnh / ~1,450–1,600 từ).
+    Sinh kịch bản Phim Tài Liệu Dài ~9–10 Phút (10 Chương / 30 Phân cảnh / ~1,400–1,520 từ, cam kết >= 08:18 Mid-Roll Ads).
     """
     real_world_dossier = _mine_real_world_research_dossier(topic=topic, channel_niche=channel_niche)
     outline_prompt = f"""You are an Executive Showrunner for a 10-Minute Widescreen 16:9 YouTube Documentary on '{channel_niche}'.
@@ -210,7 +210,7 @@ Target Language: {language} ({target_lang_display})
 {niche_instructions[:2600] if niche_instructions else ""}
 {channel_memory_block[:1800]}
 
-DESIGN A 10-CHAPTER MASTER DOCUMENTARY OUTLINE (TARGET: 10 MINUTES / 40 SCENES / ~1,500 WORDS):
+DESIGN A 10-CHAPTER MASTER DOCUMENTARY OUTLINE (TARGET: 9-10 MINUTES / 30 SCENES / ~1,450 WORDS):
 1. `title`: High-CTR Search-Optimized Documentary Title in {target_lang_display} (34-58 chars, NO '#Shorts' tag).
    - STRICT ANTI-LISTICLE BAN: NEVER write generic textbook listicle titles like "10 Simple Steps to..." or "Top 10 Tips for...".
    - MUST use one of the 4 Viral Competitor Documentary Archetypes:
@@ -288,8 +288,8 @@ Return ONLY valid JSON:
     def _expand_chapter_pair(batch_idx: int) -> List[Dict[str, Any]]:
         ch_a = chapters_list[batch_idx * 2]
         ch_b = chapters_list[batch_idx * 2 + 1]
-        start_sid = batch_idx * 8 + 1
-        end_sid = start_sid + 7
+        start_sid = batch_idx * 6 + 1
+        end_sid = start_sid + 5
         ch_a_id = ch_a.get("chapter_id", batch_idx * 2 + 1)
         ch_b_id = ch_b.get("chapter_id", batch_idx * 2 + 2)
         ch_a_title = ch_a.get("chapter_title", f"CHAPTER {ch_a_id}")
@@ -303,17 +303,13 @@ Return ONLY valid JSON:
         prose_dna_block = build_million_view_showrunner_prose_dna(channel_niche, language=language)
         is_doodle_niche = False
         slot_3_rule = (
-            f"* Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **2D Doodle Visual Metaphor + Cunningham's Law Sacred-Cow Breaker** — Illustrate the structural paradox AND drop 1 bold, unapologetically polarizing statement that attacks a common belief so viewers debate in the comments!"
-            if is_doodle_niche
-            else f"* Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+6}): **Forensic / Archival / Physical Evidence Deep-Dive + Counter-Intuitive Myth-Breaker** — Reveal a specific physical mechanism, archival log detail, or anatomical twist that shatters a popular assumption about {topic} (NEVER mention '2D doodle', 'symbolic hourglass', or 'brain scan' in non-psychology documentaries)!"
+            f"* Slot 3 of each Chapter (Scenes {start_sid+2} & {start_sid+5}): **Decisive Turning Point / Counter-Move + Open-Loop Cliffhanger Bridge** — Deliver the chapter's concrete turning point or counter-move, and for Chapters 1–9, end the final sentence with a smooth causal bridge into the next Chapter!"
         )
         slot_3_visual_rule = (
-            f"* For Scene {start_sid+2} and Scene {start_sid+6} (Slot 3 of each Chapter), write a symbolic / conceptual 3–4 word query for our 2D Doodle Explainer animation."
-            if is_doodle_niche
-            else f"* For Scene {start_sid+2} and Scene {start_sid+6} (Slot 3 of each Chapter), write a concrete 3–5 word archival, technical instrument, or close-up physical action query in English (e.g. '{ch_a_mq} closeup', 'submarine sonar gauge closeup', 'deep ocean pressure hull') — STRICTLY FORBIDDEN: NEVER write '2D doodle', 'diagram', 'icon', or 'hourglass'!"
+            f"* For Scene {start_sid+2} and Scene {start_sid+5} (Slot 3 of each Chapter), write a DIFFERENT 3–5 word wide environmental or action query in English completely distinct from Slots 1 & 2 (e.g. '{ch_a_mq} wide action', 'submarine sonar gauge closeup', 'deep ocean pressure hull') — STRICTLY FORBIDDEN: NEVER write '2D doodle', 'diagram', 'icon', or 'hourglass'!"
         )
 
-        batch_prompt = f"""You are writing Scenes {start_sid} to {end_sid} (Chapters {ch_a_id} and {ch_b_id}) of a 10-Minute Widescreen 16:9 YouTube Documentary in {target_lang_display}.
+        batch_prompt = f"""You are writing Scenes {start_sid} to {end_sid} (Chapters {ch_a_id} and {ch_b_id}) of a 9-Minute Widescreen 16:9 YouTube Documentary in {target_lang_display}.
 Documentary Title: "{doc_title}"
 Topic: "{topic}"
 {lang_instruction}
@@ -325,38 +321,36 @@ FULL 10-CHAPTER DOCUMENTARY ROADMAP (FOR CONTEXT — STRICT ANTI-REPETITION FIRE
 CRITICAL CROSS-BATCH ANTI-REPETITION FIREWALL:
 - 5 parallel writers are expanding Chapters 1-2, 3-4, 5-6, 7-8, and 9-10 simultaneously!
 - You are ONLY writing Chapter {ch_a_id} ("{ch_a_title}") and Chapter {ch_b_id} ("{ch_b_title}").
-- NEVER repeat or re-dramatize quotes, dialogue lines, or climax moments that belong to other chapters in the roadmap above! Keep 100% of your 8 scenes strictly focused on the unique facts, timeline phase, and mechanisms of Chapter {ch_a_id} and Chapter {ch_b_id}!
+- NEVER repeat or re-dramatize quotes, dialogue lines, or climax moments that belong to other chapters in the roadmap above! Keep 100% of your 6 scenes strictly focused on the unique facts, timeline phase, and mechanisms of Chapter {ch_a_id} and Chapter {ch_b_id}!
 
-YOUR ASSIGNED CHAPTERS TO WRITE RIGHT NOW (8 SCENES TOTAL: SCENES {start_sid} TO {end_sid}):
-1. Chapter {ch_a_id} ({ch_a_title}) — Scenes {start_sid}, {start_sid+1}, {start_sid+2}, {start_sid+3}:
+YOUR ASSIGNED CHAPTERS TO WRITE RIGHT NOW (6 SCENES TOTAL: SCENES {start_sid} TO {end_sid}, 3 SCENES PER CHAPTER):
+1. Chapter {ch_a_id} ({ch_a_title}) — Scenes {start_sid}, {start_sid+1}, {start_sid+2}:
    - Premise: {ch_a_prem}
    - Chapter 16:9 Visual Motif: "{ch_a_mq}"
-2. Chapter {ch_b_id} ({ch_b_title}) — Scenes {start_sid+4}, {start_sid+5}, {start_sid+6}, {start_sid+7}:
+2. Chapter {ch_b_id} ({ch_b_title}) — Scenes {start_sid+3}, {start_sid+4}, {start_sid+5}:
    - Premise: {ch_b_prem}
    - Chapter 16:9 Visual Motif: "{ch_b_mq}"
 
-MANDATORY PACING, VIRAL DOCUMENTARY STORYTELLING & WORD COUNT (~14.5–16.0 SECONDS PER SCENE AT +10% DYNAMIC VOICE SPEED):
-- {'For Scene 1 (scene_id=1): Start with a gripping, visceral In-Medias-Res Cold-Open Hook ("' + doc_hook + '") followed by 1 high-stakes sentence (total 22–30 words for Scene 1, ZERO "?" questions).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 2 to 3 complete, rich, gripping documentary sentences totaling 36 to 44 WORDS PER SCENE (~14.5–16.0 seconds of spoken narration per scene).'}
-- For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 36 to 44 words of deep, vivid storytelling. NEVER write short 12-word Shorts sentences!
-- VIRAL COMPETITOR 4-BEAT CHAPTER ARCHITECTURE (JCS / Charisma on Command / @IFinity_What / @FossilVideos Formula — ZERO 'Studies show...' ACADEMIC OPENERS):
-  * Slot 1 of each Chapter (Scenes {start_sid} & {start_sid+4}): **Case-Study / Verbatim Reconstruction ("Show, Don't Tell")** — NEVER start with "Studies show..." or "Research reveals...". Jump straight into the specific chronological event, physical clash, or documented record assigned to this specific chapter.
-  * Slot 2 of each Chapter (Scenes {start_sid+1} & {start_sid+5}): **Hidden Mechanism Translated Into Visceral Everyday Analogy** — Explain WHY it works using a crystal-clear everyday comparison or physical sensation that any viewer can picture immediately (STRICTLY FORBIDDEN: NEVER dump dry textbook physics/lab units like PSI, Newtons, kPa, Joules, LD50, or stiff university jargon!).
+MANDATORY PACING, VIRAL DOCUMENTARY STORYTELLING & WORD COUNT (~17.0–18.0 SECONDS PER SCENE AT DOCUMENTARY CADENCE):
+- {'For Scene 1 (scene_id=1): Start with a gripping, visceral In-Medias-Res Cold-Open Hook ("' + doc_hook + '") followed by 2 high-stakes sentences (total 38–46 words for Scene 1, ZERO "?" questions).' if start_sid == 1 else f'For every scene (Scenes {start_sid} to {end_sid}): Write 3 complete, rich, gripping documentary sentences totaling 45 to 54 WORDS PER SCENE (~17.0–18.0 seconds of spoken narration per scene).'}
+- For Scenes {start_sid+1 if start_sid == 1 else start_sid} to {end_sid}: Every single scene MUST contain 45 to 54 words of deep, vivid storytelling. NEVER write short 12-word Shorts sentences!
+- VIRAL COMPETITOR 3-BEAT CHAPTER ARCHITECTURE (JCS / Charisma on Command / @IFinity_What / @FossilVideos Formula — ZERO 'Studies show...' ACADEMIC OPENERS):
+  * Slot 1 of each Chapter (Scenes {start_sid} & {start_sid+3}): **Case-Study / Verbatim Reconstruction ("Show, Don't Tell")** — NEVER start with "Studies show..." or "Research reveals...". Jump straight into the specific chronological event, physical clash, or documented record assigned to this specific chapter.
+  * Slot 2 of each Chapter (Scenes {start_sid+1} & {start_sid+4}): **Hidden Mechanism + Counter-Intuitive Myth-Breaker** — Explain WHY it works using a crystal-clear everyday comparison or physical sensation that shatters a popular assumption about {topic} (STRICTLY FORBIDDEN: NEVER dump dry textbook physics/lab units like PSI, Newtons, kPa, Joules, LD50, or stiff university jargon!).
   {slot_3_rule}
-  * Slot 4 of each Chapter (Scenes {start_sid+3} & {start_sid+7}): **Decisive Turning Point / Counter-Move + Open-Loop Cliffhanger Bridge** — Deliver the chapter's concrete turning point or counter-move, and for Chapters 1–9, end the final sentence with a smooth causal bridge into the next Chapter!
 - ZERO SPOKEN OUTRO CTA: Never say "Subscribe", "Like", or "Leave a comment" in the narration.
 - Self-Contained & Diverse Multi-Source Visual Queries (CRITICAL — NEVER REPEAT THE SAME QUERY WITHIN A CHAPTER):
-  * For Scene {start_sid} (Slot 1 of Chapter {ch_a_id}) and Scene {start_sid+4} (Slot 1 of Chapter {ch_b_id}), anchor `visual_keyword` and `stock_query` to the Chapter Master Motif ("{ch_a_mq}" / "{ch_b_mq}").
-  * For Scene {start_sid+1} and Scene {start_sid+5} (Slot 2 of each Chapter), write a DIFFERENT 3–4 word close-up physical / anatomical / instrument query that does NOT repeat Slot 1's words!
+  * For Scene {start_sid} (Slot 1 of Chapter {ch_a_id}) and Scene {start_sid+3} (Slot 1 of Chapter {ch_b_id}), anchor `visual_keyword` and `stock_query` to the Chapter Master Motif ("{ch_a_mq}" / "{ch_b_mq}").
+  * For Scene {start_sid+1} and Scene {start_sid+4} (Slot 2 of each Chapter), write a DIFFERENT 3–4 word close-up physical / anatomical / instrument query that does NOT repeat Slot 1's words!
   {slot_3_visual_rule}
-  * For Scene {start_sid+3} and Scene {start_sid+7} (Slot 4 of each Chapter), write a DIFFERENT 3–5 word wide environmental or action query completely distinct from Slots 1 & 2!
 
-Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`scene_id` {start_sid} through {end_sid}):
+Return ONLY valid JSON with key "scenes" containing exactly 6 scene objects (`scene_id` {start_sid} through {end_sid}):
 {{
   "scenes": [
     {{
       "scene_id": {start_sid},
       "visual_reasoning": "Chapter {ch_a_id} visual intent",
-      "narration": "2 to 3 complete documentary sentences in {target_lang_display} totaling 36 to 44 words...",
+      "narration": "3 complete documentary sentences in {target_lang_display} totaling 45 to 54 words...",
       "visual_keyword": "{ch_a_mq}",
       "visual_prompt": "Cinematic 16:9 widescreen shot of {ch_a_mq}",
       "stock_query": "{' '.join(str(ch_a_mq).split()[:3])}",
@@ -365,28 +359,27 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
       "sfx_cue": "impact_boom",
       "highlight_words": ["WORD1", "WORD2"],
       "overlay_badge": null,
-      "estimated_seconds": 15.0
+      "estimated_seconds": 17.0
     }}
   ]
 }}"""
         slot_angle_suffixes = [
             "",
             "close up detail",
-            "psychological mechanism diagram" if is_doodle_niche else "archival close up footage",
             "cinematic wide environment",
         ]
         for attempt_b in range(2):
             try:
-                raw_b = agent._call_api(batch_prompt, json_mode=True, timeout=40, max_total_seconds=65)
+                raw_b = agent._call_api(batch_prompt, json_mode=True, timeout=36, max_total_seconds=58)
                 b_dict = _extract_json_dict(raw_b)
                 b_scenes = b_dict.get("scenes") or []
-                if isinstance(b_scenes, list) and len(b_scenes) >= 6:
-                    # Chuẩn hóa đúng 8 cảnh cho batch
+                if isinstance(b_scenes, list) and len(b_scenes) >= 5:
+                    # Chuẩn hóa đúng 6 cảnh cho batch (3 cảnh / Chương)
                     normalized_b: List[Dict[str, Any]] = []
-                    for idx_local in range(8):
+                    for idx_local in range(6):
                         target_id = start_sid + idx_local
-                        ch_cur = ch_a if idx_local < 4 else ch_b
-                        slot_in_ch = idx_local % 4
+                        ch_cur = ch_a if idx_local < 3 else ch_b
+                        slot_in_ch = idx_local % 3
                         if idx_local < len(b_scenes) and isinstance(b_scenes[idx_local], dict):
                             sc_item = dict(b_scenes[idx_local])
                         else:
@@ -444,7 +437,7 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                                 cur_sq = " ".join(master_q_cur.split()[:3])
                         if slot_in_ch == 0 or not cur_vk:
                             sc_item["visual_keyword"] = master_q_cur if slot_in_ch == 0 else f"{master_q_cur} {slot_angle_suffixes[slot_in_ch]}".strip()
-                        elif cur_vk.lower() == master_q_cur.lower() and slot_in_ch in (1, 3):
+                        elif cur_vk.lower() == master_q_cur.lower() and slot_in_ch in (1, 2):
                             sc_item["visual_keyword"] = f"{cur_vk} {slot_angle_suffixes[slot_in_ch]}".strip()
                         else:
                             sc_item["visual_keyword"] = cur_vk
@@ -455,12 +448,12 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                         if not sc_item.get("visual_prompt"):
                             sc_item["visual_prompt"] = f"Cinematic 16:9 widescreen documentary shot of {sc_item['visual_keyword']}"
                         sc_item["media_type"] = "video"
-                        if idx_local in (0, 4):
+                        if idx_local in (0, 3):
                             ch_lbl = str(ch_cur.get("chapter_title") or f"CHAPTER {ch_cur.get('chapter_id', 1)}").strip()
                             sc_item["overlay_badge"] = f"[ // {ch_lbl.upper()} // ]"
                         else:
                             sc_item["overlay_badge"] = None
-                        sc_item["estimated_seconds"] = round(max(11.0, len(narr_txt.split()) / 2.62), 1)
+                        sc_item["estimated_seconds"] = round(max(15.5, len(narr_txt.split()) / 2.55), 1)
                         normalized_b.append(sc_item)
                     return normalized_b
             except Exception as e_b:
@@ -468,17 +461,17 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
 
         # Fallback an toàn nếu 1 batch gặp lỗi mạng
         fallback_b: List[Dict[str, Any]] = []
-        for idx_local in range(8):
+        for idx_local in range(6):
             target_id = start_sid + idx_local
-            ch_cur = ch_a if idx_local < 4 else ch_b
+            ch_cur = ch_a if idx_local < 3 else ch_b
             premise_clean = str(ch_cur.get("chapter_premise") or "behavioral power dynamics in high-stakes negotiation").strip().rstrip(".")
             m_query = str(ch_cur.get("chapter_master_query") or "tense executive boardroom meeting").strip()
             narr_fb = (
                 f"Notice what happens during {premise_clean.lower()}: ninety percent of people react within two seconds out of pure conditioned habit. "
-                f"Hold steady eye contact for four full seconds without speaking, and their entire script falls apart on the spot."
+                f"Hold steady eye contact for four full seconds without speaking, and their entire script falls apart on the spot as every hidden instinct surfaces."
             )
             ch_title_fb = str(ch_cur.get("chapter_title") or f"CHAPTER {ch_cur.get('chapter_id', 1)}").strip().upper()
-            ch_badge = f"[ // {ch_title_fb} // ]" if idx_local in (0, 4) else None
+            ch_badge = f"[ // {ch_title_fb} // ]" if idx_local in (0, 3) else None
             fallback_b.append({
                 "scene_id": target_id,
                 "visual_reasoning": f"{ch_cur.get('chapter_title')} documentary beat",
@@ -491,11 +484,11 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
                 "sfx_cue": "none",
                 "highlight_words": ["FOUR", "SECONDS"],
                 "overlay_badge": ch_badge,
-                "estimated_seconds": 14.5,
+                "estimated_seconds": 17.0,
             })
         return fallback_b
 
-    logger.info("🎬 [LongForm10Min] Đang chạy song song 5 Batch LLM viết 10 Chương (40 phân cảnh / ~1,500 từ / ~10 phút)...")
+    logger.info("🎬 [LongForm10Min] Đang chạy song song 5 Batch LLM viết 10 Chương (30 phân cảnh / ~1,450 từ / >8m20s Mid-Roll Ads)...")
     with ThreadPoolExecutor(max_workers=5) as pool:
         batch_results = list(pool.map(_expand_chapter_pair, range(5)))
 
@@ -505,7 +498,7 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
 
     for idx_s, sc in enumerate(all_scenes, start=1):
         sc["scene_id"] = idx_s
-        if (idx_s - 1) % 4 != 0:
+        if (idx_s - 1) % 3 != 0:
             sc["overlay_badge"] = None
 
     full_narr = " ".join(str(s.get("narration") or "").strip() for s in all_scenes if s.get("narration"))
@@ -526,8 +519,8 @@ Return ONLY valid JSON with key "scenes" containing exactly 8 scene objects (`sc
         ts_str = "00:00" if ch_idx_0 == 0 else f"{mm:02d}:{ss:02d}"
         ch_clean_title = str(ch_meta.get("chapter_title") or f"Chapter {ch_idx_0 + 1}").strip()
         chapter_timestamps_lines.append(f"{ts_str} - {ch_clean_title}")
-        ch_scenes = all_scenes[ch_idx_0 * 4 : (ch_idx_0 + 1) * 4]
-        ch_dur = sum(float(s.get("estimated_seconds") or 15.0) for s in ch_scenes)
+        ch_scenes = all_scenes[ch_idx_0 * 3 : (ch_idx_0 + 1) * 3]
+        ch_dur = sum(float(s.get("estimated_seconds") or 17.0) for s in ch_scenes)
         cum_sec += max(48.0, ch_dur)
 
     timestamps_block = "\n".join(chapter_timestamps_lines)

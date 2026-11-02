@@ -359,35 +359,43 @@ def _fetch_longform_16x9_broll_clip_sync(
                 if p_tail and p_tail not in prioritized_q_parts:
                     prioritized_q_parts.append(p_tail)
 
-            for try_idx in range(2):
-                if _is_cancelled():
-                    return None
-                with bvid_lock:
-                    snap_used = set(used_urls)
-                best_vid = media_agent._stock.search_landscape_16x9_video_clip(
-                    queries=prioritized_q_parts[try_idx:] + prioritized_q_parts[:try_idx],
-                    used_urls=snap_used,
-                    topic=topic,
-                    narration=narration,
-                    prefer_pixabay=(prefer_pixabay ^ (try_idx == 1)),
-                    primary_entity=primary_entity,
-                    cancel_event=cancel_event,
-                    deadline_ts=eff_dl,
-                    claim_in_used=False,
-                )
-                cand_u = _atomic_claim_16x9_stock_url(best_vid)
-                if best_vid and cand_u and not _is_cancelled():
-                    src_tag = str(best_vid.get("source") or "pexels_16x9_video").lower()
-                    prod_lbl = "PIXABAY_16X9_LANDSCAPE_HD" if "pixabay" in src_tag else "PEXELS_16X9_LANDSCAPE_HD"
-                    raw_stock = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw.mp4")
-                    dl_ok = media_agent.download_file(cand_u, raw_stock)
-                    if dl_ok and not _is_cancelled() and is_completed_clean_mp4(raw_stock, min_size_bytes=40_000, min_duration_ms=1500, allow_raw_source=True):
-                        raw_dur_s = get_duration_ms(raw_stock) / 1000.0
-                        req_dur_s = max(2.5, float(target_duration_sec))
-                        cut_ok = False
-                        # Chống lặp cảnh nội bộ (-stream_loop -1): Nếu clip Stock ngắn hơn thời lượng lời thoại >= 0.8s (VD: clip 7s cho cảnh 15s),
-                        # tự động tải thêm 1 clip Stock thứ 2 khác hoàn toàn và nối mượt 2 cú máy (Shot A + Shot B)!
-                        if req_dur_s >= 8.5 and raw_dur_s < (req_dur_s - 0.8) and not _is_cancelled():
+            if _is_cancelled():
+                return None
+            with bvid_lock:
+                snap_used = set(used_urls)
+            best_vid = media_agent._stock.search_landscape_16x9_video_clip(
+                queries=prioritized_q_parts,
+                used_urls=snap_used,
+                topic=topic,
+                narration=narration,
+                prefer_pixabay=prefer_pixabay,
+                primary_entity=primary_entity,
+                cancel_event=cancel_event,
+                deadline_ts=eff_dl,
+                claim_in_used=False,
+            )
+            cand_u = _atomic_claim_16x9_stock_url(best_vid)
+            if best_vid and cand_u and not _is_cancelled():
+                src_tag = str(best_vid.get("source") or "pexels_16x9_video").lower()
+                prod_lbl = "PIXABAY_16X9_LANDSCAPE_HD" if "pixabay" in src_tag else "PEXELS_16X9_LANDSCAPE_HD"
+                raw_stock = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw.mp4")
+                dl_ok = media_agent.download_file(cand_u, raw_stock)
+                if dl_ok and not _is_cancelled() and is_completed_clean_mp4(raw_stock, min_size_bytes=40_000, min_duration_ms=1500, allow_raw_source=True):
+                    raw_dur_s = get_duration_ms(raw_stock) / 1000.0
+                    req_dur_s = max(2.5, float(target_duration_sec))
+                    cut_ok = False
+                    # Chống lặp cảnh nội bộ (-stream_loop -1): Nếu clip Stock ngắn hơn thời lượng lời thoại >= 0.8s (VD: clip 7s cho cảnh 15s),
+                    # ưu tiên lấy ngay clip thứ 2 từ `alternate_urls` đã duyệt Vision (0s độ trễ API), nếu hết mới gọi tìm thêm!
+                    if req_dur_s >= 8.5 and raw_dur_s < (req_dur_s - 0.8) and not _is_cancelled():
+                        cand_u_b = None
+                        alt_list_b = [u for u in (best_vid.get("alternate_urls") or []) if u and u != cand_u]
+                        if alt_list_b:
+                            cand_u_b = _atomic_claim_16x9_stock_url({
+                                "url": alt_list_b[0],
+                                "alternate_urls": alt_list_b[1:],
+                                "title": best_vid.get("title") or query,
+                            })
+                        if not cand_u_b and not _is_cancelled():
                             with bvid_lock:
                                 snap_used_b = set(used_urls)
                             second_vid = media_agent._stock.search_landscape_16x9_video_clip(
@@ -395,80 +403,80 @@ def _fetch_longform_16x9_broll_clip_sync(
                                 used_urls=snap_used_b,
                                 topic=topic,
                                 narration=narration,
-                                prefer_pixabay=not (prefer_pixabay ^ (try_idx == 1)),
+                                prefer_pixabay=not prefer_pixabay,
                                 primary_entity=primary_entity,
                                 cancel_event=cancel_event,
                                 deadline_ts=eff_dl,
                                 claim_in_used=False,
                             )
                             cand_u_b = _atomic_claim_16x9_stock_url(second_vid)
-                            if second_vid and cand_u_b and not _is_cancelled():
-                                raw_stock_b = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw_b.mp4")
-                                if (
-                                    media_agent.download_file(cand_u_b, raw_stock_b)
-                                    and not _is_cancelled()
-                                    and is_completed_clean_mp4(raw_stock_b, min_size_bytes=40_000, min_duration_ms=1500, allow_raw_source=True)
-                                ):
-                                    cut_ok = stitch_two_16x9_clips_no_loop(
-                                        clip_a=raw_stock,
-                                        clip_b=raw_stock_b,
-                                        output_path=out_path,
-                                        target_duration_sec=req_dur_s,
-                                        scene_id=scene_id,
-                                    )
-                                    if cut_ok:
-                                        prod_lbl = f"{prod_lbl}_MULTI_SHOT"
-                                Path(raw_stock_b).unlink(missing_ok=True)
-                        if not cut_ok and not _is_cancelled():
-                            cut_ok = extract_longform_scene_with_internal_jumpcut(
-                                master_path=raw_stock,
-                                output_path=out_path,
-                                start_offset_sec=0.0,
-                                target_duration_sec=req_dur_s,
-                                scene_id=scene_id,
-                            )
-                        if not cut_ok and not _is_cancelled() and get_duration_ms(raw_stock) >= 2500:
-                            try:
-                                trim_video(
-                                    input_path=raw_stock,
-                                    duration_seconds=req_dur_s,
+                        if cand_u_b and not _is_cancelled():
+                            raw_stock_b = str(media_dir / f"scene_{scene_id:03d}_stock16x9_raw_b.mp4")
+                            if (
+                                media_agent.download_file(cand_u_b, raw_stock_b)
+                                and not _is_cancelled()
+                                and is_completed_clean_mp4(raw_stock_b, min_size_bytes=40_000, min_duration_ms=1500, allow_raw_source=True)
+                            ):
+                                cut_ok = stitch_two_16x9_clips_no_loop(
+                                    clip_a=raw_stock,
+                                    clip_b=raw_stock_b,
                                     output_path=out_path,
-                                    width=1920,
-                                    height=1080,
-                                    fps=30,
-                                    apply_grading=True,
-                                    is_hook_scene=(scene_id == 1),
-                                    fair_use_transform=True,
-                                    preserve_continuous_flow=True,
+                                    target_duration_sec=req_dur_s,
+                                    scene_id=scene_id,
                                 )
+                                if cut_ok:
+                                    prod_lbl = f"{prod_lbl}_MULTI_SHOT"
+                            Path(raw_stock_b).unlink(missing_ok=True)
+                    if not cut_ok and not _is_cancelled():
+                        cut_ok = extract_longform_scene_with_internal_jumpcut(
+                            master_path=raw_stock,
+                            output_path=out_path,
+                            start_offset_sec=0.0,
+                            target_duration_sec=req_dur_s,
+                            scene_id=scene_id,
+                        )
+                    if not cut_ok and not _is_cancelled() and get_duration_ms(raw_stock) >= 2500:
+                        try:
+                            trim_video(
+                                input_path=raw_stock,
+                                duration_seconds=req_dur_s,
+                                output_path=out_path,
+                                width=1920,
+                                height=1080,
+                                fps=30,
+                                apply_grading=True,
+                                is_hook_scene=(scene_id == 1),
+                                fair_use_transform=True,
+                                preserve_continuous_flow=True,
+                            )
+                        except Exception:
+                            pass
+                        Path(raw_stock).unlink(missing_ok=True)
+                    else:
+                        Path(raw_stock).unlink(missing_ok=True)
+                    if (
+                        not _is_cancelled()
+                        and is_completed_clean_mp4(out_path, min_size_bytes=35_000, min_duration_ms=1200)
+                        and _is_clip_window_clean(out_path, [0.8, 2.2])
+                    ):
+                        ok_s1_stock_sh = True
+                        if scene_id == 1:
+                            try:
+                                from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                                ok_s1_stock_sh, _ = _ensure_hook_clip_sharpness_and_luma(out_path, min_sharpness=13.2)
                             except Exception:
                                 pass
-                            Path(raw_stock).unlink(missing_ok=True)
-                        else:
-                            Path(raw_stock).unlink(missing_ok=True)
-                        if (
-                            not _is_cancelled()
-                            and is_completed_clean_mp4(out_path, min_size_bytes=35_000, min_duration_ms=1200)
-                            and _is_clip_window_clean(out_path, [0.8, 2.2])
-                        ):
-                            ok_s1_stock_sh = True
-                            if scene_id == 1:
-                                try:
-                                    from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-                                    ok_s1_stock_sh, _ = _ensure_hook_clip_sharpness_and_luma(out_path, min_sharpness=13.2)
-                                except Exception:
-                                    pass
-                            if ok_s1_stock_sh and is_clip_visually_unique_in_job(out_path, job_id, scene_id=scene_id):
-                                logger.info(f"Scene {scene_id}: 🎥 [Long-Form {prod_lbl}] Đã tải & cắt Landscape B-Roll -> {Path(out_path).name}")
-                                return {
-                                    "media_path": out_path,
-                                    "media_type": "video",
-                                    "production_method": prod_lbl,
-                                    "source_url": cand_u,
-                                    "rationale": f"{prod_lbl} ({str(best_vid.get('title') or query)[:45]})",
-                                }
-                        Path(out_path).unlink(missing_ok=True)
-                    Path(raw_stock).unlink(missing_ok=True)
+                        if ok_s1_stock_sh and is_clip_visually_unique_in_job(out_path, job_id, scene_id=scene_id):
+                            logger.info(f"Scene {scene_id}: 🎥 [Long-Form {prod_lbl}] Đã tải & cắt Landscape B-Roll -> {Path(out_path).name}")
+                            return {
+                                "media_path": out_path,
+                                "media_type": "video",
+                                "production_method": prod_lbl,
+                                "source_url": cand_u,
+                                "rationale": f"{prod_lbl} ({str(best_vid.get('title') or query)[:45]})",
+                            }
+                    Path(out_path).unlink(missing_ok=True)
+                Path(raw_stock).unlink(missing_ok=True)
         except Exception as e_stock_16x9:
             logger.warning(f"Scene {scene_id}: Long-form Stock 16:9 lookup error: {e_stock_16x9}")
         return None
@@ -677,8 +685,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     from app.services.media.media_history import get_recent_media_urls, record_used_media
     used_pool_urls = get_recent_media_urls(limit=150)
 
-    # Điều phối Semaphore 5 luồng sạch cho Video Dài (khớp dưới ngưỡng _VISION_SEM=7, triệt tiêu 100% nghẽn hàng đợi Vision)
-    sem = asyncio.Semaphore(5 if is_long_form else 8)
+    # Điều phối Semaphore 8 luồng song song cho cả Video Dài (30 cảnh) và Shorts (chia tải trên dàn Gemini API Key Pool)
+    sem = asyncio.Semaphore(8)
     completed_lock = asyncio.Lock()
     completed_count = 0
     total_scenes = len(script.scenes)
@@ -919,7 +927,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 deadline_ts=deadline_ts,
             )
             if not (lf_res and lf_res.get("media_path")):
-                from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
+                from app.services.media.longform_chapter_pool import (
+                    slice_any_available_chapter_master_for_scene,
+                    extract_longform_scene_with_internal_jumpcut as _lf_jumpcut_fb,
+                    is_clip_visually_unique_in_job as _lf_uniq_fb,
+                )
                 lf_res = await asyncio.to_thread(
                     slice_any_available_chapter_master_for_scene,
                     media_dir=media_dir,
@@ -927,6 +939,69 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     target_duration_sec=dur,
                     job_id=job_id,
                 )
+                # Nếu ChapterMaster chưa sẵn sàng, tìm nhanh 1 clip Video Stock/Archive 16:9 trực tiếp (14s timeout)
+                # để có ngay Video chuyển động thật, tránh tải Ảnh tĩnh rồi lại phải chạy Step B Motion Floor!
+                if not (lf_res and lf_res.get("media_path")):
+                    try:
+                        _check_fetch_deadline()
+                        fb_vid_q = clean_scene_search_query(
+                            sc_strat.get("action_or_concept_query") or sq or kw or primary_entity or state.get("topic", ""),
+                            max_words=4,
+                        )
+                        with longform_bvid_lock:
+                            snap_lf_u = set(used_pool_urls)
+                        va_lf_fb = {
+                            "video_format": "long",
+                            "subject": str(primary_entity or state.get("topic", "")),
+                            "core_visual_entity": str(primary_entity or state.get("topic", "")),
+                            "topic": state.get("topic", ""),
+                            "search_queries": [fb_vid_q, clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3)],
+                        }
+                        fb_v_hit = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                media_agent.search_best_video_clip,
+                                fb_vid_q,
+                                snap_lf_u,
+                                va_lf_fb,
+                                scene.narration,
+                                state.get("topic", ""),
+                            ),
+                            timeout=14.0,
+                        )
+                        if fb_v_hit and fb_v_hit.get("url"):
+                            fb_v_url = str(fb_v_hit["url"]).strip()
+                            if rag.try_claim_in_job_video(job_id=job_id, vid_id=fb_v_url, url=fb_v_url, title=str(fb_v_hit.get("title") or fb_vid_q), scene_id=scene.scene_id):
+                                raw_lf_fb = str(media_dir / f"scene_{scene.scene_id:03d}_lffast_raw.mp4")
+                                out_lf_fb = str(media_dir / f"scene_{scene.scene_id:03d}_lf16x9.mp4")
+                                dl_fb_ok = await asyncio.to_thread(media_agent.download_file, fb_v_url, raw_lf_fb)
+                                if dl_fb_ok and Path(raw_lf_fb).exists():
+                                    jc_ok = await asyncio.to_thread(
+                                        _lf_jumpcut_fb,
+                                        raw_lf_fb,
+                                        out_lf_fb,
+                                        0.0,
+                                        max(2.5, float(dur)),
+                                        scene.scene_id,
+                                    )
+                                    Path(raw_lf_fb).unlink(missing_ok=True)
+                                    if jc_ok and Path(out_lf_fb).exists() and _lf_uniq_fb(out_lf_fb, job_id, scene_id=scene.scene_id):
+                                        with longform_bvid_lock:
+                                            used_pool_urls.add(fb_v_url)
+                                        lf_res = {
+                                            "media_path": out_lf_fb,
+                                            "media_type": "video",
+                                            "production_method": "LONGFORM_16X9_FAST_STOCK_VIDEO",
+                                            "source_url": fb_v_url,
+                                            "rationale": f"16:9 Direct Stock Video ({fb_vid_q})",
+                                        }
+                                    else:
+                                        Path(out_lf_fb).unlink(missing_ok=True)
+                                        rag.release_in_job_video_claim(job_id=job_id, vid_id=fb_v_url, url=fb_v_url, title=fb_vid_q, scene_id=scene.scene_id)
+                                else:
+                                    Path(raw_lf_fb).unlink(missing_ok=True)
+                                    rag.release_in_job_video_claim(job_id=job_id, vid_id=fb_v_url, url=fb_v_url, title=fb_vid_q, scene_id=scene.scene_id)
+                    except Exception:
+                        pass
             if lf_res and lf_res.get("media_path"):
                 media_path = lf_res["media_path"]
                 media_type = "video"
@@ -3796,7 +3871,35 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     primary_entity = state.get("primary_entity")
 
     critic = VisualCritic()
-    eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
+    prev_eval = state.get("media_eval") if isinstance(state.get("media_eval"), dict) else None
+    prev_failed_ids = set(int(x) for x in (prev_eval.get("failed_scene_ids") or []) if x) if prev_eval else set()
+    # Tối ưu tốc độ: Ở vòng retry (media_retry_count >= 1), chỉ chạy thẩm định chuyên sâu (ContactSheet Vision + CV)
+    # trên các cảnh vừa được refine_media thay mới, giữ nguyên điểm của các cảnh đã đạt chuẩn ở vòng 1!
+    if int(state.get("media_retry_count", 0)) >= 1 and prev_eval and prev_failed_ids and len(scenes_media) > len(prev_failed_ids):
+        delta_scenes = [m for m in scenes_media if int(m.get("scene_id") or 0) in prev_failed_ids]
+        delta_report = critic.evaluate_media(scenes_media=delta_scenes, primary_entity=primary_entity)
+        from app.models.critic_report import MediaCriticReport, SceneMediaScore
+        merged_scores_map: Dict[int, SceneMediaScore] = {}
+        for old_sc in (prev_eval.get("scene_scores") or []):
+            try:
+                sc_obj = old_sc if isinstance(old_sc, SceneMediaScore) else SceneMediaScore(**old_sc)
+                merged_scores_map[int(sc_obj.scene_id)] = sc_obj
+            except Exception:
+                pass
+        for new_sc in (delta_report.scene_scores or []):
+            merged_scores_map[int(new_sc.scene_id)] = new_sc
+        merged_scores = [merged_scores_map[k] for k in sorted(merged_scores_map.keys())]
+        avg_overall = round(sum(s.overall for s in merged_scores) / max(len(merged_scores), 1), 1)
+        eval_report = MediaCriticReport(
+            overall_score=avg_overall,
+            passed=(len(delta_report.failed_scene_ids) == 0 and avg_overall >= critic.PASS_THRESHOLD),
+            scene_scores=merged_scores,
+            failed_scene_ids=list(delta_report.failed_scene_ids),
+            feedback=delta_report.feedback,
+            suggestions=delta_report.suggestions,
+        )
+    else:
+        eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
 
     # Thu hồi tức thì chứng chỉ (`*_meta.txt` / `*.meta`) của mọi Chapter Master bị VisualCritic ContactSheet Vision bắt lỗi ngữ nghĩa,
     # đảm bảo cả `node_refine_media` lẫn `FinalVisualGate` không bao giờ cắt lại từ Master lỗi trên bất kỳ cảnh nào!
@@ -4253,7 +4356,24 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     fg_results = list(fg_pool.map(_rescue_final_gate_item, enumerate(failed_items_fg)))
                 rescued_any = any(fg_results)
             if rescued_any:
-                eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
+                rescued_sids = {
+                    int(item_fg.get("scene_id") or 0)
+                    for item_fg, ok_fg in zip(failed_items_fg, fg_results)
+                    if ok_fg
+                }
+                eval_report.failed_scene_ids = [
+                    sid_x for sid_x in eval_report.failed_scene_ids if int(sid_x) not in rescued_sids
+                ]
+                for sc_score_item in (eval_report.scene_scores or []):
+                    if int(getattr(sc_score_item, "scene_id", 0) or 0) in rescued_sids:
+                        sc_score_item.overall = max(float(getattr(sc_score_item, "overall", 8.0) or 8.0), 8.2)
+                        sc_score_item.issues = []
+                if eval_report.scene_scores:
+                    eval_report.overall_score = round(
+                        sum(float(s.overall) for s in eval_report.scene_scores) / len(eval_report.scene_scores),
+                        1,
+                    )
+                eval_report.passed = len(eval_report.failed_scene_ids) == 0
         except Exception as e_fg:
             logger.debug(f"[FinalVisualGate] Rescue skip: {e_fg}")
 
