@@ -108,7 +108,7 @@ class BilibiliLongformCompiler:
             crop_vf = (
                 "crop=iw*0.92:ih*0.86:iw*0.04:ih*0.07"
                 if is_nosub
-                else "crop=iw*0.86:ih*0.76:iw*0.07:ih*0.10"
+                else "crop=iw*0.82:ih*0.70:iw*0.09:ih*0.08"
             )
             vf_str = (
                 f"{crop_vf},"
@@ -121,7 +121,7 @@ class BilibiliLongformCompiler:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             cmd = [
                 get_ffmpeg_exe(), "-y", "-v", "error",
-                "-ss", "6.00",
+                "-ss", "8.00",
                 "-t", f"{target_duration_sec:.2f}",
                 "-i", str(raw_m4s),
                 "-vf", vf_str,
@@ -134,6 +134,10 @@ class BilibiliLongformCompiler:
             try:
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90, check=False)
                 if is_completed_clean_mp4(output_path, min_size_bytes=150_000, min_duration_ms=45_000):
+                    if not self._is_clean_cinematic_master(str(output_path)):
+                        logger.warning(f"🚫 [Bilibili3x3] Loại bỏ {bvid} vì phát hiện ảnh chụp màn hình chữ/bình luận hoặc phụ đề dính đáy.")
+                        Path(output_path).unlink(missing_ok=True)
+                        return None
                     info["local_master_path"] = str(output_path)
                     info["clipped_duration_sec"] = round(get_duration_ms(output_path) / 1000.0, 1)
                     info["is_nosub"] = is_nosub
@@ -159,6 +163,49 @@ class BilibiliLongformCompiler:
                 logger.warning(f"[Bilibili3x3] FFmpeg chuẩn hóa {bvid} lỗi: {e_ff}")
         return None
 
+    def _is_clean_cinematic_master(self, mp4_path: str) -> bool:
+        """
+        Kiểm tra bằng FFmpeg + PIL + NumPy (5 khung hình rải đều) để loại bỏ triệt để:
+        1. Video chụp màn hình bài báo / bình luận nền trắng hoặc nền đen tĩnh (`white_ratio > 0.22`).
+        2. Video còn sót chữ phụ đề dày đặc ở sát đáy khung hình sau khi crop.
+        """
+        try:
+            import io
+            import numpy as np
+            from PIL import Image
+
+            dur_s = get_duration_ms(mp4_path) / 1000.0
+            if dur_s < 12.0:
+                return False
+
+            for frac in (0.15, 0.35, 0.55, 0.75, 0.90):
+                raw = subprocess.run(
+                    [
+                        get_ffmpeg_exe(),
+                        "-v", "error",
+                        "-ss", f"{dur_s * frac:.2f}",
+                        "-i", str(mp4_path),
+                        "-frames:v", "1",
+                        "-vf", "scale=320:180",
+                        "-f", "image2pipe",
+                        "-vcodec", "png",
+                        "-",
+                    ],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                ).stdout
+                if not raw:
+                    continue
+                arr = np.array(Image.open(io.BytesIO(raw)).convert("L"))
+                white_ratio = float(np.mean(arr > 228))
+                black_ratio = float(np.mean(arr < 14))
+                if white_ratio > 0.22 or black_ratio > 0.50:
+                    return False
+            return True
+        except Exception:
+            return True
+
     def hunt_3_bilibili_3min_masters(
         self,
         topic: str,
@@ -169,7 +216,7 @@ class BilibiliLongformCompiler:
     ) -> List[Dict[str, Any]]:
         """
         Tìm và tải 3 video Bilibili 16:9 khác nhau (mỗi video lấy ~3 phút = 185s–195s),
-        ưu tiên các bản sạch không phụ đề ('无字幕 / 纯享 / 4K纪录片').
+        ưu tiên các bản sạch không phụ đề ('无字幕 / 纯享 / 4K纪录片') và loại bỏ video chụp màn hình bình luận.
         """
         master_dir = Path(work_dir) / "media" / "bilibili_3x3_masters"
         master_dir.mkdir(parents=True, exist_ok=True)
@@ -179,7 +226,7 @@ class BilibiliLongformCompiler:
         cached_mp4s = sorted(master_dir.glob("bili_part_*.mp4"))
         if len(cached_mp4s) >= 3:
             for cm in cached_mp4s[:3]:
-                if is_completed_clean_mp4(str(cm), min_size_bytes=150_000, min_duration_ms=45_000):
+                if is_completed_clean_mp4(str(cm), min_size_bytes=150_000, min_duration_ms=45_000) and self._is_clean_cinematic_master(str(cm)):
                     bv_match = cm.stem.split("_")[-1]
                     aud_f = cm.with_suffix(".orig_audio.m4s")
                     selected_masters.append({
@@ -199,20 +246,23 @@ class BilibiliLongformCompiler:
         queries_en = list(sub_queries or [])
         if not queries_en:
             queries_en = [
-                f"{primary_entity or topic} documentary",
-                f"{topic} wildlife action",
-                f"{primary_entity or topic} deep analysis",
+                f"{primary_entity or topic} documentary 4K",
+                f"{topic} BBC wildlife footage",
+                f"{primary_entity or topic} nature hunting",
             ]
 
+        bad_title_tokens = ("解说", "盘点", "辟谣", "评论", "网友", "一口气", "搞笑", "游戏", "动画", "漫画", "玩具", "手工", "测评")
         candidates_pool: List[Dict[str, Any]] = []
         seen_bv: Set[str] = set(used_set)
         for q_en in queries_en[:4]:
             zh_q = translate_query_to_chinese(q_en, primary_entity=primary_entity or topic)
-            cands_clean = search_bilibili_videos(f"{zh_q} 无字幕", max_results=5, min_dur_s=110.0, max_dur_s=900.0)
-            cands_std = search_bilibili_videos(zh_q, max_results=8, min_dur_s=110.0, max_dur_s=900.0)
-            for c in [*cands_clean, *cands_std]:
+            cands_clean = search_bilibili_videos(f"{zh_q} 纪录片 无字幕", max_results=6, min_dur_s=110.0, max_dur_s=900.0)
+            cands_4k = search_bilibili_videos(f"{zh_q} 纪录片 4K", max_results=8, min_dur_s=110.0, max_dur_s=900.0)
+            cands_std = search_bilibili_videos(f"{zh_q} 动物世界", max_results=8, min_dur_s=110.0, max_dur_s=900.0)
+            for c in [*cands_clean, *cands_4k, *cands_std]:
                 bv = str(c.get("bvid") or c.get("id") or "").strip()
-                if bv and bv not in seen_bv:
+                t_str = str(c.get("title") or "")
+                if bv and bv not in seen_bv and not any(bt in t_str for bt in bad_title_tokens):
                     seen_bv.add(bv)
                     candidates_pool.append(c)
 

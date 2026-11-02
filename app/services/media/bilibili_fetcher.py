@@ -844,7 +844,7 @@ def download_and_crop_bilibili_broll_clip(
             crop_expr_16x9 = (
                 "crop=iw*0.92:ih*0.86:iw*0.04:ih*0.07"
                 if is_verified_nosub
-                else "crop=iw*0.86:ih*0.76:iw*0.07:ih*0.10"
+                else "crop=iw*0.82:ih*0.70:iw*0.09:ih*0.08"
             )
             base_16x9_vf = (
                 f"{crop_expr_16x9},"
