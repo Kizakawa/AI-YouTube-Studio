@@ -395,6 +395,13 @@ class VideoAgent:
                     actual_w, actual_h = get_video_dimensions(scene.media_path)
                     actual_v_sec = get_duration_ms(scene.media_path) / 1000.0
                     if actual_w == job.resolution_w and actual_h == job.resolution_h and actual_v_sec >= duration - 0.08:
+                        if abs(actual_v_sec - duration) <= 0.08:
+                            logger.info(
+                                f"  Scene {scene.scene_id}: ⚡ 16:9 Direct Zero-Loss Copy ({Path(scene.media_path).name}, {actual_v_sec:.2f}s)"
+                            )
+                            if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
+                                shutil.copy2(scene.media_path, clip_path)
+                            return (scene.scene_id, clip_path)
                         import subprocess as _sp_trim
                         logger.info(
                             f"  Scene {scene.scene_id}: ⚡ 16:9 Clean Stream Sync ({Path(scene.media_path).name}, {actual_v_sec:.2f}s → {duration:.2f}s)"

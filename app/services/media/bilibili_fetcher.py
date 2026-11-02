@@ -650,7 +650,7 @@ def get_bilibili_video_info_and_streams(
     working_formats = avc_formats if avc_formats else video_formats
 
     if require_landscape:
-        # Ch?p nh?n c? chu?n 16:9 HD (height >= 720) l?n chu?n ?i?n ?nh Ultrawide 21:9 HD (width >= 1280, vd 1280x590)
+        # Chấp nhận cả chuẩn 16:9 HD (height >= 720) lẫn chuẩn điện ảnh Ultrawide 21:9 HD (width >= 1280, vd 1280x590)
         eff_min_h = max(480, int(min_height or 0))
         landscape_all = [
             f for f in working_formats
@@ -661,9 +661,11 @@ def get_bilibili_video_info_and_streams(
         landscape_hd = [
             f for f in landscape_all
             if int(f.get("height") or dim_h or 0) >= eff_min_h
-            or int(f.get("width") or dim_w or 0) >= (1280 if eff_min_h >= 720 else 852)
+            or int(f.get("width") or dim_w or 0) >= (1920 if eff_min_h >= 1080 else (1280 if eff_min_h >= 720 else 852))
         ]
-        # N?u video g?c tr?n Bilibili ch? c? b?n 480p/360p th? t? ??ng l?y b?n ngang n?t nh?t hi?n c? thay v? b?o l?i
+        if eff_min_h >= 720 and not landscape_hd:
+            # Nếu yêu cầu >= 720p/1080p mà video gốc chỉ có 360p/480p mờ nhòe -> Từ chối ngay để chọn video 1080p/4K nét căng!
+            return None
         working_formats = landscape_hd if landscape_hd else landscape_all
     elif min_height > 0:
         hd_only = [
@@ -674,15 +676,11 @@ def get_bilibili_video_info_and_streams(
         if hd_only:
             working_formats = hd_only
 
-    # ?u ti?n lu?ng 720p H.264 (long_edge 960..1366, bitrate ~400-1000kbps) ?? t?i qua CDN qu?c t? Bilibili c?c nhanh (2-4s ???c tr?n 20-30s video),
-    # sau ?? n?ng n?t quang h?c Lanczos + Unsharp Mask l?n 1080p m? kh?ng bao gi? b? ngh?n b?ng th?ng nh? lu?ng 1080p bitrate cao.
+    # Ưu tiên tuyệt đối luồng 1080p H.264 (1920x1080, bitrate cao 1500-3500kbps) để hình ảnh sắc nét chuẩn 4K/FullHD:
     best_video = sorted(
         working_formats,
         key=lambda f: (
             1 if str(f.get("vcodec") or "").startswith("avc") else 0,
-            2 if 960 <= max(int(f.get("width") or 0), int(f.get("height") or 0)) <= 1440 else (
-                1 if max(int(f.get("width") or 0), int(f.get("height") or 0)) > 1440 else 0
-            ),
             max(int(f.get("width") or 0), int(f.get("height") or 0)),
             float(f.get("tbr") or 0.0),
         ),
