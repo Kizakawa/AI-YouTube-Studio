@@ -982,6 +982,7 @@ async def produce_channel_video(
     final_title = pub_res.get("enriched_title") or title
     final_desc = pub_res.get("enriched_description") or final_description
 
+    pub_error = pub_res.get("error")
     if yt_id:
         # Hậu kiểm & khóa chặt Tags SEO, Hashtags, CategoryId & Geo-Lock trực tiếp trên YouTube API
         await asyncio.to_thread(pub_agent.verify_and_heal_video_metadata, yt_id)
@@ -993,37 +994,49 @@ async def produce_channel_video(
     elif pub_status == "waiting_quota_reset":
         print(f"   ⏳ [Quota Guard] Kênh {ch_name} chạm trần Quota API ngày hôm nay -> Đã lưu hàng đợi WAITING_QUOTA_RESET kèm {len(final_tags)} tags & slot {DISPLAY_VN}!")
     else:
-        raise RuntimeError(f"Upload YouTube thất bại: {pub_res.get('error')}")
+        print(f"   ⚠️ [Upload Pending] Video #{job_id} đã dựng & gửi Telegram thành công, lưu trạng thái RENDERED chờ cấp lại OAuth/Upload: {pub_error}")
 
-    with get_db() as db:
-        j_final = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-        if j_final:
-            if yt_id:
-                j_final.status = "SCHEDULED"
-            elif pub_status == "waiting_quota_reset":
-                j_final.status = "WAITING_QUOTA_RESET"
+    for _db_try in range(3):
+        try:
+            with get_db() as db:
+                j_final = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if j_final:
+                    if yt_id:
+                        j_final.status = "SCHEDULED"
+                    elif pub_status == "waiting_quota_reset":
+                        j_final.status = "WAITING_QUOTA_RESET"
+                    else:
+                        j_final.status = "RENDERED"
+                    j_final.youtube_video_id = yt_id
+                    j_final.video_path = str(output_video_path)
+                    j_final.title = final_title
+                    j_final.description = final_desc
+                    j_final.tags = ",".join(final_tags)
+                    j_final.scheduled_time = SCHEDULE_SLOT_UTC
+                    j_final.progress_percent = 100
+                    j_final.progress_message = (
+                        f"Đã lên lịch phát sóng lúc {DISPLAY_VN}"
+                        if yt_id
+                        else (
+                            f"Chờ reset Quota để phát sóng lúc {DISPLAY_VN}"
+                            if pub_status == "waiting_quota_reset"
+                            else f"Đã dựng xong ({DISPLAY_VN}) — {str(pub_error or '')[:120]}"
+                        )
+                    )
+                log_activity(
+                    db,
+                    telegram_id=1,
+                    username="System_Director",
+                    action_type="SCHEDULED_VIDEO_SUCCESS" if yt_id else "RENDER_VIDEO_SUCCESS",
+                    details=f"Video #{job_id} ('{final_title}') cho {ch_name}. YT ID: {yt_id or pub_status or 'RENDERED'}",
+                    channel_id=ch_id,
+                )
+            break
+        except Exception as _db_err:
+            if _db_try == 2:
+                logger.warning(f"[BatchProducer] DB final update warning after 3 retries (Job #{job_id}): {_db_err}")
             else:
-                j_final.status = "RENDERED"
-            j_final.youtube_video_id = yt_id
-            j_final.video_path = str(output_video_path)
-            j_final.title = final_title
-            j_final.description = final_desc
-            j_final.tags = ",".join(final_tags)
-            j_final.scheduled_time = SCHEDULE_SLOT_UTC
-            j_final.progress_percent = 100
-            j_final.progress_message = (
-                f"Đã lên lịch phát sóng lúc {DISPLAY_VN}"
-                if yt_id
-                else f"Chờ reset Quota để phát sóng lúc {DISPLAY_VN}"
-            )
-        log_activity(
-            db,
-            telegram_id=1,
-            username="System_Director",
-            action_type="SCHEDULED_VIDEO_SUCCESS" if yt_id else "RENDER_VIDEO_SUCCESS",
-            details=f"Video #{job_id} ('{final_title}') cho {ch_name}. YT ID: {yt_id or 'WAITING_QUOTA'}",
-            channel_id=ch_id,
-        )
+                await asyncio.sleep(1.5)
 
     return {
         "job_id": job_id,
@@ -1036,9 +1049,9 @@ async def produce_channel_video(
         "video_score": video_qa["score"],
         "scheduled_time": DISPLAY_VN,
         "scheduled_iso": SCHEDULE_SLOT_ISO,
-        "youtube_url": yt_url or "WAITING_QUOTA_RESET",
+        "youtube_url": yt_url or ("WAITING_QUOTA_RESET" if pub_status == "waiting_quota_reset" else f"RENDERED_LOCAL ({output_video_path})"),
         "video_id": yt_id,
-        "status": "SCHEDULED" if yt_id else pub_status,
+        "status": "SCHEDULED" if yt_id else (pub_status or "RENDERED"),
     }
 
 
