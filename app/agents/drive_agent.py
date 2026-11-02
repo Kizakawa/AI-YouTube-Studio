@@ -208,7 +208,7 @@ class DriveAgent:
                 local_video_path,
                 mimetype="video/mp4",
                 resumable=True,
-                chunksize=32 * 1024 * 1024
+                chunksize=8 * 1024 * 1024
             )
 
             request = self.service.files().create(
@@ -217,10 +217,20 @@ class DriveAgent:
                 fields="id, name, webViewLink, webContentLink, parents"
             )
             file = None
+            chunk_err_count = 0
             while file is None:
-                status, file = request.next_chunk(num_retries=3)
-                if status:
-                    logger.info(f"☁️ [Drive Upload] Tiến độ tải lên '{dest_name}': {int(status.progress() * 100)}%")
+                try:
+                    status, file = request.next_chunk(num_retries=3)
+                    chunk_err_count = 0
+                    if status:
+                        logger.info(f"☁️ [Drive Upload] Tiến độ tải lên '{dest_name}': {int(status.progress() * 100)}%")
+                except (ConnectionError, TimeoutError, OSError) as e_chunk:
+                    chunk_err_count += 1
+                    if chunk_err_count > 5:
+                        raise
+                    import time as _t_drv
+                    logger.warning(f"☁️ [Drive Upload] Kết nối tạm ngắt ({e_chunk}), đang thử lại chunk ({chunk_err_count}/5)...")
+                    _t_drv.sleep(1.5 * chunk_err_count)
 
             file_id = file.get("id")
             drive_link = file.get("webViewLink")

@@ -312,12 +312,15 @@ def stitch_two_16x9_clips_no_loop(
     return False
 
 LANDSCAPE_16X9_YTDLP_FORMAT = (
-    "best[protocol=https][aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
-    "bestvideo[protocol=https][aspect_ratio>1][height>=720][height<=1080][filesize<18M][ext=mp4]/"
-    "bestvideo[aspect_ratio>1][height>=720][height<=1080][filesize<18M][ext=mp4]/"
-    "best[aspect_ratio>1][height>=720][height<=1080][ext=mp4]/"
-    "bestvideo[protocol=https][height>=720][height<=1080][filesize<18M][ext=mp4]/"
-    "best[height>=480][ext=mp4]/bestvideo/best"
+    "bestvideo[protocol=https][aspect_ratio>1][height>=720][height<=1080][vcodec^=avc1][filesize<22M][ext=mp4]/"
+    "bestvideo[protocol=https][aspect_ratio>1][height>=720][height<=1080][vcodec^=avc1][filesize_approx<25M][ext=mp4]/"
+    "best[protocol=https][aspect_ratio>1][height>=720][height<=1080][filesize<22M][ext=mp4]/"
+    "best[protocol=https][aspect_ratio>1][height>=720][height<=1080][filesize_approx<25M][ext=mp4]/"
+    "bestvideo[protocol=https][aspect_ratio>1][height>=720][height<=1080][filesize<22M][ext=mp4]/"
+    "bestvideo[aspect_ratio>1][height>=720][height<=1080][filesize<22M][ext=mp4]/"
+    "best[aspect_ratio>1][height>=720][height<=1080][filesize_approx<28M][ext=mp4]/"
+    "bestvideo[protocol=https][height>=720][height<=1080][filesize<22M][ext=mp4]/"
+    "best[height>=480][filesize<25M][ext=mp4]/best[height>=480][ext=mp4]/bestvideo/best"
 )
 
 
@@ -729,6 +732,8 @@ def _download_youtube_chapter_master(
             used_urls.add(f"yt:{vid_id}")
 
         cand_dur = float(cand.get("duration") or 60.0)
+        if cand_dur > 240.0:
+            continue
         used_range_dl = False
         start_s = 10.0 if cand_dur > 50.0 else (5.0 if cand_dur > 28.0 else 1.5)
         end_s = min(cand_dur - 1.5, start_s + max(24.0, max_master_dur_sec + 6.0))
@@ -739,13 +744,18 @@ def _download_youtube_chapter_master(
             if _is_cancelled():
                 raise RuntimeError("Chapter master download cancelled by deadline")
             if d.get("status") == "downloading":
+                tot_b = float(d.get("total_bytes") or d.get("total_bytes_estimate") or 0.0)
+                if tot_b > 28 * 1024 * 1024:
+                    raise RuntimeError(f"Chapter master exceeds 28MB fast cap ({tot_b / (1024*1024):.1f}MB)")
                 now_p = time.monotonic()
                 dl_bytes = float(d.get("downloaded_bytes") or 0.0)
+                if dl_bytes > 26 * 1024 * 1024:
+                    raise RuntimeError("Chapter master downloaded bytes exceeded 26MB cap")
                 if dl_bytes > 0 and t_dl_start[0] <= 0.0:
                     t_dl_start[0] = now_p
                 elapsed = (now_p - t_dl_start[0]) if t_dl_start[0] > 0.0 else 0.0
                 spd = float(d.get("speed") or 0.0)
-                if elapsed > 15.0 or (elapsed > 4.0 and 0.0 < spd < 120_000):
+                if elapsed > 12.5 or (elapsed > 3.5 and 0.0 < spd < 120_000):
                     raise RuntimeError(f"Chapter master slow/timeout ({elapsed:.1f}s)")
 
         tmp_base = str(Path(master_out_path).with_suffix("")) + "_raw.%(ext)s"
@@ -753,7 +763,7 @@ def _download_youtube_chapter_master(
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "max_filesize": 20 * 1024 * 1024,
+            "max_filesize": 24 * 1024 * 1024,
             "format": LANDSCAPE_16X9_YTDLP_FORMAT,
             "merge_output_format": "mp4",
             "outtmpl": tmp_base,
@@ -762,14 +772,6 @@ def _download_youtube_chapter_master(
             "nopart": True,
             "progress_hooks": [_master_fast_switch_progress],
         })
-        # Chỉ dùng download_ranges khi video gốc quá dài (> 135s); với video <= 135s tải thẳng luồng MP4 CDN nhanh gấp 5 lần và có progress_hooks kiểm soát!
-        if cand_dur > 135.0:
-            try:
-                from yt_dlp.utils import download_range_func
-                dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s)])
-                used_range_dl = True
-            except Exception:
-                pass
 
         parent_dir = Path(master_out_path).parent
         stem_prefix = Path(master_out_path).stem + "_raw"

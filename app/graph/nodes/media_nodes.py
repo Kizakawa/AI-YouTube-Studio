@@ -276,8 +276,8 @@ def _fetch_longform_16x9_broll_clip_sync(
         else:
             Path(out_path).unlink(missing_ok=True)
 
-    slot_in_4 = (int(scene_id) - 1) % 4
-    chapter_num = ((int(scene_id) - 1) // 4) + 1
+    slot_in_4 = (int(scene_id) - 1) % 3
+    chapter_num = ((int(scene_id) - 1) // 3) + 1
 
     # Khi gọi từ node_refine_media / rescue (có output_override_path), chỉ xóa cache refine tạm của cảnh này
     # (TUYỆT ĐỐI KHÔNG xóa scene_XXX_16x9.mp4 đang dùng hoặc master dùng chung của Chương!)
@@ -525,19 +525,20 @@ def _fetch_longform_16x9_broll_clip_sync(
             logger.warning(f"Scene {scene_id}: Long-form ChapterPool 16:9 error: {e_pool_16x9}")
         return None
 
-    # Điều phối Đa Nguồn (Multi-Source Interleaving) trong mỗi Chương:
-    # - Slot 0 & 2: Ưu tiên YouTube 16:9 Documentary Chapter Master -> dự phòng Pexels/Pixabay 16:9
-    # - Slot 1 & 3: Ưu tiên Pexels 16:9 / Pixabay 16:9 HD -> dự phòng YouTube Chapter Pool
-    prefer_stock_first = (slot_in_4 in (1, 3))
-    prefer_px = (slot_in_4 == 3) or (chapter_num % 2 == 0)
+    # Điều phối Đa Nguồn (Multi-Source Interleaving) trong mỗi Chương (3 cảnh/Chương):
+    # - Slot 0 & 2: Ưu tiên cắt trực tiếp YouTube 16:9 Documentary Chapter Master trên SSD (~1.2s) -> dự phòng Pexels/Pixabay 16:9
+    # - Slot 1: Ưu tiên Pexels 16:9 / Pixabay 16:9 HD -> dự phòng YouTube Chapter Pool
+    prefer_stock_first = (slot_in_4 == 1)
+    prefer_px = (slot_in_4 == 2) or (chapter_num % 2 == 0)
 
     now_ts = time.monotonic()
     chapter_num_3 = ((int(scene_id) - 1) // 3) + 1
     ch_pool_dir = media_dir / "chapter_pool"
     existing_ch3_master = ch_pool_dir / f"chapter_{chapter_num_3:02d}_master.mp4"
+    from app.services.media.longform_chapter_pool import has_verified_chapter_master_meta as _has_ch_meta
     has_local_ch3_master = (
         existing_ch3_master.exists()
-        and existing_ch3_master.with_suffix(".meta").exists()
+        and _has_ch_meta(existing_ch3_master)
         and _safe_size(existing_ch3_master) > 80_000
     )
 
@@ -3878,25 +3879,26 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     if int(state.get("media_retry_count", 0)) >= 1 and prev_eval and prev_failed_ids and len(scenes_media) > len(prev_failed_ids):
         delta_scenes = [m for m in scenes_media if int(m.get("scene_id") or 0) in prev_failed_ids]
         delta_report = critic.evaluate_media(scenes_media=delta_scenes, primary_entity=primary_entity)
-        from app.models.critic_report import MediaCriticReport, SceneMediaScore
-        merged_scores_map: Dict[int, SceneMediaScore] = {}
+        from app.graph.state import VisualEvaluationReport, SceneVisualScore
+        merged_scores_map: Dict[int, SceneVisualScore] = {}
         for old_sc in (prev_eval.get("scene_scores") or []):
             try:
-                sc_obj = old_sc if isinstance(old_sc, SceneMediaScore) else SceneMediaScore(**old_sc)
+                sc_obj = old_sc if isinstance(old_sc, SceneVisualScore) else SceneVisualScore(**old_sc)
                 merged_scores_map[int(sc_obj.scene_id)] = sc_obj
             except Exception:
                 pass
         for new_sc in (delta_report.scene_scores or []):
             merged_scores_map[int(new_sc.scene_id)] = new_sc
         merged_scores = [merged_scores_map[k] for k in sorted(merged_scores_map.keys())]
-        avg_overall = round(sum(s.overall for s in merged_scores) / max(len(merged_scores), 1), 1)
-        eval_report = MediaCriticReport(
+        def _sc_avg(s_item: SceneVisualScore) -> float:
+            return (float(s_item.relevance_score) + float(s_item.entity_match_score) + float(s_item.aesthetic_score)) / 3.0
+        avg_overall = round(sum(_sc_avg(s) for s in merged_scores) / max(len(merged_scores), 1), 1)
+        eval_report = VisualEvaluationReport(
             overall_score=avg_overall,
-            passed=(len(delta_report.failed_scene_ids) == 0 and avg_overall >= critic.PASS_THRESHOLD),
+            passed=(len(delta_report.failed_scene_ids) == 0 and avg_overall >= 7.5),
             scene_scores=merged_scores,
             failed_scene_ids=list(delta_report.failed_scene_ids),
-            feedback=delta_report.feedback,
-            suggestions=delta_report.suggestions,
+            summary=delta_report.summary,
         )
     else:
         eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
@@ -4366,11 +4368,16 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 ]
                 for sc_score_item in (eval_report.scene_scores or []):
                     if int(getattr(sc_score_item, "scene_id", 0) or 0) in rescued_sids:
-                        sc_score_item.overall = max(float(getattr(sc_score_item, "overall", 8.0) or 8.0), 8.2)
+                        sc_score_item.relevance_score = max(float(getattr(sc_score_item, "relevance_score", 8.2) or 8.2), 8.2)
+                        sc_score_item.entity_match_score = max(float(getattr(sc_score_item, "entity_match_score", 8.2) or 8.2), 8.2)
+                        sc_score_item.aesthetic_score = max(float(getattr(sc_score_item, "aesthetic_score", 8.2) or 8.2), 8.2)
                         sc_score_item.issues = []
                 if eval_report.scene_scores:
                     eval_report.overall_score = round(
-                        sum(float(s.overall) for s in eval_report.scene_scores) / len(eval_report.scene_scores),
+                        sum(
+                            (float(s.relevance_score) + float(s.entity_match_score) + float(s.aesthetic_score)) / 3.0
+                            for s in eval_report.scene_scores
+                        ) / len(eval_report.scene_scores),
                         1,
                     )
                 eval_report.passed = len(eval_report.failed_scene_ids) == 0

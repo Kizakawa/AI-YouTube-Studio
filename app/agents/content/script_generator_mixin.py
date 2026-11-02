@@ -547,7 +547,7 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
                     channel_memory_block=channel_memory_block,
                     niche_instructions=niche_instructions,
                 )
-                if doc_10min and len(doc_10min.scenes) >= 32:
+                if doc_10min and len(doc_10min.scenes) >= 24:
                     if doc_10min.primary_entity:
                         self._last_primary_entity = doc_10min.primary_entity
                     return doc_10min
