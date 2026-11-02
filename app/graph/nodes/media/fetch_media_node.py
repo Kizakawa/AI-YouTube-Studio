@@ -1997,7 +1997,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             pass
     if is_long_form and str(current_niche or "").lower() not in ("psychology", "satirical_psychology_animation", "doodle", "philosophy"):
         from app.services.media.longform_chapter_pool import fetch_or_slice_longform_chapter_clip_sync
-        prewarm_sem = asyncio.Semaphore(7)
+        prewarm_sem = asyncio.Semaphore(10)
         scenes_audio_pw = state.get("scenes_audio", [])
 
         async def _prewarm_one_chapter(lead_scene) -> None:
@@ -2051,16 +2051,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     pw_cancel.set()
                     logger.debug(f"[ChapterPool Prewarm] Chapter lead scene {lead_scene.scene_id} skip: {e_pw}")
 
-        # Tiền tải tối đa 6 Chapter Masters đại diện trong 1 đợt song song duy nhất (<= 48s),
-        # tránh chia thành 3 đợt nối tiếp (3 x 65s = 195s) trên kịch bản 40 cảnh; các cảnh còn lại dùng Pexels/Pixabay 16:9 HD + Cross-Slice!
+        # Tiền tải trọn vẹn tối đa 10 Chapter Masters (5 Bilibili 16:9 + 5 YouTube 16:9) trong 1 đợt song song duy nhất (<= 48s)
         all_lead_scenes = [s for s in script.scenes if ((int(s.scene_id) - 1) % 3) == 0]
-        if len(all_lead_scenes) > 6:
-            step_ls = max(1, len(all_lead_scenes) // 6)
-            chapter_lead_scenes = [all_lead_scenes[0]] + [all_lead_scenes[i] for i in range(step_ls, len(all_lead_scenes), step_ls)][:5]
-        else:
-            chapter_lead_scenes = all_lead_scenes
+        chapter_lead_scenes = all_lead_scenes[:10]
         if chapter_lead_scenes:
-            logger.info(f"🎬 [LongForm Phase-A] Đang tiền tải {len(chapter_lead_scenes)} Chapter Masters 16:9 (1 đợt song song <= 48s)...")
+            logger.info(f"🎬 [LongForm Phase-A] Đang tiền tải {len(chapter_lead_scenes)} Chapter Masters 16:9 (Bilibili + YouTube song song <= 48s)...")
             await asyncio.gather(*[_prewarm_one_chapter(ls) for ls in chapter_lead_scenes])
 
     tasks = [_guarded_fetch(i, s) for i, s in enumerate(script.scenes)]

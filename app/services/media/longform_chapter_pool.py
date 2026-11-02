@@ -1281,20 +1281,23 @@ def fetch_or_slice_longform_chapter_clip_sync(
         if (not meta_file.exists() or not is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000)) and not failed_marker.exists():
             with bvid_lock:
                 snap_used_urls = set(used_urls)
-            yt_cands = _search_youtube_16x9_documentary_candidates(
-                query=query,
-                primary_entity=primary_entity,
-                topic=topic,
-                used_urls=snap_used_urls,
-            )
             req_master_max = (
                 max(18.0, min(28.0, float(target_duration_sec) + 8.0))
                 if int(scenes_per_chapter) <= 1
-                else (64.0 if int(scenes_per_chapter) >= 3 else 56.0)
+                else (72.0 if int(scenes_per_chapter) >= 3 else 56.0)
             )
-            yt_master = (
-                _download_youtube_chapter_master(
-                    candidates=yt_cands,
+
+            def _try_yt_master() -> Optional[Dict[str, Any]]:
+                if _is_cancelled():
+                    return None
+                yt_cands_local = _search_youtube_16x9_documentary_candidates(
+                    query=query,
+                    primary_entity=primary_entity,
+                    topic=topic,
+                    used_urls=snap_used_urls,
+                )
+                res_yt = _download_youtube_chapter_master(
+                    candidates=yt_cands_local,
                     master_out_path=master_file,
                     used_urls=used_urls,
                     url_lock=bvid_lock,
@@ -1305,140 +1308,163 @@ def fetch_or_slice_longform_chapter_clip_sync(
                     cancel_event=cancel_event,
                     deadline_ts=deadline_ts,
                 )
-                if not _is_cancelled()
-                else None
-            )
-            if yt_master:
-                master_source_label = f"YT 16:9 Chapter #{chapter_idx} ({str(yt_master.get('title') or '')[:38]})"
-                master_url = str(yt_master.get("source_url") or "")
-                meta_file.write_text(f"{master_source_label}|||{master_url}", encoding="utf-8")
-                logger.info(
-                    f"🎬 [LongForm ChapterPool] Đã tải Master Chương #{chapter_idx} từ YouTube 16:9 "
-                    f"({yt_master.get('duration_sec', 0):.1f}s) dùng chung cho {scenes_per_chapter} cảnh!"
-                )
-            elif not _is_cancelled() and is_scifi:
-                # Ưu tiên 2: Chỉ bật Bilibili 16:9 Safe-Crop cho ngách Sci-Fi / 3D CGI (tránh dịch từ khóa sang tiếng Trung làm trôi ngữ nghĩa loài vật/hệ sinh thái và giảm 40s độ trễ mỗi chương)
-                if True:
-                    try:
-                        from app.services.media.bilibili_fetcher import (
-                            download_and_crop_bilibili_broll_clip,
-                            search_bilibili_videos,
-                            translate_query_to_chinese,
+                if res_yt:
+                    lbl = f"YT 16:9 Chapter #{chapter_idx} ({str(res_yt.get('title') or '')[:38]})"
+                    u_str = str(res_yt.get("source_url") or "")
+                    meta_file.write_text(f"{lbl}|||{u_str}", encoding="utf-8")
+                    logger.info(
+                        f"🎬 [LongForm ChapterPool] Đã tải Master Chương #{chapter_idx} từ YouTube 16:9 "
+                        f"({res_yt.get('duration_sec', 0):.1f}s) dùng chung cho {scenes_per_chapter} cảnh!"
+                    )
+                return res_yt
+
+            def _try_bili_master() -> Optional[Dict[str, Any]]:
+                if _is_cancelled():
+                    return None
+                try:
+                    from app.services.media.bilibili_fetcher import (
+                        download_and_crop_bilibili_broll_clip,
+                        search_bilibili_videos,
+                        translate_query_to_chinese,
+                    )
+                    from app.agents.media_agent import clean_scene_search_query
+                    base_q = clean_scene_search_query(query or primary_entity or topic, max_words=6) or topic
+                    zh_query = translate_query_to_chinese(
+                        query=base_q,
+                        primary_entity=primary_entity or topic,
+                        is_3d_or_scifi=is_scifi,
+                    )
+                    if _is_cancelled():
+                        return None
+                    # Ưu tiên tìm bản sạch không phụ đề ('无字幕') trước, sau đó gộp với kết quả chuẩn
+                    bili_clean = search_bilibili_videos(f"{zh_query} 无字幕", max_results=3, min_dur_s=35.0, max_dur_s=480.0)
+                    bili_std = search_bilibili_videos(zh_query, max_results=5, min_dur_s=35.0, max_dur_s=480.0)
+                    seen_bv: Set[str] = set()
+                    bili_cands: List[Dict[str, Any]] = []
+                    for bc in [*bili_clean, *bili_std]:
+                        bv_k = str(bc.get("bvid") or bc.get("id") or "").strip()
+                        if bv_k and bv_k not in seen_bv:
+                            seen_bv.add(bv_k)
+                            bili_cands.append(bc)
+
+                    for cand in bili_cands[:3]:
+                        if _is_cancelled():
+                            break
+                        bvid = str(cand.get("bvid") or cand.get("id") or "").strip()
+                        if not bvid:
+                            continue
+                        with bvid_lock:
+                            if bvid in used_bvids:
+                                continue
+                            used_bvids.add(bvid)
+                        b_info = download_and_crop_bilibili_broll_clip(
+                            url_or_id=bvid,
+                            output_path=master_file,
+                            target_duration_sec=72.0 if int(scenes_per_chapter) >= 3 else 48.0,
+                            max_range_bytes=28 * 1024 * 1024,
+                            aspect_ratio="16:9",
+                            preserve_continuous_master=True,
                         )
-                        from app.agents.media_agent import clean_scene_search_query
-                        base_q = clean_scene_search_query(query or primary_entity or topic, max_words=6) or topic
-                        zh_query = translate_query_to_chinese(
-                            query=base_q,
-                            primary_entity=primary_entity or topic,
-                            is_3d_or_scifi=is_scifi,
-                        )
-                        if not _is_cancelled():
-                            bili_cands = search_bilibili_videos(zh_query, max_results=4, min_dur_s=35.0, max_dur_s=360.0)
-                            for cand in bili_cands[:1]:
-                                if _is_cancelled():
-                                    break
-                                bvid = str(cand.get("bvid") or cand.get("id") or "").strip()
-                                if not bvid:
-                                    continue
-                                with bvid_lock:
-                                    if bvid in used_bvids:
-                                        continue
-                                    used_bvids.add(bvid)
-                                b_info = download_and_crop_bilibili_broll_clip(
-                                    url_or_id=bvid,
-                                    output_path=master_file,
-                                    target_duration_sec=52.0 if int(scenes_per_chapter) >= 3 else 42.0,
-                                    aspect_ratio="16:9",
-                                    preserve_continuous_master=True,
+                        if (
+                            b_info
+                            and is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000)
+                            and _is_clip_window_clean(master_file, [1.5, 12.0, 24.0])
+                        ):
+                            cand_title_str = f"{cand.get('title', '')} {cand.get('description', '')}"
+                            is_nosub_cand = any(k in cand_title_str for k in ("无字幕", "纯享", "原片", "無字幕"))
+                            if not is_nosub_cand:
+                                # Nếu không phải bản 无字幕, cắt gọt thêm lề trên/dưới để loại bỏ triệt để phụ đề chữ Hán ở đáy
+                                b_tmp_crop = str(Path(master_file).with_name(f"_fftmp_bcrop_{Path(master_file).name}"))
+                                try:
+                                    subprocess.run(
+                                        [
+                                            "ffmpeg", "-y", "-v", "error",
+                                            "-i", master_file,
+                                            "-vf",
+                                            "crop=iw*0.86:ih*0.76:iw*0.07:ih*0.10,"
+                                            "scale=1920:1080:force_original_aspect_ratio=increase,"
+                                            "crop=1920:1080,fps=30,format=yuv420p",
+                                            "-c:v", "libx264", "-preset", "superfast", "-crf", "20",
+                                            "-maxrate", "5.5M", "-bufsize", "11M", "-an",
+                                            b_tmp_crop,
+                                        ],
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL,
+                                        timeout=35,
+                                        check=False,
+                                    )
+                                    if is_completed_clean_mp4(b_tmp_crop, min_size_bytes=60_000, min_duration_ms=5000):
+                                        Path(b_tmp_crop).replace(master_file)
+                                except Exception:
+                                    pass
+                                finally:
+                                    Path(b_tmp_crop).unlink(missing_ok=True)
+
+                            from app.graph.evaluators.visual_critic import VisualCritic
+                            b_gate = VisualCritic().inspect_clip_before_concat(
+                                master_file,
+                                min_short_edge=720,
+                                min_sharpness=4.8,
+                                check_watermark=True,
+                                allow_snow=True,
+                                auto_sanitize=True,
+                            )
+                            b_v_ok, b_trim_off = (
+                                _verify_16x9_master_with_gemini_vision(
+                                    master_path=master_file,
+                                    topic=topic,
+                                    primary_entity=primary_entity,
+                                    query=query,
+                                    video_title=str(cand.get("title") or bvid),
                                 )
-                                if (
-                                    b_info
-                                    and is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000)
-                                    and _is_clip_window_clean(master_file, [1.5, 12.0, 24.0])
-                                ):
-                                    # Cắt 12% lề trên/dưới để loại bỏ hoàn toàn viền đen letterbox và chữ "By: ..." trên đỉnh khung hình Bilibili
-                                    b_tmp_crop = str(Path(master_file).with_name(f"_fftmp_bcrop_{Path(master_file).name}"))
+                                if b_gate.get("passed", False)
+                                else (False, 0.0)
+                            )
+                            if b_v_ok:
+                                if b_trim_off > 0.5 and (get_duration_ms(master_file) / 1000.0 - b_trim_off) >= 8.0:
+                                    b_tr_tmp = str(Path(master_file).with_name(f"_fftmp_btr_{Path(master_file).name}"))
                                     try:
                                         subprocess.run(
                                             [
                                                 "ffmpeg", "-y", "-v", "error",
-                                                "-i", master_file,
-                                                "-vf",
-                                                "crop=iw*0.86:ih*0.76:iw*0.07:ih*0.12,"
-                                                "scale=1920:1080:force_original_aspect_ratio=increase,"
-                                                "crop=1920:1080,fps=30,format=yuv420p",
-                                                "-c:v", "libx264", "-preset", "superfast", "-crf", "21",
-                                                "-maxrate", "5.5M", "-bufsize", "11M", "-an",
-                                                b_tmp_crop,
+                                                "-ss", f"{b_trim_off:.2f}", "-i", master_file,
+                                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-an",
+                                                b_tr_tmp,
                                             ],
                                             stdout=subprocess.DEVNULL,
                                             stderr=subprocess.DEVNULL,
-                                            timeout=35,
+                                            timeout=25,
                                             check=False,
                                         )
-                                        if is_completed_clean_mp4(b_tmp_crop, min_size_bytes=60_000, min_duration_ms=5000):
-                                            Path(b_tmp_crop).replace(master_file)
+                                        if is_completed_clean_mp4(b_tr_tmp, min_size_bytes=45_000, min_duration_ms=5000):
+                                            Path(b_tr_tmp).replace(master_file)
                                     except Exception:
                                         pass
                                     finally:
-                                        Path(b_tmp_crop).unlink(missing_ok=True)
+                                        Path(b_tr_tmp).unlink(missing_ok=True)
+                                lbl_b = f"Bilibili 16:9 Chapter #{chapter_idx} ({bvid})"
+                                url_b = f"https://www.bilibili.com/video/{bvid}"
+                                meta_file.write_text(f"{lbl_b}|||{url_b}", encoding="utf-8")
+                                logger.info(
+                                    f"🎬 [LongForm ChapterPool] Đã tải & duyệt Vision Master Chương #{chapter_idx} từ Bilibili 16:9 ({bvid}, nosub={is_nosub_cand})!"
+                                )
+                                return b_info
+                            else:
+                                Path(master_file).unlink(missing_ok=True)
+                        else:
+                            Path(master_file).unlink(missing_ok=True)
+                except Exception as e_bili:
+                    logger.debug(f"[LongForm ChapterPool] Bilibili master skip: {e_bili}")
+                return None
 
-                                    from app.graph.evaluators.visual_critic import VisualCritic
-                                    b_gate = VisualCritic().inspect_clip_before_concat(
-                                        master_file,
-                                        min_short_edge=720,
-                                        min_sharpness=4.8,
-                                        check_watermark=True,
-                                        allow_snow=True,
-                                        auto_sanitize=True,
-                                    )
-                                    b_v_ok, b_trim_off = (
-                                        _verify_16x9_master_with_gemini_vision(
-                                            master_path=master_file,
-                                            topic=topic,
-                                            primary_entity=primary_entity,
-                                            query=query,
-                                            video_title=str(cand.get("title") or bvid),
-                                        )
-                                        if b_gate.get("passed", False)
-                                        else (False, 0.0)
-                                    )
-                                    if b_v_ok:
-                                        if b_trim_off > 0.5 and (get_duration_ms(master_file) / 1000.0 - b_trim_off) >= 8.0:
-                                            b_tr_tmp = str(Path(master_file).with_name(f"_fftmp_btr_{Path(master_file).name}"))
-                                            try:
-                                                subprocess.run(
-                                                    [
-                                                        "ffmpeg", "-y", "-v", "error",
-                                                        "-ss", f"{b_trim_off:.2f}", "-i", master_file,
-                                                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-an",
-                                                        b_tr_tmp,
-                                                    ],
-                                                    stdout=subprocess.DEVNULL,
-                                                    stderr=subprocess.DEVNULL,
-                                                    timeout=25,
-                                                    check=False,
-                                                )
-                                                if is_completed_clean_mp4(b_tr_tmp, min_size_bytes=45_000, min_duration_ms=5000):
-                                                    Path(b_tr_tmp).replace(master_file)
-                                            except Exception:
-                                                pass
-                                            finally:
-                                                Path(b_tr_tmp).unlink(missing_ok=True)
-                                        master_source_label = f"Bilibili 16:9 Chapter #{chapter_idx} ({bvid})"
-                                        master_url = f"https://www.bilibili.com/video/{bvid}"
-                                        meta_file.write_text(f"{master_source_label}|||{master_url}", encoding="utf-8")
-                                        logger.info(
-                                            f"🎬 [LongForm ChapterPool] Đã tải & duyệt Vision Master Chương #{chapter_idx} từ Bilibili 16:9 ({bvid})!"
-                                        )
-                                        break
-                                    else:
-                                        Path(master_file).unlink(missing_ok=True)
-                                else:
-                                    Path(master_file).unlink(missing_ok=True)
-                    except Exception as e_bili:
-                        logger.debug(f"[LongForm ChapterPool] Bilibili master skip: {e_bili}")
-            if not is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000) and not _is_cancelled() and len(yt_cands) <= 5:
+            # Đan xen Multi-Source Bilibili 16:9 (3–5 video Bilibili dài cắt nhỏ 4.7s + xóa chữ Hán) & YouTube 16:9 Documentary cho TẤT CẢ các ngách:
+            prefer_bili_chapter = is_scifi or (chapter_idx % 2 == 0)
+            if prefer_bili_chapter:
+                got_m = _try_bili_master() or _try_yt_master()
+            else:
+                got_m = _try_yt_master() or _try_bili_master()
+
+            if not got_m and not is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000) and not _is_cancelled():
                 try:
                     failed_marker.write_text("failed", encoding="utf-8")
                 except Exception:

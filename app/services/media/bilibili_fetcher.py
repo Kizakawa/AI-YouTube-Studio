@@ -92,6 +92,26 @@ _CORE_TERM_ZH_MAP: Dict[str, str] = {
     "mantis shrimp": "雀尾螳螂虾",
     "electric eel": "电鳗",
     "piranha": "食人鱼",
+    "harpy eagle": "角雕 捕猎",
+    "black caiman": "黑凯门鳄",
+    "three toed sloth": "树懒",
+    "sloth": "树懒",
+    "capuchin monkey": "卷尾猴",
+    "vampire squid": "幽灵蛸 深海",
+    "goblin shark": "欧氏尖吻鲛 深海",
+    "barreleye": "管眼鱼 深海",
+    "gulper eel": "宽咽鱼 深海",
+    "fangtooth": "獠牙鱼 深海",
+    "dragonfish": "黑龙鱼 深海",
+    "viperfish": "蝰鱼 深海",
+    "giant isopod": "大王具足虫",
+    "hydrothermal vent": "深海热泉 黑烟囱",
+    "whale fall": "鲸落 深海",
+    "onça": "美洲豹 捕猎",
+    "jacaré": "凯门鳄 捕食",
+    "gavião": "角雕 猛禽",
+    "cachalote": "抹香鲸 深海",
+    "lula colossal": "大王酸浆鱿",
     "roman empire": "罗马帝国 历史",
     "ancient egypt": "古埃及 历史",
     "pyramid": "金字塔 揭秘",
@@ -394,10 +414,14 @@ def search_bilibili_videos(
         if anchor_matched:
             results = anchor_matched
 
-    # Sắp xếp ưu tiên video khớp nhiều từ khóa chữ Hán nhất + lượt xem cao
+    # Sắp xếp ưu tiên: (1) Video bản sạch không phụ đề ('无字幕', '纯享', '素材', '4K', '实拍'), (2) Khớp nhiều từ khóa chữ Hán nhất, (3) Lượt xem cao
+    _clean_nosub_markers = ("无字幕", "纯享", "素材", "原片", "無字幕")
+    _hd_doc_markers = ("4k", "4K", "纪录片", "实拍", "CG", "3D", "高清")
     results.sort(
         key=lambda x: (
+            1 if any(m in f"{x.get('title', '')} {x.get('description', '')}" for m in _clean_nosub_markers) else 0,
             sum(1 for t in zh_tokens if t in f"{x.get('title', '')} {x.get('description', '')}"),
+            1 if any(m in str(x.get("title", "")) for m in _hd_doc_markers) else 0,
             int(x.get("view_count") or 0),
         ),
         reverse=True,
@@ -734,9 +758,9 @@ def download_and_crop_bilibili_broll_clip(
     dl_headers = dict(info.get("http_headers") or _build_bili_cookie_headers())
     tbr_kbps = float(info.get("tbr") or 0.0)
     bytes_per_sec = (tbr_kbps * 1000.0 / 8.0) if tbr_kbps > 40.0 else 180_000.0
-    desired_window_s = max(14.0, float(target_duration_sec) + (12.0 if preserve_continuous_master else 6.0))
-    computed_bytes = int(desired_window_s * bytes_per_sec * 1.35) + 350_000
-    max_cap_bytes = 20 * 1024 * 1024 if preserve_continuous_master else 10 * 1024 * 1024
+    desired_window_s = max(14.0, float(target_duration_sec) + (16.0 if preserve_continuous_master else 6.0))
+    computed_bytes = int(desired_window_s * bytes_per_sec * 1.35) + 450_000
+    max_cap_bytes = 32 * 1024 * 1024 if preserve_continuous_master else 10 * 1024 * 1024
     eff_range_bytes = max(1_800_000, min(int(max_range_bytes), max_cap_bytes, computed_bytes))
     dl_headers["Range"] = f"bytes=0-{eff_range_bytes - 1}"
 
@@ -778,7 +802,7 @@ def download_and_crop_bilibili_broll_clip(
         if avail_dur_s < 2.5:
             return None
 
-        max_allowed_dur = (48.0 if preserve_continuous_master else 20.0) if is_16x9 else min(20.0, max(8.0, float(target_duration_sec)))
+        max_allowed_dur = (96.0 if preserve_continuous_master else 22.0) if is_16x9 else min(20.0, max(8.0, float(target_duration_sec)))
         req_dur = min(max(3.0, float(target_duration_sec)), max_allowed_dur, max(2.8, avail_dur_s - 0.5))
         spare_s = max(0.0, avail_dur_s - req_dur - 0.6)
         # Bỏ qua 4.5s–6.5s đầu tiên của video Bilibili (thường chứa thẻ tiêu đề/intro chữ Trung Quốc)
@@ -790,6 +814,8 @@ def download_and_crop_bilibili_broll_clip(
         ffmpeg_bin = get_ffmpeg_exe()
         src_w = int(info.get("width") or 1920)
         src_h = int(info.get("height") or 1080)
+        title_desc_meta = f"{info.get('title', '')} {info.get('description', '')}"
+        is_verified_nosub = any(tag in title_desc_meta for tag in ("无字幕", "纯享", "原片", "無字幕"))
 
         # Bilibili Safe-Crop + Crisp Lanczos + Optical Unsharp Mask:
         if is_16x9 and src_w <= src_h:
@@ -815,8 +841,13 @@ def download_and_crop_bilibili_broll_clip(
                 str(output_path),
             ]
         elif is_16x9:
+            crop_expr_16x9 = (
+                "crop=iw*0.92:ih*0.86:iw*0.04:ih*0.07"
+                if is_verified_nosub
+                else "crop=iw*0.86:ih*0.76:iw*0.07:ih*0.10"
+            )
             base_16x9_vf = (
-                "crop=iw*0.86:ih*0.78:iw*0.07:ih*0.09,"
+                f"{crop_expr_16x9},"
                 "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
                 "crop=1920:1080,"
                 "unsharp=5:5:0.85:5:5:0.0,"

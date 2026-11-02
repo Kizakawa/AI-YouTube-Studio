@@ -371,14 +371,8 @@ def _fetch_longform_16x9_broll_clip_sync(
             logger.debug(f"Scene {scene_id}: Cross-slice existing masters skip: {_e_cs}")
         return None
 
-    # Trường hợp 1: Chương này ĐÃ có sẵn Master 16:9 sạch tải ở Phase A trên SSD (~1.2s cắt local!)
+    # Trường hợp 1: Chương này ĐÃ có sẵn Master 16:9 sạch (Bilibili / YouTube Documentary) tải ở Phase A trên SSD (~1.2s cắt local 4 góc máy!)
     if not output_override_path and has_local_ch3_master:
-        if slot_in_4 == 1:
-            st_first_dl = min(deadline_ts - 16.0, now_ts + 22.0) if (deadline_ts is not None and (deadline_ts - now_ts) > 24.0) else deadline_ts
-            st_res = _try_stock_16x9_landscape(prefer_pixabay=prefer_px, sub_deadline_ts=st_first_dl)
-            if st_res:
-                return st_res
-            return _try_chapter_pool_16x9(sub_deadline_ts=deadline_ts) or _try_cross_slice_existing_masters()
         cp_res = _try_chapter_pool_16x9(sub_deadline_ts=deadline_ts)
         if cp_res:
             return cp_res
