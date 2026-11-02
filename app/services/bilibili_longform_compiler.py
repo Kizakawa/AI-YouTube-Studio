@@ -137,6 +137,23 @@ class BilibiliLongformCompiler:
                     info["local_master_path"] = str(output_path)
                     info["clipped_duration_sec"] = round(get_duration_ms(output_path) / 1000.0, 1)
                     info["is_nosub"] = is_nosub
+                    # Tải thêm luồng âm thanh tiếng Trung gốc (audio_stream_url) để Gemini nghe & dịch trực tiếp lời gốc
+                    aud_url = info.get("audio_stream_url")
+                    orig_aud_out = str(Path(output_path).with_suffix(".orig_audio.m4s"))
+                    if aud_url:
+                        try:
+                            aud_hdrs = dict(info.get("http_headers") or _build_bili_cookie_headers())
+                            aud_hdrs["Range"] = "bytes=0-6500000"
+                            r_a = requests.get(aud_url, headers=aud_hdrs, stream=True, timeout=(4.0, 12.0))
+                            if r_a.status_code in (200, 206):
+                                with open(orig_aud_out, "wb") as fa:
+                                    for ch_a in r_a.iter_content(chunk_size=131072):
+                                        if ch_a:
+                                            fa.write(ch_a)
+                                if Path(orig_aud_out).exists() and Path(orig_aud_out).stat().st_size > 20_000:
+                                    info["orig_audio_path"] = orig_aud_out
+                        except Exception:
+                            pass
                     return info
             except Exception as e_ff:
                 logger.warning(f"[Bilibili3x3] FFmpeg chuẩn hóa {bvid} lỗi: {e_ff}")
@@ -154,6 +171,30 @@ class BilibiliLongformCompiler:
         Tìm và tải 3 video Bilibili 16:9 khác nhau (mỗi video lấy ~3 phút = 185s–195s),
         ưu tiên các bản sạch không phụ đề ('无字幕 / 纯享 / 4K纪录片').
         """
+        master_dir = Path(work_dir) / "media" / "bilibili_3x3_masters"
+        master_dir.mkdir(parents=True, exist_ok=True)
+        selected_masters: List[Dict[str, Any]] = []
+
+        # Tái sử dụng ngay nếu trên ổ cứng đã tải sẵn 3 file master Bilibili hợp lệ của job này
+        cached_mp4s = sorted(master_dir.glob("bili_part_*.mp4"))
+        if len(cached_mp4s) >= 3:
+            for cm in cached_mp4s[:3]:
+                if is_completed_clean_mp4(str(cm), min_size_bytes=150_000, min_duration_ms=45_000):
+                    bv_match = cm.stem.split("_")[-1]
+                    aud_f = cm.with_suffix(".orig_audio.m4s")
+                    selected_masters.append({
+                        "bvid": bv_match,
+                        "title": f"Bilibili 4K Master ({bv_match})",
+                        "local_master_path": str(cm),
+                        "clipped_duration_sec": round(get_duration_ms(str(cm)) / 1000.0, 1),
+                        "is_nosub": True,
+                        "orig_audio_path": str(aud_f) if aud_f.exists() else None,
+                    })
+            if len(selected_masters) >= 3:
+                logger.info(f"♻️ [Bilibili 3x3] Tái sử dụng 3 Master Bilibili đã tải sẵn trong {master_dir}")
+                return selected_masters
+            selected_masters.clear()
+
         used_set = used_bvids if used_bvids is not None else set()
         queries_en = list(sub_queries or [])
         if not queries_en:
@@ -174,10 +215,6 @@ class BilibiliLongformCompiler:
                 if bv and bv not in seen_bv:
                     seen_bv.add(bv)
                     candidates_pool.append(c)
-
-        master_dir = Path(work_dir) / "media" / "bilibili_3x3_masters"
-        master_dir.mkdir(parents=True, exist_ok=True)
-        selected_masters: List[Dict[str, Any]] = []
 
         for cand in candidates_pool:
             if len(selected_masters) >= 3:
@@ -436,4 +473,269 @@ Return ONLY valid JSON:
             except Exception as e_aud:
                 logger.debug(f"[BilibiliDirectDub] Audio translation warning: {e_aud}")
         return []
+
+    async def produce_complete_bilibili_dubbed_longform(
+        self,
+        job_id: int,
+        topic: str,
+        title: str,
+        primary_entity: str,
+        channel_id: str = "ch_odisseia_selvagem",
+        language: str = "pt",
+        niche: str = "wildlife",
+        thumbnail_text: str = "1.500 PSI!",
+        sub_queries: Optional[List[str]] = None,
+        scenes_per_master: int = 8,
+    ) -> Dict[str, Any]:
+        """
+        Quy trình 1-Click khép kín:
+        1. Tải 3 video Bilibili 16:9 (~3 phút/video) + Tách luồng âm thanh tiếng Trung gốc.
+        2. Dùng Gemini 2.5 Flash nghe trực tiếp tiếng Trung gốc để dịch sang lời thuyết minh ngôn ngữ đích (`pt`/`en`/`vi`)
+           (nếu video gốc chỉ có nhạc nền không lời thì tự động dùng Gemini Vision đọc hình viết lời).
+        3. Tạo giọng đọc AI (`VoiceAgent`) + Phụ đề `.ass` cho toàn bộ các đoạn.
+        4. Cắt 3 video Bilibili khớp từng mili-giây với từng đoạn giọng đọc kèm **4-Shot Multi-Cut (~4.7s/góc máy)**
+           + **Cắt sạch phụ đề tiếng Trung ở đáy**.
+        5. Tạo ảnh bìa Two-Tone High-CTR + Render video `1920x1080` nhúng IDR Keyframe Thumbnail (`0%, 25%, 50%, 75%`).
+        6. Đẩy trực tiếp lên Google Drive (`DriveAgent`) và trả về link xem ngay!
+        """
+        import asyncio
+        from config.settings import settings
+        from app.agents.voice_agent import VoiceAgent
+        from app.agents.video_agent import VideoAgent
+        from app.agents.drive_agent import DriveAgent
+        from app.services.thumbnail_service import ThumbnailService
+
+        work_dir = Path(settings.TEMP_DIR) / f"job_{job_id}"
+        media_dir = work_dir / "media"
+        audio_dir = work_dir / "audio"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        audio_dir.mkdir(parents=True, exist_ok=True)
+
+        masters = await asyncio.to_thread(
+            self.hunt_3_bilibili_3min_masters,
+            topic=topic,
+            primary_entity=primary_entity,
+            work_dir=work_dir,
+            sub_queries=sub_queries,
+        )
+        if not masters:
+            raise RuntimeError("Không tìm thấy video Bilibili phù hợp cho chủ đề này.")
+
+        full_audio_path = str(work_dir / "full_voiceover.mp3")
+        subtitle_path = str(work_dir / "subtitles.ass")
+        expected_total_scenes = scenes_per_master * len(masters)
+        cached_scene_mp4s = sorted(media_dir.glob("scene_*_16x9.mp4"))
+        cached_scene_mp3s = sorted(audio_dir.glob("scene_*.mp3"))
+
+        if (
+            Path(full_audio_path).exists()
+            and len(cached_scene_mp4s) >= expected_total_scenes
+            and len(cached_scene_mp3s) >= expected_total_scenes
+        ):
+            logger.info(
+                f"♻️ [Bilibili 3x3] Tái sử dụng {len(cached_scene_mp4s)} phân cảnh video & giọng đọc đã dựng sẵn tại {work_dir}"
+            )
+            total_audio_ms = get_duration_ms(full_audio_path)
+            enriched_scenes: List[SceneContract] = []
+            for idx_s in range(expected_total_scenes):
+                sid_idx = idx_s + 1
+                a_path = str(cached_scene_mp3s[idx_s])
+                v_path = str(cached_scene_mp4s[idx_s])
+                a_ms = get_duration_ms(a_path) or 18000
+                p_num = (idx_s // scenes_per_master) + 1
+                badge = f"[ // PARTE {p_num}: ATO {(idx_s % scenes_per_master) + 1} // ]" if (idx_s % scenes_per_master == 0) else None
+                enriched_scenes.append(
+                    SceneContract(
+                        scene_id=sid_idx,
+                        narration=f"Segmento {sid_idx}",
+                        visual_keyword=f"{primary_entity} action scene {sid_idx}",
+                        visual_prompt=f"16:9 widescreen shot {sid_idx}",
+                        media_type="video",
+                        camera_motion="zoom_in",
+                        sfx_cue="none",
+                        overlay_badge=badge,
+                        estimated_seconds=round(a_ms / 1000.0, 2),
+                        audio_path=a_path,
+                        audio_duration_ms=a_ms,
+                        media_path=v_path,
+                    )
+                )
+        else:
+            # Cắt sơ bộ các đoạn hình để phục vụ Vision nếu video gốc không có lời thoại
+            prelim_paths = await asyncio.to_thread(
+                self.slice_3_masters_into_30_anti_cid_scenes,
+                masters=masters,
+                media_dir=media_dir,
+                scenes_per_master=scenes_per_master,
+                scene_duration_sec=18.5,
+                job_id=job_id,
+            )
+
+            all_narrations: List[str] = []
+            for idx_p, m_info in enumerate(masters, start=1):
+                part_clips = prelim_paths[(idx_p - 1) * scenes_per_master : idx_p * scenes_per_master]
+                n_segs = len(part_clips) or scenes_per_master
+                segs: List[str] = []
+                if m_info.get("orig_audio_path"):
+                    segs = await asyncio.to_thread(
+                        self.extract_and_translate_bilibili_audio_direct,
+                        audio_m4s_path=str(m_info["orig_audio_path"]),
+                        video_title=str(m_info.get("title") or topic),
+                        target_language=language,
+                        num_segments=n_segs,
+                    )
+                if len(segs) < n_segs:
+                    segs = await asyncio.to_thread(
+                        self.generate_vision_synced_narration_for_part,
+                        part_idx=idx_p,
+                        master_info=m_info,
+                        part_scene_paths=part_clips,
+                        topic=topic,
+                        language=language,
+                    )
+                while len(segs) < n_segs:
+                    segs.append(
+                        segs[-1]
+                        if segs
+                        else "Na natureza selvagem, cada segundo define quem domina o território e quem se torna presa imediata."
+                    )
+                all_narrations.extend(segs[:n_segs])
+
+            scenes_contracts: List[SceneContract] = []
+            for sid_idx, narr_str in enumerate(all_narrations, start=1):
+                p_num = ((sid_idx - 1) // scenes_per_master) + 1
+                badge = f"[ // PARTE {p_num}: ATO {((sid_idx - 1) % scenes_per_master) + 1} // ]" if ((sid_idx - 1) % scenes_per_master == 0) else None
+                scenes_contracts.append(
+                    SceneContract(
+                        scene_id=sid_idx,
+                        narration=narr_str,
+                        visual_keyword=f"{primary_entity} action scene {sid_idx}",
+                        visual_prompt=f"16:9 widescreen shot {sid_idx}",
+                        media_type="video",
+                        camera_motion="zoom_in",
+                        sfx_cue="none",
+                        overlay_badge=badge,
+                        estimated_seconds=18.5,
+                    )
+                )
+
+            from app.utils.subtitle_helper import SubtitleHelper
+
+            voice_agent = VoiceAgent()
+            scenes_objs = await voice_agent.generate_per_scene_audio(
+                scenes=scenes_contracts,
+                output_dir=str(audio_dir),
+                niche=niche,
+                channel_id=channel_id,
+                job_id=job_id,
+                is_long_form=True,
+            )
+            total_audio_ms, _ = await asyncio.gather(
+                voice_agent.concat_scene_audio(
+                    scenes=scenes_objs,
+                    output_path=full_audio_path,
+                ),
+                asyncio.to_thread(
+                    SubtitleHelper.save_ass_file,
+                    scenes_objs,
+                    subtitle_path,
+                    niche_id=niche,
+                    hook_title=thumbnail_text or title,
+                    show_cta_badge=False,
+                    is_long_form=True,
+                ),
+            )
+
+            # Cắt lại từng phân cảnh từ 3 Master Bilibili khớp chính xác 100% thời lượng giọng đọc thực tế của từng câu!
+            enriched_scenes = []
+            for idx_s, sc in enumerate(scenes_objs):
+                a_path = getattr(sc, "audio_path", "") or full_audio_path
+                a_ms = int(getattr(sc, "audio_duration_ms", 18000) or 18000)
+                dur_s = max(3.5, a_ms / 1000.0)
+
+                m_idx = min(len(masters) - 1, idx_s // scenes_per_master)
+                slot_i = idx_s % scenes_per_master
+                m_path = str(masters[m_idx].get("local_master_path") or "")
+                m_dur = get_duration_ms(m_path) / 1000.0
+                stride = max(5.0, (m_dur - dur_s - 1.0) / max(1, scenes_per_master - 1))
+                start_off = round(min(max(0.0, m_dur - dur_s - 0.4), slot_i * stride), 2)
+                out_clip = str(media_dir / f"scene_{sc.scene_id:03d}_16x9.mp4")
+
+                await asyncio.to_thread(
+                    extract_longform_scene_with_internal_jumpcut,
+                    master_path=m_path,
+                    output_path=out_clip,
+                    start_offset_sec=start_off,
+                    target_duration_sec=dur_s + 0.25,
+                    scene_id=sc.scene_id,
+                    allow_internal_jumpcut=True,
+                    job_id=job_id,
+                    master_key=f"bili_sync_{m_idx}_{slot_i}",
+                )
+                sc.audio_path = a_path
+                sc.audio_duration_ms = a_ms
+                sc.media_path = out_clip
+                sc.media_type = "video"
+                enriched_scenes.append(sc)
+
+        outputs_dir = Path(settings.OUTPUT_DIR)
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        final_video_path = str(outputs_dir / f"video_{job_id}.mp4")
+
+        th_srv = ThumbnailService(output_dir=str(outputs_dir))
+        th_res = th_srv.generate_viral_thumbnail(
+            job_id=job_id,
+            topic=topic,
+            viral_title=title,
+            video_path=enriched_scenes[0].media_path,
+            niche_id=niche,
+            custom_text=thumbnail_text,
+        )
+
+        from app.schemas.contracts import RenderJobContract
+
+        bgm_candidates = sorted(Path("assets/bgm").glob("*.mp3")) if Path("assets/bgm").exists() else []
+        if not bgm_candidates and Path("assets/music").exists():
+            bgm_candidates = sorted(Path("assets/music").glob("*.mp3"))
+        bgm_path = str(bgm_candidates[job_id % len(bgm_candidates)]) if bgm_candidates else None
+        render_job = RenderJobContract(
+            job_id=job_id,
+            title=title,
+            scenes=enriched_scenes,
+            full_audio_path=full_audio_path,
+            total_audio_duration_ms=total_audio_ms,
+            subtitle_path=subtitle_path if Path(subtitle_path).exists() else None,
+            bgm_path=bgm_path,
+            niche=niche,
+            is_scifi=False,
+            enable_sfx=False,
+            output_path=final_video_path,
+            video_format="long",
+            thumbnail_path=str(th_res.get("16x9") or ""),
+            thumbnail_vertical_path=str(th_res.get("9x16") or ""),
+        )
+
+        video_agent = VideoAgent()
+        await video_agent.render(render_job)
+
+        drive_agent = DriveAgent()
+        drive_res = await asyncio.to_thread(
+            drive_agent.upload_video,
+            local_video_path=final_video_path,
+            video_title=f"[Bilibili_4K_Dub_{job_id}] {title}",
+            channel_name=channel_id,
+        )
+
+        return {
+            "job_id": job_id,
+            "video_path": final_video_path,
+            "thumbnail_path": str(th_res.get("16x9") or ""),
+            "duration_sec": round(get_duration_ms(final_video_path) / 1000.0, 1),
+            "bilibili_masters": [
+                {"bvid": m.get("bvid"), "title": m.get("title"), "duration": m.get("clipped_duration_sec"), "is_nosub": m.get("is_nosub")}
+                for m in masters
+            ],
+            "drive_result": drive_res,
+        }
+
 
