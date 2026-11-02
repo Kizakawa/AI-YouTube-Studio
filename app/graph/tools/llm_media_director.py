@@ -363,6 +363,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             if init_story_qs:
                 d["storyline_search_queries"] = init_story_qs[:3]
 
+            d["llm_storyline_decomposed"] = True
             d["scope_audited"] = False
             final_plan.append(d)
             continue
@@ -489,16 +490,17 @@ def _ensure_subject_anchored_decisions(
             out_decisions.append(raw_d)
             continue
         item = dict(raw_d)
+        is_llm_decomposed = bool(item.get("llm_storyline_decomposed"))
         scene_subj = str(item.get("subject_entity") or "").strip()
         scene_subj_toks = set(re.findall(r"[a-zA-Z]{3,}", scene_subj.lower()))
-        if scene_subj and (scene_subj_toks & anchor_toks):
+        if scene_subj and ((scene_subj_toks & anchor_toks) or is_llm_decomposed):
             scene_ents = build_single_entity_stock_queries(
                 raw_queries=[scene_subj],
                 subject_entity=scene_subj,
                 topic=str(topic or ""),
                 max_words=2,
             )
-            lead_ent = scene_ents[0] if scene_ents else default_lead_ent
+            lead_ent = scene_ents[0] if scene_ents else (scene_subj if is_llm_decomposed else default_lead_ent)
         else:
             lead_ent = default_lead_ent
             if lead_ent and not item.get("creature_name"):
@@ -507,12 +509,17 @@ def _ensure_subject_anchored_decisions(
             out_decisions.append(item)
             continue
 
-        # Kiểm tra câu truy vấn chính của tool
+        # Kiểm tra câu truy vấn chính của tool:
+        # Nếu phân cảnh đã được LLM phân rã mạch truyện (`is_llm_decomposed=True`) và câu truy vấn
+        # đã có >= 2 từ khóa thực thể/hành động rõ ràng, giữ nguyên câu truy vấn mạch truyện của LLM
+        # thay vì ép ghép `primary_entity` toàn bài (tránh biến "human nervous system" thành "Polygraph Lie 3d glowing").
         for q_key in ("youtube_search_query", "primary_stock_query", "action_or_concept_query", "human_action_query", "smart_image_query"):
             q_val = str(item.get(q_key) or "").strip()
             if not q_val:
                 continue
             q_toks = set(re.findall(r"[a-zA-Z]{3,}", q_val.lower()))
+            if is_llm_decomposed and len(q_toks) >= 2:
+                continue
             if not (q_toks & anchor_toks):
                 anchored_q = _clean_yt_search_phrase(
                     f"{lead_ent} {q_val}",
@@ -528,6 +535,8 @@ def _ensure_subject_anchored_decisions(
             if not fb_val:
                 continue
             fb_toks = set(re.findall(r"[a-zA-Z]{3,}", fb_val.lower()))
+            if is_llm_decomposed and len(fb_toks) >= 2:
+                continue
             if not (fb_toks & anchor_toks):
                 anchored_fb = _clean_yt_search_phrase(
                     f"{lead_ent} {fb_val}",
@@ -767,6 +776,7 @@ Return ONLY a valid JSON object in this exact format:
                                             ]
                                             if story_qs:
                                                 item["storyline_search_queries"] = story_qs[:4]
+                                            item["llm_storyline_decomposed"] = True
                                         item["scope_audited"] = True
                                         audited_list.append(item)
 

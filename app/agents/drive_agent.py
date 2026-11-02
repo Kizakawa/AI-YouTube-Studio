@@ -208,14 +208,19 @@ class DriveAgent:
                 local_video_path,
                 mimetype="video/mp4",
                 resumable=True,
-                chunksize=2 * 1024 * 1024
+                chunksize=32 * 1024 * 1024
             )
 
-            file = self.service.files().create(
+            request = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
                 fields="id, name, webViewLink, webContentLink, parents"
-            ).execute()
+            )
+            file = None
+            while file is None:
+                status, file = request.next_chunk(num_retries=3)
+                if status:
+                    logger.info(f"☁️ [Drive Upload] Tiến độ tải lên '{dest_name}': {int(status.progress() * 100)}%")
 
             file_id = file.get("id")
             drive_link = file.get("webViewLink")

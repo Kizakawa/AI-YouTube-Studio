@@ -68,7 +68,8 @@ class GraphRunner:
     def __init__(
         self,
         job_id: int,
-        progress_callback: Optional[Callable[[str, str, int], Awaitable[None]]] = None
+        progress_callback: Optional[Callable[[str, str, int], Awaitable[None]]] = None,
+        video_format: Optional[str] = None,
     ):
         try:
             from app.utils.log_config import ensure_file_logging_attached
@@ -77,6 +78,7 @@ class GraphRunner:
             pass
         self.job_id = job_id
         self.progress_callback = progress_callback
+        self.video_format = video_format
         self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self._last_db_pct: int = -20
@@ -251,10 +253,15 @@ class GraphRunner:
 
         # 2. Khởi tạo trạng thái ban đầu cho LangGraph
         resolved_video_format = "short"
-        if isinstance(existing_script, dict) and existing_script.get("video_format"):
-            vf_raw = str(existing_script.get("video_format")).strip().lower()
-            if vf_raw in ("long", "long_form", "longform", "16:9", "landscape", "horizontal", "documentary"):
-                resolved_video_format = "long"
+        raw_vf_override = str(
+            self.video_format
+            or (existing_script.get("video_format") if isinstance(existing_script, dict) else "")
+            or ""
+        ).strip().lower()
+        if raw_vf_override in ("long", "long_form", "long-form", "longform", "16:9", "landscape", "horizontal", "documentary"):
+            resolved_video_format = "long"
+        elif isinstance(existing_script, dict) and len(existing_script.get("scenes") or []) >= 14:
+            resolved_video_format = "long"
 
         initial_state: VideoWorkflowState = {
             "job_id": self.job_id,

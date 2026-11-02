@@ -454,6 +454,14 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
         return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=60.0)
     except asyncio.TimeoutError:
         cancel_event.set()
+        try:
+            work_dir_to = Path(state.get("work_dir") or ".")
+            for hook_cand_to in (work_dir_to / "hook_candidates", work_dir_to / "media" / "hook_candidates"):
+                if hook_cand_to.exists():
+                    for stale_mp4 in hook_cand_to.glob("*.mp4"):
+                        stale_mp4.unlink(missing_ok=True)
+        except Exception:
+            pass
         logger.warning(
             "⏱️ [HookVideoNode] Chạm trần ngân sách 60s -> Hủy sớm worker nền và chuyển Cảnh 1 sang node_fetch_media."
         )
@@ -1194,6 +1202,9 @@ Return ONLY valid JSON:
             logger.debug(f"[HookVideoNode] yt-dlp download skip ({vid_url_dl}): {e_yt}")
 
         for mp4_sub_idx, mp4 in enumerate(sorted(hook_cand_dir.glob(f"yt_hook_cand_{dl_idx}_{rc_cand['id']}.*"))):
+            if _hook_cancelled(2.0):
+                mp4.unlink(missing_ok=True)
+                return local_found
             if mp4.suffix.lower() not in (".mp4", ".webm", ".mkv", ".mov"):
                 continue
             v_str = str(mp4)
@@ -1208,6 +1219,9 @@ Return ONLY valid JSON:
                 min_duration=max(target_hook_duration_sec, 4.5),
                 max_duration=15.0,
             )
+            if _hook_cancelled(1.5):
+                mp4.unlink(missing_ok=True)
+                return local_found
             pre_clean_dur = min(max(peak_duration_sec, opening_hook_window_sec + 1.0, 5.2), 9.5)
             clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_yt_{dl_idx}_{mp4_sub_idx}_{rc_cand['id']}.mp4")
             try:
@@ -1228,6 +1242,10 @@ Return ONLY valid JSON:
                 )
             except Exception as e_tr:
                 logger.debug(f"[HookVideoNode] Pre-trim peak skip ({v_str}): {e_tr}")
+            if _hook_cancelled(1.0):
+                Path(clean_peak_path).unlink(missing_ok=True)
+                mp4.unlink(missing_ok=True)
+                return local_found
 
             inspect_target = clean_peak_path if (Path(clean_peak_path).exists() and Path(clean_peak_path).stat().st_size > 20_000) else v_str
             gate_res = VisualCritic.inspect_clip_before_concat(
@@ -2378,6 +2396,18 @@ Return ONLY valid JSON:
                         preserve_continuous_flow=True,
                     )
                     if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 12_000:
+                        from app.graph.evaluators.visual_critic import VisualCritic
+                        lc_pre_chk = VisualCritic.inspect_clip_before_concat(
+                            hook_output_clip,
+                            min_short_edge=540,
+                            min_sharpness=11.0,
+                            check_watermark=True,
+                            auto_sanitize=True,
+                        )
+                        if not lc_pre_chk.get("passed"):
+                            Path(hook_output_clip).unlink(missing_ok=True)
+                            lc_mp4.unlink(missing_ok=True)
+                            continue
                         ok_lc_sh, lc_sh_val = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.5)
                         if ok_lc_sh or lc_sh_val >= 12.0:
                             stock_hook_ok = True

@@ -2517,7 +2517,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     pw_dur = max(float(sa_m["audio_duration_ms"]) / 1000.0, 2.5)
             async with prewarm_sem:
                 pw_cancel = threading.Event()
-                pw_dl = time.monotonic() + 63.0
+                pw_dl = time.monotonic() + 46.0
                 try:
                     await asyncio.wait_for(
                         asyncio.to_thread(
@@ -2540,15 +2540,22 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             deadline_ts=pw_dl,
                             chapter_key_prefix="chapter",
                         ),
-                        timeout=65.0,
+                        timeout=48.0,
                     )
                 except Exception as e_pw:
                     pw_cancel.set()
                     logger.debug(f"[ChapterPool Prewarm] Chapter lead scene {lead_scene.scene_id} skip: {e_pw}")
 
-        chapter_lead_scenes = [s for s in script.scenes if ((int(s.scene_id) - 1) % 3) == 0]
+        # Tiền tải tối đa 6 Chapter Masters đại diện trong 1 đợt song song duy nhất (<= 48s),
+        # tránh chia thành 3 đợt nối tiếp (3 x 65s = 195s) trên kịch bản 40 cảnh; các cảnh còn lại dùng Pexels/Pixabay 16:9 HD + Cross-Slice!
+        all_lead_scenes = [s for s in script.scenes if ((int(s.scene_id) - 1) % 3) == 0]
+        if len(all_lead_scenes) > 6:
+            step_ls = max(1, len(all_lead_scenes) // 6)
+            chapter_lead_scenes = [all_lead_scenes[0]] + [all_lead_scenes[i] for i in range(step_ls, len(all_lead_scenes), step_ls)][:5]
+        else:
+            chapter_lead_scenes = all_lead_scenes
         if chapter_lead_scenes:
-            logger.info(f"🎬 [LongForm Phase-A] Đang tiền tải {len(chapter_lead_scenes)} Chapter Masters 16:9 (3 cảnh/chương, 6 luồng sạch)...")
+            logger.info(f"🎬 [LongForm Phase-A] Đang tiền tải {len(chapter_lead_scenes)} Chapter Masters 16:9 (1 đợt song song <= 48s)...")
             await asyncio.gather(*[_prewarm_one_chapter(ls) for ls in chapter_lead_scenes])
 
     tasks = [_guarded_fetch(i, s) for i, s in enumerate(script.scenes)]
@@ -3339,14 +3346,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             d_chars_g = ["@MANIPULATOR", "@MODERNYOU", "@PLEASER", "@ANCESTOR"]
             d_props_g = ["puppet_strings", "mask", "cage", "broken_compass", "scroll_feed", "treadmill"]
 
-            def _anchor_zg_query(raw_kw: str) -> str:
-                kw_clean = clean_scene_search_query(raw_kw or primary_entity or state.get("topic", ""), max_words=4)
+            def _anchor_zg_query(raw_kw: str, sc_obj: Optional[Dict[str, Any]] = None) -> str:
+                story_qs_zg = (sc_obj or {}).get("storyline_search_queries") or []
+                base_zg = (story_qs_zg[0] if story_qs_zg else "") or raw_kw or primary_entity or state.get("topic", "")
+                kw_clean = clean_scene_search_query(base_zg, max_words=5)
+                kw_toks = set(re.findall(r"[a-zA-ZÀ-ỹ]{3,}", (kw_clean or "").lower()))
+                if len(kw_toks) >= 2:
+                    return kw_clean
                 anchor_src = f"{primary_entity or ''} {state.get('topic', '')}".lower()
                 anchor_toks = {
                     t for t in re.findall(r"[a-zA-ZÀ-ỹ]{4,}", anchor_src)
                     if t not in {"inside", "with", "from", "into", "that", "this", "what", "when", "high", "speed", "apex", "hunt", "most", "over"}
                 }
-                kw_toks = set(re.findall(r"[a-zA-ZÀ-ỹ]{4,}", (kw_clean or "").lower()))
                 if primary_entity and anchor_toks and not (kw_toks & anchor_toks):
                     ent_pref = clean_scene_search_query(primary_entity, max_words=2)
                     return clean_scene_search_query(f"{ent_pref} {kw_clean}", max_words=4) or ent_pref
@@ -3434,12 +3445,17 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         except Exception as _e_zgp:
                             logger.debug(f"[Zero-Graphic-Card Guard] Scene {sid_g} chapter pool rescue skip: {_e_zgp}")
 
-                    zg_q = _anchor_zg_query(str(sc_g.get("visual_keyword") or ""))
-                    zg_narr = (
-                        f"{primary_entity} — {sc_g.get('narration') or ''}".strip()
-                        if primary_entity
-                        else str(sc_g.get("narration") or state.get("topic", ""))
-                    )
+                    zg_q = _anchor_zg_query(str(sc_g.get("visual_keyword") or ""), sc_g)
+                    zg_story_qs = [
+                        clean_scene_search_query(str(q_x), max_words=5)
+                        for q_x in dict.fromkeys([
+                            zg_q,
+                            *(sc_g.get("storyline_search_queries") or []),
+                            str(sc_g.get("visual_keyword") or ""),
+                        ])
+                        if str(q_x or "").strip()
+                    ]
+                    zg_narr = str(sc_g.get("narration") or state.get("topic", "")).strip()
                     if not replaced_g:
                         t2_ev = threading.Event()
                         try:
@@ -3633,7 +3649,17 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     timeout=16.0,
                                 )
                                 if is_completed_clean_mp4(cand_slice_mp4, min_size_bytes=25_000, min_duration_ms=1200):
-                                    if is_clip_visually_unique_in_job(
+                                    from app.graph.evaluators.visual_critic import VisualCritic
+                                    zg_slice_chk = await asyncio.to_thread(
+                                        VisualCritic.inspect_clip_before_concat,
+                                        cand_slice_mp4,
+                                        540,
+                                        11.0,
+                                        True,
+                                        False,
+                                        True,
+                                    )
+                                    if zg_slice_chk.get("passed") and is_clip_visually_unique_in_job(
                                         cand_slice_mp4,
                                         job_id,
                                         scene_id=sid_g,
@@ -3892,14 +3918,18 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
             fg_facets = ["cinematic motion closeup", "dramatic nature footage", "intense slow motion", "atmospheric b-roll"]
             failed_items_fg = [x for x in scenes_media if int(x.get("scene_id") or 0) in failed_set]
 
-            def _anchor_fg_query(raw_kw: str, max_w: int = 5) -> str:
-                kw_clean = clean_scene_search_query(raw_kw or primary_entity or state.get("topic", ""), max_words=max_w)
+            def _anchor_fg_query(raw_kw: str, m_obj: Optional[Dict[str, Any]] = None, max_w: int = 5) -> str:
+                story_qs_fg = (m_obj or {}).get("storyline_search_queries") or []
+                base_fg = (story_qs_fg[0] if story_qs_fg else "") or raw_kw or primary_entity or state.get("topic", "")
+                kw_clean = clean_scene_search_query(base_fg, max_words=max_w)
+                kw_toks = set(re.findall(r"[a-zA-ZÀ-ỹ]{3,}", (kw_clean or "").lower()))
+                if len(kw_toks) >= 2:
+                    return kw_clean
                 anchor_src = f"{primary_entity or ''} {state.get('topic', '')}".lower()
                 anchor_toks = {
                     t for t in re.findall(r"[a-zA-ZÀ-ỹ]{4,}", anchor_src)
                     if t not in {"inside", "with", "from", "into", "that", "this", "what", "when", "high", "speed", "apex", "hunt", "most", "over"}
                 }
-                kw_toks = set(re.findall(r"[a-zA-ZÀ-ỹ]{4,}", (kw_clean or "").lower()))
                 if primary_entity and anchor_toks and not (kw_toks & anchor_toks):
                     ent_pref = clean_scene_search_query(primary_entity, max_words=2)
                     return clean_scene_search_query(f"{ent_pref} {kw_clean}", max_words=max_w) or ent_pref
@@ -3910,12 +3940,47 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 rescue_idx, m = pair_fg
                 sid = int(m.get("scene_id") or 0)
                 sc_dur = _scene_audio_duration(work_dir, sid)
-                anchored_base_kw = _anchor_fg_query(str(m.get("visual_keyword") or ""), max_w=4)
-                fg_narr = (
-                    f"{primary_entity} — {m.get('narration') or ''}".strip()
-                    if primary_entity
-                    else str(m.get("narration") or state.get("topic", ""))
+                anchored_base_kw = _anchor_fg_query(str(m.get("visual_keyword") or ""), m, max_w=5)
+                fg_story_qs = [
+                    clean_scene_search_query(str(q_x), max_words=5)
+                    for q_x in dict.fromkeys([
+                        anchored_base_kw,
+                        *(m.get("storyline_search_queries") or []),
+                        str(m.get("visual_keyword") or ""),
+                    ])
+                    if str(q_x or "").strip()
+                ]
+                fg_narr = str(m.get("narration") or state.get("topic", "")).strip()
+
+                # 0. Phục hồi tức thì file `scene_{sid:03d}_refined_*.mp4` vừa tải xong trên đĩa nếu đạt chuẩn VisualCritic
+                existing_cur_mp = str(m.get("media_path") or "")
+                refined_disk_cands = sorted(
+                    [
+                        p for p in media_dir.glob(f"scene_{sid:03d}_refined_*.mp4")
+                        if str(p) != existing_cur_mp and is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
+                    ],
+                    key=_safe_mtime,
+                    reverse=True,
                 )
+                for ref_cand_p in refined_disk_cands[:3]:
+                    fg_ref_chk = critic.inspect_clip_before_concat(
+                        str(ref_cand_p),
+                        min_short_edge=540,
+                        min_sharpness=11.0,
+                        check_watermark=True,
+                        auto_sanitize=True,
+                    )
+                    if fg_ref_chk.get("passed") and is_clip_visually_unique_in_job(str(ref_cand_p), job_id_fg, scene_id=sid):
+                        with fg_lock:
+                            used_active_paths.add(str(ref_cand_p.resolve()))
+                        m["media_path"] = str(ref_cand_p)
+                        m["media_type"] = "hook_ready_video" if sid == 1 else "video"
+                        m["pose_images"] = []
+                        m["production_method"] = "FINAL_GATE_RECOVERED_REFINED_VIDEO"
+                        logger.info(
+                            f"🛡️ [FinalVisualGate] Đã khôi phục clip sạch '{ref_cand_p.name}' từ đĩa cho Cảnh #{sid}"
+                        )
+                        return True
                 # Ưu tiên số 1 cho Video Dài 16:9 (< 2s trên ổ cứng): cắt lát 16:9 độc lập từ ChapterPool đã duyệt Vision!
                 if is_lf_eval:
                     try:
@@ -3950,55 +4015,20 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     except Exception as _e_fg_pool0:
                         logger.debug(f"[FinalVisualGate 16:9] ChapterPool priority rescue skip: {_e_fg_pool0}")
 
-                q_fg = clean_scene_search_query(
-                    f"{anchored_base_kw} {fg_facets[rescue_idx % len(fg_facets)]}",
+                q_fg = anchored_base_kw or clean_scene_search_query(
+                    f"{primary_entity or state.get('topic', '')} {fg_facets[rescue_idx % len(fg_facets)]}",
                     max_words=5,
                 )
                 with fg_lock:
                     snap_fg_used = set(used_active_paths | used_active_vids)
                 va_fg = {
                     "video_format": "long" if is_lf_eval else "short",
-                    "subject": primary_entity or q_fg,
-                    "core_visual_entity": primary_entity or q_fg,
+                    "subject": str(m.get("subject_entity") or q_fg),
+                    "core_visual_entity": str(m.get("subject_entity") or q_fg),
                     "topic": state.get("topic", ""),
-                    "search_queries": [q_fg],
+                    "search_queries": fg_story_qs[:4] if fg_story_qs else [q_fg],
                 }
-                if not is_lf_eval:
-                    try:
-                        from app.graph.tools.youtube_peak_executor import execute_youtube_short_peak_clone_sync
-                        out_bili_fg = str(media_dir / f"scene_{sid:03d}_final_bili_rescue.mp4")
-                        bili_fg_res = execute_youtube_short_peak_clone_sync(
-                            search_query=clean_scene_search_query(m.get("visual_keyword") or primary_entity or q_fg, max_words=4),
-                            output_path=out_bili_fg,
-                            target_duration_sec=sc_dur,
-                            clip_role="HOOK" if sid == 1 else "PEAK",
-                            used_urls=snap_fg_used,
-                            fallback_query=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3),
-                            subject_entity=primary_entity or state.get("topic", ""),
-                            narration=str(m.get("narration") or state.get("topic", "")),
-                            topic=state.get("topic", ""),
-                            search_scope="SCRIPT_OVERALL",
-                            overall_script_query=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3),
-                            max_peak_duration_sec=10.0,
-                            job_id=job_id_fg,
-                            scene_id=sid,
-                            deadline_ts=time.monotonic() + 24.0,
-                        )
-                        if bili_fg_res and bili_fg_res.get("media_path") and Path(bili_fg_res["media_path"]).exists():
-                            with fg_lock:
-                                if bili_fg_res.get("source_url"):
-                                    used_active_vids.add(str(bili_fg_res["source_url"]))
-                                used_active_paths.add(str(Path(bili_fg_res["media_path"]).resolve()))
-                            m["media_path"] = bili_fg_res["media_path"]
-                            m["media_type"] = "hook_ready_video" if sid == 1 else "video"
-                            m["pose_images"] = []
-                            m["production_method"] = "FINAL_GATE_BILIBILI_PEAK_RESCUE"
-                            logger.info(
-                                f"🛡️ [FinalVisualGate] Đã tải video Bilibili/Peak chuẩn chủ thể cho Cảnh #{sid} -> {Path(bili_fg_res['media_path']).name}"
-                            )
-                            return True
-                    except Exception as _e_bfg:
-                        logger.debug(f"[FinalVisualGate] Bilibili/Peak rescue skip: {_e_bfg}")
+                # Ưu tiên số 1 cho Shorts trong FinalVisualGate: Tìm Video Stock sạch chữ (Pexels/Pixabay ~2-4s) theo đúng truy vấn mạch truyện của cảnh
                 best_fg_v = ma_fg.search_best_video_clip(
                     q_fg,
                     snap_fg_used,
@@ -4068,8 +4098,56 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         else:
                             Path(raw_fg_dl).unlink(missing_ok=True)
                             rag_fg.release_in_job_video_claim(job_id=job_id_fg, vid_id=fg_url, url=fg_url, title=fg_title, scene_id=sid)
-                # Bảo vệ tuyệt đối Cảnh 1 (Opening Hook): Nếu Cảnh 1 đã có Video chuyển động thật hợp lệ trên đĩa,
-                # TUYỆT ĐỐI KHÔNG ghi đè bằng ảnh tĩnh Google/Stock trong FinalVisualGate!
+
+                # Dự phòng YouTube/Bilibili Peak khi Stock không có clip
+                if not is_lf_eval:
+                    try:
+                        from app.graph.tools.youtube_peak_executor import execute_youtube_short_peak_clone_sync
+                        out_bili_fg = str(media_dir / f"scene_{sid:03d}_final_bili_rescue.mp4")
+                        bili_fg_res = execute_youtube_short_peak_clone_sync(
+                            search_query=q_fg,
+                            output_path=out_bili_fg,
+                            target_duration_sec=sc_dur,
+                            clip_role="HOOK" if sid == 1 else "PEAK",
+                            used_urls=snap_fg_used,
+                            fallback_query=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3),
+                            subject_entity=str(m.get("subject_entity") or primary_entity or state.get("topic", "")),
+                            narration=fg_narr,
+                            topic=state.get("topic", ""),
+                            search_scope="SCENE_SPECIFIC",
+                            overall_script_query=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3),
+                            max_peak_duration_sec=10.0,
+                            job_id=job_id_fg,
+                            scene_id=sid,
+                            storyline_queries=fg_story_qs,
+                            deadline_ts=time.monotonic() + 20.0,
+                        )
+                        if bili_fg_res and bili_fg_res.get("media_path") and Path(bili_fg_res["media_path"]).exists():
+                            bili_chk = critic.inspect_clip_before_concat(
+                                bili_fg_res["media_path"],
+                                min_short_edge=540,
+                                min_sharpness=11.0,
+                                check_watermark=True,
+                                auto_sanitize=True,
+                            )
+                            if bili_chk.get("passed"):
+                                with fg_lock:
+                                    if bili_fg_res.get("source_url"):
+                                        used_active_vids.add(str(bili_fg_res["source_url"]))
+                                    used_active_paths.add(str(Path(bili_fg_res["media_path"]).resolve()))
+                                m["media_path"] = bili_fg_res["media_path"]
+                                m["media_type"] = "hook_ready_video" if sid == 1 else "video"
+                                m["pose_images"] = []
+                                m["production_method"] = "FINAL_GATE_BILIBILI_PEAK_RESCUE"
+                                logger.info(
+                                    f"🛡️ [FinalVisualGate] Đã tải video Bilibili/Peak chuẩn chủ thể cho Cảnh #{sid} -> {Path(bili_fg_res['media_path']).name}"
+                                )
+                                return True
+                            Path(bili_fg_res["media_path"]).unlink(missing_ok=True)
+                    except Exception as _e_bfg:
+                        logger.debug(f"[FinalVisualGate] Bilibili/Peak rescue skip: {_e_bfg}")
+
+                # Bảo vệ Cảnh 1 (Opening Hook): CHỈ giữ lại Video Cảnh 1 khi thực sự sạch chữ/sạch viền qua `inspect_clip_before_concat`!
                 existing_fg_mp = str(m.get("media_path") or "")
                 existing_fg_pm = str(m.get("production_method") or "").upper()
                 if (
@@ -4080,11 +4158,19 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     and "CLIMAX_IMAGES_LIVE_FX" not in existing_fg_pm
                     and is_completed_clean_mp4(existing_fg_mp, min_size_bytes=12_000, min_duration_ms=1000)
                 ):
-                    m["media_type"] = "hook_ready_video"
-                    logger.info(
-                        f"🛡️ [FinalVisualGate] Giữ nguyên Video chuyển động thật cho Cảnh #1 ({Path(existing_fg_mp).name}) — cấm hạ cấp xuống ảnh tĩnh!"
+                    s1_fg_chk = critic.inspect_clip_before_concat(
+                        existing_fg_mp,
+                        min_short_edge=540,
+                        min_sharpness=11.0,
+                        check_watermark=True,
+                        auto_sanitize=True,
                     )
-                    return True
+                    if s1_fg_chk.get("passed"):
+                        m["media_type"] = "hook_ready_video"
+                        logger.info(
+                            f"🛡️ [FinalVisualGate] Giữ nguyên Video chuyển động thật sạch lỗi cho Cảnh #1 ({Path(existing_fg_mp).name})!"
+                        )
+                        return True
                 # Fallback ảnh thật Google Top Image nếu kho video không trả về clip cho cảnh lỗi (Scene >= 2 hoặc chưa có video)
                 from app.graph.tools.google_image_executor import execute_google_cinematic_image_sync
                 out_fg_img = str(media_dir / f"scene_{sid:03d}_final_gimg_rescue.jpg")
@@ -4349,16 +4435,14 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         subj_refine = clean_scene_search_query(sc_subj_raw or primary_entity or state.get("topic", ""), max_words=2) or overall_refine_q
         refine_angle_mods = ("close up action", "real footage", "documentary clip", "dramatic angle")
         angle_mod = refine_angle_mods[(scene_id + retry_count) % len(refine_angle_mods)]
-        if audited_fb_q and audited_fb_q.lower() != (clean_kw_q or "").lower():
+        if audited_fb_q and len((clean_kw_q or "").split()) < 2:
             clean_kw_q = clean_scene_search_query(audited_fb_q, max_words=4) or clean_kw_q
-        if subj_refine and subj_refine.lower().split()[0] not in (clean_kw_q or "").lower():
-            clean_kw_q = clean_scene_search_query(f"{subj_refine} {angle_mod}", max_words=4) or clean_kw_q
         if (
             subj_refine
             and len((clean_kw_q or "").split()) < 2
             and subj_refine.lower().split()[0] not in (clean_kw_q or "").lower()
         ):
-            clean_kw_q = f"{subj_refine} {clean_kw_q}".strip()
+            clean_kw_q = clean_scene_search_query(f"{subj_refine} {clean_kw_q or angle_mod}", max_words=4) or clean_kw_q
         is_mandatory_vid = scene_id in mandatory_video_refine_sids
         is_video = True
         replaced = False
@@ -4621,7 +4705,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.debug(f"Scene {scene_id}: YouTube Short refine error: {ex_yt_r}")
 
             # 3. Cắt từ ứng viên `hook_candidates` chưa từng được cảnh nào sử dụng (Zero-Duplicate Guard)
-            if not replaced and not _refine_cancelled():
+            # Không cắt từ `hook_candidates` nếu cảnh đang bị bắt lỗi ngữ nghĩa/phụ đề cháy hình từ Gemini Vision ContactSheet
+            if not replaced and not has_semantic_vision_defect and not _refine_cancelled():
                 try:
                     from app.utils.ffmpeg_helper import get_duration_ms, trim_video
                     from app.services.video_memory_rag import get_video_memory_rag
@@ -4784,6 +4869,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if not replaced and not _refine_cancelled():
                     if (
                         scene_id == 1
+                        and not has_semantic_vision_defect
                         and existing_mp
                         and Path(existing_mp).exists()
                         and existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
@@ -4846,6 +4932,30 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as _e_ref_to:
                 ref_cancel_ev.set()
                 logger.debug(f"[RefineMedia] Scene {item.get('scene_id')} timeout/skip: {_e_ref_to}")
+                try:
+                    sid_to = int(item.get("scene_id") or 0)
+                    prev_mp_to = str(item.get("media_path") or "")
+                    ref_cands_to = sorted(
+                        [
+                            p for p in media_dir.glob(f"scene_{sid_to:03d}_refined_*.mp4")
+                            if str(p) != prev_mp_to and is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
+                        ],
+                        key=_safe_mtime,
+                        reverse=True,
+                    )
+                    for rc_p in ref_cands_to[:2]:
+                        ok_rc_to, _ = await asyncio.to_thread(_verify_and_sanitize_refined_media, str(rc_p), True, sid_to)
+                        if ok_rc_to:
+                            item["media_path"] = str(rc_p)
+                            item["media_type"] = "hook_ready_video" if sid_to == 1 else "video"
+                            item["pose_images"] = []
+                            item["production_method"] = "REFINED_TIMEOUT_DISK_RECOVERED_VIDEO"
+                            logger.info(
+                                f"Scene {sid_to}: 🛡️ [RefineMedia Timeout Recovery] Đã khôi phục file '{rc_p.name}' vừa tải xong trên đĩa!"
+                            )
+                            break
+                except Exception:
+                    pass
                 if is_lf_refine and str(item.get("media_path") or "").lower().endswith("_graphic.png"):
                     try:
                         from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene

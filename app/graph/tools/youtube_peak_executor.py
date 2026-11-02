@@ -434,11 +434,12 @@ def execute_youtube_short_peak_clone_sync(
                         actual_start_s = round(actual_start_s + 0.35, 2)
 
                     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                    cand_stage_out = str(Path(tmp_dir) / f"cand_stage_{vid_id}.mp4")
                     try:
                         trim_video(
                             input_path=raw_file,
                             duration_seconds=scene_clip_len,
-                            output_path=output_path,
+                            output_path=cand_stage_out,
                             width=1080,
                             height=1920,
                             fps=30,
@@ -461,19 +462,19 @@ def execute_youtube_short_peak_clone_sync(
                             "-an", "-vf", vf_filter,
                             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "21",
                             "-pix_fmt", "yuv420p", "-color_range", "tv",
-                            output_path,
+                            cand_stage_out,
                         ]
                         subprocess.run(cmd, capture_output=True, timeout=25, check=False)
 
-                    if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
+                    if Path(cand_stage_out).exists() and Path(cand_stage_out).stat().st_size > 20000:
                         if _is_cancelled():
                             rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                            Path(output_path).unlink(missing_ok=True)
+                            Path(cand_stage_out).unlink(missing_ok=True)
                             return None
                         ok_sig, dup_sid = rag.verify_and_commit_in_job_clip(
                             job_id=job_id,
                             scene_id=eff_scene_id,
-                            media_path=output_path,
+                            media_path=cand_stage_out,
                             vid_id=vid_id,
                             url=vid_url,
                             title=cand_title,
@@ -481,12 +482,12 @@ def execute_youtube_short_peak_clone_sync(
                         )
                         if not ok_sig:
                             rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                            Path(output_path).unlink(missing_ok=True)
+                            Path(cand_stage_out).unlink(missing_ok=True)
                             continue
 
                         target_vq = search_phrases[0] if search_phrases else search_query
                         passed_vis, vis_score, vis_reason = _verify_short_clip_with_gemini_vision(
-                            video_path=output_path,
+                            video_path=cand_stage_out,
                             topic=topic,
                             narration=narration,
                             subject_entity=subject_entity or topic,
@@ -544,7 +545,7 @@ def execute_youtube_short_peak_clone_sync(
                                     )
                                     if passed_sc:
                                         import shutil
-                                        shutil.copy2(rescue_crop_path, output_path)
+                                        shutil.copy2(rescue_crop_path, cand_stage_out)
                                         passed_vis, vis_score, vis_reason = passed_sc, score_sc, reason_sc
                                         logger.info(
                                             f"✨ [Subtitle-Safe Reframe Rescue] Đã cắt bỏ viền phụ đề và cứu thành công clip '{cand_title[:45]}' ({vis_score}/10)!"
@@ -556,8 +557,12 @@ def execute_youtube_short_peak_clone_sync(
                                 f"(điểm={vis_score}/10: {vis_reason}) -> Thử ứng viên tiếp theo!"
                             )
                             rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                            Path(output_path).unlink(missing_ok=True)
+                            Path(cand_stage_out).unlink(missing_ok=True)
                             continue
+
+                        import shutil as _sh_stage
+                        _sh_stage.copy2(cand_stage_out, output_path)
+                        Path(cand_stage_out).unlink(missing_ok=True)
 
                         full_peak_path: Optional[str] = None
                         if (

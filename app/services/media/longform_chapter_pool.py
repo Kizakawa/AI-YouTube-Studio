@@ -733,20 +733,37 @@ def _download_youtube_chapter_master(
         start_s = 10.0 if cand_dur > 50.0 else (5.0 if cand_dur > 28.0 else 1.5)
         end_s = min(cand_dur - 1.5, start_s + max(24.0, max_master_dur_sec + 6.0))
 
+        t_dl_start = [0.0]
+
+        def _master_fast_switch_progress(d: Dict[str, Any]) -> None:
+            if _is_cancelled():
+                raise RuntimeError("Chapter master download cancelled by deadline")
+            if d.get("status") == "downloading":
+                now_p = time.monotonic()
+                dl_bytes = float(d.get("downloaded_bytes") or 0.0)
+                if dl_bytes > 0 and t_dl_start[0] <= 0.0:
+                    t_dl_start[0] = now_p
+                elapsed = (now_p - t_dl_start[0]) if t_dl_start[0] > 0.0 else 0.0
+                spd = float(d.get("speed") or 0.0)
+                if elapsed > 15.0 or (elapsed > 4.0 and 0.0 < spd < 120_000):
+                    raise RuntimeError(f"Chapter master slow/timeout ({elapsed:.1f}s)")
+
         tmp_base = str(Path(master_out_path).with_suffix("")) + "_raw.%(ext)s"
         dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "max_filesize": 25 * 1024 * 1024,
+            "max_filesize": 20 * 1024 * 1024,
             "format": LANDSCAPE_16X9_YTDLP_FORMAT,
             "merge_output_format": "mp4",
             "outtmpl": tmp_base,
             "socket_timeout": 8,
             "retries": 1,
             "nopart": True,
+            "progress_hooks": [_master_fast_switch_progress],
         })
-        if cand_dur > 42.0:
+        # Chỉ dùng download_ranges khi video gốc quá dài (> 135s); với video <= 135s tải thẳng luồng MP4 CDN nhanh gấp 5 lần và có progress_hooks kiểm soát!
+        if cand_dur > 135.0:
             try:
                 from yt_dlp.utils import download_range_func
                 dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s)])
@@ -754,6 +771,8 @@ def _download_youtube_chapter_master(
             except Exception:
                 pass
 
+        parent_dir = Path(master_out_path).parent
+        stem_prefix = Path(master_out_path).stem + "_raw"
         try:
             if _is_cancelled():
                 return None
@@ -763,21 +782,15 @@ def _download_youtube_chapter_master(
                 with yt_dlp.YoutubeDL(dl_opts) as ydl:
                     ydl.download([vid_url])
         except Exception:
-            if _is_cancelled():
-                return None
-            dl_opts.pop("download_ranges", None)
-            used_range_dl = False
-            try:
-                with _yt_longform_dl_sem:
-                    if _is_cancelled():
-                        return None
-                    with yt_dlp.YoutubeDL(dl_opts) as ydl2:
-                        ydl2.download([vid_url])
-            except Exception:
-                continue
+            for stale_f in parent_dir.glob(f"{stem_prefix}*"):
+                stale_f.unlink(missing_ok=True)
+            continue
 
-        parent_dir = Path(master_out_path).parent
-        stem_prefix = Path(master_out_path).stem + "_raw"
+        if _is_cancelled():
+            for stale_f in parent_dir.glob(f"{stem_prefix}*"):
+                stale_f.unlink(missing_ok=True)
+            return None
+
         found = list(parent_dir.glob(f"{stem_prefix}.*"))
         if not found:
             continue

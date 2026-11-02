@@ -410,12 +410,36 @@ class VisualCritic:
         # Kiểm tra và tự động cắt gọt sạch dải viền đen ngang (letterbox / single-sided black bar) ở đỉnh hoặc đáy khung hình 9:16
         if len(gray_frames) >= 1 and width <= height:
             try:
+                scan_frames_lb = gray_frames[:min(4, len(gray_frames))]
                 gf0 = gray_frames[0]
                 top_st = ImageStat.Stat(gf0.crop((0, 0, 180, 24)))
                 bot_st = ImageStat.Stat(gf0.crop((0, 296, 180, 320)))
                 mid_st = ImageStat.Stat(gf0.crop((0, 80, 180, 240)))
-                top_dark = float(top_st.mean[0]) < 16.0 and float(top_st.stddev[0]) < 12.0
-                bot_dark = float(bot_st.mean[0]) < 16.0 and float(bot_st.stddev[0]) < 12.0
+                top_cand = float(top_st.mean[0]) < 16.0 and float(top_st.stddev[0]) < 12.0
+                bot_cand = float(bot_st.mean[0]) < 16.0 and float(bot_st.stddev[0]) < 12.0
+                if top_cand and bot_cand:
+                    # Letterbox đối xứng 2 đầu (top + bottom)
+                    top_dark = True
+                    bot_dark = True
+                else:
+                    # Dải đen đơn lẻ 1 đầu: Chỉ bắt khi là dải đen kỹ thuật số phẳng tuyệt đối (mean < 8.5, stddev < 3.5)
+                    # trên toàn bộ các khung hình mẫu; tuyệt đối không bắt nhầm áo đen / bóng đổ tự nhiên / vignette!
+                    top_dark = bool(
+                        top_cand
+                        and all(
+                            float(ImageStat.Stat(gf.crop((0, 0, 180, 20))).mean[0]) < 8.5
+                            and float(ImageStat.Stat(gf.crop((0, 0, 180, 20))).stddev[0]) < 3.5
+                            for gf in scan_frames_lb
+                        )
+                    )
+                    bot_dark = bool(
+                        bot_cand
+                        and all(
+                            float(ImageStat.Stat(gf.crop((0, 300, 180, 320))).mean[0]) < 8.5
+                            and float(ImageStat.Stat(gf.crop((0, 300, 180, 320))).stddev[0]) < 3.5
+                            for gf in scan_frames_lb
+                        )
+                    )
                 if (top_dark or bot_dark) and float(mid_st.mean[0]) > 35.0:
                     if auto_sanitize and width >= 540 and height >= 540:
                         # Đo chính xác ranh giới dải viền đen trên tất cả các khung hình mẫu (không đoán tỷ lệ cố định 18%/20%)
