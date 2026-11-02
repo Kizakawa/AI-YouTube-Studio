@@ -201,18 +201,22 @@ class ThumbnailService:
             if job_id:
                 try:
                     import json as _json
-                    from app.database.models import get_db, VideoJob
-                    with get_db() as db:
+                    from app.database.models import SessionLocal, VideoJob
+                    db = SessionLocal()
+                    try:
                         j_row = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                         if j_row:
                             if not title:
                                 title = str(j_row.title or j_row.topic or "")
                             sc_obj = _json.loads(j_row.scenes_json or "{}")
-                            for s_item in (sc_obj.get("scenes") or []):
+                            sc_items = sc_obj if isinstance(sc_obj, list) else (sc_obj.get("scenes") or [])
+                            for s_item in sc_items:
                                 if isinstance(s_item, dict) and s_item.get("scene_id"):
                                     scene_kw_map[int(s_item["scene_id"])] = str(
                                         s_item.get("visual_keyword", "")
                                     ).lower()
+                    finally:
+                        db.close()
                     if not scene_kw_map:
                         ckpt_p = Path(settings.TEMP_DIR) / f"job_{job_id}" / "step_checkpoint.json"
                         if ckpt_p.exists():
