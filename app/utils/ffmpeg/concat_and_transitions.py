@@ -117,15 +117,22 @@ def concat_videos_with_xfade(
     transition_duration: float = 0.06,
     scene_durations_seconds: Optional[List[float]] = None,
     subtitle_path: Optional[str] = None,
+    thumbnail_overlay_path: Optional[str] = None,
+    resolution: Optional[ tuple ] = None,
 ) -> str:
     """
     Ghép N video clips với hiệu ứng chuyển cảnh xfade mượt mà, đa dạng giữa các scenes.
     Nếu truyền `subtitle_path`, phụ đề ASS/SRT sẽ được burn trực tiếp trong cùng 1 lượt encode
     (Single-Pass Xfade + Subtitle Burn), loại bỏ hoàn toàn 1 thế hệ nén lại video (lossy re-encode)
     và tăng tốc độ xuất video thêm ~40%.
+    Nếu truyền `thumbnail_overlay_path`, tự động chèn ảnh bìa High-CTR vào các mốc thời gian lấy mẫu
+    mặc định của YouTube (`0.0s`, `25%`, `50%`, `75%` thời lượng) kèm ép Keyframe (`-force_key_frames`)
+    để đảm bảo 100% kênh chưa xác minh SĐT (chưa có quyền Custom Thumbnail) vẫn tự động hiện ảnh bìa đẹp!
     """
     from app.utils.ffmpeg.subtitles_and_thumbnail import burn_subtitles
     has_sub = bool(subtitle_path and Path(subtitle_path).exists())
+    has_thumb_ov = bool(thumbnail_overlay_path and Path(str(thumbnail_overlay_path)).exists())
+    res_w, res_h = (int(resolution[0]), int(resolution[1])) if (resolution and len(resolution) >= 2) else (1920 if transition_duration <= 0.01 else 1080, 1080 if transition_duration <= 0.01 else 1920)
     if len(video_paths) == 1:
         if has_sub:
             return burn_subtitles(video_paths[0], subtitle_path, output_path)
@@ -155,6 +162,12 @@ def concat_videos_with_xfade(
     n = len(video_paths)
     expected_total_s = max(sum(durations) - (n - 1) * td, 1.0)
 
+    t25 = round(expected_total_s * 0.25, 2)
+    t50 = round(expected_total_s * 0.50, 2)
+    t75 = round(expected_total_s * 0.75, 2)
+    hw = 0.45 if expected_total_s >= 90.0 else 0.18
+    keyframe_args = ["-force_key_frames", f"0.00,{t25:.2f},{t50:.2f},{t75:.2f}"] if has_thumb_ov else []
+
     # Khi transition_duration <= 0.01 (Long-Form 16:9 dùng J-Cut + Internal Jump-Cut thay cho xfade),
     # dùng trực tiếp bộ giải mã tuần tự `-f concat -safe 0 -i list_file` kết hợp Single-Pass `-vf subtitles=...`
     # để chỉ mở 1 bộ giải mã tại mỗi thời điểm, triệt tiêu 100% lỗi quá tải bộ nhớ 40 luồng `-filter_complex`!
@@ -171,6 +184,11 @@ def concat_videos_with_xfade(
 
         fps_flag = ["-fps_mode", "cfr"] if _supports_fps_mode() else ["-vsync", "cfr"]
         enc_args = get_video_encoder_args(quality="longform" if len(video_paths) >= 22 else "high")
+        kf_args_local = (
+            [*keyframe_args, "-forced_idr", "1"]
+            if (has_thumb_ov and any(e in enc_args for e in ("h264_qsv", "h264_nvenc")))
+            else list(keyframe_args)
+        )
         vf_chain_parts = [f"fps={fps}", "setsar=1", "format=yuv420p"]
         if has_sub:
             srt_escaped = str(subtitle_path).replace("\\", "/").replace(":", "\\:").replace("'", "")
@@ -191,12 +209,32 @@ def concat_videos_with_xfade(
                 vf_chain_parts.append(f"subtitles='{srt_escaped}'{fontsdir_opt}:force_style='{style}'")
             vf_chain_parts.append("format=yuv420p")
 
+        vf_str = ",".join(vf_chain_parts)
+        if has_thumb_ov:
+            try:
+                th_rel = Path(os.path.relpath(str(thumbnail_overlay_path))).as_posix()
+            except Exception:
+                th_rel = Path(str(thumbnail_overlay_path)).resolve().as_posix()
+            th_esc = th_rel.replace(":", "\\\\:").replace("'", "")
+            enable_expr = (
+                f"between(t,0,0.22)"
+                f"+between(t,{max(0.3, t25 - hw):.2f},{t25 + hw:.2f})"
+                f"+between(t,{max(0.5, t50 - hw):.2f},{t50 + hw:.2f})"
+                f"+between(t,{max(0.8, t75 - hw):.2f},{t75 + hw:.2f})"
+            )
+            vf_str = (
+                f"{vf_str}[vbase];"
+                f"movie='{th_esc}',scale={res_w}:{res_h},format=yuv420p[vth];"
+                f"[vbase][vth]overlay=0:0:enable='{enable_expr}',format=yuv420p"
+            )
+
         fast_concat_args = [
             "-f", "concat",
             "-safe", "0",
             "-i", list_file,
             "-map", "0:v:0",
-            "-vf", ",".join(vf_chain_parts),
+            "-vf", vf_str,
+            *kf_args_local,
             *enc_args,
             *BT709_COLOR_ARGS,
             "-r", str(fps),
@@ -312,12 +350,37 @@ def concat_videos_with_xfade(
             filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}'{fontsdir_opt}:force_style='{style}',format=yuv420p[{sub_label}]")
         current_label = sub_label
 
+    if has_thumb_ov:
+        try:
+            th_rel = Path(os.path.relpath(str(thumbnail_overlay_path))).as_posix()
+        except Exception:
+            th_rel = Path(str(thumbnail_overlay_path)).resolve().as_posix()
+        th_esc = th_rel.replace(":", "\\\\:").replace("'", "")
+        enable_expr = (
+            f"between(t,0,0.22)"
+            f"+between(t,{max(0.3, t25 - hw):.2f},{t25 + hw:.2f})"
+            f"+between(t,{max(0.5, t50 - hw):.2f},{t50 + hw:.2f})"
+            f"+between(t,{max(0.8, t75 - hw):.2f},{t75 + hw:.2f})"
+        )
+        thumb_label = "vth_out"
+        filter_parts.append(
+            f"movie='{th_esc}',scale={res_w}:{res_h},format=yuv420p[vth];"
+            f"[{current_label}][vth]overlay=0:0:enable='{enable_expr}',format=yuv420p[{thumb_label}]"
+        )
+        current_label = thumb_label
+
     filter_complex = ";".join(filter_parts)
     enc_args = get_video_encoder_args(quality="longform" if len(video_paths) >= 22 else "high")
+    kf_args_xfade = (
+        [*keyframe_args, "-forced_idr", "1"]
+        if (has_thumb_ov and any(e in enc_args for e in ("h264_qsv", "h264_nvenc")))
+        else list(keyframe_args)
+    )
 
     args = input_args + [
         "-filter_complex", filter_complex,
         "-map", f"[{current_label}]",
+        *kf_args_xfade,
         *enc_args,
         *BT709_COLOR_ARGS,
         "-r", str(fps),

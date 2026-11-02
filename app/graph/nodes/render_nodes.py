@@ -325,50 +325,14 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     except Exception as e_sub:
         logger.debug(f"[RenderNode] Auto-repair subtitles.ass warning: {e_sub}")
 
-    render_job = RenderJobContract(
-        job_id=job_id,
-        title=title,
-        scenes=enriched_scenes,
-        full_audio_path=full_audio_path or (enriched_scenes[0].audio_path if enriched_scenes else ""),
-        total_audio_duration_ms=resolved_total_dur,
-        subtitle_path=subtitle_path,
-        bgm_path=bgm_path,
-        niche=niche,
-        is_scifi=is_scifi,
-        scifi_subgenre=state.get("scifi_subgenre", "general_scifi"),
-        sfx_dir=sfx_dir,
-        enable_sfx=True,
-        output_path=final_output,
-        video_format="long" if is_long_form else "short",
-    )
-
-    agent = VideoAgent()
-    await agent.render(render_job)
-
-    # Nếu đang ở vòng thử lại render (render_retry_count > 0), đảm bảo khung hình mở đầu của file đã render đạt độ nét >= 12.5
-    if Path(final_output).exists() and render_retry_count > 0:
-        try:
-            from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
-            _ensure_hook_clip_sharpness_and_luma(final_output, min_sharpness=12.6)
-        except Exception as _e_post_sh:
-            logger.debug(f"[RenderNode] Post-render sharpness boost skip: {_e_post_sh}")
-
-    # Đảm bảo video thành phẩm được lưu vĩnh viễn vào storage/outputs/video_{job_id}.mp4
-    # (Tránh trường hợp bị xóa mất khi dọn dẹp thư mục tạm work_dir)
     import shutil
     from config.settings import settings
     outputs_dir = Path(settings.OUTPUT_DIR)
     outputs_dir.mkdir(parents=True, exist_ok=True)
-    permanent_output = str(outputs_dir / f"video_{job_id}.mp4")
-
-    if Path(final_output).exists():
-        if str(Path(final_output).resolve()) != str(Path(permanent_output).resolve()):
-            shutil.copy2(final_output, permanent_output)
-            logger.info(f"[RenderNode] Đã bảo lưu video thành phẩm an toàn vào: {permanent_output}")
-        final_output = permanent_output
 
     # Tự động chèn YouTube Chapters (0:00 Intro...) vào script_data.description cho cả Long-Form 16:9 và Shorts nhiều vòng/Gauntlet
-    # và tự động render Thumbnail 2–3 từ Two-Tone chuẩn @FossilVideos / @IFinity_What từ clip gốc sạch (trước khi burn phụ đề .ass)
+    # và tự động render Thumbnail 2–3 từ Two-Tone chuẩn @FossilVideos / @IFinity_What từ clip gốc sạch TRƯỚC khi gọi VideoAgent.render
+    # để VideoAgent có thể nhúng Single-Pass In-Video Autogen Thumbnail (0.0s, 25%, 50%, 75% I-Frames) vào luồng video!
     updated_script_data = dict(state.get("script_data") or {})
     if enriched_scenes and len(enriched_scenes) >= 3:
         try:
@@ -386,66 +350,124 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         except Exception as e_ch_rn:
             logger.debug(f"[RenderNode] YouTube Chapters generation skip: {e_ch_rn}")
 
+    th_res = {}
+    best_th = ""
+    try:
+        from app.services.thumbnail_service import ThumbnailService
+        from PIL import Image, ImageFilter, ImageStat
+        import subprocess
+        import tempfile
+        clean_thumb_source = str(getattr(enriched_scenes[0], "media_path", "") or "") if enriched_scenes else ""
+        best_src_score = -1.0
+        with tempfile.TemporaryDirectory() as td_th:
+            for idx_th, sc_th in enumerate(enriched_scenes[:4]):
+                mp_th = str(
+                    (sc_th.get("media_path") if isinstance(sc_th, dict) else getattr(sc_th, "media_path", ""))
+                    or ""
+                )
+                if not (mp_th and Path(mp_th).exists() and mp_th.lower().endswith((".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png"))):
+                    continue
+                try:
+                    f_probe = str(Path(td_th) / f"th_p_{idx_th}.jpg")
+                    if mp_th.lower().endswith((".mp4", ".mov", ".webm")):
+                        subprocess.run(
+                            ["ffmpeg", "-v", "error", "-y", "-ss", "0.8", "-i", mp_th, "-frames:v", "1", f_probe],
+                            capture_output=True, timeout=6, check=False,
+                        )
+                    else:
+                        f_probe = mp_th
+                    if Path(f_probe).exists() and Path(f_probe).stat().st_size > 1000:
+                        if mp_th.lower().endswith(("_doodle.mp4", "_doodle_2d.mp4")):
+                            continue
+                        with Image.open(f_probe) as im_p:
+                            g_p = im_p.convert("L").resize((180, 320))
+                            luma_mean = float(ImageStat.Stat(g_p).mean[0])
+                            e_p = g_p.filter(ImageFilter.FIND_EDGES)
+                            mid_e = float(ImageStat.Stat(e_p.crop((24, 56, 156, 264))).mean[0])
+                            center_std = float(ImageStat.Stat(g_p.crop((24, 56, 156, 264))).stddev[0])
+                            natural_subject_bonus = 1.40 if (32.0 <= luma_mean <= 195.0 and 8.0 <= mid_e <= 44.0) else 0.45
+                            early_scene_bonus = 1.65 if idx_th == 0 else (1.35 if idx_th == 1 else 1.0)
+                            sc_val = (mid_e * 0.6 + center_std * 0.8) * natural_subject_bonus * early_scene_bonus
+                            if sc_val > best_src_score:
+                                best_src_score = sc_val
+                                clean_thumb_source = mp_th
+                except Exception:
+                    if not clean_thumb_source:
+                        clean_thumb_source = mp_th
+        th_srv = ThumbnailService(output_dir=str(outputs_dir))
+        th_res = th_srv.generate_viral_thumbnail(
+            job_id=job_id,
+            topic=str(state.get("topic") or title),
+            viral_title=title,
+            video_path=clean_thumb_source,
+            niche_id=str(niche),
+            custom_text=str(updated_script_data.get("thumbnail_text") or ""),
+        )
+        best_th = (th_res.get("16x9") if is_long_form else (th_res.get("9x16") or th_res.get("16x9"))) or ""
+    except Exception as e_th_pre:
+        logger.debug(f"[RenderNode] Pre-render thumbnail generation warning: {e_th_pre}")
+
+    render_job = RenderJobContract(
+        job_id=job_id,
+        title=title,
+        scenes=enriched_scenes,
+        full_audio_path=full_audio_path or (enriched_scenes[0].audio_path if enriched_scenes else ""),
+        total_audio_duration_ms=resolved_total_dur,
+        subtitle_path=subtitle_path,
+        bgm_path=bgm_path,
+        niche=niche,
+        is_scifi=is_scifi,
+        scifi_subgenre=state.get("scifi_subgenre", "general_scifi"),
+        sfx_dir=sfx_dir,
+        enable_sfx=True,
+        output_path=final_output,
+        video_format="long" if is_long_form else "short",
+        thumbnail_path=str(th_res.get("16x9") or ""),
+        thumbnail_vertical_path=str(th_res.get("9x16") or ""),
+    )
+
+    agent = VideoAgent()
+    await agent.render(render_job)
+
+    # Nếu đang ở vòng thử lại render (render_retry_count > 0), đảm bảo khung hình mở đầu của file đã render đạt độ nét >= 12.5
+    if Path(final_output).exists() and render_retry_count > 0:
+        try:
+            from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+            _ensure_hook_clip_sharpness_and_luma(final_output, min_sharpness=12.6)
+        except Exception as _e_post_sh:
+            logger.debug(f"[RenderNode] Post-render sharpness boost skip: {_e_post_sh}")
+
+    # Đảm bảo video thành phẩm được lưu vĩnh viễn vào storage/outputs/video_{job_id}.mp4
+    # (Tránh trường hợp bị xóa mất khi dọn dẹp thư mục tạm work_dir)
+    permanent_output = str(outputs_dir / f"video_{job_id}.mp4")
+
+    if Path(final_output).exists():
+        if str(Path(final_output).resolve()) != str(Path(permanent_output).resolve()):
+            shutil.copy2(final_output, permanent_output)
+            logger.info(f"[RenderNode] Đã bảo lưu video thành phẩm an toàn vào: {permanent_output}")
+        final_output = permanent_output
+
     thumbnail_path_out = ""
     if Path(final_output).exists():
         try:
-            from app.services.thumbnail_service import ThumbnailService
-            from PIL import Image, ImageFilter, ImageStat
-            import subprocess
-            import tempfile
-            clean_thumb_source = final_output
-            best_src_score = -1.0
-            with tempfile.TemporaryDirectory() as td_th:
-                for idx_th, sc_th in enumerate(enriched_scenes[:4]):
-                    mp_th = str(
-                        (sc_th.get("media_path") if isinstance(sc_th, dict) else getattr(sc_th, "media_path", ""))
-                        or ""
-                    )
-                    if not (mp_th and Path(mp_th).exists() and mp_th.lower().endswith((".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png"))):
-                        continue
-                    try:
-                        f_probe = str(Path(td_th) / f"th_p_{idx_th}.jpg")
-                        if mp_th.lower().endswith((".mp4", ".mov", ".webm")):
-                            subprocess.run(
-                                ["ffmpeg", "-v", "error", "-y", "-ss", "0.8", "-i", mp_th, "-frames:v", "1", f_probe],
-                                capture_output=True, timeout=6, check=False,
-                            )
-                        else:
-                            f_probe = mp_th
-                        if Path(f_probe).exists() and Path(f_probe).stat().st_size > 1000:
-                            if mp_th.lower().endswith(("_doodle.mp4", "_doodle_2d.mp4")):
-                                continue
-                            with Image.open(f_probe) as im_p:
-                                g_p = im_p.convert("L").resize((180, 320))
-                                luma_mean = float(ImageStat.Stat(g_p).mean[0])
-                                e_p = g_p.filter(ImageFilter.FIND_EDGES)
-                                mid_e = float(ImageStat.Stat(e_p.crop((24, 56, 156, 264))).mean[0])
-                                center_std = float(ImageStat.Stat(g_p.crop((24, 56, 156, 264))).stddev[0])
-                                natural_subject_bonus = 1.40 if (32.0 <= luma_mean <= 195.0 and 8.0 <= mid_e <= 44.0) else 0.45
-                                early_scene_bonus = 1.65 if idx_th == 0 else (1.35 if idx_th == 1 else 1.0)
-                                sc_val = (mid_e * 0.6 + center_std * 0.8) * natural_subject_bonus * early_scene_bonus
-                                if sc_val > best_src_score:
-                                    best_src_score = sc_val
-                                    clean_thumb_source = mp_th
-                    except Exception:
-                        if clean_thumb_source == final_output:
-                            clean_thumb_source = mp_th
-            th_srv = ThumbnailService(output_dir=str(outputs_dir))
-            th_res = th_srv.generate_viral_thumbnail(
-                job_id=job_id,
-                topic=str(state.get("topic") or title),
-                viral_title=title,
-                video_path=clean_thumb_source,
-                niche_id=str(niche),
-                custom_text=str(updated_script_data.get("thumbnail_text") or ""),
-            )
-            best_th = th_res.get("16x9") if is_long_form else (th_res.get("9x16") or th_res.get("16x9"))
+            if not (best_th and Path(best_th).exists()):
+                from app.services.thumbnail_service import ThumbnailService
+                th_srv = ThumbnailService(output_dir=str(outputs_dir))
+                th_res = th_srv.generate_viral_thumbnail(
+                    job_id=job_id,
+                    topic=str(state.get("topic") or title),
+                    viral_title=title,
+                    video_path=final_output,
+                    niche_id=str(niche),
+                    custom_text=str(updated_script_data.get("thumbnail_text") or ""),
+                )
+                best_th = (th_res.get("16x9") if is_long_form else (th_res.get("9x16") or th_res.get("16x9"))) or ""
             if best_th and Path(best_th).exists():
                 sidecar_thumb = Path(final_output).with_suffix(".thumb.jpg")
                 shutil.copy2(best_th, str(sidecar_thumb))
                 thumbnail_path_out = str(sidecar_thumb)
         except Exception as e_th_rn:
-            logger.debug(f"[RenderNode] Auto thumbnail render warning: {e_th_rn}")
+            logger.debug(f"[RenderNode] Auto thumbnail sidecar warning: {e_th_rn}")
 
     return {
         "rendered_video_path": final_output,

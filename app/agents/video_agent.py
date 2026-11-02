@@ -108,6 +108,11 @@ class VideoAgent:
             )
             logger.info(f"[VideoAgent] Dynamic transitions ({len(transition_sequence)} cuts): {transition_sequence}")
 
+            thumb_ov_path = (
+                (job.thumbnail_path or job.thumbnail_vertical_path)
+                if job.video_format == "long"
+                else (job.thumbnail_vertical_path or job.thumbnail_path)
+            )
             concat_videos_with_xfade(
                 video_paths=scene_clips,
                 output_path=silent_video,
@@ -116,6 +121,8 @@ class VideoAgent:
                 transition_duration=transition_duration,
                 scene_durations_seconds=clip_durations,
                 subtitle_path=job.subtitle_path if has_subtitle else None,
+                thumbnail_overlay_path=thumb_ov_path,
+                resolution=(job.resolution_w, job.resolution_h),
             )
 
             # ── Step 3: Ghép audio narration + BGM + Selective 3-Point Micro-SFX (-17dB) ──

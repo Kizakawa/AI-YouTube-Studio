@@ -666,3 +666,78 @@ class ThumbnailService:
             "thumb_9x16": res_9x16,
             "text_hook": text_hook
         }
+
+    def bake_autogen_thumbnail_into_video(
+        self,
+        video_path: str,
+        thumbnail_path: str,
+        is_long_form: bool = False,
+    ) -> bool:
+        """
+        Nhúng trực tiếp ảnh bìa High-CTR Two-Tone vào đúng 4 mốc thời gian mà bộ chọn ảnh bìa tự động
+        của máy chủ YouTube (`autogen` `hq1.jpg` = 25%, `hq2.jpg`/`maxresdefault.jpg` = 50%, `hq3.jpg` = 75%
+        và Poster mở đầu `0.0s–0.22s`) kèm `-force_key_frames` cho các kênh chưa xác minh số điện thoại (403 Custom Thumbnail).
+        """
+        if not (video_path and os.path.exists(video_path) and thumbnail_path and os.path.exists(thumbnail_path)):
+            return False
+        try:
+            from app.utils.ffmpeg.core_encoder import (
+                BT709_COLOR_ARGS,
+                FFMPEG_TIMEOUT,
+                get_duration_ms,
+                get_video_encoder_args,
+                run_ffmpeg_with_gpu_fallback,
+            )
+
+            dur_s = get_duration_ms(video_path) / 1000.0
+            if dur_s < 3.0:
+                return False
+
+            res_w, res_h = (1920, 1080) if is_long_form else (1080, 1920)
+            t25 = round(dur_s * 0.25, 2)
+            t50 = round(dur_s * 0.50, 2)
+            t75 = round(dur_s * 0.75, 2)
+            hw = 0.42 if dur_s >= 120.0 else 0.14
+
+            try:
+                th_rel = Path(os.path.relpath(str(thumbnail_path))).as_posix()
+            except Exception:
+                th_rel = Path(str(thumbnail_path)).resolve().as_posix()
+            th_esc = th_rel.replace(":", "\\\\:").replace("'", "")
+            enable_expr = (
+                f"between(t,0,0.22)"
+                f"+between(t,{max(0.3, t25 - hw):.2f},{t25 + hw:.2f})"
+                f"+between(t,{max(0.5, t50 - hw):.2f},{t50 + hw:.2f})"
+                f"+between(t,{max(0.8, t75 - hw):.2f},{t75 + hw:.2f})"
+            )
+            vf_str = (
+                f"[0:v]format=yuv420p[vbase];"
+                f"movie='{th_esc}',scale={res_w}:{res_h},format=yuv420p[vth];"
+                f"[vbase][vth]overlay=0:0:enable='{enable_expr}',format=yuv420p[vout]"
+            )
+            tmp_out = str(Path(video_path).with_name(f"_th_baked_{Path(video_path).name}"))
+            enc_args = get_video_encoder_args(quality="longform" if is_long_form else "high")
+            kf_extra = ["-forced_idr", "1"] if any(e in enc_args for e in ("h264_qsv", "h264_nvenc")) else []
+            args = [
+                "-i", video_path,
+                "-filter_complex", vf_str,
+                "-map", "[vout]",
+                "-map", "0:a?",
+                "-force_key_frames", f"0.00,{t25:.2f},{t50:.2f},{t75:.2f}",
+                *kf_extra,
+                *enc_args,
+                *BT709_COLOR_ARGS,
+                "-c:a", "copy",
+                tmp_out,
+            ]
+            run_ffmpeg_with_gpu_fallback(args, timeout=FFMPEG_TIMEOUT * 2)
+            if os.path.exists(tmp_out) and get_duration_ms(tmp_out) >= dur_s * 950:
+                Path(tmp_out).replace(Path(video_path))
+                logger.info(
+                    f"🖼️ [ThumbnailService] Đã nhúng Autogen Thumbnail I-Frames (0.0s, {t25}s, {t50}s, {t75}s) vào: {video_path}"
+                )
+                return True
+            Path(tmp_out).unlink(missing_ok=True)
+        except Exception as e_bk:
+            logger.warning(f"[ThumbnailService] bake_autogen_thumbnail_into_video warning: {e_bk}")
+        return False
