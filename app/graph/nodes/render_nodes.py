@@ -25,9 +25,22 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     target_channel_id = state.get("target_channel_id", "default")
     total_audio_duration_ms = state.get("total_audio_duration_ms", 0)
 
-    # Defense-in-depth: Tự động khôi phục full_voiceover.mp3 nếu bị tiến trình dọn rác xóa nhầm trước khi mux
-    if not full_audio_path or not Path(full_audio_path).exists() or Path(full_audio_path).stat().st_size < 1024:
-        logger.warning(f"[RenderNode] Job #{job_id}: full_audio_path ('{full_audio_path}') bị thiếu trên đĩa -> Tự động khôi phục qua node_generate_audio!")
+    # Defense-in-depth: Tự động khôi phục scenes_audio / full_voiceover.mp3 từ step_checkpoint.json hoặc node_generate_audio
+    if not scenes_audio:
+        try:
+            ckpt_file = work_dir / "step_checkpoint.json"
+            if ckpt_file.exists():
+                import json as _json_ck
+                ckpt_data = _json_ck.loads(ckpt_file.read_text(encoding="utf-8"))
+                gen_aud_ck = (ckpt_data.get("steps") or {}).get("generate_audio") or ckpt_data.get("generate_audio") or {}
+                scenes_audio = gen_aud_ck.get("scenes_audio") or scenes_audio
+                full_audio_path = full_audio_path or gen_aud_ck.get("full_audio_path") or ""
+                subtitle_path = subtitle_path or gen_aud_ck.get("subtitle_path") or ""
+                total_audio_duration_ms = total_audio_duration_ms or gen_aud_ck.get("total_audio_duration_ms") or 0
+        except Exception:
+            pass
+    if not scenes_audio or not full_audio_path or not Path(full_audio_path).exists() or Path(full_audio_path).stat().st_size < 1024:
+        logger.warning(f"[RenderNode] Job #{job_id}: full_audio_path/scenes_audio bị thiếu -> Tự động khôi phục qua node_generate_audio!")
         from app.graph.nodes.audio_nodes import node_generate_audio
         re_audio = await node_generate_audio(state)
         scenes_audio = re_audio.get("scenes_audio") or scenes_audio
