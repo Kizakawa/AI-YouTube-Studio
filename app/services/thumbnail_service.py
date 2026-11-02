@@ -96,16 +96,10 @@ class ThumbnailService:
         is_vi = bool(re.search(r"[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]", full_text))
         is_pt = not is_vi and bool(re.search(r"\b(onça|jacaré|lula|cachalote|oceano|mordida|recorde|predador|você|mundo|fossa)\b|[ãõç]", full_text))
 
-        # 1. Chỉ trích xuất con số đời thường dễ hình dung (tốc độ km/h, mph, nhiệt độ °C/°F, thời gian hours/days), CẤM PSI/Newton/dB
-        metric_m = re.search(r"\b(\d[\d.,]*\s*(?:km/h|mph|°c|°f|hours|days))\b", full_text, flags=re.IGNORECASE)
-        if metric_m:
-            met_str = metric_m.group(1).upper().strip()
-            if len(met_str.split()) == 1:
-                suffix = "FATAL!" if not is_vi else "TỬ THẦN!"
-                return f"{met_str} {suffix}"
-            return f"{met_str}!"
+        # 1. CẤM TUYỆT ĐỐI in các đơn vị vật lý/kỹ thuật khô khan (PSI, Newton, dB, Hz, °C, °F, km/h, mph, atm) lên Thumbnail
+        # vì người xem lướt trong 0.5s không hình dung được đơn vị đo lường mà chỉ bị hút bởi thông điệp cảm xúc đời thường (Zack D. Films / Nature Lenses style).
 
-        # 2. Quy tắc chuẩn @FossilVideos / @disastersexplained1 / @IFinity_What theo ngôn ngữ & ngách
+        # 2. Quy tắc chuẩn @ZackDFilms / @NatureLenses / @FossilVideos / @VoceSabia theo ngôn ngữ & ngách
         if "every " in full_text and "record" in full_text:
             return "EVERY RECORD!"
         if "every " in full_text and ("type" in full_text or "shape" in full_text or "zone" in full_text):

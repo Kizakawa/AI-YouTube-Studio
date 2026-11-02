@@ -57,9 +57,9 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel The mysteries of the world (US English). Deep 5-Act Dual-Peak abyssal showdown & lethal ocean/earth physics arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor): Explicitly name both high-search entities/phenomena ('[Entity A] vs [Entity B]: [Visceral Physical Clash]'). NEVER hide the entity in the title and NEVER dump dry textbook units like PSI, Newtons, or kPa! "
-            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation 'Look closely at...', 2. The Fatal Mistake, 3. 2nd-Person Survival Simulation 'If you...', 4. The Illusion Breaker). NEVER repeat the title verbatim or spoil the final metric at 0.0s! "
-            "ACT 2 (Scenes 2-3): Reveal Entity A's real depth, lethal weapon, or thermal danger translated into a vivid everyday physical analogy anyone can picture. "
+            "TITLE (Zack D. Films / Nature Lenses / RealLifeLore Viral Style — 6-9 conversational words): Write a natural human title naming the exact creature/phenomenon + everyday action/paradox (e.g. 'How Sea Turtles Eat Deadly Jellyfish Like Noodles', 'Why Great White Sharks Are Terrified Of Orcas', 'What Happens If A Submarine Drops Too Deep'). NEVER use stiff 'A vs B: Metric' colon formulas and NEVER put textbook units (PSI, °C, dB, atm, Newtons) in the title! "
+            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation 'Look closely at...', 2. The Fatal Mistake, 3. 2nd-Person Survival Simulation 'If you...', 4. The Illusion Breaker). NEVER repeat the title verbatim at 0.0s! "
+            "ACT 2 (Scenes 2-3): Reveal Entity A's real depth or lethal weapon translated into a vivid everyday physical analogy anyone can picture. "
             "ACT 3 (Scene 4 - 15s Twist): Second explosive peak / counter-mechanism translated into a visceral sensory image that flips the viewer's assumption. "
             "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict English only."
@@ -103,10 +103,10 @@ CHANNELS_CONFIG = {
         "director_notes": (
             "Target channel Psychology of the world (US English). Deep 5-Act Dual-Peak Forensic Interrogation, Famous Brain Experiments & Behavioral Traps arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
             "STRICT NICHE PIVOT: Focus ONLY on (1) Forensic Courtroom & Detective Interrogation Psychology, (2) Famous University Brain & Obedience Experiments, and (3) Casino/Billionaire Behavioral Traps. "
-            "TITLE (YT_SEARCH Anchor): Explicitly name the exact test/experiment vs target ('[Test/Experiment A] vs [Target B]: [Visceral Human Stakes]') with zero dry lab units. "
+            "TITLE (Charisma on Command / Zack D. Films Viral Style — 6-9 conversational words): Write a natural human title naming the exact situation/test + everyday human outcome (e.g. 'The Simple Trick FBI Agents Use To Catch Liars', 'How One Marshmallow Predicts Your Future Wealth', 'Why Casinos Never Have Windows Or Clocks'). NEVER use stiff 'A vs B: Metric' colon formulas or dry lab units! "
             "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (e.g. 'Watch what a suspect does the second...', 'Psychiatrists predicted only one percent of people...'). NEVER repeat the title verbatim at 0.0s! "
-            "ACT 2 (Scenes 2-3): Real courtroom/experiment setup and first neurological/behavioral metric. "
-            "ACT 3 (Scene 4 - 15s Twist): The hidden second mechanism (amygdala cortisol spike, agentic state shift) + exact percentage/voltage that flips expectations. "
+            "ACT 2 (Scenes 2-3): Real courtroom/experiment setup and first behavioral reaction. "
+            "ACT 3 (Scene 4 - 15s Twist): The hidden second mechanism that flips expectations. "
             "ACT 4-5 (Scenes 6-8): Practical counter-move and Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
             "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology style). Strict English only."
         ),
@@ -150,8 +150,8 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 18,
         "director_notes": (
             "Target channel Wild Odyssey (US English). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor): Explicitly name both animals + visceral physical clash ('[Animal A] vs [Animal B]: [Visceral Weapon/Clash]'). NEVER hide the animal name behind 'This Beast' and NEVER use dry physics units like PSI or Newtons! "
-            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation, 2. The Fatal Mistake, 3. 2nd-Person Survival, 4. Role Reversal). NEVER repeat the title verbatim or spoil the final metric at 0.0s! "
+            "TITLE (Nature Lenses / Casual Geographic / Zack D. Films Viral Style — 6-9 conversational words): Explicitly name both animals in a natural, conversational How/Why title (e.g. 'Why Deadly Black Mambas Can't Kill A Mongoose', 'How Jaguars Hunt Caimans Inside Deep Rivers', 'Why Lions Never Mess With A Honey Badger'). NEVER use stiff 'A vs B: Metric' colon formulas and NEVER use dry physics units like PSI or Newtons! "
+            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation, 2. The Fatal Mistake, 3. 2nd-Person Survival, 4. Role Reversal). NEVER repeat the title verbatim at 0.0s! "
             "ACT 2 (Scenes 2-3): Animal A's offensive weapon translated into a vivid everyday physical analogy anyone can picture. "
             "ACT 3 (Scene 4 - 15s Twist): Animal B's counter-mechanism or the unexpected biomechanical twist painted as a mental movie. "
             "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
@@ -192,9 +192,9 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 17,
         "director_notes": (
             "Target channel Alternate History & What If (US English). Deep 5-Act Dual-Peak historical showdown & butterfly-effect arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor): Explicitly name the historical event/empire/year + opposing force or concrete metric ('[Historical Force A] vs [Force B]: [Metric]'). "
+            "TITLE (Zack D. Films / RealLifeLore Viral Style — 6-9 conversational words): Write a natural human How/Why/What-If title naming the historical person/empire/event (e.g. 'How One Wrong Turn By A Driver Started WW1', 'How Russian Winter Erased Napoleon's Giant Army', 'The Man Who Refused To Start World War 3'). NEVER use stiff 'A vs B: Metric' colon formulas! "
             "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Open with 1 of the 4 Psychological-Visual Hook Archetypes (Fatal Mistake, Illusion Breaker, or Visual Observation) without repeating the title verbatim. "
-            "ACT 2 (Scenes 2-3): Documented historical scale and first hard number (ships, troops, megatons, year). "
+            "ACT 2 (Scenes 2-3): Documented historical scale and vivid human stakes. "
             "ACT 3 (Scene 4 - 15s Twist): The hidden tactical blunder or physical chain-reaction twist at second 15 that sealed the outcome. "
             "ACT 5 (Scene 7/8): Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
             "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin documentary style. Strict English only."
@@ -234,10 +234,10 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Odisseia Selvagem (Brazilian Portuguese). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TÍTULO (Âncora YT_SEARCH): Nomeie explicitamente os dois animais + confronto físico visceral ('[Animal A] vs [Animal B]: [Arma/Confronto Visceral]'). NUNCA esconda o nome do animal e NUNCA use unidades secas como PSI ou Newtons! "
+            "TÍTULO (Estilo Você Sabia? / Nature Lenses — 6-9 palavras naturais): Escreva um título natural e curioso nomeando os animais claramente sem fórmulas robóticas (ex: 'Por Que o Guepardo Tem Medo do Avestruz?', 'Por Que a Onça-Pintada Foge Desse Porco do Mato?', 'Como a Sucuri Engole um Jacaré Inteiro no Rio'). NUNCA use unidades secas como PSI, Newtons ou toneladas no título! "
             "HOOK DA CENA 1 (0,0s-2,2s, 6-10 palavras): Use 1 dos 4 Arquétipos Visuais-Psicológicos (1. Apontamento Micro-Visual 'Olhe bem para...', 2. O Último Erro 'O último erro desse...', 3. Simulação em 2ª Pessoa 'Se você...', 4. Quebra de Expectativa). NUNCA repita o título palavra por palavra no segundo 0! "
-            "ATO 2 (Cenas 2-3): Arma biomecânica do Animal A com o primeiro número exato. "
-            "ATO 3 (Cena 4 - Twist de 15s): Contra-ataque ou mecanismo oculto do Animal B com o segundo número físico. "
+            "ATO 2 (Cenas 2-3): Arma biomecânica do Animal A explicada de forma visual e simples. "
+            "ATO 3 (Cena 4 - Twist de 15s): Contra-ataque ou mecanismo oculto do Animal B que vira o jogo. "
             "ATO 5 (Cena 7/8): Frase completa conectando em loop infinito de volta à Cena 1 (ZERO CTA falado de Inscreva-se). "
             "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
         ),
@@ -275,9 +275,9 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Mistérios do Mundo (Brazilian Portuguese). Deep 5-Act Dual-Peak abyssal showdown & extreme ocean/earth mystery arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TÍTULO (Âncora YT_SEARCH): Nomeie explicitamente as entidades ou o fenômeno extremo + número físico ('[Entidade A] vs [Entidade B]: [Métrica]'). NUNCA esconda o sujeito principal! "
+            "TÍTULO (Estilo Você Sabia? / Zack D. Films — 6-9 palavras naturais): Escreva um título humano e direto nomeando a criatura ou lugar real + mistério visual (ex: 'O Lago Silencioso Que Apagou Uma Cidade Inteira', 'O Peixe do Fundo do Mar Com Uma Luz Invisível', 'O Que Acontece no Fundo da Fossa das Marianas?'). NUNCA use fórmulas robóticas 'A vs B: Número' nem unidades secas como PSI, °C ou atmosferas! "
             "HOOK DA CENA 1 (0,0s-2,2s, 6-10 palavras): Use 1 dos 4 Arquétipos Visuais-Psicológicos ('Olhe bem para...', 'O último erro...', 'Se esse tubo branco tocar...', 'Ninguém imaginava...') sem repetir o título palavra por palavra no segundo 0! "
-            "ATO 2 (Cenas 2-3): Profundidade real, veneno, temperatura ou pressão com o primeiro número exato. "
+            "ATO 2 (Cenas 2-3): Profundidade real ou perigo explicado com comparação do dia a dia. "
             "ATO 3 (Cena 4 - Twist de 15s): Segundo pico explosivo / mecanismo reverso no segundo 15 que muda tudo. "
             "ATO 5 (Cena 7/8): Frase 100% completa fechando o Loop Infinito com a Cena 1 (ZERO CTA falado de Inscreva-se). "
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict Brazilian Portuguese (pt-BR) only."
