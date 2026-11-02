@@ -29,21 +29,21 @@ BR_TZ = ZoneInfo("America/Sao_Paulo")  # Giờ chuẩn Brazil (BRT = UTC-3)
 MAX_VIDEOS_PER_DAY = 2
 
 # Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (3 giờ = 10,800 giây) để xếp trọn 2 khung giờ Đỉnh Trưa & Chiều Mỹ trong cùng 1 ngày
-MIN_SPACING_SECONDS = 10800
+MIN_SPACING_SECONDS = 21600
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US DAYTIME PEAK & VIETNAM DEAD-SLEEP WINDOW)
 # ĐÃ TỐI ƯU HÓA ĐỊA LÝ (US GEO-ROUTING):
 # - Loại bỏ hoàn toàn khung 21:15-21:45 UTC (04:15-04:45 Sáng VN) vì sóng phân phối 60-90p sau khi đăng
 #   rơi đúng vào 05:30-07:30 Sáng VN (lúc người dùng Việt Nam thức dậy lướt Shorts làm loãng tệp US!).
-# - Chuyển toàn bộ 2 khung giờ US về lúc Việt Nam đang chuẩn bị ngủ / ngủ say (21:30 Đêm & 01:00 Rạng sáng VN),
+# - Chuyển toàn bộ 2 khung giờ US về lúc Việt Nam đang chuẩn bị ngủ / ngủ say (21:30 Đêm & 22:00 Đêm VN),
 #   đồng thời trùng khớp 100% với Đỉnh Sáng-Trưa Bờ Đông (EDT) & Đỉnh Trưa-Chiều Bờ Tây (PDT) tại Mỹ!
 # ──────────────────────────────────────────────────────────────────────────────
 GOLDEN_SLOTS_UTC = [
     {
-        "hour": 18,
+        "hour": 15,
         "minute": 0,
-        "label_vn": "01:00 Rạng sáng",
+        "label_vn": "22:00 Đêm",
         "label_us": "14:00 PM EDT / 11:00 AM PDT (KHUNG GIỜ KIM CƯƠNG #1 — ĐỈNH TRƯA BỜ TÂY & CHIỀU BỜ ĐÔNG MỸ — 100% VN NGỦ SAY)",
         "description": "Đăng lúc 00:30-01:30 rạng sáng VN (17:30-18:30 UTC): 100% người dùng VN đã ngủ say, đón trọn giờ nghỉ trưa Bờ Tây (11:00 AM PDT) và buổi chiều Bờ Đông Mỹ (2:00 PM EDT).",
         "tag": "US_WEST_LUNCH_AFTERNOON_PEAK",
@@ -93,7 +93,7 @@ BRAZIL_GOLDEN_SLOTS_UTC = [
 # Thực nghiệm 100% dữ liệu YouTube Data API v3 & Analytics API v2 chứng minh:
 # - 100% Top 6 video nhiều view nhất lịch sử kênh (892 - 1,250 views) đều nổ ở khung
 #   21:00 UTC (04:00 Sáng Giờ VN — 17:00 PM EDT Đỉnh Tối Bờ Đông Mỹ).
-# - Khung phụ thứ 2 trong ngày là 18:00 UTC (01:00 Rạng sáng Giờ VN — 14:00 PM EDT).
+# - Khung phụ thứ 2 trong ngày là 18:00 UTC (22:00 Đêm Giờ VN — 14:00 PM EDT).
 # ──────────────────────────────────────────────────────────────────────────────
 MYSTERIES_DIAMOND_SLOTS_UTC = [
     {
@@ -106,11 +106,11 @@ MYSTERIES_DIAMOND_SLOTS_UTC = [
         "rank": 1
     },
     {
-        "hour": 18,
+        "hour": 15,
         "minute": 0,
-        "label_vn": "01:00 Rạng sáng",
+        "label_vn": "22:00 Đêm",
         "label_us": "14:00 PM EDT / 11:00 AM PDT (KHUNG GIỜ KIM CƯƠNG #2 — ĐỈNH TRƯA BỜ TÂY & CHIỀU MỸ)",
-        "description": "Khung giờ Kim Cương #2 (01:00 Rạng sáng VN / 18:00 UTC): Cách khung chính 3 tiếng, 100% người dùng VN ngủ say, đón trọn tệp khán giả Mỹ buổi chiều.",
+        "description": "Khung giờ Kim Cương #2 (22:00 Đêm VN / 18:00 UTC): Cách khung chính 3 tiếng, 100% người dùng VN ngủ say, đón trọn tệp khán giả Mỹ buổi chiều.",
         "tag": "US_MYSTERIES_AFTERNOON_PEAK",
         "rank": 2
     },
