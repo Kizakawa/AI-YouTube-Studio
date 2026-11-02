@@ -41,21 +41,21 @@ MIN_SPACING_SECONDS = 10800
 # ──────────────────────────────────────────────────────────────────────────────
 GOLDEN_SLOTS_UTC = [
     {
-        "hour": 14,
-        "minute": 30,
-        "label_vn": "21:30 Đêm",
-        "label_us": "10:30 AM EDT / 07:30 AM PDT (ĐÓN ĐẦU ĐỈNH TRƯA BỜ ĐÔNG MỸ)",
-        "description": "Đăng lúc 21:30 đêm VN để sóng phân phối (22:30-00:30 đêm VN) rơi đúng lúc VN đi ngủ và bùng nổ trọn giờ nghỉ trưa New York / Bờ Đông Mỹ (11:30 AM - 01:30 PM EDT).",
-        "tag": "US_EAST_LUNCH_PEAK",
-        "rank": 1
-    },
-    {
         "hour": 18,
         "minute": 0,
         "label_vn": "01:00 Rạng sáng",
-        "label_us": "14:00 PM EDT / 11:00 AM PDT (ĐỈNH TRƯA BỜ TÂY & CHIỀU MỸ — 100% VN NGỦ SAY)",
-        "description": "Đăng lúc 01:00-01:30 rạng sáng VN (2:00-2:30 PM EDT / 11:00-11:30 AM PDT trưa Bờ Tây Mỹ), lúc 100% người dùng VN ngủ say để giữ nguyên tệp khán giả US thuần khiết!",
+        "label_us": "14:00 PM EDT / 11:00 AM PDT (KHUNG GIỜ KIM CƯƠNG #1 — ĐỈNH TRƯA BỜ TÂY & CHIỀU BỜ ĐÔNG MỸ — 100% VN NGỦ SAY)",
+        "description": "Đăng lúc 00:30-01:30 rạng sáng VN (17:30-18:30 UTC): 100% người dùng VN đã ngủ say, đón trọn giờ nghỉ trưa Bờ Tây (11:00 AM PDT) và buổi chiều Bờ Đông Mỹ (2:00 PM EDT).",
         "tag": "US_WEST_LUNCH_AFTERNOON_PEAK",
+        "rank": 1
+    },
+    {
+        "hour": 21,
+        "minute": 0,
+        "label_vn": "04:00 Sáng",
+        "label_us": "17:00 PM EDT / 14:00 PM PDT (KHUNG GIỜ KIM CƯƠNG #2 — ĐỈNH TỐI BỜ ĐÔNG & CHIỀU BỜ TÂY MỸ — 100% VN NGỦ SAY)",
+        "description": "Đăng lúc 03:30-04:30 rạng sáng VN (20:30-21:30 UTC): 100% người dùng VN ngủ say, đón trọn giờ tan tầm & giải trí buổi tối lớn nhất tại Mỹ (5:00 PM EDT / 2:00 PM PDT).",
+        "tag": "US_PRIME_EVENING_PEAK",
         "rank": 2
     },
 ]

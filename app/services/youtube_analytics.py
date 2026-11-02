@@ -47,9 +47,13 @@ def fetch_channel_live_stats(channel_handle_or_url: str) -> Dict[str, Any]:
         handle = channel_handle_or_url if channel_handle_or_url.startswith("@") else f"@{channel_handle_or_url}"
         url = f"https://www.youtube.com/{handle}"
 
+    if "hl=" not in url and "gl=" not in url:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}hl=en&gl=US"
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
+        "Accept-Language": "en-US,en;q=0.9"
     }
 
     try:

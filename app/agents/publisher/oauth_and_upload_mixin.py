@@ -611,7 +611,10 @@ class OAuthAndUploadMixin:
             # ép hệ thống phân phối hạt giống hoàn toàn mới (100% Discovery Seed Pool) sang tệp khán giả Mỹ (Stayed 55.7%-62.4%)!
             default_notify_subs = False
 
-        if notify_subscribers is not None:
+        if not is_pt_br and str(self.channel_config.get("target_country") or "US").upper() == "US":
+            # Khóa cứng notifySubscribers=False cho toàn bộ kênh mục tiêu US để cắt đứt vòng lặp hạt giống VN cũ
+            should_notify_subs = False if notify_subscribers is None else bool(notify_subscribers)
+        elif notify_subscribers is not None:
             should_notify_subs = bool(notify_subscribers)
         elif self.channel_config.get("notify_subscribers") is not None:
             should_notify_subs = bool(self.channel_config.get("notify_subscribers"))
