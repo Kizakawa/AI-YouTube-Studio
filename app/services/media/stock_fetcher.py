@@ -829,6 +829,22 @@ class StockFetcher:
                     if keep_k in v:
                         out_cand[keep_k] = v[keep_k]
                 return out_cand
+        for alt_u in (v.get("_vision_alternates") or []):
+            if alt_u and not is_media_already_used(str(alt_u), used_set):
+                out_cand = {
+                    "url": str(alt_u),
+                    "title": v.get("title", f"Pexels Video: {query}"),
+                    "width": 1080,
+                    "height": 1920,
+                    "duration": v.get("duration", 0),
+                    "media_type": "video",
+                    "source": v.get("source", "pexels_video"),
+                    "thumbnail": v.get("image", ""),
+                }
+                for keep_k in ("web_url", "_vision_alternates", "curation_score", "curation_rationale"):
+                    if keep_k in v:
+                        out_cand[keep_k] = v[keep_k]
+                return out_cand
         return None
 
     @trace_custom_span("StockFetcher.search_best_video_clip", run_type="tool")

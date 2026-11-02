@@ -77,6 +77,10 @@ _CORE_TERM_ZH_MAP: Dict[str, str] = {
     "anaconda": "森蚺",
     "python": "巨蟒",
     "cobra": "眼镜王蛇",
+    "black mamba": "黑曼巴蛇 毒蛇",
+    "secretary bird": "蛇鹫 捕蛇",
+    "cheetah": "猎豹 捕猎",
+    "gazelle": "瞪羚",
     "honey badger": "蜜獾 平头哥",
     "lion": "狮子 捕猎",
     "tiger": "老虎 实拍",
@@ -137,7 +141,8 @@ _CORE_TERM_ZH_MAP: Dict[str, str] = {
 _BILI_BLOCKLIST = (
     "游戏", "实况", "解说", "Minecraft", "我的世界", "迷你世界", "王者荣耀", "原神",
     "第五人格", "搞笑", "鬼畜", "开箱", "测评", "直播回放", "reaction", "吐槽", "教程",
-    "考研", "课程", "讲座", "PPT", "有声书", "助眠", "ASMR",
+    "考研", "课程", "讲座", "PPT", "有声书", "助眠", "ASMR", "科比", "篮球", "NBA",
+    "球星", "曼巴精神", "宇宙黑曼巴", "宝可梦", "神奇宝贝", "动漫", "手书", "MMD",
 )
 
 
@@ -205,7 +210,7 @@ def translate_query_to_chinese(query: str, primary_entity: str = "", is_3d_or_sc
     Chuyển đổi truy vấn tìm kiếm cảnh quay (EN / PT / VI) sang từ khóa tiếng Trung giản thể (`zh-CN`)
     sát nghĩa nhất để tìm video tài liệu / 3D / cảnh thật trên Bilibili.
     """
-    clean_q = re.sub(r"\s+", " ", f"{primary_entity} {query}".strip()).lower()
+    clean_q = re.sub(r"\s+", " ", f"{query} {primary_entity}".strip()).lower()
     if not clean_q:
         return "自然纪录片 高清"
 
@@ -217,11 +222,16 @@ def translate_query_to_chinese(query: str, primary_entity: str = "", is_3d_or_sc
         if clean_q in _zh_query_cache:
             return _zh_query_cache[clean_q]
 
-    # 1. Tra cứu nhanh từ điển thuật ngữ cốt lõi (ưu tiên tuyệt đối cụm từ ngắn 2-3 từ sát chủ thể để không làm loãng BM25 Bilibili)
-    matched_zh: List[str] = []
+    # 1. Tra cứu nhanh từ điển thuật ngữ cốt lõi — sắp xếp theo vị trí xuất hiện sớm nhất trong câu truy vấn của cảnh (query trước, primary_entity sau)
+    matched_pairs: List[Tuple[int, str]] = []
+    seen_zh: set[str] = set()
     for en_term, zh_term in _CORE_TERM_ZH_MAP.items():
-        if en_term in clean_q and zh_term not in matched_zh:
-            matched_zh.append(zh_term)
+        pos = clean_q.find(en_term)
+        if pos >= 0 and zh_term not in seen_zh:
+            seen_zh.add(zh_term)
+            matched_pairs.append((pos, zh_term))
+    matched_pairs.sort(key=lambda x: x[0])
+    matched_zh = [zt for _, zt in matched_pairs]
 
     if matched_zh and not is_3d_or_scifi:
         zh_fast = matched_zh[0].strip() if " " in matched_zh[0] else " ".join(matched_zh[:2]).strip()
@@ -245,23 +255,31 @@ def translate_query_to_chinese(query: str, primary_entity: str = "", is_3d_or_sc
             )
             prompt = (
                 f"Translate this video B-roll search query into a concise Simplified Chinese (zh-CN) "
-                f"Bilibili search query ({style_rule}, "
+                f"Bilibili search query ({style_rule}, use exact Chinese biological/scientific species terminology "
+                f"instead of literal word-by-word translation, e.g. 'secretary bird' -> '蛇鹫', "
                 f"no English words unless proper acronym like FBI/NASA).\n"
                 f"Input query: \"{query}\" (Primary subject: \"{primary_entity}\")\n"
                 f"Return ONLY valid JSON: {{\"zh_query\": \"...\"}}"
             )
-            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=2):
+            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=4):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
                 }
                 try:
-                    resp = requests.post(url, json=payload, timeout=(2.5, 4.0))
+                    resp = requests.post(url, json=payload, timeout=(3.0, 5.5))
                     if resp.status_code == 200:
                         cands = resp.json().get("candidates") or []
                         if cands:
-                            txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                            parts_list = cands[0].get("content", {}).get("parts", [])
+                            txt = "".join(
+                                str(p.get("text") or "")
+                                for p in parts_list
+                                if isinstance(p, dict) and not p.get("thought")
+                            ).strip()
+                            if not txt and parts_list:
+                                txt = str(parts_list[-1].get("text") or "").strip()
                             m = re.search(r"\{.*\}", txt, re.DOTALL)
                             if m:
                                 data = json.loads(m.group(0))
@@ -357,9 +375,17 @@ def search_bilibili_videos(
     except Exception as exc:
         logger.debug(f"[BilibiliFetcher] Lỗi tìm kiếm Bilibili ('{kw}'): {exc}")
 
-    # Lọc & ưu tiên các ứng viên chứa đúng từ khóa chủ thể chữ Hán đầu tiên trong tiêu đề/mô tả
-    zh_tokens = re.findall(r"[\u4e00-\u9fff]{2,}", kw)
-    primary_zh_anchor = zh_tokens[0][:2] if zh_tokens else ""
+    # Lọc & ưu tiên các ứng viên chứa đúng từ khóa chủ thể chữ Hán đầu tiên trong tiêu đề/mô tả (bỏ qua từ phụ chung chung)
+    _generic_zh_fillers = {"纪录片", "高清", "实拍", "视频", "动画", "科普", "自然"}
+    zh_tokens = [
+        t for t in re.findall(r"[\u4e00-\u9fff]{2,}", kw)
+        if t not in _generic_zh_fillers
+    ]
+    primary_zh_anchor = (
+        zh_tokens[0]
+        if (zh_tokens and len(zh_tokens[0]) <= 4)
+        else (zh_tokens[0][:3] if zh_tokens else "")
+    )
     if primary_zh_anchor and results:
         anchor_matched = [
             r for r in results
@@ -371,7 +397,7 @@ def search_bilibili_videos(
     # Sắp xếp ưu tiên video khớp nhiều từ khóa chữ Hán nhất + lượt xem cao
     results.sort(
         key=lambda x: (
-            sum(1 for t in zh_tokens if t[:2] in f"{x.get('title', '')} {x.get('description', '')}"),
+            sum(1 for t in zh_tokens if t in f"{x.get('title', '')} {x.get('description', '')}"),
             int(x.get("view_count") or 0),
         ),
         reverse=True,
@@ -755,7 +781,8 @@ def download_and_crop_bilibili_broll_clip(
         max_allowed_dur = (48.0 if preserve_continuous_master else 20.0) if is_16x9 else min(20.0, max(8.0, float(target_duration_sec)))
         req_dur = min(max(3.0, float(target_duration_sec)), max_allowed_dur, max(2.8, avail_dur_s - 0.5))
         spare_s = max(0.0, avail_dur_s - req_dur - 0.6)
-        peak_start = round(min(4.5 if is_16x9 else 3.5, spare_s * 0.45), 2)
+        # Bỏ qua 4.5s–6.5s đầu tiên của video Bilibili (thường chứa thẻ tiêu đề/intro chữ Trung Quốc)
+        peak_start = round(min(6.5 if spare_s >= 7.0 else (4.8 if is_16x9 else 4.2), spare_s * 0.62), 2)
         peak_len = req_dur
 
         clip_dur = min(max(req_dur, peak_len), max_allowed_dur, max(2.8, avail_dur_s - peak_start))

@@ -877,9 +877,11 @@ class VideoMemoryRAG:
         title: str = "",
         scene_id: int = 0,
     ) -> None:
-        """Giải phóng tiêu đề đã claim tạm nếu ứng viên tải lỗi hoặc bị loại ở bước kiểm duyệt."""
+        """Giải phóng tiêu đề và chữ ký tạm của scene_id nếu ứng viên tải lỗi hoặc bị loại ở bước kiểm duyệt."""
         with _RAG_LOCK:
             sess = self._get_or_create_job_session(job_id)
+            if scene_id > 0:
+                sess.get("committed_signatures", {}).pop(scene_id, None)
             if title:
                 t_clean = title.strip()
                 sess["claimed_titles"] = [
@@ -938,22 +940,24 @@ class VideoMemoryRAG:
             if max_title_dup >= 0.85:
                 continue
 
-            # 3. Tính điểm khớp ngữ nghĩa RAG (BM25/Cosine) giữa tiêu đề video với câu thoại của cảnh
+            # 3. Tính điểm khớp ngữ nghĩa RAG (BM25/Cosine) ưu tiên câu truy vấn hành động của cảnh (scene_query) hơn từ phụ trong lời dẫn
             semantic_sim = self.compute_text_similarity(title, target_context)
-            narration_sim = self.compute_text_similarity(title, f"{scene_query} {scene_narration}")
+            query_sim = self.compute_text_similarity(title, scene_query) if scene_query else 0.0
+            narration_sim = self.compute_text_similarity(title, scene_narration) if scene_narration else 0.0
 
             # 4. Điểm thưởng từ lịch sử hiệu suất cao trong RAG (Stayed-to-watch / APV)
             title_toks = {t for t in _tokenize_rag(title) if "_" not in t}
             rag_perf_bonus = sum(perf_tokens.get(t, 0.0) * 14.0 for t in title_toks if t in perf_tokens)
 
-            # 5. Điểm thưởng cho các video có độ dài lý tưởng (10s - 50s) để lấy trọn đoạn Peak dài tự nhiên mà không bị lặp
-            dur_bonus = 25.0 if 10.0 <= dur <= 50.0 else (10.0 if 7.0 <= dur < 10.0 else 0.0)
+            # 5. Điểm thưởng cho các video có độ dài lý tưởng (5s - 50s)
+            dur_bonus = 25.0 if 5.0 <= dur <= 50.0 else 0.0
             novelty_bonus = (1.0 - max_title_dup) * 35.0
 
             rag_total_score = (
                 base_score
-                + (semantic_sim * 110.0)
-                + (narration_sim * 85.0)
+                + (semantic_sim * 85.0)
+                + (query_sim * 95.0)
+                + (narration_sim * 35.0)
                 + min(rag_perf_bonus, 45.0)
                 + dur_bonus
                 + novelty_bonus
@@ -963,7 +967,15 @@ class VideoMemoryRAG:
             enriched["rag_semantic_sim"] = semantic_sim
             ranked.append(enriched)
 
-        ranked.sort(key=lambda x: x.get("rag_score", 0.0), reverse=True)
+        ranked.sort(
+            key=lambda x: (
+                2 if float(x.get("llm_score") or 0.0) >= 8.8 else (
+                    1 if float(x.get("llm_score") or 0.0) >= 7.5 else 0
+                ),
+                x.get("rag_score", 0.0),
+            ),
+            reverse=True,
+        )
         return ranked
 
     def verify_and_commit_in_job_clip(

@@ -19,7 +19,7 @@ from config.settings import settings
 logger = logging.getLogger(__name__)
 
 _yt_url_lock = threading.Lock()
-_yt_search_sem = threading.Semaphore(6)
+_yt_search_sem = threading.Semaphore(12)
 
 # Bộ nhớ đệm kết quả tìm kiếm YouTube Shorts theo từ khóa & các khoảng thời gian đã cắt trên từng URL
 _yt_flat_search_cache: Dict[str, List[Dict[str, Any]]] = {}
@@ -63,7 +63,7 @@ _EDIT_COMPARISON_SPAM_RE = re.compile(
 
 _AI_SLOP_REAL_FOOTAGE_RE = re.compile(
     r"(?:^|[\s|/])#(?:ai|aivideo|aishorts|aiart|aianimation|aigenerated|midjourney)(?:\b|$)"
-    r"|\b(?:ai[\s\-]+generated|ai[\s\-]+video|made[\s\-]+with[\s\-]+ai|google[\s\-]+veo|veo[\s\-]+[23]\b|kling[\s\-]+ai|hailuo[\s\-]+ai|sora[\s\-]+ai)\b",
+    r"|\b(?:ai[\s\-]+generated|ai[\s\-]+video|made[\s\-]+with[\s\-]+ai|google[\s\-]+veo|veo[\s\-]+[23]\b|kling[\s\-]+ai|hailuo[\s\-]+ai|sora[\s\-]+ai|ultra[\s\-]+realistic|hyper[\s\-]+realistic)\b",
     re.IGNORECASE,
 )
 
@@ -541,17 +541,23 @@ def _resolve_adaptive_search_queries(
         scope_norm = "SCENE_SPECIFIC"
 
     overall_base = re.split(r"[:—–]\s*", str(overall_script_query or topic or subject_entity or ""), maxsplit=1)[0].strip()
+    topic_base = re.split(r"[:—–]\s*", str(topic or subject_entity or ""), maxsplit=1)[0].strip()
     q_overall = _clean_yt_search_phrase(overall_base, subject_entity=subject_entity, max_words=max_words)
+    q_topic = _clean_yt_search_phrase(topic_base, subject_entity="", max_words=max_words)
     q_scene = _clean_yt_search_phrase(scene_query, subject_entity=subject_entity, max_words=max_words)
 
     clean_story_qs: List[str] = []
     for sq in (storyline_queries or []):
         c_sq = _clean_yt_search_phrase(str(sq or ""), subject_entity=subject_entity, max_words=max_words)
-        if c_sq and c_sq.lower() not in {x.lower() for x in clean_story_qs}:
+        if (
+            c_sq
+            and c_sq.lower() != (q_scene or "").lower()
+            and c_sq.lower() not in {x.lower() for x in clean_story_qs}
+        ):
             clean_story_qs.append(c_sq)
 
     single_entity_fallbacks = build_single_entity_stock_queries(
-        raw_queries=[*clean_story_qs, fallback_query, scene_query, overall_base],
+        raw_queries=[*clean_story_qs, fallback_query, scene_query, overall_base, topic_base],
         subject_entity=subject_entity,
         topic=topic,
         max_words=min(4, max_words),
@@ -572,11 +578,13 @@ def _resolve_adaptive_search_queries(
     )
 
     if scope_norm == "SCRIPT_OVERALL":
-        base_list = [*clean_story_qs, q_overall, q_scene, q_fallback, *single_entity_fallbacks[:2]]
+        base_list = [*clean_story_qs[:1], q_topic, *single_entity_fallbacks[:2], q_overall, q_scene, q_fallback]
+    elif q_scene and has_versus_pattern(q_scene):
+        base_list = [q_scene, *single_entity_fallbacks[:2], *clean_story_qs[:1], q_fallback, q_topic, q_overall]
     elif q_scene:
-        base_list = [q_scene, *clean_story_qs, q_fallback, *single_entity_fallbacks[:2], q_overall]
+        base_list = [q_scene, *clean_story_qs[:1], q_topic, q_fallback, q_overall, *single_entity_fallbacks[:2]]
     else:
-        base_list = [*clean_story_qs, q_fallback, *single_entity_fallbacks[:2]]
+        base_list = [*clean_story_qs[:1], q_topic, q_fallback, q_overall, *single_entity_fallbacks[:2]]
 
     ordered: List[str] = []
     seen_q: Set[str] = set()

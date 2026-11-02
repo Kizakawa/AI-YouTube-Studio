@@ -93,15 +93,17 @@ def ytdlp_cli_match_filter(base_filter: str = "") -> str:
     return " & ".join(parts)
 
 
-# ── Ưu tiên số 1 cho định dạng dọc 9:16 gọn nhẹ <= 1920p (<18MB) để tải tức thì 0.5s, tránh stream 4K 50MB ──
+# ── Ưu tiên số 1 cho định dạng dọc 9:16 gọn nhẹ <= 1920p (<24MB) và ngang 1080p/720p (<24MB) để tải tức thì, tránh bị max_filesize cắt ngang ──
 VERTICAL_FIRST_YTDLP_FORMAT = (
-    "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=1920][filesize<18M][ext=mp4]/"
-    "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=1920][filesize_approx<18M][ext=mp4]/"
+    "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=1920][filesize<24M][ext=mp4]/"
+    "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=1920][filesize_approx<24M][ext=mp4]/"
     "bestvideo[protocol=https][aspect_ratio<=1][height>=720][height<=1440][ext=mp4]/"
     "bestvideo[aspect_ratio<=1][height>=720][height<=1920][ext=mp4]/"
     "bestvideo[aspect_ratio<=1][height>=480][height<=1920][ext=mp4]/"
     "best[aspect_ratio<=1][height>=480][height<=1920]/"
-    "bestvideo[protocol=https][height>=720][height<=1080][filesize<18M][ext=mp4]/"
+    "bestvideo[protocol=https][height>=720][height<=1080][filesize<22M][ext=mp4]/"
+    "bestvideo[protocol=https][height>=720][height<=1080][filesize_approx<22M][ext=mp4]/"
+    "bestvideo[protocol=https][height>=720][height<=720][ext=mp4]/"
     "bestvideo[protocol=https][height>=720][height<=1080][ext=mp4]/"
     "bestvideo[protocol=https][height>=480][height<=1080][ext=mp4]/"
     "bestvideo[height>=480][height<=1080]/bestvideo/best"
@@ -173,10 +175,11 @@ def search_youtube_native_shorts_flat(query: str, max_results: int = 20) -> List
         return []
     query_is_vi = bool(_VN_EXCLUSIVE_DIACRITIC_RE.search(q_clean))
     q_with_tag = q_clean if "#short" in q_clean.lower() else f"{q_clean} #shorts"
+    # Luôn tìm cả bản có #shorts (để lấy kệ shortsLockupViewModel dọc 9:16 nguyên bản)
+    # lẫn bản gốc q_clean (để lấy thêm video tư liệu 16:9 sạch chữ <= 180s).
     candidate_queries = [q_with_tag]
-    if q_with_tag.lower() != q_clean.lower():
+    if q_clean.lower() != q_with_tag.lower():
         candidate_queries.append(q_clean)
-    # Nếu câu truy vấn dài >= 4 từ, bổ sung thêm bản rút gọn 3 từ cốt lõi để tránh 0 kết quả
     q_words = [w for w in q_clean.split() if not w.startswith("#")]
     if len(q_words) >= 4:
         q_short3 = " ".join(q_words[:3])
@@ -290,7 +293,7 @@ def search_youtube_native_shorts_flat(query: str, max_results: int = 20) -> List
                 _walk(item)
 
     for q_try in candidate_queries:
-        if len(out) >= 3:
+        if len(out) >= 12 and any(x.get("is_vertical_short") for x in out) and any(not x.get("is_vertical_short") for x in out):
             break
         search_url = f"https://www.youtube.com/results?search_query={quote_plus(q_try)}&gl=US&hl=en"
         try:

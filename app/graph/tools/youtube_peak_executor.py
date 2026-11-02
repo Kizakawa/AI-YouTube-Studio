@@ -77,18 +77,18 @@ def execute_youtube_short_peak_clone_sync(
       đoạn video Peak dài đó qua nhiều phân cảnh liên tiếp trước khi dùng đến ảnh tĩnh!
     """
     t_fn_start = time.monotonic()
-    default_budget_sec = 46.0 if (clip_role or "").upper() == "HOOK" else 42.0
+    default_budget_sec = 72.0 if (clip_role or "").upper() == "HOOK" else 68.0
     deadline_ts = (
         min(deadline_ts, t_fn_start + default_budget_sec)
         if deadline_ts is not None
         else (t_fn_start + default_budget_sec)
     )
-    # Tách ngân sách Tầng 1 (YouTube) và Tầng 2 (Pexels/Pixabay Stock Video):
-    # Luôn giữ lại tối thiểu 16s cho Tầng 2 Stock Video để tránh tình trạng Tầng 1 YouTube ngốn hết 100% thời gian!
-    yt_tier1_budget_sec = 24.0 if (clip_role or "").upper() == "HOOK" else 19.0
+    # Tách ngân sách Tầng 1 (YouTube) và Tầng 2/3 (Pexels/Pixabay/Bilibili):
+    # Giữ lại ~22s cho Tầng 2/3 và đảm bảo Tầng 1 YouTube có 44–48s để thử ít nhất 2-3 ứng viên!
+    yt_tier1_budget_sec = 48.0 if (clip_role or "").upper() == "HOOK" else 44.0
     yt_tier1_deadline = min(deadline_ts - 16.0, t_fn_start + yt_tier1_budget_sec)
-    if yt_tier1_deadline <= t_fn_start + 3.5:
-        yt_tier1_deadline = max(t_fn_start + 3.5, deadline_ts - 8.5)
+    if yt_tier1_deadline <= t_fn_start + 5.0:
+        yt_tier1_deadline = max(t_fn_start + 5.0, deadline_ts - 12.0)
 
     def _is_cancelled() -> bool:
         return cancel_event is not None and cancel_event.is_set()
@@ -214,32 +214,26 @@ def execute_youtube_short_peak_clone_sync(
                 channel_id=channel_id,
             )
 
-            max_claimed_probes = 3 if (clip_role or "").upper() == "HOOK" else 2
+            max_claimed_probes = 3
             claimed_probes = 0
+            dl_attempts = 0
+            max_dl_attempts = 6
             # Fast-Drop 'A vs B': chỉ thử tối đa 1 ứng viên mang tiêu đề 'A vs B'; nếu thất bại thì bỏ ngay toàn bộ nhánh 'vs' để lấy clip đơn chủ thể sạch!
             vs_probes_attempted = 0
+            # Không xoay vòng cand_pool làm đẩy ứng viên hạng #1 xuống cuối danh sách (vì try_claim_in_job_video đã khóa nguyên tử chống trùng 100% giữa các cảnh!)
             cand_pool = list(ordered_cands[:20])
-            if len(cand_pool) > 4 and eff_scene_id > 1:
-                rot_c = (eff_scene_id - 1) % min(5, len(cand_pool))
-                cand_pool = cand_pool[rot_c:] + cand_pool[:rot_c]
 
             for cand in cand_pool:
                 if _is_cancelled():
                     return None
                 rem_budget = _yt_remaining_sec()
-                if not allow_3d_cgi_monster and claimed_probes >= 1 and rem_budget < 7.0:
-                    logger.info(
-                        f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Còn {rem_budget:.1f}s trong ngân sách Tầng 1 (tổng còn {_remaining_sec():.1f}s) -> "
-                        f"Chuyển sang Tầng 2 Stock Video HD sạch!"
-                    )
-                    break
-                if rem_budget <= 2.5:
+                if (rem_budget <= 5.0 and claimed_probes >= 1) or _remaining_sec() <= 24.0:
                     logger.info(
                         f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Hết ngân sách Tầng 1 YouTube (tổng còn {_remaining_sec():.1f}s) -> "
                         f"Chuyển sang Tầng 2 Stock Video HD sạch!"
                     )
                     break
-                if claimed_probes >= max_claimed_probes:
+                if claimed_probes >= max_claimed_probes or dl_attempts >= max_dl_attempts:
                     break
                 vid_url = cand["url"]
                 vid_id = cand.get("id") or ""
@@ -266,9 +260,7 @@ def execute_youtube_short_peak_clone_sync(
                         continue
                     used.update(extract_media_identity(vid_url))
 
-                claimed_probes += 1
-                if is_vs_cand:
-                    vs_probes_attempted += 1
+                dl_attempts += 1
                 info_entry: Dict[str, Any] = cand
                 license_verified = not license_policy.cc_only_enabled()
                 if license_policy.cc_only_enabled():
@@ -329,31 +321,42 @@ def execute_youtube_short_peak_clone_sync(
 
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     raw_dl_template = str(Path(tmp_dir) / "raw_short.%(ext)s")
-                    t_dl_start = time.monotonic()
+                    t_transfer_start: List[Optional[float]] = [None]
 
                     def _fast_switch_progress_hook(d: Dict[str, Any]) -> None:
-                        if _is_cancelled() or _yt_remaining_sec() <= 1.2:
-                            raise TimeoutError(
-                                f"Cooperative cancel / Tier-1 deadline reached while downloading {vid_url}"
-                            )
+                        if _is_cancelled():
+                            raise TimeoutError(f"Cooperative cancel while downloading {vid_url}")
                         if d.get("status") == "downloading":
-                            elapsed_dl = time.monotonic() - t_dl_start
-                            max_dl_sec = min(6.5, max(3.2, _yt_remaining_sec() - 2.0))
-                            if elapsed_dl > max_dl_sec:
-                                raise TimeoutError(
-                                    f"Slow YouTube CDN download > {max_dl_sec:.1f}s for {vid_url} -> switch to next candidate"
-                                )
+                            dl_bytes = int(d.get("downloaded_bytes") or 0)
+                            tot_bytes = int(d.get("total_bytes") or d.get("total_bytes_estimate") or 0)
+                            pct_done = (dl_bytes / tot_bytes) if tot_bytes > 0 else 0.0
                             dl_speed = float(d.get("speed") or 0.0)
-                            if elapsed_dl >= 2.0 and 0.0 < dl_speed < 180 * 1024:
+                            # Chỉ bắt đầu tính giờ truyền tải file sau khi yt-dlp đã giải mã xong trang web (extract_info) và nhận > 32KB dữ liệu
+                            if dl_bytes > 32768 and t_transfer_start[0] is None:
+                                t_transfer_start[0] = time.monotonic()
+                            # Nếu đã tải được >= 50% với tốc độ ổn định (>= 150 KiB/s), tuyệt đối không ngắt ngang khi sắp hoàn tất!
+                            if pct_done >= 0.50 and dl_speed >= 150 * 1024:
+                                return
+                            if _yt_remaining_sec() <= 1.0 and pct_done < 0.40:
                                 raise TimeoutError(
-                                    f"Throttled YouTube CDN ({dl_speed / 1024:.0f} KiB/s < 180 KiB/s) -> fast switch"
+                                    f"Tier-1 deadline reached while downloading {vid_url}"
                                 )
+                            if t_transfer_start[0] is not None:
+                                elapsed_xfer = time.monotonic() - t_transfer_start[0]
+                                if elapsed_xfer > 9.5 and pct_done < 0.70:
+                                    raise TimeoutError(
+                                        f"Slow YouTube CDN transfer > 9.5s ({pct_done*100:.0f}%) for {vid_url} -> switch to next candidate"
+                                    )
+                                if elapsed_xfer >= 2.6 and dl_bytes < 380 * 1024 and 0.0 < dl_speed < 90 * 1024:
+                                    raise TimeoutError(
+                                        f"Throttled YouTube CDN ({dl_speed / 1024:.0f} KiB/s < 90 KiB/s) -> fast switch"
+                                    )
 
                     dl_opts = license_policy.optimize_ytdlp_download_opts({
                         "quiet": True,
                         "no_warnings": True,
                         "noplaylist": True,
-                        "max_filesize": 18 * 1024 * 1024,
+                        "max_filesize": 28 * 1024 * 1024,
                         "format": license_policy.VERTICAL_FIRST_YTDLP_FORMAT,
                         "merge_output_format": "mp4",
                         "outtmpl": raw_dl_template,
@@ -363,7 +366,7 @@ def execute_youtube_short_peak_clone_sync(
                         "progress_hooks": [_fast_switch_progress_hook],
                     })
                     # TUYỆT ĐỐI KHÔNG dùng download_ranges (vì yt-dlp gọi ffmpeg seek qua HTTP dễ bị treo vô hạn trên CDN YouTube).
-                    # Tải thẳng file MP4 <= 18MB qua HTTP thuần; nếu quá 12s chưa tải xong hoặc nhận cancel_event thì hủy ngay!
+                    # Tải thẳng file MP4 <= 28MB qua HTTP thuần; nếu quá 12s chưa tải xong hoặc nhận cancel_event thì hủy ngay!
                     sem_wait = min(10.0, max(0.5, _yt_remaining_sec() - 2.5))
                     if not _yt_download_sem.acquire(timeout=sem_wait):
                         rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
@@ -399,6 +402,10 @@ def execute_youtube_short_peak_clone_sync(
                     if Path(raw_file).stat().st_size < 15000:
                         rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                         continue
+
+                    claimed_probes += 1
+                    if is_vs_cand:
+                        vs_probes_attempted += 1
 
                     from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
                     raw_dur_sec = max(0.0, get_duration_ms(raw_file) / 1000.0)
@@ -459,12 +466,10 @@ def execute_youtube_short_peak_clone_sync(
                         subprocess.run(cmd, capture_output=True, timeout=25, check=False)
 
                     if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
-                        if _is_cancelled() or _remaining_sec() <= 2.5:
+                        if _is_cancelled():
                             rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                             Path(output_path).unlink(missing_ok=True)
-                            if _is_cancelled():
-                                return None
-                            break
+                            return None
                         ok_sig, dup_sid = rag.verify_and_commit_in_job_clip(
                             job_id=job_id,
                             scene_id=eff_scene_id,
@@ -479,19 +484,72 @@ def execute_youtube_short_peak_clone_sync(
                             Path(output_path).unlink(missing_ok=True)
                             continue
 
+                        target_vq = search_phrases[0] if search_phrases else search_query
                         passed_vis, vis_score, vis_reason = _verify_short_clip_with_gemini_vision(
                             video_path=output_path,
                             topic=topic,
                             narration=narration,
                             subject_entity=subject_entity or topic,
-                            overall_script_query=overall_script_query or (search_phrases[0] if search_phrases else topic),
+                            overall_script_query=overall_script_query or target_vq or topic,
                             search_scope=effective_scope,
                             video_title=cand_title,
                             allow_3d_cgi_monster=allow_3d_cgi_monster,
                             strict_no_fallback=True,
                             cancel_event=cancel_event,
-                            deadline_ts=max(yt_tier1_deadline, min(deadline_ts - 8.0, time.monotonic() + 7.5)),
+                            deadline_ts=max(yt_tier1_deadline, time.monotonic() + 14.0),
+                            target_visual_query=target_vq,
                         )
+                        # Chỉ chạy Subtitle-Safe Reframe Rescue trên ứng viên cuối cùng (khi đã hết lượt probe hoặc cạn ứng viên)
+                        # và lỗi chỉ là dòng phụ đề sát mép dưới/trên (tuyệt đối không lãng phí thời gian cứu video sở thú, sai loài hoặc kênh đóng logo giữa màn hình).
+                        if not passed_vis and claimed_probes >= max_claimed_probes and _remaining_sec() > 8.0:
+                            reason_low = (vis_reason or "").lower()
+                            hard_reject_tokens = (
+                                "zoo", "captive", "enclosure", "fence", "cage", "wrong",
+                                "species", "watermark", "logo", "edits", "channel", "animated", "cartoon", "talking",
+                            )
+                            if (
+                                any(k in reason_low for k in ("subtitle", "caption", "bottom", "top"))
+                                and not any(bad in reason_low for bad in hard_reject_tokens)
+                            ):
+                                rescue_crop_path = str(Path(tmp_dir) / "rescue_safecrop.mp4")
+                                vf_safecrop = (
+                                    "scale=1380:2454:force_original_aspect_ratio=increase,"
+                                    "crop=1080:1920:(iw-1080)/2:(ih-1920)*0.22,fps=30,format=yuv420p"
+                                )
+                                cmd_sc = [
+                                    "ffmpeg", "-y", "-v", "error",
+                                    "-ss", f"{actual_start_s:.2f}",
+                                    "-i", raw_file,
+                                    "-t", f"{scene_clip_len:.2f}",
+                                    "-an", "-vf", vf_safecrop,
+                                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19",
+                                    "-pix_fmt", "yuv420p", "-color_range", "tv",
+                                    rescue_crop_path,
+                                ]
+                                subprocess.run(cmd_sc, capture_output=True, timeout=12, check=False)
+                                if Path(rescue_crop_path).exists() and Path(rescue_crop_path).stat().st_size > 20000:
+                                    passed_sc, score_sc, reason_sc = _verify_short_clip_with_gemini_vision(
+                                        video_path=rescue_crop_path,
+                                        topic=topic,
+                                        narration=narration,
+                                        subject_entity=subject_entity or topic,
+                                        overall_script_query=overall_script_query or target_vq or topic,
+                                        search_scope=effective_scope,
+                                        video_title=cand_title,
+                                        allow_3d_cgi_monster=allow_3d_cgi_monster,
+                                        strict_no_fallback=True,
+                                        cancel_event=cancel_event,
+                                        deadline_ts=max(yt_tier1_deadline, time.monotonic() + 14.0),
+                                        target_visual_query=target_vq,
+                                    )
+                                    if passed_sc:
+                                        import shutil
+                                        shutil.copy2(rescue_crop_path, output_path)
+                                        passed_vis, vis_score, vis_reason = passed_sc, score_sc, reason_sc
+                                        logger.info(
+                                            f"✨ [Subtitle-Safe Reframe Rescue] Đã cắt bỏ viền phụ đề và cứu thành công clip '{cand_title[:45]}' ({vis_score}/10)!"
+                                        )
+
                         if not passed_vis:
                             logger.info(
                                 f"🚫 [YouTubePeakTool] Gemini Vision từ chối clip '{cand_title[:45]}' "
@@ -572,7 +630,6 @@ def execute_youtube_short_peak_clone_sync(
 
     allow_bili_fallback = (
         os.getenv("ALLOW_BILIBILI_BROLL_FALLBACK", "true").strip().lower() not in ("0", "false", "no", "off")
-        and (allow_3d_cgi_monster or (not allow_low_risk_yt) or prefer_non_yt)
     )
 
     # Khi PREFER_NON_YOUTUBE_SOURCES=true, luồng gọi (HookVideoNode / media_nodes) ĐÃ thử Pexels/Pixabay trước đó,

@@ -89,7 +89,6 @@ def _try_bilibili_broll_fallback(
                 scene_id=eff_scene_id,
             ):
                 continue
-            probed_bili += 1
             with _yt_url_lock:
                 used.update(extract_media_identity(b_url))
 
@@ -103,6 +102,7 @@ def _try_bilibili_broll_fallback(
                 rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
                 Path(output_path).unlink(missing_ok=True)
                 continue
+            probed_bili += 1
 
             ok_sig_b, _ = rag.verify_and_commit_in_job_clip(
                 job_id=job_id,
@@ -129,7 +129,7 @@ def _try_bilibili_broll_fallback(
                 allow_3d_cgi_monster=allow_3d_cgi_monster,
                 strict_no_fallback=True,
                 cancel_event=cancel_event,
-                deadline_ts=deadline_ts,
+                deadline_ts=max(deadline_ts or 0.0, time.monotonic() + 14.0),
             )
             if not passed_vis_b:
                 logger.info(
@@ -260,7 +260,9 @@ def _try_licensed_stock_video_fallback(
                     topic=topic or overall_script_query,
                 )
                 if not best_stock_v or not best_stock_v.get("url"):
-                    continue
+                    # Lượt đầu đã quét song song cả 4 nhánh (stock_query_candidates[:3]) qua Gemini Vision;
+                    # nếu không có ứng viên nào khớp chủ thể thì thoát ngay sang Tầng 3 Bilibili (không lặp lại lần 2 gây tốn 10s).
+                    break
                 st_title = str(best_stock_v.get("title") or "")
                 candidate_stock_urls = []
                 for raw_cand_u in [best_stock_v["url"], *(best_stock_v.get("_vision_alternates") or [])]:
@@ -353,7 +355,7 @@ def _try_licensed_stock_video_fallback(
                                     allow_3d_cgi_monster=False,
                                     strict_no_fallback=True,
                                     cancel_event=cancel_event,
-                                    deadline_ts=deadline_ts,
+                                    deadline_ts=max(deadline_ts or 0.0, time.monotonic() + 14.0),
                                 )
                             if not passed_st_vis:
                                 logger.info(

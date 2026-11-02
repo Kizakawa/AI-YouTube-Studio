@@ -756,15 +756,17 @@ Return ONLY a valid JSON object in this exact format:
                                                     item["human_action_query"] = app_query
                                                 else:
                                                     item["smart_image_query"] = app_query
+                                            prev_story_qs = item.get("storyline_search_queries") or []
                                             story_qs = [
                                                 q_s for q_s in dict.fromkeys([
                                                     app_query,
                                                     app_sec_query,
+                                                    *prev_story_qs,
                                                     app_fb_query,
                                                 ]) if q_s
                                             ]
                                             if story_qs:
-                                                item["storyline_search_queries"] = story_qs
+                                                item["storyline_search_queries"] = story_qs[:4]
                                         item["scope_audited"] = True
                                         audited_list.append(item)
 

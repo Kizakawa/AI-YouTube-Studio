@@ -117,6 +117,7 @@ def _verify_short_clip_with_gemini_vision(
     strict_no_fallback: bool = True,
     cancel_event: Optional[threading.Event] = None,
     deadline_ts: Optional[float] = None,
+    target_visual_query: str = "",
 ) -> Tuple[bool, float, str]:
     """
     Trích xuất 3 khung hình (tile=3x1) từ đoạn clip vừa cắt và nhờ Gemini Vision kiểm duyệt nghiêm ngặt:
@@ -131,11 +132,14 @@ def _verify_short_clip_with_gemini_vision(
         return False, 0.0, "File không tồn tại"
 
     from app.graph.evaluators.visual_critic import VisualCritic
+    # Giao phần kiểm tra thông số kỹ thuật vật lý (độ phân giải >=720p, độ nét >=5.4, độ sáng, cắt viền đen/chớp đen, chuyển động thật)
+    # cho CV Gate; còn phần nhận diện chữ/logo/watermark và ngữ nghĩa chủ thể do Multimodal Gemini Vision quyết định trực tiếp bên dưới
+    # (tránh việc bộ đếm cạnh tương phản trên cỏ khô thảo nguyên / vảy rắn báo nhầm là caption box trước khi gọi Gemini Vision).
     pre_gate = VisualCritic.inspect_clip_before_concat(
         video_path,
         min_short_edge=720,
         min_sharpness=5.4,
-        check_watermark=True,
+        check_watermark=False,
         allow_snow=True,
         auto_sanitize=True,
     )
@@ -181,11 +185,11 @@ def _verify_short_clip_with_gemini_vision(
             else "3. 2D drawings, paintings, illustrations, cartoons, anime, video games, or CGI renders mixed into a live-action documentary"
         )
 
+        eff_target_query = target_visual_query or overall_script_query or subject_entity or topic
         scope_note = (
-            f'NOTE: This scene line is part of an overall story ("{overall_script_query or topic}"). '
-            f'APPROVE (passed=true, score>=7.5) ONLY IF the clip is 100% CLEAN (zero watermarks/logos/text), sharp HD, and matches the main subject ("{subject_entity or topic}") and natural environment of the story.'
-            if search_scope == "SCRIPT_OVERALL"
-            else f'APPROVE (passed=true, score>=7.5) ONLY IF the clip is 100% CLEAN (zero watermarks/logos/text), sharp HD, and shows the main subject ("{subject_entity or topic}") fitting the scene and natural environment.'
+            f'NOTE: This scene line is part of an overall story ("{overall_script_query or topic}") with Directed Visual Query "{eff_target_query}".\n'
+            f'- DUAL-SUBJECT ("A vs B") RULE: When the story involves two entities (e.g. "Entity A vs Entity B"), individual B-roll clips often show JUST Entity A, JUST Entity B, or both interacting. APPROVE clean HD footage that clearly shows the target subject in "{eff_target_query}" OR either primary entity from "{subject_entity or topic}" in its natural habitat!\n'
+            f'- METAPHOR / ANATOMY B-ROLL RULE: If the narration uses a metaphor or internal mechanism (e.g., "like car tires", "like a shield", "heart pumps like a racing engine"), it is illustrated externally by real footage matching "{eff_target_query}" (e.g. the animal running, panting, spreading wings, or striking)—APPROVE clean real footage of the animal!'
         )
 
         prompt = f"""You are a Strict Copyright, Watermark & Visual Quality Inspector for a professional YouTube Shorts studio.
@@ -193,6 +197,7 @@ Look carefully at all 3 frames in this strip extracted from a candidate video cl
 - Overall Script Topic: "{topic}"
 - Core Story Theme & Habitat: "{overall_script_query or topic}"
 - Main Subject: "{subject_entity or topic}"
+- Directed Visual Query for this Scene: "{eff_target_query}"
 - Current Scene Line ({search_scope}): "{narration}"
 - Source Video Title: "{video_title}"
 
@@ -202,8 +207,8 @@ REJECT IMMEDIATELY (passed=false, score < 4.0) IF YOU SEE ANY OF THESE IN ANY FR
 1. ANY channel watermark, logo, corner bug, AI generator corner badge/sparkle icon (CHECK ALL 4 CORNERS CLOSELY — especially a small white/translucent 4-point diamond/star sparkle icon `✦` in the bottom-right corner from Gemini/Veo, or Sora/Kling/Runway/Pika/CapCut badges), username (@...), credit banner, burned-in TikTok/Shorts subtitle/caption, or mirrored/flipped text anywhere on the frame (e.g., "LatestSightings", "MR. FRIEND", TV logos, social handles, yellow/white captions).
 2. Blurry, pixelated, grainy, low-resolution, or color-shifted/washed-out video quality.
 {cgi_rule}
-4. Habitat or environment mismatch with the script (e.g., an animal in a snowy zoo enclosure, behind cage bars/fences, or indoors when the story takes place in the wild African savanna, jungle, or ocean).
-5. Wrong animal/subject species that does not match "{subject_entity or topic}", or a talking head / vlog / product commercial.
+4. Habitat or environment mismatch with the script (e.g., an animal in a snowy zoo enclosure, behind cage bars/fences, with a human handler/leash, or indoors when the story takes place in the wild African savanna, jungle, or ocean).
+5. Wrong animal/subject species that matches neither "{eff_target_query}" nor "{subject_entity or topic}", or a talking head / vlog / product commercial.
 6. Bad framing / severely cropped subject where only a tiny unrecognizable corner, tail, or cut-off edge of the main subject fits inside the 9:16 vertical frame instead of a clear, well-composed view of the subject.
 
 Return ONLY valid JSON:
@@ -336,7 +341,7 @@ def _search_youtube_flat_cached(
             cached_entries = _yt_flat_search_cache.get(cache_key)
         if cached_entries:
             return cached_entries
-        if not _yt_search_sem.acquire(timeout=6.0):
+        if not _yt_search_sem.acquire(timeout=12.0):
             return []
         try:
             if is_scene_cancelled_ctx():
@@ -376,11 +381,11 @@ def _search_youtube_flat_cached(
     try:
         from app.graph.parallel_search import run_langgraph_parallel_youtube_flat_search
         parallel_buckets = run_langgraph_parallel_youtube_flat_search(
-            search_phrases=search_phrases[:2],
+            search_phrases=search_phrases[:4],
             fetch_single_phrase_fn=_fetch_single_yt_phrase,
         )
     except Exception:
-        parallel_buckets = [{"items": _fetch_single_yt_phrase(sp)} for sp in search_phrases[:2]]
+        parallel_buckets = [{"items": _fetch_single_yt_phrase(sp)} for sp in search_phrases[:4]]
 
     candidates: List[Dict[str, Any]] = []
     seen_ids: Set[str] = set()
@@ -401,7 +406,7 @@ def _search_youtube_flat_cached(
                 webpage_url = f"https://www.youtube.com{webpage_url}"
 
             dur = float(entry.get("duration") or (25.0 if is_vert_short else 0.0))
-            if dur <= 0 or dur < 4 or dur > 110:
+            if dur <= 0 or dur < 4 or dur > 180:
                 continue
 
             title = str(entry.get("title") or "")
@@ -426,19 +431,18 @@ def _search_youtube_flat_cached(
             action_hits = sum(1 for tok in all_query_tokens if tok in title_lower)
             views = int(entry.get("view_count") or 0)
             viral_boost = (
-                85.0 if views >= 10_000_000 else
-                60.0 if views >= 1_000_000 else
-                30.0 if views >= 250_000 else
-                12.0 if views >= 50_000 else 0.0
+                45.0 if views >= 10_000_000 else
+                32.0 if views >= 1_000_000 else
+                20.0 if views >= 250_000 else
+                10.0 if views >= 50_000 else 0.0
             )
-            short_fmt_bonus = 20.0 if (0 < dur <= 75) else (15.0 if dur <= 180 else 0.0)
-            # Chỉ thưởng nhẹ +25.0 cho video dọc (thay vì +165.0 khóa cứng) để video 16:9 quay thật sạch chữ vượt lên trên #shorts edit!
-            vertical_native_bonus = 25.0 if is_vert_short else 0.0
+            short_fmt_bonus = 25.0 if (0 < dur <= 60) else (15.0 if dur <= 180 else 0.0)
+            vertical_native_bonus = 95.0 if is_vert_short else 0.0
             clean_title_bonus = 25.0 if title.count("#") <= 2 else (-20.0 if title.count("#") >= 5 else 0.0)
             score = (
                 (anchor_hits * 65.0)
-                + (action_hits * 35.0)
-                + min(views / 15000.0, 75.0)
+                + (action_hits * 42.0)
+                + min(views / 25000.0, 45.0)
                 + viral_boost
                 + short_fmt_bonus
                 + vertical_native_bonus
@@ -556,7 +560,14 @@ Return ONLY valid JSON in this exact format:
                         rotator.record_model_success(api_key, model_name, time.monotonic() - t_req0)
                         cands_resp = resp.json().get("candidates") or []
                         if cands_resp:
-                            txt_out = "".join(p.get("text", "") for p in cands_resp[0].get("content", {}).get("parts", []))
+                            parts_list = cands_resp[0].get("content", {}).get("parts", [])
+                            txt_out = "".join(
+                                str(p.get("text") or "")
+                                for p in parts_list
+                                if isinstance(p, dict) and not p.get("thought")
+                            ).strip()
+                            if not txt_out and parts_list:
+                                txt_out = str(parts_list[-1].get("text") or "").strip()
                             m = re.search(r"\{.*\}", txt_out, re.DOTALL)
                             if m:
                                 data = json.loads(m.group(0))
@@ -580,11 +591,16 @@ Return ONLY valid JSON in this exact format:
                                             if llm_s < 4.5:
                                                 continue
                                             c_copy["llm_score"] = llm_s
-                                            c_copy["score"] = float(c_copy.get("score") or 0.0) + (llm_s * 35.0)
+                                            c_copy["score"] = float(c_copy.get("score") or 0.0) + (llm_s * 65.0)
                                         curated_pool.append(c_copy)
                                     if curated_pool:
                                         curated_pool.sort(
-                                            key=lambda x: (float(x.get("llm_score") or 0.0), float(x.get("score") or 0.0)),
+                                            key=lambda x: (
+                                                2 if float(x.get("llm_score") or 0.0) >= 8.8 else (
+                                                    1 if float(x.get("llm_score") or 0.0) >= 7.5 else 0
+                                                ),
+                                                float(x.get("score") or 0.0),
+                                            ),
                                             reverse=True,
                                         )
                                         return curated_pool + remainder
