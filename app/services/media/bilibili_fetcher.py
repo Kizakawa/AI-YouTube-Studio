@@ -709,6 +709,7 @@ def get_bilibili_video_info_and_streams(
         "bvid": bvid or f"av{aid}",
         "aid": aid,
         "cid": cid,
+        "tid": int(view.get("tid") or 0),
         "title": str(view.get("title") or f"Bilibili {bvid}"),
         "description": str(view.get("desc") or ""),
         "uploader": str(owner.get("name") or "Bilibili Creator"),
