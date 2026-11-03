@@ -65,6 +65,9 @@ CHANNELS_CONFIG = {
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict English only."
         ),
         "topics": [
+            "Why Nobody Can Survive Inside Mexico's Giant Cave Of Crystals For More Than 15 Minutes Without Drowning In Air",
+            "Why Giant Sperm Whales Dive 7,000 Feet Into Pitch-Black Ocean Trenches To Hunt Giant Squid",
+            "Why Blue-Ringed Octopus Venom Paralyzes Giant Moray Eels In Seconds Without A Single Pain Signal",
             "Orca Pod vs 4,000-Pound Great White Shark: How Killer Whales Flip Ocean Apex Predators Into Tonic Immobility in 3 Seconds",
             "Box Jellyfish 60 Venomous Tentacles vs Sea Turtle: Why Venom That Stops a Human Heart in 120 Seconds Can't Stop This Armored Reptile",
             "Portuguese Man O' War vs Loggerhead Sea Turtle: How a 400-Pound Armored Reptile Devours 165-Foot Venomous Tentacles",
@@ -111,6 +114,9 @@ CHANNELS_CONFIG = {
             "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology style). Strict English only."
         ),
         "topics": [
+            "Why Las Vegas Casinos Never Have Windows Or Clocks And Curve Every Hallway To Trap Your Brain",
+            "Why 72 Hours Inside A Completely White Soundproof Room Makes The Human Brain Hallucinate",
+            "Why FBI Detectives Place A Paper Water Cup 6 Inches From Guilty Suspects In Police Interrogations",
             "FBI Cognitive Load Reverse-Order Test vs Rehearsed Alibis: Why Telling a Story Backward Collapses a Liar's Brain in 8 Seconds",
             "1972 Stanford Marshmallow Delay Test vs Dopamine Impulse: How Prefrontal Cortex Self-Control Predicts Wealth 40 Years Later",
             "1961 Yale Milgram Experiment vs 450-Volt Authority Switch: Why 65% of Ordinary People Obeyed the Final Lethal Command",
@@ -158,6 +164,9 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, adrenaline-pumping, National Geographic documentary style. Strict English only."
         ),
         "topics": [
+            "Why Giant Nile Crocodiles Never Attack A Full-Grown Hippopotamus In Deep African Rivers",
+            "Why Even Giant Crocodiles Fear The 70-Pound Goliath Tigerfish In The Congo River",
+            "Why A Pride Of Hungry Lions Backs Down From A 25-Pound Honey Badger In The Savanna",
             "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive to Hurl Prey Off Ledges",
             "Honey Badger vs Puff Adder Venom: How Loose 6mm Skin Armor and Mutated Receptors Shrug Off a Lethal Snake Bite",
             "Hippopotamus vs Nile Crocodile: How a 4,000-Pound River Titan Snaps 16-Foot Reptiles in Half With Foot-Long Ivory Tusks",
@@ -200,6 +209,9 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin documentary style. Strict English only."
         ),
         "topics": [
+            "Why Kublai Khan's 4,400 Mongol Warships Vanished Overnight Before Conquering Samurai Japan In 1281",
+            "Why Roman Emperors Built A 73-Mile Stone Wall Instead Of Conquering Ancient Scotland",
+            "Why Snow Fell In June 1816 And Froze The World After Mount Tambora Exploded",
             "1812 Napoleon's 600,000 Grande Armée vs Russian -40°C Winter: How Scorched Earth and Frostbite Erased 500,000 Troops in 5 Months",
             "1983 Stanislav Petrov vs Soviet Satellite Glitch: How One Officer Stopped 5 False Nuclear Launch Alarms From Triggering WW3",
             "1588 Spanish Armada 130 Warships vs English Fire Ships: How 8 Burning Hulks at Midnight Shattered the World's Richest Empire",
@@ -242,6 +254,9 @@ CHANNELS_CONFIG = {
             "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Por Que o Dragão-de-Komodo Consegue Derrubar um Búfalo Gigante com Uma Única Mordida?",
+            "Por Que uma Alcateia de Lobos-Cinzentos Recua Diante de um Único Alce Gigante na Neve?",
+            "Por Que um Leopardo Faminto Desiste de Atacar Esse Porco-Espinho Cheio de Espinhos Farpados?",
             "Onça-Pintada vs Bando de 100 Queixadas: Como Mandíbulas Batendo em Sincronia Fazem o Maior Felino das Américas Subir nas Árvores",
             "Guepardo a 110 km/h vs Avestruz de 140 Quilos: Como um Único Chute de 2.000 Quilos de Força Pode Virar a Caçada na Savana",
             "Dragão-de-Komodo de 130 Quilos vs Búfalo-Asiático de 500 Quilos: Como Glândulas de Veneno Anticoagulante Derrubam um Gigante",
@@ -283,6 +298,9 @@ CHANNELS_CONFIG = {
             "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Por Que Tubarões do Fundo do Mar Ficam Paralisados ao Nadar Dentro Desse Lago Submarino no Golfo do México?",
+            "Por Que um Único Esqueleto de Baleia a 4.000 Metros Alimenta Criaturas do Abismo Por 50 Anos?",
+            "Por Que Essa Água-Viva Invisível da Austrália Para um Coração Humano em 2 Minutos?",
             "Fossa das Marianas a 11.000 Metros vs Submarino de Titânio: Como 1.086 Atmosferas de Pressão Esmagam Aço no Ponto Mais Profundo do Mar",
             "Dedo Gélido da Morte (Brinicle) a -2°C vs Fundo do Mar da Antártida: Como um Tornado de Gelo Submarino Congela Estrelas-do-Mar em Segundos",
             "Polvo-de-Anéis-Azuis de 12 Centímetros vs Moreia-Gigante: Como a Tetrodotoxina 1.200 Vezes Mais Letal Que Cianeto Paralisa em Segundos",
