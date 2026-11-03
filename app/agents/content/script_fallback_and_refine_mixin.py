@@ -469,7 +469,7 @@ HARD RETENTION & AUTHENTIC VIRAL CREATOR SPOKEN VOICE RULES:
   "video_format": "{vf}",
   "title": "Viral YouTube {'Documentary' if is_long_form else 'Shorts'} Title with Emojis",
   "primary_entity": "Full official name of main person/figure/species",
-  "hook": "The opening declarative hook sentence ({'8-14 words' if is_long_form else '6-11 words, ZERO ? questions, naming both entities if A vs B'})",
+  "hook": "The opening hook sentence ({'8-14 words' if is_long_form else '6-12 words — prioritize an open-loop Why / Por que...? curiosity hook or sharp paradox, naming both entities if A vs B'})",
   "hook_visual_mode": "video",
   "is_abstract_keyword": false,
   "climax_scene_id": {8 if is_long_form else 4},
@@ -480,7 +480,7 @@ HARD RETENTION & AUTHENTIC VIRAL CREATOR SPOKEN VOICE RULES:
     {{
       "scene_id": 1,
       "visual_reasoning": "Narrative and visual intent of this scene",
-      "narration": "Complete, natural declarative sentence spoken in this scene ({'18-26 words per body scene, 16-22 scenes total' if is_long_form else 'Scene 1: 6-11 words declarative with ZERO ?; Body scenes 2 through 7/8: 12-16 words each, STRICTLY 7 OR 8 SCENES TOTAL'})",
+      "narration": "Complete, natural sentence spoken in this scene ({'18-26 words per body scene, 16-22 scenes total' if is_long_form else 'Scene 1: 6-12 words open-loop Why/Por que...? curiosity hook or sharp paradox (NO weak Yes/No questions); Body scenes 2 through 7/8: 12-16 words each, STRICTLY 7 OR 8 SCENES TOTAL'})",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic visual description fitting the overall story mood",
       "stock_query": "simple subject/mood query for stock video (2-4 English words)",

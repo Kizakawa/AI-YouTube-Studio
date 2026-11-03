@@ -393,8 +393,8 @@ class ScriptJsonParserMixin:
                     r'wait\s+for\s+it[\!\.\,\s\-—]*|'
                     r'watch\s+till\s+the\s+end[\!\.\,\s\-—]*|'
                     r'did\s+you\s+know(?:\s+that)?[\?\!\.\,\s\-—]*|'
-                    r'have\s+you\s+ever\s+wondered(?:\s+why|\s+how)?[\?\!\.\,\s\-—]*|'
-                    r'here\s+is\s+(?:a\s+fun\s+fact|why|what\s+happens)[\:\!\.\,\s\-—]*|'
+                    r'have\s+you\s+ever\s+wondered[\?\!\.\,\s\-—]*|'
+                    r'here\s+is\s+a\s+fun\s+fact[\:\!\.\,\s\-—]*|'
                     r'in\s+this\s+video[\,\s\-—]*|'
                     r'bạn\s+có\s+biết(?:\s+rằng|\s+là)?[\?\!\.\,\s\-—]*|'
                     r'đừng\s+lướt\s+qua(?:\s+nhé|\s+video\s+này)?[\!\.\,\s\-—]*|'
@@ -723,18 +723,38 @@ class ScriptJsonParserMixin:
             if scenes[0].get("narration"):
                 scenes[0]["narration"] = _strip_variant_prefix(str(scenes[0]["narration"]))
             # Tôn trọng hoàn toàn tư duy ngữ nghĩa của LLM Showrunner ở Cảnh 1 (KHÔNG dùng bảng đếm từ khóa regex để ghi đè);
-            # chỉ fallback sang `raw_data["hook"]` khi `scenes[0].narration` bị rỗng hoặc quá ngắn (< 3 từ),
-            # hoặc khi Cảnh 1 vô tình chứa dấu chấm hỏi '?' (câu hỏi Yes/No yếu) trong khi hook_variants/hook có câu khẳng định sạch.
+            # Bảo toàn 100% dấu chấm hỏi '?' cho các câu Hook Mở Vòng Lặp Tò Mò ("Why...?", "Por que...?", "How...?", "What if...?", "Tại sao...?").
+            # Chỉ can thiệp khi `scenes[0].narration` bị rỗng (< 3 từ) hoặc dùng câu hỏi đóng Yes/No yếu ("Did you know...?", "Have you ever...?", "Você sabia...?").
             current_sc1 = str(scenes[0].get("narration") or "").strip()
             fallback_hook = _strip_variant_prefix(str(raw_data.get("hook") or ""))
-            if len(re.findall(r"\b\w+\b", current_sc1)) < 3 and 4 <= len(re.findall(r"\b\w+\b", fallback_hook)) <= 12:
+            _open_curiosity_q_re = re.compile(
+                r"^(?:why\b|how\b|what if\b|what happens\b|"
+                r"por que\b|por quê\b|como\b|e se\b|o que acontece\b|"
+                r"tại sao\b|vì sao\b|làm sao\b|làm thế nào\b|chuyện gì xảy ra\b)",
+                re.IGNORECASE,
+            )
+            _weak_yes_no_q_re = re.compile(
+                r"^(?:did you|do you|have you|are you|can you|would you|could you|is it|was it|"
+                r"bạn có biết|bạn đã bao giờ|có bao giờ bạn|bạn có đang|phải chăng|"
+                r"você sabia|você já)\b",
+                re.IGNORECASE,
+            )
+            if len(re.findall(r"\b\w+\b", current_sc1)) < 3 and 4 <= len(re.findall(r"\b\w+\b", fallback_hook)) <= 14:
                 scenes[0]["narration"] = fallback_hook
                 scenes[0]["highlight_words"] = _auto_extract_scene_highlights(fallback_hook)
-            elif "?" in current_sc1 and not current_sc1.lower().startswith("what if"):
+            elif _open_curiosity_q_re.search(current_sc1):
+                # Nếu là câu hỏi mở "Why / Por que / How / What if..." nhưng LLM bị rớt dấu '?' ở cuối câu (hoặc đặt nhầm '!'), chuẩn hóa thành '?'
+                if current_sc1.endswith((".", "!")):
+                    current_sc1 = current_sc1[:-1].strip() + "?"
+                elif not current_sc1.endswith("?"):
+                    current_sc1 = current_sc1 + "?"
+                scenes[0]["narration"] = current_sc1
+                raw_data["hook"] = current_sc1
+            elif _weak_yes_no_q_re.search(current_sc1) or ("?" in current_sc1 and not _open_curiosity_q_re.search(current_sc1)):
                 decl_cand = ""
                 for hv in ([fallback_hook] + list(raw_data.get("hook_variants") or [])):
                     hv_c = _strip_variant_prefix(str(hv or "")).strip()
-                    if hv_c and "?" not in hv_c and 5 <= len(hv_c.split()) <= 14:
+                    if hv_c and (_open_curiosity_q_re.search(hv_c) or "?" not in hv_c) and not _weak_yes_no_q_re.search(hv_c) and 5 <= len(hv_c.split()) <= 14:
                         decl_cand = hv_c
                         break
                 if decl_cand:
@@ -881,10 +901,18 @@ class ScriptJsonParserMixin:
                     score += 20.0
                 elif c_len > 60:
                     score -= 22.0
-                # Chứa con số / dữ kiện định lượng / đối đầu trực diện
-                has_num = bool(re.search(r'\d', clean_t))
-                if has_num:
-                    score += 18.0
+                # Ưu tiên tiêu đề mở đầu bằng "Why / Por que / Tại sao / How / Como / What If" tự nhiên kiểu Zack D. Films / Você Sabia?
+                if re.match(r"^(?:why\b|por que\b|por quê\b|tại sao\b|vì sao\b)", t_low):
+                    score += 22.0
+                elif re.match(r"^(?:how\b|what if\b|what happens\b|como\b|e se\b|o que acontece\b)", t_low):
+                    score += 14.0
+                # Chứa con số / dữ kiện định lượng / đối đầu trực diện (trừ các đơn vị vật lý khô khan PSI, Newtons, kPa)
+                has_dry_unit = bool(re.search(r"\b(?:psi|newtons?|kpa|joules?|ld50|decibels?|db)\b", t_low))
+                if has_dry_unit:
+                    score -= 25.0
+                has_num = bool(re.search(r'\d', clean_t)) and not has_dry_unit
+                if has_num and ":" not in clean_t:
+                    score += 8.0
                 if re.search(r'\b(vs\.?|versus|contra|flee|flees|temem|odeiam|crushes|esmagam|aniquila|terrified|tremem|smile|jump|refused|hay|or)\b', clean_t, flags=re.IGNORECASE):
                     score += 16.0
                 if prim_tokens and any(pt in t_low for pt in prim_tokens):

@@ -663,18 +663,18 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 ═══════════════════════════════════════════════════════════
 {{
   "video_format": "{vf}",
-  "title": "Viral YouTube {'Documentary' if is_long_form else 'Shorts'} Title with Emojis (28-55 chars naming exact searchable entities + stakes, ZERO #hashtags, NO 'Variant' prefix{', NO #Shorts tag' if is_long_form else ''})",
+  "title": "Viral YouTube {'Documentary' if is_long_form else 'Shorts'} Title with Emojis (28-55 chars naming exact searchable entities in a natural 'Why / Por que / How' or high-stakes format, ZERO #hashtags, ZERO PSI/Newtons, NO 'Variant' prefix{', NO #Shorts tag' if is_long_form else ''})",
   "title_variants": [
-    "Alternative High-CTR Entity A vs Entity B + Metric Title with Emoji (28-55 chars, NO 'Variant' prefix)",
-    "Alternative Direct Warning / Numbered Title with Emoji (28-55 chars, NO 'Variant' prefix)",
+    "Alternative High-CTR 'Why / Por Que + [Entities] + [Counter-Intuitive Action]' Title with Emoji (28-55 chars, NO 'Variant' prefix)",
+    "Alternative 'How + [Entities] + [Everyday Analogy]' Title with Emoji (28-55 chars, NO 'Variant' prefix)",
     "Alternative Extreme Contrast / Counter-Move Title with Emoji (28-55 chars, NO 'Variant' prefix)"
   ],
   "primary_entity": "Bare canonical 1-2 word name of main person/species/creature WITHOUT descriptive adjectives (e.g. 'Colossal Squid', 'Honey Badger', 'Julius Caesar') or null for psychology",
-  "hook": "The opening 6-10 word psychological-visual hook sentence (NEVER repeats title verbatim or uses '?' questions)",
+  "hook": "The opening 6-12 word Scene 1 hook sentence — prioritize an open-loop 'Why / Por que + [Explicit Entities] + [Counter-Intuitive Action]?' question or sharp spoken paradox (NEVER repeats title verbatim, ZERO weak Yes/No 'Did you know...?' questions)",
   "hook_variants": [
-    "Archetype 1 (Visual Micro-Observation) hook sentence (6-10 words)",
-    "Archetype 2 (The Fatal Mistake) hook sentence (6-10 words)",
-    "Archetype 3/4 (2nd-Person Survival or Illusion Breaker) hook sentence (6-10 words)"
+    "Archetype 1 (PRIORITY #1: Counter-Intuitive 'Why / Por Que...?' Curiosity Paradox naming explicit entities, 6-12 words)",
+    "Archetype 2 (Spoken 2-Entity Paradox / Lethal Clash, 6-12 words)",
+    "Archetype 3/4 (Active Crisis or Staged Real-Room Line, 6-12 words)"
   ],
   "hook_visual_mode": "video | scene",
   "is_abstract_keyword": false,
@@ -686,7 +686,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
     {{
       "scene_id": 1,
       "visual_reasoning": "Narrative and visual intent of this scene",
-      "narration": "Complete, natural spoken sentence for this scene ({'Scene 1: 12-18 words; Body scenes: 48-58 words flowing naturally, 30 to 36 scenes total (~10 minutes)' if is_long_form else 'Scene 1: 6-10 words using 1 of the 4 Psychological-Visual Hook Archetypes without repeating title; Body scenes: 11-16 words flowing naturally, 7 to 8 scenes total'})",
+      "narration": "Complete, natural spoken sentence for this scene ({'Scene 1: 12-18 words; Body scenes: 48-58 words flowing naturally, 30 to 36 scenes total (~10 minutes)' if is_long_form else 'Scene 1: 6-12 words opening with a Why / Por que...? curiosity paradox or sharp spoken clash without repeating title verbatim; Body scenes: 11-16 words flowing naturally, 7 to 8 scenes total'})",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic {'16:9 widescreen ' if is_long_form else ''}visual description fitting the overall story mood",
       "stock_query": "simple subject/mood query for stock video (2-4 English words)",
