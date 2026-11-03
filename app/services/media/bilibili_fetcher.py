@@ -555,9 +555,11 @@ def get_bilibili_video_info_and_streams(
                 v_url = v.get("baseUrl") or v.get("base_url")
                 if not v_url:
                     continue
+                v_backups = list(v.get("backupUrl") or v.get("backup_url") or [])
                 v_codec = str(v.get("codecs") or "avc1")
                 video_formats.append({
                     "url": v_url,
+                    "backup_urls": v_backups,
                     "width": int(v.get("width") or dim_w or 1920),
                     "height": int(v.get("height") or dim_h or 1080),
                     "vcodec": v_codec,
@@ -645,13 +647,13 @@ def get_bilibili_video_info_and_streams(
     if not video_formats:
         return None
 
-    # ?u ti?n H.264 (avc1) <= 1080p ?? gi?i m? si?u t?c b?ng m?i FFmpeg
-    avc_formats = [
+    # Ưu tiên H.264 (avc1) & H.265 (hev1) <= 1080p để vừa đạt chuẩn 1920x1080 nét căng vừa tối ưu dung lượng tải CDN
+    std_formats = [
         f for f in video_formats
-        if str(f.get("vcodec") or "").startswith("avc")
+        if str(f.get("vcodec") or "").startswith(("avc", "hev", "hvc"))
         and min(int(f.get("width") or 1080), int(f.get("height") or 1080)) <= 1080
     ]
-    working_formats = avc_formats if avc_formats else video_formats
+    working_formats = std_formats if std_formats else video_formats
 
     if require_landscape:
         # Chấp nhận cả chuẩn 16:9 HD (height >= 720) lẫn chuẩn điện ảnh Ultrawide 21:9 HD (width >= 1280, vd 1280x590)
@@ -680,13 +682,14 @@ def get_bilibili_video_info_and_streams(
         if hd_only:
             working_formats = hd_only
 
-    # Ưu tiên tuyệt đối luồng 1080p/4K H.264 có độ phân giải và bitrate (tbr) cao nhất để đạt độ sắc nét tối đa!
+    # Ưu tiên tuyệt đối luồng 1080p sắc nét ở dải Sweet-Spot Bitrate (850-2200 kbps: nét căng nhưng nhẹ hơn 35% khi tải qua CDN)
     best_video = sorted(
         working_formats,
         key=lambda f: (
-            1 if str(f.get("vcodec") or "").startswith("avc") else 0,
             1 if int(f.get("height") or 0) >= 1080 else (0 if int(f.get("height") or 0) < 720 else 0.5),
             max(int(f.get("width") or 0), int(f.get("height") or 0)),
+            1 if 850.0 <= float(f.get("tbr") or 0.0) <= 2200.0 else 0,
+            1 if str(f.get("vcodec") or "").startswith("avc") else 0,
             float(f.get("tbr") or 0.0),
         ),
     )[-1] if working_formats else None
@@ -723,6 +726,7 @@ def get_bilibili_video_info_and_streams(
         "thumbnail": pic,
         "webpage_url": f"https://www.bilibili.com/video/{bvid}" if bvid else f"https://www.bilibili.com/video/av{aid}",
         "video_stream_url": best_video["url"],
+        "video_backup_urls": list(best_video.get("backup_urls") or []),
         "audio_stream_url": best_audio["url"] if best_audio else None,
         "http_headers": hdrs,
     }

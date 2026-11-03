@@ -72,7 +72,14 @@ class BilibiliLongformCompiler:
                 timeout=6,
                 check=False,
             )
-            pts = [float(x.strip().rstrip(",")) for x in p.stdout.splitlines() if x.strip()]
+            pts: List[float] = []
+            for x in p.stdout.splitlines():
+                tok = x.strip().rstrip(",")
+                if tok and tok != "N/A":
+                    try:
+                        pts.append(float(tok))
+                    except ValueError:
+                        pass
             if pts:
                 return round(max(pts), 2)
         except Exception:
@@ -112,45 +119,89 @@ class BilibiliLongformCompiler:
             return None
 
         stream_url = info["video_stream_url"]
+        backup_urls = [str(u) for u in (info.get("video_backup_urls") or []) if u]
+        url_pool: List[str] = []
+        for u in [*[b for b in backup_urls if "bilivideo.com" in b], stream_url, *backup_urls]:
+            if u and u not in url_pool:
+                url_pool.append(u)
+
         dl_headers = dict(info.get("http_headers") or _build_bili_cookie_headers())
         bytes_per_sec = (tbr_kbps * 1000.0 / 8.0) if tbr_kbps > 40.0 else 220_000.0
-        eff_target_s = min(175.0, float(target_duration_sec))
-        desired_window_s = eff_target_s + 12.0
-        eff_range_bytes = max(20_000_000, min(42 * 1024 * 1024, int(desired_window_s * bytes_per_sec * 1.05) + 800_000))
+        eff_target_s = min(105.0, float(target_duration_sec))
+        desired_window_s = eff_target_s + 6.0
+        eff_range_bytes = max(12_000_000, min(22 * 1024 * 1024, int(desired_window_s * bytes_per_sec * 1.02) + 400_000))
 
+        from concurrent.futures import ThreadPoolExecutor
         import requests
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         raw_m4s = Path(output_path)
         try:
             t0 = time.monotonic()
-            dl_bytes = 0
-            chunk_span = 4 * 1024 * 1024  # Tải theo cụm 4MB kèm Auto-Resume chống lỗi IncompleteRead từ CDN Bilibili
-            stall_retries = 0
-            with open(raw_m4s, "wb") as f:
-                while dl_bytes < eff_range_bytes and (time.monotonic() - t0 < 38.0) and stall_retries < 4:
-                    c_start = dl_bytes
-                    c_end = min(eff_range_bytes - 1, c_start + chunk_span - 1)
-                    h_req = dict(dl_headers, Range=f"bytes={c_start}-{c_end}")
-                    got_in_chunk = 0
-                    try:
-                        r = requests.get(stream_url, headers=h_req, stream=True, timeout=(4.0, 9.0))
-                        if r.status_code not in (200, 206):
+            # Probe tổng dung lượng file từ Content-Range để không bao giờ tải lố EOF
+            for p_url in url_pool:
+                try:
+                    rp = requests.get(p_url, headers=dict(dl_headers, Range="bytes=0-16383"), stream=True, timeout=(3.0, 5.0))
+                    cr_hdr = str(rp.headers.get("Content-Range") or "")
+                    rp.close()
+                    if "/" in cr_hdr:
+                        total_remote = int(cr_hdr.split("/")[-1].strip())
+                        if total_remote > 0:
+                            eff_range_bytes = min(eff_range_bytes, total_remote)
                             break
-                        for chunk in r.iter_content(chunk_size=262144):
-                            if chunk:
-                                f.write(chunk)
-                                dl_bytes += len(chunk)
-                                got_in_chunk += len(chunk)
-                            if time.monotonic() - t0 > 38.0:
+                except Exception:
+                    pass
+
+            chunk_span = 3 * 1024 * 1024  # Chia thành các lát 3MB tải SONG SONG 6 luồng (vượt rào cản bóp băng thông đơn luồng 220KB/s của Akamai CDN)
+            ranges: List[Tuple[int, int]] = []
+            cur_b = 0
+            while cur_b < eff_range_bytes:
+                end_b = min(eff_range_bytes - 1, cur_b + chunk_span - 1)
+                ranges.append((cur_b, end_b))
+                cur_b = end_b + 1
+
+            def _dl_slice(idx_and_rng: Tuple[int, Tuple[int, int]]) -> bytes:
+                s_idx, (b_start, b_end) = idx_and_rng
+                expected_len = b_end - b_start + 1
+                buf = bytearray()
+                tries = 0
+                sess = requests.Session()
+                while len(buf) < expected_len and tries < 5 and (time.monotonic() - t0 < 55.0):
+                    u_pick = url_pool[(s_idx + tries) % len(url_pool)]
+                    cur_from = b_start + len(buf)
+                    try:
+                        r = sess.get(
+                            u_pick,
+                            headers=dict(dl_headers, Range=f"bytes={cur_from}-{b_end}"),
+                            stream=True,
+                            timeout=(3.5, 8.0),
+                        )
+                        if r.status_code not in (200, 206):
+                            tries += 1
+                            continue
+                        for ch in r.iter_content(chunk_size=262144):
+                            if ch:
+                                buf.extend(ch)
+                            if len(buf) >= expected_len or (time.monotonic() - t0 > 55.0):
                                 break
                     except Exception:
-                        pass
-                    if got_in_chunk < 64_000:
-                        stall_retries += 1
-                    else:
-                        stall_retries = 0
-            if not raw_m4s.exists() or raw_m4s.stat().st_size < 6_000_000:
+                        tries += 1
+                return bytes(buf[:expected_len])
+
+            with ThreadPoolExecutor(max_workers=6) as slice_pool:
+                slice_buffers = list(slice_pool.map(_dl_slice, list(enumerate(ranges))))
+
+            dl_bytes = 0
+            with open(raw_m4s, "wb") as f:
+                for idx_s, s_buf in enumerate(slice_buffers):
+                    exp_s = ranges[idx_s][1] - ranges[idx_s][0] + 1
+                    f.write(s_buf)
+                    dl_bytes += len(s_buf)
+                    # Dừng ghi ngay nếu một phân đoạn giữa bị đứt để tránh hỏng cấu trúc hộp MP4/M4S
+                    if len(s_buf) < exp_s:
+                        break
+
+            if not raw_m4s.exists() or raw_m4s.stat().st_size < 4_500_000:
                 raw_m4s.unlink(missing_ok=True)
                 return None
         except Exception as e_dl:
@@ -275,29 +326,29 @@ class BilibiliLongformCompiler:
         master_dir.mkdir(parents=True, exist_ok=True)
         selected_masters: List[Dict[str, Any]] = []
 
-        # Tái sử dụng ngay nếu trên ổ cứng đã tải sẵn 3 file master Bilibili hợp lệ (>= 6MB, >= 65s thực tế) của job này
-        cached_mp4s = sorted(master_dir.glob("bili_part_*.mp4"))
-        if len(cached_mp4s) >= 3:
-            for cm in cached_mp4s[:3]:
-                if cm.stat().st_size >= 6_000_000:
-                    est_s = self._measure_playable_pts_duration_sec(str(cm), fallback_sec=(cm.stat().st_size / 250_000.0))
-                    if est_s >= 65.0 and self._is_clean_cinematic_master(str(cm), playable_dur_s=est_s):
-                        bv_match = cm.stem.split("_")[-1]
-                        aud_f = cm.with_suffix(".orig_audio.m4s")
-                        selected_masters.append({
-                            "bvid": bv_match,
-                            "title": f"Bilibili 4K Master ({bv_match})",
-                            "local_master_path": str(cm),
-                            "clipped_duration_sec": round(est_s, 1),
-                            "is_nosub": True,
-                            "orig_audio_path": str(aud_f) if aud_f.exists() else None,
-                        })
-            if len(selected_masters) >= 3:
-                logger.info(f"♻️ [Bilibili 3x3] Tái sử dụng 3 Master Bilibili đã tải sẵn trong {master_dir}")
-                return selected_masters
-            selected_masters.clear()
-
+        # Tái sử dụng ngay các file master Bilibili hợp lệ (>= 5MB, >= 65s thực tế) đã tải sẵn trên ổ cứng của job này
         used_set = used_bvids if used_bvids is not None else set()
+        cached_mp4s = sorted(master_dir.glob("bili_part_*.mp4"))
+        for cm in cached_mp4s:
+            if len(selected_masters) >= 3:
+                break
+            if cm.stat().st_size >= 5_000_000:
+                est_s = self._measure_playable_pts_duration_sec(str(cm), fallback_sec=(cm.stat().st_size / 250_000.0))
+                if est_s >= 65.0 and self._is_clean_cinematic_master(str(cm), playable_dur_s=est_s):
+                    bv_match = cm.stem.split("_")[-1]
+                    aud_f = cm.with_suffix(".orig_audio.m4s")
+                    used_set.add(bv_match)
+                    selected_masters.append({
+                        "bvid": bv_match,
+                        "title": f"Bilibili 1080p Hot-Hit ({bv_match})",
+                        "local_master_path": str(cm),
+                        "clipped_duration_sec": round(est_s, 1),
+                        "is_nosub": True,
+                        "orig_audio_path": str(aud_f) if aud_f.exists() else None,
+                    })
+        if len(selected_masters) >= 3:
+            logger.info(f"♻️ [Bilibili 3x3] Tái sử dụng 3 Master Bilibili đã tải sẵn trong {master_dir}")
+            return selected_masters
         queries_en: List[str] = []
         if primary_entity:
             queries_en.append(str(primary_entity).strip())
@@ -346,7 +397,7 @@ class BilibiliLongformCompiler:
 
         from concurrent.futures import ThreadPoolExecutor
 
-        batch_size = 4
+        batch_size = 2
         for b_start in range(0, len(candidates_pool), batch_size):
             if len(selected_masters) >= 3:
                 break
@@ -359,14 +410,14 @@ class BilibiliLongformCompiler:
                 res_dl = self.download_bilibili_3min_segment(
                     bvid=bv_id,
                     output_path=out_m,
-                    target_duration_sec=192.0,
+                    target_duration_sec=115.0,
                     title_hint=str(cand_obj.get("title") or ""),
                 )
                 if res_dl is not None:
                     res_dl["view_count"] = max(int(res_dl.get("view_count") or 0), int(cand_obj.get("view_count") or 0))
                 return res_dl
 
-            with ThreadPoolExecutor(max_workers=3) as pool:
+            with ThreadPoolExecutor(max_workers=2) as pool:
                 results = list(pool.map(_try_dl, [(b_start + i + 1, c) for i, c in enumerate(batch)]))
             for res_info in results:
                 if len(selected_masters) >= 3:
@@ -863,10 +914,10 @@ Return ONLY valid JSON:
             # 5. Đóng khung Cinema 2.35:1 Widescreen (1920x820 -> pad 1920x1080, chỉ phóng 1.08x giữ nguyên 92% nét gốc)
             seed = int(job_id) * 31 + int(scene_id) * 17
             shot_d = round(target_dur / 3.0, 2)
-            max_avail_src = max(2.8, slot_span * 0.31)
+            max_avail_src = max(8.5, slot_span)
 
             spd0_fast = 1.08 + ((seed % 9) * 0.01)
-            spd1_slow = 0.87 + (((seed // 3) % 7) * 0.01)
+            spd1_slow = 0.88 + (((seed // 3) % 6) * 0.01)
             spd2_fast = 1.10 + (((seed // 7) % 8) * 0.01)
 
             src_d0 = round(min(max_avail_src, shot_d * spd0_fast), 2)
@@ -958,14 +1009,14 @@ Return ONLY valid JSON:
                 m_info = masters[m_idx]
                 m_path = str(m_info.get("local_master_path") or "")
                 m_dur = float(m_info.get("clipped_duration_sec") or 0.0) or self._measure_playable_pts_duration_sec(m_path, fallback_sec=90.0)
-                safe_head = 6.0 if m_dur > 45.0 else 2.0
-                usable_span = max(30.0, m_dur - safe_head - 1.5)
-                slot_span = usable_span / max(1, scenes_per_master)
+                safe_head = 5.0 if m_dur > 45.0 else 2.0
+                usable_span = max(24.0, m_dur - safe_head - 11.5)
+                n_slots = max(1, scenes_per_master)
 
-                slot_start = safe_head + slot_i * slot_span
-                s0_off = round(min(max(safe_head, m_dur - 4.0), slot_start), 2)
-                s1_off = round(min(max(safe_head + 1.8, m_dur - 3.0), slot_start + slot_span * 0.33), 2)
-                s2_off = round(min(max(safe_head + 3.5, m_dur - 2.0), slot_start + slot_span * 0.66), 2)
+                s0_off = round(safe_head + ((slot_i / n_slots) * usable_span), 2)
+                s1_off = round(safe_head + ((((slot_i + 0.35) / n_slots) % 1.0) * usable_span), 2)
+                s2_off = round(safe_head + ((((slot_i + 0.70) / n_slots) % 1.0) * usable_span), 2)
+                slot_span = max(8.5, min(11.2, m_dur - max(s0_off, s1_off, s2_off) - 0.6))
 
                 out_clip = str(media_dir / f"scene_{sc.scene_id:03d}_16x9.mp4")
                 out_aud_aac = str(audio_dir / f"scene_{sc.scene_id:03d}_paced.m4a")
