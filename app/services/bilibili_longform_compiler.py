@@ -870,7 +870,9 @@ Return ONLY valid JSON:
             ass_filter = f",ass={rel_ass_path}" if rel_ass_path and Path(rel_ass_path).exists() else ""
             post_cinema = (
                 "cas=0.45,eq=contrast=1.05:saturation=1.07:gamma=0.98,"
-                f"pad=1920:1080:0:110:black{ass_filter},fps=30,format=yuv420p"
+                "pad=1920:1080:0:110:black,"
+                "drawbox=x=0:y=0:w=1920:h=142:color=black@1.0:t=fill,"
+                f"drawbox=x=0:y=920:w=1920:h=160:color=black@1.0:t=fill{ass_filter},fps=30,format=yuv420p"
             )
             fc_3in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[2:v]{vf2}[v2];[v0][v1][v2]concat=n=3:v=1:a=0,{post_cinema}[vout]"
             cmd_v = [
