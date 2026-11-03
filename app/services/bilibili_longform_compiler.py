@@ -80,10 +80,9 @@ class BilibiliLongformCompiler:
         stream_url = info["video_stream_url"]
         dl_headers = dict(info.get("http_headers") or _build_bili_cookie_headers())
         bytes_per_sec = (tbr_kbps * 1000.0 / 8.0) if tbr_kbps > 40.0 else 220_000.0
-        # Tải gọn ~95s–120s luồng 1080p (~22MB–32MB) để cực nhanh (chỉ 3–5 giây/video) mà đủ cắt 6–8 cảnh không trùng lặp!
-        eff_target_s = min(115.0, float(target_duration_sec))
+        eff_target_s = min(175.0, float(target_duration_sec))
         desired_window_s = eff_target_s + 14.0
-        eff_range_bytes = max(10_000_000, min(34 * 1024 * 1024, int(desired_window_s * bytes_per_sec * 1.15) + 500_000))
+        eff_range_bytes = max(14_000_000, min(46 * 1024 * 1024, int(desired_window_s * bytes_per_sec * 1.15) + 500_000))
         dl_headers["Range"] = f"bytes=0-{eff_range_bytes - 1}"
 
         import requests
@@ -92,10 +91,10 @@ class BilibiliLongformCompiler:
         raw_m4s = Path(output_path)
         try:
             t0 = time.monotonic()
-            r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(4.5, 14.0))
+            r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(5.0, 18.0))
             if r.status_code not in (200, 206):
                 dl_headers.pop("Range", None)
-                r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(4.5, 14.0))
+                r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(5.0, 18.0))
                 if r.status_code not in (200, 206):
                     return None
             dl_bytes = 0
@@ -104,9 +103,9 @@ class BilibiliLongformCompiler:
                     if chunk:
                         f.write(chunk)
                         dl_bytes += len(chunk)
-                    if dl_bytes >= eff_range_bytes or (time.monotonic() - t0 > 16.0):
+                    if dl_bytes >= eff_range_bytes or (time.monotonic() - t0 > 42.0):
                         break
-            if not raw_m4s.exists() or raw_m4s.stat().st_size < 1_500_000:
+            if not raw_m4s.exists() or raw_m4s.stat().st_size < 2_500_000:
                 raw_m4s.unlink(missing_ok=True)
                 return None
         except Exception as e_dl:
@@ -116,9 +115,9 @@ class BilibiliLongformCompiler:
 
         # Tính chính xác thời lượng thực tế nằm trong số byte đã tải (vì header moov của .m4s báo tổng thời lượng cả video gốc)
         header_dur_s = max(0.0, get_duration_ms(str(raw_m4s)) / 1000.0)
-        est_chunk_dur_s = max(15.0, (dl_bytes / max(25_000.0, bytes_per_sec)) * 0.88)
+        est_chunk_dur_s = max(20.0, (dl_bytes / max(25_000.0, bytes_per_sec)) * 0.90)
         avail_dur_s = min(header_dur_s, est_chunk_dur_s) if header_dur_s > 0 else est_chunk_dur_s
-        if avail_dur_s < 28.0:
+        if avail_dur_s < 24.0:
             raw_m4s.unlink(missing_ok=True)
             return None
 
@@ -153,8 +152,9 @@ class BilibiliLongformCompiler:
 
     def _is_clean_cinematic_master(self, mp4_path: str, playable_dur_s: float = 0.0) -> bool:
         """
-        Kiểm tra bằng FFmpeg + PIL + NumPy (4 khung hình rải đều trong vùng đã tải) để loại bỏ triệt để:
-        1. Video chụp màn hình bài báo / bình luận nền trắng hoặc nền đen tĩnh (`white_ratio > 0.22`).
+        Kiểm tra bằng FFmpeg + PIL + NumPy (4 khung hình rải đều trong vùng đã tải) để loại bỏ triệt để
+        video chụp màn hình bài báo / bình luận nền trắng phẳng (`pure_white_ratio > 0.42`),
+        nhưng KHÔNG loại nhầm cảnh băng tuyết Bắc Cực hoặc đáy biển sâu của BBC.
         """
         try:
             import io
@@ -185,9 +185,8 @@ class BilibiliLongformCompiler:
                 if not raw:
                     continue
                 arr = np.array(Image.open(io.BytesIO(raw)).convert("L"))
-                white_ratio = float(np.mean(arr > 228))
-                black_ratio = float(np.mean(arr < 14))
-                if white_ratio > 0.22 or black_ratio > 0.50:
+                pure_white_ratio = float(np.mean(arr >= 248))
+                if pure_white_ratio > 0.42:
                     return False
             return True
         except Exception:
@@ -235,20 +234,24 @@ class BilibiliLongformCompiler:
         queries_en = list(sub_queries or [])
         if not queries_en:
             queries_en = [
+                f"{primary_entity or topic}",
+                f"{topic}",
                 f"{primary_entity or topic} documentary 4K",
-                f"{topic} BBC wildlife footage",
-                f"{primary_entity or topic} nature hunting",
             ]
 
-        bad_title_tokens = ("解说", "盘点", "辟谣", "评论", "网友", "一口气", "搞笑", "游戏", "动画", "漫画", "玩具", "手工", "测评")
+        bad_title_tokens = (
+            "解说", "盘点", "辟谣", "评论", "网友", "一口气", "搞笑", "游戏",
+            "动画", "漫画", "玩具", "手工", "测评", "说动物", "海洋公园", "表演", "水族馆",
+        )
         candidates_pool: List[Dict[str, Any]] = []
         seen_bv: Set[str] = set(used_set)
         for q_en in queries_en[:4]:
             zh_q = translate_query_to_chinese(q_en, primary_entity=primary_entity or topic)
             cands_clean = search_bilibili_videos(f"{zh_q} 纪录片 无字幕", max_results=6, min_dur_s=110.0, max_dur_s=900.0)
             cands_4k = search_bilibili_videos(f"{zh_q} 纪录片 4K", max_results=8, min_dur_s=110.0, max_dur_s=900.0)
+            cands_bbc = search_bilibili_videos(f"{zh_q} BBC 纪录片", max_results=8, min_dur_s=110.0, max_dur_s=900.0)
             cands_std = search_bilibili_videos(f"{zh_q} 动物世界", max_results=8, min_dur_s=110.0, max_dur_s=900.0)
-            for c in [*cands_clean, *cands_4k, *cands_std]:
+            for c in [*cands_clean, *cands_4k, *cands_bbc, *cands_std]:
                 bv = str(c.get("bvid") or c.get("id") or "").strip()
                 t_str = str(c.get("title") or "")
                 if bv and bv not in seen_bv and not any(bt in t_str for bt in bad_title_tokens):
@@ -614,84 +617,110 @@ Return ONLY valid JSON:
                     )
                 )
         else:
-            # 1. Dịch SONG SONG 3 luồng âm thanh gốc của Bilibili bằng Gemini 2.5 Flash Native Audio (không cần cắt sơ bộ 18 clip trước!)
-            async def _translate_part(idx_p: int, m_info: Dict[str, Any]) -> List[str]:
-                n_segs = scenes_per_master
-                segs: List[str] = []
-                if m_info.get("orig_audio_path"):
-                    segs = await asyncio.to_thread(
-                        self.extract_and_translate_bilibili_audio_direct,
-                        audio_m4s_path=str(m_info["orig_audio_path"]),
-                        video_title=str(m_info.get("title") or topic),
-                        target_language=language,
-                        num_segments=n_segs,
+            if Path(full_audio_path).exists() and len(cached_scene_mp3s) >= expected_total_scenes:
+                logger.info(f"♻️ [Bilibili 3x3] Tái sử dụng {len(cached_scene_mp3s)} file giọng đọc đã tạo sẵn tại {audio_dir}")
+                total_audio_ms = get_duration_ms(full_audio_path)
+                scenes_objs = []
+                for idx_s in range(expected_total_scenes):
+                    sid_idx = idx_s + 1
+                    a_path = str(cached_scene_mp3s[idx_s])
+                    a_ms = get_duration_ms(a_path) or 18000
+                    p_num = (idx_s // scenes_per_master) + 1
+                    badge = f"[ // PARTE {p_num}: ATO {(idx_s % scenes_per_master) + 1} // ]" if (idx_s % scenes_per_master == 0) else None
+                    scenes_objs.append(
+                        SceneContract(
+                            scene_id=sid_idx,
+                            narration=f"Segmento {sid_idx}",
+                            visual_keyword=f"{primary_entity} action scene {sid_idx}",
+                            visual_prompt=f"16:9 widescreen shot {sid_idx}",
+                            media_type="video",
+                            camera_motion="zoom_in",
+                            sfx_cue="none",
+                            overlay_badge=badge,
+                            estimated_seconds=round(a_ms / 1000.0, 2),
+                            audio_path=a_path,
+                            audio_duration_ms=a_ms,
+                        )
                     )
-                if len(segs) < n_segs:
-                    segs = await asyncio.to_thread(
-                        self.generate_vision_synced_narration_for_part,
-                        part_idx=idx_p,
-                        master_info=m_info,
-                        part_scene_paths=[str(m_info.get("local_master_path") or "")],
-                        topic=topic,
-                        language=language,
-                    )
-                while len(segs) < n_segs:
-                    segs.append(
-                        segs[-1]
-                        if segs
-                        else "Na natureza selvagem, cada segundo define quem domina o território e quem se torna presa imediata."
-                    )
-                return segs[:n_segs]
+            else:
+                # 1. Dịch SONG SONG 3 luồng âm thanh gốc của Bilibili bằng Gemini 2.5 Flash Native Audio (không cần cắt sơ bộ 18 clip trước!)
+                async def _translate_part(idx_p: int, m_info: Dict[str, Any]) -> List[str]:
+                    n_segs = scenes_per_master
+                    segs: List[str] = []
+                    if m_info.get("orig_audio_path"):
+                        segs = await asyncio.to_thread(
+                            self.extract_and_translate_bilibili_audio_direct,
+                            audio_m4s_path=str(m_info["orig_audio_path"]),
+                            video_title=str(m_info.get("title") or topic),
+                            target_language=language,
+                            num_segments=n_segs,
+                        )
+                    if len(segs) < n_segs:
+                        segs = await asyncio.to_thread(
+                            self.generate_vision_synced_narration_for_part,
+                            part_idx=idx_p,
+                            master_info=m_info,
+                            part_scene_paths=[str(m_info.get("local_master_path") or "")],
+                            topic=topic,
+                            language=language,
+                        )
+                    while len(segs) < n_segs:
+                        segs.append(
+                            segs[-1]
+                            if segs
+                            else "Na natureza selvagem, cada segundo define quem domina o território e quem se torna presa imediata."
+                        )
+                    return segs[:n_segs]
 
-            part_narr_lists = await asyncio.gather(
-                *[_translate_part(i + 1, m) for i, m in enumerate(masters)]
-            )
-            all_narrations: List[str] = [s for sub in part_narr_lists for s in sub]
-
-            scenes_contracts: List[SceneContract] = []
-            for sid_idx, narr_str in enumerate(all_narrations, start=1):
-                p_num = ((sid_idx - 1) // scenes_per_master) + 1
-                badge = f"[ // PARTE {p_num}: ATO {((sid_idx - 1) % scenes_per_master) + 1} // ]" if ((sid_idx - 1) % scenes_per_master == 0) else None
-                scenes_contracts.append(
-                    SceneContract(
-                        scene_id=sid_idx,
-                        narration=narr_str,
-                        visual_keyword=f"{primary_entity} action scene {sid_idx}",
-                        visual_prompt=f"16:9 widescreen shot {sid_idx}",
-                        media_type="video",
-                        camera_motion="zoom_in",
-                        sfx_cue="none",
-                        overlay_badge=badge,
-                        estimated_seconds=18.5,
-                    )
+                part_narr_lists = await asyncio.gather(
+                    *[_translate_part(i + 1, m) for i, m in enumerate(masters)]
                 )
+                all_narrations: List[str] = [s for sub in part_narr_lists for s in sub]
 
-            from app.utils.subtitle_helper import SubtitleHelper
+                scenes_contracts: List[SceneContract] = []
+                for sid_idx, narr_str in enumerate(all_narrations, start=1):
+                    p_num = ((sid_idx - 1) // scenes_per_master) + 1
+                    badge = f"[ // PARTE {p_num}: ATO {((sid_idx - 1) % scenes_per_master) + 1} // ]" if ((sid_idx - 1) % scenes_per_master == 0) else None
+                    scenes_contracts.append(
+                        SceneContract(
+                            scene_id=sid_idx,
+                            narration=narr_str,
+                            visual_keyword=f"{primary_entity} action scene {sid_idx}",
+                            visual_prompt=f"16:9 widescreen shot {sid_idx}",
+                            media_type="video",
+                            camera_motion="zoom_in",
+                            sfx_cue="none",
+                            overlay_badge=badge,
+                            estimated_seconds=18.5,
+                        )
+                    )
 
-            voice_agent = VoiceAgent()
-            scenes_objs = await voice_agent.generate_per_scene_audio(
-                scenes=scenes_contracts,
-                output_dir=str(audio_dir),
-                niche=niche,
-                channel_id=channel_id,
-                job_id=job_id,
-                is_long_form=True,
-            )
-            total_audio_ms, _ = await asyncio.gather(
-                voice_agent.concat_scene_audio(
-                    scenes=scenes_objs,
-                    output_path=full_audio_path,
-                ),
-                asyncio.to_thread(
-                    SubtitleHelper.save_ass_file,
-                    scenes_objs,
-                    subtitle_path,
-                    niche_id=niche,
-                    hook_title=thumbnail_text or title,
-                    show_cta_badge=False,
+                from app.utils.subtitle_helper import SubtitleHelper
+
+                voice_agent = VoiceAgent()
+                scenes_objs = await voice_agent.generate_per_scene_audio(
+                    scenes=scenes_contracts,
+                    output_dir=str(audio_dir),
+                    niche=niche,
+                    channel_id=channel_id,
+                    job_id=job_id,
                     is_long_form=True,
-                ),
-            )
+                )
+                total_audio_ms, _ = await asyncio.gather(
+                    voice_agent.concat_scene_audio(
+                        scenes=scenes_objs,
+                        output_path=full_audio_path,
+                    ),
+                    asyncio.to_thread(
+                        SubtitleHelper.save_ass_file,
+                        scenes_objs,
+                        subtitle_path,
+                        niche_id=niche,
+                        hook_title=thumbnail_text or title,
+                        show_cta_badge=False,
+                        is_long_form=True,
+                    ),
+                )
 
             # 2. Cắt SONG SONG (Single-Pass 1080p High-Sharpness) từ 3 Master Lossless khớp chính xác từng câu đọc!
             sem = asyncio.Semaphore(4)
@@ -702,43 +731,38 @@ Return ONLY valid JSON:
                 out_clip: str,
                 start_off: float,
                 target_dur: float,
-                is_nosub: bool,
+                m_dur: float,
             ) -> None:
-                crop_expr = (
-                    "crop=iw*0.94:ih*0.86:iw*0.03:ih*0.05"
-                    if is_nosub
-                    else "crop=iw*0.88:ih*0.78:iw*0.06:ih*0.06"
+                # Cắt bỏ triệt để 12% đỉnh (xóa sạch logo kênh góc trên) và 22% đáy (xóa sạch phụ đề tiếng Trung cứng),
+                # kết hợp viền điện ảnh Cinema 2.35:1 Widescreen (52px đỉnh, 100px đáy) làm nền cho phụ đề mới.
+                vf0 = (
+                    "crop=iw*0.86:ih*0.66:iw*0.07:ih*0.12,"
+                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,"
+                    "crop=1920:1080,unsharp=3:3:0.9:3:3:0.0,eq=contrast=1.04:saturation=1.05,setsar=1"
                 )
-                base_vf = (
-                    f"{crop_expr},"
-                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
-                    "crop=1920:1080,"
-                    "unsharp=5:5:1.05:5:5:0.0,"
-                    "eq=contrast=1.05:saturation=1.06,"
-                    "setsar=1,fps=30,format=yuv420p"
+                vf1 = (
+                    "crop=iw*0.82:ih*0.62:iw*0.09:ih*0.14,"
+                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,"
+                    "crop=1920:1080,unsharp=3:3:0.9:3:3:0.0,eq=contrast=1.04:saturation=1.05,setsar=1"
                 )
-                if target_dur >= 8.0:
-                    t_a = round(target_dur * 0.34, 2)
-                    t_b = round(target_dur * 0.68, 2)
-                    fc_1pass = (
-                        f"[0:v]{base_vf},split=3[s0][s1][s2];"
-                        f"[s0]trim=0:{t_a:.2f},setpts=PTS-STARTPTS[v0];"
-                        f"[s1]trim={t_a:.2f}:{t_b:.2f},setpts=PTS-STARTPTS,"
-                        f"scale=2040:1148:flags=lanczos,crop=1920:1080:60:34,setsar=1[v1];"
-                        f"[s2]trim={t_b:.2f}:{target_dur:.2f},setpts=PTS-STARTPTS,"
-                        f"scale=2112:1188:flags=lanczos,crop=1920:1080:96:54,setsar=1[v2];"
-                        f"[v0][v1][v2]concat=n=3:v=1:a=0,fps=30,format=yuv420p[vout]"
-                    )
+                cinema_bars = (
+                    "drawbox=x=0:y=0:w=1920:h=52:color=black@0.96:t=fill,"
+                    "drawbox=x=0:y=980:w=1920:h=100:color=black@0.96:t=fill,fps=30,format=yuv420p"
+                )
+                half_d = round(target_dur * 0.5, 2)
+                rem_d = round(target_dur - half_d, 3)
+                s2 = round(min(max(0.0, m_dur - rem_d - 0.5), start_off + half_d + 1.2), 2)
+                if target_dur >= 7.0 and s2 > start_off + 1.0:
+                    fc_2in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[v0][v1]concat=n=2:v=1:a=0,{cinema_bars}[vout]"
                     cmd = [
                         get_ffmpeg_exe(), "-y", "-v", "error",
-                        "-ss", f"{start_off:.2f}",
-                        "-t", f"{target_dur + 0.15:.2f}",
-                        "-i", m_path,
-                        "-filter_complex", fc_1pass,
+                        "-ss", f"{start_off:.2f}", "-t", f"{half_d:.2f}", "-i", m_path,
+                        "-ss", f"{s2:.2f}", "-t", f"{rem_d:.3f}", "-i", m_path,
+                        "-filter_complex", fc_2in,
                         "-map", "[vout]",
                         "-t", f"{target_dur:.3f}",
                         "-threads", "2",
-                        "-c:v", "libx264", "-preset", "superfast", "-crf", "17",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
                         *BT709_COLOR_ARGS,
                         "-an", "-dn", "-sn",
                         out_clip,
@@ -749,9 +773,9 @@ Return ONLY valid JSON:
                         "-ss", f"{start_off:.2f}",
                         "-t", f"{target_dur:.3f}",
                         "-i", m_path,
-                        "-vf", base_vf,
+                        "-vf", f"{vf0},{cinema_bars}",
                         "-threads", "2",
-                        "-c:v", "libx264", "-preset", "superfast", "-crf", "17",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
                         *BT709_COLOR_ARGS,
                         "-an", "-dn", "-sn",
                         out_clip,
@@ -771,8 +795,8 @@ Return ONLY valid JSON:
                     m_info = masters[m_idx]
                     m_path = str(m_info.get("local_master_path") or "")
                     m_dur = float(m_info.get("clipped_duration_sec") or 0.0) or min(90.0, get_duration_ms(m_path) / 1000.0)
-                    safe_head = 6.0 if m_dur > 35.0 else 2.0
-                    stride = max(4.0, (m_dur - safe_head - target_clip_dur - 1.0) / max(1, scenes_per_master - 1))
+                    safe_head = 4.0 if m_dur > 35.0 else 1.5
+                    stride = max(2.5, (m_dur - safe_head - target_clip_dur - 1.0) / max(1, scenes_per_master - 1))
                     start_off = round(min(max(safe_head, m_dur - target_clip_dur - 0.6), safe_head + slot_i * stride), 2)
                     out_clip = str(media_dir / f"scene_{sc.scene_id:03d}_16x9.mp4")
 
@@ -782,7 +806,7 @@ Return ONLY valid JSON:
                         out_clip,
                         start_off,
                         target_clip_dur,
-                        bool(m_info.get("is_nosub")),
+                        m_dur,
                     )
                     sc.audio_path = a_path
                     sc.audio_duration_ms = a_ms
