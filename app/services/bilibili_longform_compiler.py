@@ -106,8 +106,9 @@ class BilibiliLongformCompiler:
 
         tbr_kbps = float(info.get("tbr") or 0.0)
         v_h = int(info.get("height") or 0)
-        if v_h < 720 or (tbr_kbps > 0 and tbr_kbps < 500.0):
-            logger.debug(f"[Bilibili3x3] Bỏ qua {bvid} vì độ phân giải/bitrate thấp ({v_h}p, {tbr_kbps:.0f}kbps)")
+        min_req_tbr = 800.0 if v_h >= 1080 else 1100.0
+        if v_h < 720 or (tbr_kbps > 0 and tbr_kbps < min_req_tbr):
+            logger.debug(f"[Bilibili3x3] Bỏ qua {bvid} vì độ phân giải/bitrate thấp ({v_h}p, {tbr_kbps:.0f}kbps < {min_req_tbr:.0f}kbps)")
             return None
 
         stream_url = info["video_stream_url"]
@@ -211,6 +212,7 @@ class BilibiliLongformCompiler:
 
             flat_ratios: List[float] = []
             zgrad_ratios: List[float] = []
+            lap_energies: List[float] = []
             for frac in (0.18, 0.40, 0.62, 0.82):
                 raw = subprocess.run(
                     [
@@ -243,7 +245,15 @@ class BilibiliLongformCompiler:
                 dy = np.abs(np.diff(arr, axis=0))
                 zgrad_ratios.append(float((np.mean(dx < 0.4) + np.mean(dy < 0.4)) * 0.5))
 
+                # Đo độ sắc nét điểm ảnh thực tế (Laplacian Energy) ở vùng trung tâm khung hình (bỏ viền trên/dưới để không bị phụ đề đánh lừa)
+                c = arr[26:142, 24:296]
+                lap = np.abs(4.0 * c[1:-1, 1:-1] - c[:-2, 1:-1] - c[2:, 1:-1] - c[1:-1, :-2] - c[1:-1, 2:])
+                lap_energies.append(float(np.mean(lap)))
+
             if flat_ratios and (float(np.mean(flat_ratios)) > 0.38 or float(np.mean(zgrad_ratios)) > 0.55):
+                return False
+            # Chặn video "Fake 1080p" (video 360p/480p cũ kéo giãn lên 1080p bị mờ nhòe)
+            if lap_energies and float(np.mean(lap_energies)) < 2.2:
                 return False
             return True
         except Exception:
