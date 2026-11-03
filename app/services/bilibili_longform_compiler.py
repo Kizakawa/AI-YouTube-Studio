@@ -821,21 +821,54 @@ Return ONLY valid JSON:
             s2_off: float,
             target_dur: float,
             slot_span: float,
+            scene_id: int = 1,
         ) -> None:
+            # 5-Layer Anti-Content-ID & Anti-AI-Scan Engine:
+            # 1. Biến thiên tốc độ ngẫu nhiên bất đối xứng từng góc máy (1.08x-1.17x / 0.87x-0.93x — không bao giờ để 1.00x gốc)
+            # 2. Dịch tâm khung hình ngẫu nhiên (Asymmetric Pan/Crop Jitter) + Cắt sạch 12% đỉnh & 22% đáy
+            # 3. Lật gương ngang thông minh (Selective hflip) phá vỡ 100% vector chuyển động Optical Flow
+            # 4. Biến đổi ma trận màu & Gamma từng góc máy (eq=contrast/saturation/gamma)
+            # 5. Đóng khung Cinema 2.35:1 Widescreen + Đốt phụ đề Karaoke mới
+            seed = int(job_id) * 31 + int(scene_id) * 17
             shot_d = round(target_dur / 3.0, 2)
-            src_d = round(min(shot_d, max(3.2, slot_span * 0.32)), 2)
-            pts_f = f"setpts={max(1.0, (shot_d + 0.15) / max(0.5, src_d)):.4f}*PTS," if src_d < shot_d + 0.05 else ""
+            max_avail_src = max(2.8, slot_span * 0.31)
+
+            spd0_fast = 1.08 + ((seed % 9) * 0.01)
+            spd1_slow = 0.87 + (((seed // 3) % 7) * 0.01)
+            spd2_fast = 1.10 + (((seed // 7) % 8) * 0.01)
+
+            src_d0 = round(min(max_avail_src, shot_d * spd0_fast), 2)
+            src_d1 = round(min(max_avail_src, shot_d * spd1_slow), 2)
+            src_d2 = round(min(max_avail_src, shot_d * spd2_fast), 2)
+
+            pts0 = f"setpts={(shot_d + 0.12) / max(0.5, src_d0):.4f}*PTS,"
+            pts1 = f"setpts={(shot_d + 0.12) / max(0.5, src_d1):.4f}*PTS,"
+            pts2 = f"setpts={(shot_d + 0.15) / max(0.5, src_d2):.4f}*PTS,"
+
+            x0 = round(0.05 + ((seed % 5) * 0.008), 3)
+            y0 = round(0.11 + (((seed // 2) % 3) * 0.006), 3)
+            x1 = round(0.07 + (((seed // 3) % 5) * 0.008), 3)
+            y1 = round(0.13 + (((seed // 5) % 3) * 0.006), 3)
+            x2 = round(0.09 + (((seed // 7) % 5) * 0.008), 3)
+            y2 = round(0.14 + (((seed // 11) % 3) * 0.006), 3)
+
+            flip1 = "hflip," if (seed % 2 == 0) else ""
+            flip2 = "hflip," if (seed % 2 == 1) else ""
+
             vf0 = (
-                f"{pts_f}crop=iw*0.86:ih*0.66:iw*0.07:ih*0.12,"
-                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,setsar=1"
+                f"{pts0}crop=iw*0.86:ih*0.66:iw*{x0}:ih*{y0},"
+                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,"
+                "eq=contrast=1.04:saturation=1.06:gamma=0.98,setsar=1"
             )
             vf1 = (
-                f"{pts_f}crop=iw*0.82:ih*0.62:iw*0.09:ih*0.14,"
-                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,setsar=1"
+                f"{pts1}crop=iw*0.82:ih*0.62:iw*{x1}:ih*{y1},{flip1}"
+                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,"
+                "eq=contrast=1.06:saturation=1.09:gamma=1.02,setsar=1"
             )
             vf2 = (
-                f"{pts_f}crop=iw*0.78:ih*0.59:iw*0.11:ih*0.15,"
-                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,setsar=1"
+                f"{pts2}crop=iw*0.78:ih*0.59:iw*{x2}:ih*{y2},{flip2}"
+                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,"
+                "eq=contrast=1.05:saturation=1.07:gamma=0.97,setsar=1"
             )
             ass_filter = f",ass={rel_ass_path}" if rel_ass_path and Path(rel_ass_path).exists() else ""
             cinema_bars = (
@@ -845,9 +878,9 @@ Return ONLY valid JSON:
             fc_3in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[2:v]{vf2}[v2];[v0][v1][v2]concat=n=3:v=1:a=0,{cinema_bars}[vout]"
             cmd_v = [
                 get_ffmpeg_exe(), "-y", "-v", "error",
-                "-ss", f"{s0_off:.2f}", "-t", f"{src_d:.2f}", "-i", m_path,
-                "-ss", f"{s1_off:.2f}", "-t", f"{src_d:.2f}", "-i", m_path,
-                "-ss", f"{s2_off:.2f}", "-t", f"{src_d:.2f}", "-i", m_path,
+                "-ss", f"{s0_off:.2f}", "-t", f"{src_d0:.2f}", "-i", m_path,
+                "-ss", f"{s1_off:.2f}", "-t", f"{src_d1:.2f}", "-i", m_path,
+                "-ss", f"{s2_off:.2f}", "-t", f"{src_d2:.2f}", "-i", m_path,
                 "-filter_complex", fc_3in,
                 "-map", "[vout]",
                 "-t", f"{target_dur:.4f}",
@@ -918,6 +951,7 @@ Return ONLY valid JSON:
                     s2_off,
                     target_clip_dur,
                     slot_span,
+                    sc.scene_id,
                 )
                 sc.audio_path = a_path
                 sc.audio_duration_ms = int(round(target_clip_dur * 1000))
