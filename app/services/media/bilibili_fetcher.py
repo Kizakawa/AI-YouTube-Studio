@@ -682,13 +682,12 @@ def get_bilibili_video_info_and_streams(
         if hd_only:
             working_formats = hd_only
 
-    # Ưu tiên tuyệt đối luồng 1080p sắc nét ở dải Sweet-Spot Bitrate (850-2200 kbps: nét căng nhưng nhẹ hơn 35% khi tải qua CDN)
+    # Ưu tiên tuyệt đối luồng 1080p/4K có độ phân giải và bitrate (tbr) CAO NHẤT (2500-4500 kbps) để đạt độ sắc nét quang học tối đa!
     best_video = sorted(
         working_formats,
         key=lambda f: (
             1 if int(f.get("height") or 0) >= 1080 else (0 if int(f.get("height") or 0) < 720 else 0.5),
             max(int(f.get("width") or 0), int(f.get("height") or 0)),
-            1 if 850.0 <= float(f.get("tbr") or 0.0) <= 2200.0 else 0,
             1 if str(f.get("vcodec") or "").startswith("avc") else 0,
             float(f.get("tbr") or 0.0),
         ),

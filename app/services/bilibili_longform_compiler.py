@@ -263,7 +263,8 @@ class BilibiliLongformCompiler:
 
             flat_ratios: List[float] = []
             zgrad_ratios: List[float] = []
-            lap_energies: List[float] = []
+            hf_residuals: List[float] = []
+            lap_p90s: List[float] = []
             for frac in (0.18, 0.40, 0.62, 0.82):
                 raw = subprocess.run(
                     [
@@ -272,7 +273,6 @@ class BilibiliLongformCompiler:
                         "-ss", f"{max(6.0, dur_s * frac):.2f}",
                         "-i", str(mp4_path),
                         "-frames:v", "1",
-                        "-vf", "scale=320:180",
                         "-f", "image2pipe",
                         "-vcodec", "png",
                         "-",
@@ -283,7 +283,14 @@ class BilibiliLongformCompiler:
                 ).stdout
                 if not raw:
                     continue
-                arr = np.array(Image.open(io.BytesIO(raw)).convert("L"), dtype=np.float32)
+                im_full = Image.open(io.BytesIO(raw)).convert("L")
+                w_n, h_n = im_full.size
+                if w_n < 1280 or h_n < 720:
+                    return False
+
+                # 1) Kiểm tra hoạt hình 2D / sách giáo khoa nền trắng trên lưới chuẩn 320x180
+                im_320 = im_full.resize((320, 180), Image.Resampling.BILINEAR)
+                arr = np.array(im_320, dtype=np.float32)
                 full_white = float(np.mean(arr >= 242))
                 left_white = float(np.mean(arr[:, :145] >= 240))
                 right_white = float(np.mean(arr[:, 175:] >= 240))
@@ -296,15 +303,33 @@ class BilibiliLongformCompiler:
                 dy = np.abs(np.diff(arr, axis=0))
                 zgrad_ratios.append(float((np.mean(dx < 0.4) + np.mean(dy < 0.4)) * 0.5))
 
-                # Đo độ sắc nét điểm ảnh thực tế (Laplacian Energy) ở vùng trung tâm khung hình (bỏ viền trên/dưới để không bị phụ đề đánh lừa)
-                c = arr[26:142, 24:296]
-                lap = np.abs(4.0 * c[1:-1, 1:-1] - c[:-2, 1:-1] - c[2:, 1:-1] - c[1:-1, :-2] - c[1:-1, 2:])
-                lap_energies.append(float(np.mean(lap)))
+                # 2) Đo độ sắc nét quang học THẬT trên khung hình gốc 1920x1080 (High-Frequency Residual & Laplacian P90)
+                # Nếu video gốc là 360p/480p cũ kéo giãn lên vỏ 1080p ("Fake 1080p"), khi thu nhỏ 3x rồi phóng lại 3x sẽ gần như không mất chi tiết (HF < 2.15, P90 < 8.5)
+                c_nat = im_full.crop((int(w_n * 0.12), int(h_n * 0.16), int(w_n * 0.88), int(h_n * 0.76)))
+                a_nat = np.array(c_nat, dtype=np.float32)
+                c_low = c_nat.resize((max(64, c_nat.width // 3), max(36, c_nat.height // 3)), Image.Resampling.BILINEAR).resize(
+                    c_nat.size, Image.Resampling.BILINEAR
+                )
+                a_low = np.array(c_low, dtype=np.float32)
+                hf_residuals.append(float(np.mean(np.abs(a_nat - a_low))))
+
+                lap_nat = np.abs(
+                    4.0 * a_nat[1:-1, 1:-1]
+                    - a_nat[:-2, 1:-1]
+                    - a_nat[2:, 1:-1]
+                    - a_nat[1:-1, :-2]
+                    - a_nat[1:-1, 2:]
+                )
+                lap_p90s.append(float(np.percentile(lap_nat, 90)))
 
             if flat_ratios and (float(np.mean(flat_ratios)) > 0.38 or float(np.mean(zgrad_ratios)) > 0.55):
                 return False
-            # Chặn video "Fake 1080p" (video 360p/480p cũ kéo giãn lên 1080p bị mờ nhòe)
-            if lap_energies and float(np.mean(lap_energies)) < 2.2:
+            # Chặn triệt để video "Fake 1080p" (nguồn 360p/480p cũ kéo giãn lên vỏ 1080p có max_HF < 2.0 hoặc max_P90 < 8.5 trên mọi khung hình)
+            if hf_residuals and (float(max(hf_residuals)) < 2.0 or float(max(lap_p90s)) < 8.5):
+                logger.info(
+                    f"🚫 [Anti-Fake-1080p] Loại bỏ {Path(mp4_path).name} vì nguồn gốc 480p mờ "
+                    f"(Max_HF={float(max(hf_residuals)):.2f} < 2.0, Max_Lap_P90={float(max(lap_p90s)):.1f} < 8.5)"
+                )
                 return False
             return True
         except Exception:
@@ -375,25 +400,35 @@ class BilibiliLongformCompiler:
             # Tách danh từ chủ thể tiếng Trung gốc (ví dụ: '虎鲸', '美洲豹', '鳄鱼') để săn trọn vẹn Top Hot-Hit Triệu View
             base_zh = re.sub(r"\s*(纪录片|高清|4K|实拍|视频|捕猎|捕食|野生动物)\s*", " ", zh_q).strip() or zh_q
             core_zh = base_zh.split()[0] if base_zh.split() else base_zh
+            cands_4k = search_bilibili_videos(f"{core_zh} 4K 纪录片", max_results=10, min_dur_s=95.0, max_dur_s=900.0, order="click")
+            cands_bbc = search_bilibili_videos(f"{core_zh} BBC 纪录片", max_results=10, min_dur_s=95.0, max_dur_s=900.0, order="click")
             cands_hunt = search_bilibili_videos(f"{core_zh} 捕猎", max_results=10, min_dur_s=95.0, max_dur_s=900.0, order="click")
             cands_doc = search_bilibili_videos(f"{core_zh} 纪录片", max_results=10, min_dur_s=95.0, max_dur_s=900.0, order="click")
             cands_world = search_bilibili_videos(f"{core_zh} 动物世界", max_results=10, min_dur_s=95.0, max_dur_s=900.0, order="click")
             cands_full = search_bilibili_videos(f"{base_zh} 实拍", max_results=8, min_dur_s=95.0, max_dur_s=900.0, order="click")
-            for c in [*cands_hunt, *cands_doc, *cands_world, *cands_full]:
+            for c in [*cands_4k, *cands_bbc, *cands_hunt, *cands_doc, *cands_world, *cands_full]:
                 bv = str(c.get("bvid") or c.get("id") or "").strip()
                 t_str = str(c.get("title") or "")
                 if bv and bv not in seen_bv and not any(bt in t_str for bt in bad_title_tokens):
                     seen_bv.add(bv)
                     candidates_pool.append(c)
 
-        # Sắp xếp toàn bộ ứng viên theo lượt xem (view_count) giảm dần: Ưu tiên Top Hot-Hit Triệu View lên đầu!
-        candidates_pool.sort(key=lambda x: int(x.get("view_count") or 0), reverse=True)
+        # Sắp xếp ứng viên kết hợp giữa Độ nét 4K/BBC/Siêu nét và Lượt xem Hot-Hit (view_count):
+        # Ưu tiên các video Hot-Hit có dấu hiệu bản gốc 4K/BBC/1080p60 hoặc các video Triệu View (vốn sẽ được lọc tiếp qua cổng Anti-Fake-1080p HF_Residual >= 2.15)
+        _uhd_markers = ("4k", "4K", "BBC", "bbc", "蓝光", "超清", "冰冻星球", "蓝色星球", "地球脉动", "完美星球", "无字幕", "纯享")
+        candidates_pool.sort(
+            key=lambda x: (
+                1 if (any(m in str(x.get("title") or "") for m in _uhd_markers) and int(x.get("view_count") or 0) >= 8_000) else 0,
+                int(x.get("view_count") or 0),
+            ),
+            reverse=True,
+        )
         if candidates_pool:
             top_preview = ", ".join(
                 f"{c.get('bvid')} ({int(c.get('view_count') or 0):,} views)"
-                for c in candidates_pool[:5]
+                for c in candidates_pool[:6]
             )
-            logger.info(f"🔥 [Bilibili Hot-Hit] Top 5 ứng viên nhiều view nhất: {top_preview}")
+            logger.info(f"🔥 [Bilibili 4K Hot-Hit] Top 6 ứng viên ưu tiên: {top_preview}")
 
         from concurrent.futures import ThreadPoolExecutor
 
@@ -952,7 +987,7 @@ Return ONLY valid JSON:
             )
             ass_filter = f",ass={rel_ass_path}" if rel_ass_path and Path(rel_ass_path).exists() else ""
             post_cinema = (
-                "cas=0.45,eq=contrast=1.05:saturation=1.07:gamma=0.98,"
+                "unsharp=5:5:0.85:3:3:0.35,cas=0.55,eq=contrast=1.06:saturation=1.08:gamma=0.98,"
                 "pad=1920:1080:0:110:black,"
                 "drawbox=x=0:y=0:w=1920:h=142:color=black@1.0:t=fill,"
                 f"drawbox=x=0:y=920:w=1920:h=160:color=black@1.0:t=fill{ass_filter},fps=30,format=yuv420p"
@@ -967,7 +1002,7 @@ Return ONLY valid JSON:
                 "-map", "[vout]",
                 "-t", f"{target_dur:.4f}",
                 "-threads", "3",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-maxrate", "3500k", "-bufsize", "7000k",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-maxrate", "6500k", "-bufsize", "13000k",
                 "-r", "30", "-pix_fmt", "yuv420p", "-video_track_timescale", "15360",
                 *BT709_COLOR_ARGS,
                 "-an", "-dn", "-sn",
