@@ -676,15 +676,12 @@ def get_bilibili_video_info_and_streams(
         if hd_only:
             working_formats = hd_only
 
-    # Ưu tiên luồng 720p HD bitrate cao (1280x720 @ 1000-2000kbps) hoặc 1080p vừa phải (<= 2200kbps)
-    # để tải trọn 2.5–3 phút video qua CDN quốc tế Bilibili nhanh gấp 2 lần mà vẫn sắc nét chuẩn FullHD sau Lanczos!
+    # Ưu tiên tuyệt đối luồng 1080p/4K H.264 có độ phân giải và bitrate (tbr) cao nhất để đạt độ sắc nét tối đa!
     best_video = sorted(
         working_formats,
         key=lambda f: (
             1 if str(f.get("vcodec") or "").startswith("avc") else 0,
-            2 if (int(f.get("height") or 0) >= 720 and 900.0 <= float(f.get("tbr") or 0.0) <= 2200.0) else (
-                1 if int(f.get("height") or 0) >= 720 else 0
-            ),
+            1 if int(f.get("height") or 0) >= 1080 else (0 if int(f.get("height") or 0) < 720 else 0.5),
             max(int(f.get("width") or 0), int(f.get("height") or 0)),
             float(f.get("tbr") or 0.0),
         ),

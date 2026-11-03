@@ -845,36 +845,36 @@ Return ONLY valid JSON:
             pts1 = f"setpts={(shot_d + 0.12) / max(0.5, src_d1):.4f}*PTS,"
             pts2 = f"setpts={(shot_d + 0.15) / max(0.5, src_d2):.4f}*PTS,"
 
-            x0 = round(0.05 + ((seed % 5) * 0.008), 3)
-            y0 = round(0.11 + (((seed // 2) % 3) * 0.006), 3)
-            x1 = round(0.07 + (((seed // 3) % 5) * 0.008), 3)
-            y1 = round(0.13 + (((seed // 5) % 3) * 0.006), 3)
-            x2 = round(0.09 + (((seed // 7) % 5) * 0.008), 3)
-            y2 = round(0.14 + (((seed // 11) % 3) * 0.006), 3)
+            x0 = round(0.03 + ((seed % 4) * 0.005), 3)
+            y0 = round(0.10 + (((seed // 2) % 3) * 0.004), 3)
+            x1 = round(0.05 + (((seed // 3) % 4) * 0.005), 3)
+            y1 = round(0.11 + (((seed // 5) % 3) * 0.004), 3)
+            x2 = round(0.06 + (((seed // 7) % 4) * 0.005), 3)
+            y2 = round(0.11 + (((seed // 11) % 3) * 0.004), 3)
 
             flip1 = "hflip," if (seed % 2 == 0) else ""
             flip2 = "hflip," if (seed % 2 == 1) else ""
 
+            # Scale chuẩn tỷ lệ khung hình Cinema 2.35:1 (1920x820 -> pad=1920:1080:0:110:black)
+            # giúp chỉ phóng nhẹ 1.08x (giữ nguyên 92% điểm ảnh gốc 1080p thay vì phóng 1.65x gây vỡ nét),
+            # kết hợp Lanczos + AMD Contrast Adaptive Sharpening (cas=0.45) sắc nét từng gợn sóng!
             vf0 = (
-                f"{pts0}crop=iw*0.86:ih*0.66:iw*{x0}:ih*{y0},"
-                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,"
-                "eq=contrast=1.04:saturation=1.06:gamma=0.98,setsar=1"
+                f"{pts0}crop=iw*0.92:ih*0.68:iw*{x0}:ih*{y0},"
+                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,"
+                "cas=0.45,eq=contrast=1.04:saturation=1.06:gamma=0.98,pad=1920:1080:0:110:black,setsar=1"
             )
             vf1 = (
-                f"{pts1}crop=iw*0.82:ih*0.62:iw*{x1}:ih*{y1},{flip1}"
-                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,"
-                "eq=contrast=1.06:saturation=1.09:gamma=1.02,setsar=1"
+                f"{pts1}crop=iw*0.89:ih*0.66:iw*{x1}:ih*{y1},{flip1}"
+                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,"
+                "cas=0.45,eq=contrast=1.06:saturation=1.08:gamma=1.02,pad=1920:1080:0:110:black,setsar=1"
             )
             vf2 = (
-                f"{pts2}crop=iw*0.78:ih*0.59:iw*{x2}:ih*{y2},{flip2}"
-                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,"
-                "eq=contrast=1.05:saturation=1.07:gamma=0.97,setsar=1"
+                f"{pts2}crop=iw*0.86:ih*0.65:iw*{x2}:ih*{y2},{flip2}"
+                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,"
+                "cas=0.45,eq=contrast=1.05:saturation=1.07:gamma=0.97,pad=1920:1080:0:110:black,setsar=1"
             )
-            ass_filter = f",ass={rel_ass_path}" if rel_ass_path and Path(rel_ass_path).exists() else ""
-            cinema_bars = (
-                "drawbox=x=0:y=0:w=1920:h=52:color=black@0.96:t=fill,"
-                f"drawbox=x=0:y=980:w=1920:h=100:color=black@0.96:t=fill{ass_filter},fps=30,format=yuv420p"
-            )
+            ass_filter = f"ass={rel_ass_path}," if rel_ass_path and Path(rel_ass_path).exists() else ""
+            cinema_bars = f"{ass_filter}fps=30,format=yuv420p"
             fc_3in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[2:v]{vf2}[v2];[v0][v1][v2]concat=n=3:v=1:a=0,{cinema_bars}[vout]"
             cmd_v = [
                 get_ffmpeg_exe(), "-y", "-v", "error",
@@ -885,7 +885,7 @@ Return ONLY valid JSON:
                 "-map", "[vout]",
                 "-t", f"{target_dur:.4f}",
                 "-threads", "2",
-                "-c:v", "libx264", "-preset", "superfast", "-crf", "22", "-maxrate", "2500k", "-bufsize", "5000k",
+                "-c:v", "libx264", "-preset", "superfast", "-crf", "18", "-maxrate", "4500k", "-bufsize", "9000k",
                 "-r", "30", "-pix_fmt", "yuv420p", "-video_track_timescale", "15360",
                 *BT709_COLOR_ARGS,
                 "-an", "-dn", "-sn",
