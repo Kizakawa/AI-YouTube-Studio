@@ -80,10 +80,9 @@ class BilibiliLongformCompiler:
         stream_url = info["video_stream_url"]
         dl_headers = dict(info.get("http_headers") or _build_bili_cookie_headers())
         bytes_per_sec = (tbr_kbps * 1000.0 / 8.0) if tbr_kbps > 40.0 else 220_000.0
-        eff_target_s = min(175.0, float(target_duration_sec))
-        desired_window_s = eff_target_s + 14.0
-        eff_range_bytes = max(14_000_000, min(46 * 1024 * 1024, int(desired_window_s * bytes_per_sec * 1.15) + 500_000))
-        dl_headers["Range"] = f"bytes=0-{eff_range_bytes - 1}"
+        eff_target_s = min(185.0, float(target_duration_sec))
+        desired_window_s = eff_target_s + 15.0
+        eff_range_bytes = max(24_000_000, min(56 * 1024 * 1024, int(desired_window_s * bytes_per_sec * 1.18) + 800_000))
 
         import requests
 
@@ -91,21 +90,27 @@ class BilibiliLongformCompiler:
         raw_m4s = Path(output_path)
         try:
             t0 = time.monotonic()
-            r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(5.0, 18.0))
-            if r.status_code not in (200, 206):
-                dl_headers.pop("Range", None)
-                r = requests.get(stream_url, headers=dl_headers, stream=True, timeout=(5.0, 18.0))
-                if r.status_code not in (200, 206):
-                    return None
             dl_bytes = 0
+            chunk_span = 12 * 1024 * 1024  # Tải theo từng cụm 12MB để CDN Bilibili luôn cấp tốc độ Burst tối đa, không ngắt ở 10MB!
             with open(raw_m4s, "wb") as f:
-                for chunk in r.iter_content(chunk_size=524288):
-                    if chunk:
-                        f.write(chunk)
-                        dl_bytes += len(chunk)
-                    if dl_bytes >= eff_range_bytes or (time.monotonic() - t0 > 42.0):
+                while dl_bytes < eff_range_bytes and (time.monotonic() - t0 < 48.0):
+                    c_start = dl_bytes
+                    c_end = min(eff_range_bytes - 1, c_start + chunk_span - 1)
+                    h_req = dict(dl_headers, Range=f"bytes={c_start}-{c_end}")
+                    r = requests.get(stream_url, headers=h_req, stream=True, timeout=(4.5, 14.0))
+                    if r.status_code not in (200, 206):
                         break
-            if not raw_m4s.exists() or raw_m4s.stat().st_size < 2_500_000:
+                    got_in_chunk = 0
+                    for chunk in r.iter_content(chunk_size=524288):
+                        if chunk:
+                            f.write(chunk)
+                            dl_bytes += len(chunk)
+                            got_in_chunk += len(chunk)
+                        if time.monotonic() - t0 > 48.0:
+                            break
+                    if got_in_chunk < 256_000:
+                        break
+            if not raw_m4s.exists() or raw_m4s.stat().st_size < 6_000_000:
                 raw_m4s.unlink(missing_ok=True)
                 return None
         except Exception as e_dl:
@@ -115,14 +120,14 @@ class BilibiliLongformCompiler:
 
         # Tính chính xác thời lượng thực tế nằm trong số byte đã tải (vì header moov của .m4s báo tổng thời lượng cả video gốc)
         header_dur_s = max(0.0, get_duration_ms(str(raw_m4s)) / 1000.0)
-        est_chunk_dur_s = max(20.0, (dl_bytes / max(25_000.0, bytes_per_sec)) * 0.90)
+        est_chunk_dur_s = max(25.0, (dl_bytes / max(25_000.0, bytes_per_sec)) * 0.92)
         avail_dur_s = min(header_dur_s, est_chunk_dur_s) if header_dur_s > 0 else est_chunk_dur_s
-        if avail_dur_s < 24.0:
+        if avail_dur_s < 65.0:
             raw_m4s.unlink(missing_ok=True)
             return None
 
         if not self._is_clean_cinematic_master(str(raw_m4s), playable_dur_s=avail_dur_s):
-            logger.warning(f"🚫 [Bilibili3x3] Loại bỏ {bvid} vì phát hiện ảnh chụp màn hình chữ/bình luận.")
+            logger.warning(f"🚫 [Bilibili3x3] Loại bỏ {bvid} vì phát hiện ảnh chụp màn hình chữ/trang sách nền trắng.")
             raw_m4s.unlink(missing_ok=True)
             return None
 
@@ -153,7 +158,7 @@ class BilibiliLongformCompiler:
     def _is_clean_cinematic_master(self, mp4_path: str, playable_dur_s: float = 0.0) -> bool:
         """
         Kiểm tra bằng FFmpeg + PIL + NumPy (4 khung hình rải đều trong vùng đã tải) để loại bỏ triệt để
-        video chụp màn hình bài báo / bình luận nền trắng phẳng (`pure_white_ratio > 0.42`),
+        video chụp màn hình bài báo / sách giáo khoa chia đôi màn hình trắng (`pure_white_ratio > 0.34`),
         nhưng KHÔNG loại nhầm cảnh băng tuyết Bắc Cực hoặc đáy biển sâu của BBC.
         """
         try:
@@ -161,7 +166,7 @@ class BilibiliLongformCompiler:
             import numpy as np
             from PIL import Image
 
-            dur_s = float(playable_dur_s) if playable_dur_s > 5.0 else min(65.0, get_duration_ms(mp4_path) / 1000.0)
+            dur_s = float(playable_dur_s) if playable_dur_s > 5.0 else min(95.0, get_duration_ms(mp4_path) / 1000.0)
             if dur_s < 12.0:
                 return False
 
@@ -185,8 +190,10 @@ class BilibiliLongformCompiler:
                 if not raw:
                     continue
                 arr = np.array(Image.open(io.BytesIO(raw)).convert("L"))
-                pure_white_ratio = float(np.mean(arr >= 248))
-                if pure_white_ratio > 0.42:
+                full_white = float(np.mean(arr >= 242))
+                left_white = float(np.mean(arr[:, :145] >= 240))
+                right_white = float(np.mean(arr[:, 175:] >= 240))
+                if max(full_white, left_white, right_white) > 0.34:
                     return False
             return True
         except Exception:
@@ -208,12 +215,12 @@ class BilibiliLongformCompiler:
         master_dir.mkdir(parents=True, exist_ok=True)
         selected_masters: List[Dict[str, Any]] = []
 
-        # Tái sử dụng ngay nếu trên ổ cứng đã tải sẵn 3 file master Bilibili hợp lệ của job này
+        # Tái sử dụng ngay nếu trên ổ cứng đã tải sẵn 3 file master Bilibili hợp lệ (>= 16MB ~ 80s–140s) của job này
         cached_mp4s = sorted(master_dir.glob("bili_part_*.mp4"))
         if len(cached_mp4s) >= 3:
             for cm in cached_mp4s[:3]:
-                if cm.stat().st_size >= 1_500_000:
-                    est_s = min(max(30.0, get_duration_ms(str(cm)) / 1000.0), max(30.0, (cm.stat().st_size / 260_000.0) * 0.88))
+                if cm.stat().st_size >= 16_000_000:
+                    est_s = min(max(65.0, get_duration_ms(str(cm)) / 1000.0), max(65.0, (cm.stat().st_size / 220_000.0) * 0.90))
                     if self._is_clean_cinematic_master(str(cm), playable_dur_s=est_s):
                         bv_match = cm.stem.split("_")[-1]
                         aud_f = cm.with_suffix(".orig_audio.m4s")
@@ -242,6 +249,7 @@ class BilibiliLongformCompiler:
         bad_title_tokens = (
             "解说", "盘点", "辟谣", "评论", "网友", "一口气", "搞笑", "游戏",
             "动画", "漫画", "玩具", "手工", "测评", "说动物", "海洋公园", "表演", "水族馆",
+            "绘本", "英文", "英语", "儿童", "少儿", "阅读", "朗读", "课件", "PPT",
         )
         candidates_pool: List[Dict[str, Any]] = []
         seen_bv: Set[str] = set(used_set)
@@ -730,20 +738,20 @@ Return ONLY valid JSON:
                 m_path: str,
                 out_clip: str,
                 start_off: float,
+                s2_off: float,
                 target_dur: float,
-                m_dur: float,
             ) -> None:
                 # Cắt bỏ triệt để 12% đỉnh (xóa sạch logo kênh góc trên) và 22% đáy (xóa sạch phụ đề tiếng Trung cứng),
                 # kết hợp viền điện ảnh Cinema 2.35:1 Widescreen (52px đỉnh, 100px đáy) làm nền cho phụ đề mới.
                 vf0 = (
                     "crop=iw*0.86:ih*0.66:iw*0.07:ih*0.12,"
-                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,"
-                    "crop=1920:1080,unsharp=3:3:0.9:3:3:0.0,eq=contrast=1.04:saturation=1.05,setsar=1"
+                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
+                    "crop=1920:1080,unsharp=5:5:1.05:5:5:0.0,eq=contrast=1.04:saturation=1.05,setsar=1"
                 )
                 vf1 = (
                     "crop=iw*0.82:ih*0.62:iw*0.09:ih*0.14,"
-                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,"
-                    "crop=1920:1080,unsharp=3:3:0.9:3:3:0.0,eq=contrast=1.04:saturation=1.05,setsar=1"
+                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
+                    "crop=1920:1080,unsharp=5:5:1.05:5:5:0.0,eq=contrast=1.05:saturation=1.06,setsar=1"
                 )
                 cinema_bars = (
                     "drawbox=x=0:y=0:w=1920:h=52:color=black@0.96:t=fill,"
@@ -751,18 +759,17 @@ Return ONLY valid JSON:
                 )
                 half_d = round(target_dur * 0.5, 2)
                 rem_d = round(target_dur - half_d, 3)
-                s2 = round(min(max(0.0, m_dur - rem_d - 0.5), start_off + half_d + 1.2), 2)
-                if target_dur >= 7.0 and s2 > start_off + 1.0:
+                if target_dur >= 7.0 and abs(s2_off - start_off) >= 3.0:
                     fc_2in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[v0][v1]concat=n=2:v=1:a=0,{cinema_bars}[vout]"
                     cmd = [
                         get_ffmpeg_exe(), "-y", "-v", "error",
                         "-ss", f"{start_off:.2f}", "-t", f"{half_d:.2f}", "-i", m_path,
-                        "-ss", f"{s2:.2f}", "-t", f"{rem_d:.3f}", "-i", m_path,
+                        "-ss", f"{s2_off:.2f}", "-t", f"{rem_d:.3f}", "-i", m_path,
                         "-filter_complex", fc_2in,
                         "-map", "[vout]",
                         "-t", f"{target_dur:.3f}",
                         "-threads", "2",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "17",
                         *BT709_COLOR_ARGS,
                         "-an", "-dn", "-sn",
                         out_clip,
@@ -775,7 +782,7 @@ Return ONLY valid JSON:
                         "-i", m_path,
                         "-vf", f"{vf0},{cinema_bars}",
                         "-threads", "2",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "17",
                         *BT709_COLOR_ARGS,
                         "-an", "-dn", "-sn",
                         out_clip,
@@ -794,10 +801,20 @@ Return ONLY valid JSON:
                     slot_i = idx_s % scenes_per_master
                     m_info = masters[m_idx]
                     m_path = str(m_info.get("local_master_path") or "")
-                    m_dur = float(m_info.get("clipped_duration_sec") or 0.0) or min(90.0, get_duration_ms(m_path) / 1000.0)
-                    safe_head = 4.0 if m_dur > 35.0 else 1.5
-                    stride = max(2.5, (m_dur - safe_head - target_clip_dur - 1.0) / max(1, scenes_per_master - 1))
-                    start_off = round(min(max(safe_head, m_dur - target_clip_dur - 0.6), safe_head + slot_i * stride), 2)
+                    m_dur = float(m_info.get("clipped_duration_sec") or 0.0) or min(120.0, get_duration_ms(m_path) / 1000.0)
+                    safe_head = 6.0 if m_dur > 45.0 else 2.0
+                    usable_span = max(30.0, m_dur - safe_head - 1.5)
+                    slot_span = usable_span / max(1, scenes_per_master)
+                    half_d = round(target_clip_dur * 0.5, 2)
+                    rem_d = round(target_clip_dur - half_d, 3)
+
+                    start_off = round(min(max(safe_head, m_dur - half_d - 0.8), safe_head + slot_i * slot_span), 2)
+                    if slot_span >= target_clip_dur + 1.0:
+                        s2_off = round(min(max(safe_head, m_dur - rem_d - 0.5), start_off + half_d + 0.8), 2)
+                    else:
+                        alt_slot = (slot_i + max(2, scenes_per_master // 2)) % max(1, scenes_per_master)
+                        s2_off = round(min(max(safe_head, m_dur - rem_d - 0.5), safe_head + alt_slot * slot_span + (slot_span * 0.35)), 2)
+
                     out_clip = str(media_dir / f"scene_{sc.scene_id:03d}_16x9.mp4")
 
                     await asyncio.to_thread(
@@ -805,8 +822,8 @@ Return ONLY valid JSON:
                         m_path,
                         out_clip,
                         start_off,
+                        s2_off,
                         target_clip_dur,
-                        m_dur,
                     )
                     sc.audio_path = a_path
                     sc.audio_duration_ms = a_ms
