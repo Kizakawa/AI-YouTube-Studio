@@ -246,18 +246,25 @@ class ScriptValidationLinter:
                     f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 6-10 word declarative hook."
                 )
 
-            # CẤM câu hỏi Yes/No yếu ở Cảnh 1 (trừ ngách Alternate History cho phép 'What if...')
-            is_what_if_niche = "what_if" in niche_id or "alternate_history" in niche_id
+            # CẤM câu hỏi Yes/No yếu ở Cảnh 1 ("Did you know...?", "Have you ever...?", "Você sabia...?"),
+            # NHƯNG CHO PHÉP & KHUYẾN KHÍCH câu hỏi Mở Vòng Lặp Tò Mò ("Why...?", "Por que...?", "How...?", "What if...?", "Tại sao...?")
+            open_curiosity_hook_pattern = re.compile(
+                r"^(?:why\b|how\b|what if\b|what happens\b|"
+                r"por que\b|por quê\b|como\b|e se\b|o que acontece\b|"
+                r"tại sao\b|vì sao\b|làm sao\b|làm thế nào\b|chuyện gì xảy ra\b)",
+                re.IGNORECASE,
+            )
             weak_yes_no_pattern = re.compile(
-                r"^(?:did you|do you|have you|are you|can you|would you|could you|is it|was it|why do|why did|what did|"
+                r"^(?:did you|do you|have you|are you|can you|would you|could you|is it|was it|"
                 r"bạn có biết|bạn đã bao giờ|có bao giờ bạn|bạn có đang|phải chăng|"
                 r"você sabia|você já)\b",
                 re.IGNORECASE,
             )
-            if weak_yes_no_pattern.search(s1_narr) or ("?" in s1_narr and not (is_what_if_niche and s1_narr.lower().startswith("what if"))):
+            is_open_curiosity_hook = bool(open_curiosity_hook_pattern.search(s1_narr.strip()))
+            if weak_yes_no_pattern.search(s1_narr) or ("?" in s1_narr and not is_open_curiosity_hook):
                 issues.append(
-                    f"Scene 1 hook uses a weak question ('{s1_narr}'). "
-                    f"100% of Scene 1 hooks MUST be a sharp declarative statement or warning (NO '?' or Yes/No questions like 'Have you ever...' / 'Do you...')."
+                    f"Scene 1 hook uses a weak Yes/No question ('{s1_narr}'). "
+                    f"Scene 1 MUST be either an open-loop 'Why / Por que / How / What if' curiosity hook OR a sharp declarative statement (NO weak Yes/No questions like 'Did you know...?' or 'Have you ever...?')."
                 )
 
             # Kiểm tra cấu trúc 2-Entity Matchup (`Entity A vs Entity B`): Chỉ áp dụng cho ngách đối đầu sinh vật vật lý (`wildlife`),
@@ -546,7 +553,7 @@ class ScriptValidationLinter:
                 f"{bullet_points}\n\n"
                 f"ACTION REQUIRED:\n"
                 f"1. Write a smooth, well-developed 5-Act story (NEVER abrupt or truncated):\n"
-                f"   - Act 1 (Scene 1, 5-9 words): Sharp declarative statement, 1v1 duel, or warning hook (NO weak Yes/No questions).\n"
+                f"   - Act 1 (Scene 1, 6-12 words): Open-loop 'Why / Por que / How' curiosity hook OR sharp declarative paradox naming the main entities (NO weak Yes/No questions like 'Did you know...?').\n"
                 f"   - Act 2 (Scenes 2-3): Smooth context + concrete real-life quote, behavior, or factual scenario.\n"
                 f"   - Act 3 (Scenes 4-5): Clear, thorough explanation of the hidden brain/psychological or physical mechanism.\n"
                 f"   - Act 4 (Scenes 6-7): Complete climax or actionable word-for-word counter-move.\n"
