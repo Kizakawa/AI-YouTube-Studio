@@ -807,8 +807,8 @@ Return ONLY valid JSON:
             else 0.25
         )
 
-        # Cắt SONG SONG 6-Workers (3-Shot Anti-CID + Cinema Bars + Đốt trực tiếp phụ đề .ass từng cảnh + Chuẩn hóa Audio AAC từng cảnh)
-        sem = asyncio.Semaphore(6)
+        # Cắt SONG SONG 4-Workers (3-Shot Anti-CID + Cinema Bars + Đốt trực tiếp phụ đề .ass từng cảnh + Chuẩn hóa Audio AAC từng cảnh)
+        sem = asyncio.Semaphore(4)
 
         def _slice_and_burn_scene_direct(
             m_path: str,
@@ -825,10 +825,10 @@ Return ONLY valid JSON:
         ) -> None:
             # 5-Layer Anti-Content-ID & Anti-AI-Scan Engine:
             # 1. Biến thiên tốc độ ngẫu nhiên bất đối xứng từng góc máy (1.08x-1.17x / 0.87x-0.93x — không bao giờ để 1.00x gốc)
-            # 2. Dịch tâm khung hình ngẫu nhiên (Asymmetric Pan/Crop Jitter) + Cắt sạch 12% đỉnh & 22% đáy
+            # 2. Dịch tâm khung hình ngẫu nhiên (Asymmetric Pan/Crop Jitter) + Cắt sạch 10% đỉnh & 22% đáy
             # 3. Lật gương ngang thông minh (Selective hflip) phá vỡ 100% vector chuyển động Optical Flow
-            # 4. Biến đổi ma trận màu & Gamma từng góc máy (eq=contrast/saturation/gamma)
-            # 5. Đóng khung Cinema 2.35:1 Widescreen + Đốt phụ đề Karaoke mới
+            # 4. Biến đổi ma trận màu & Gamma (eq=contrast/saturation/gamma) + Làm nét phần cứng AMD CAS=0.45
+            # 5. Đóng khung Cinema 2.35:1 Widescreen (1920x820 -> pad 1920x1080, chỉ phóng 1.08x giữ nguyên 92% nét gốc)
             seed = int(job_id) * 31 + int(scene_id) * 17
             shot_d = round(target_dur / 3.0, 2)
             max_avail_src = max(2.8, slot_span * 0.31)
@@ -855,27 +855,24 @@ Return ONLY valid JSON:
             flip1 = "hflip," if (seed % 2 == 0) else ""
             flip2 = "hflip," if (seed % 2 == 1) else ""
 
-            # Scale chuẩn tỷ lệ khung hình Cinema 2.35:1 (1920x820 -> pad=1920:1080:0:110:black)
-            # giúp chỉ phóng nhẹ 1.08x (giữ nguyên 92% điểm ảnh gốc 1080p thay vì phóng 1.65x gây vỡ nét),
-            # kết hợp Lanczos + AMD Contrast Adaptive Sharpening (cas=0.45) sắc nét từng gợn sóng!
             vf0 = (
                 f"{pts0}crop=iw*0.92:ih*0.68:iw*{x0}:ih*{y0},"
-                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,"
-                "cas=0.45,eq=contrast=1.04:saturation=1.06:gamma=0.98,pad=1920:1080:0:110:black,setsar=1"
+                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,setsar=1"
             )
             vf1 = (
                 f"{pts1}crop=iw*0.89:ih*0.66:iw*{x1}:ih*{y1},{flip1}"
-                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,"
-                "cas=0.45,eq=contrast=1.06:saturation=1.08:gamma=1.02,pad=1920:1080:0:110:black,setsar=1"
+                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,setsar=1"
             )
             vf2 = (
                 f"{pts2}crop=iw*0.86:ih*0.65:iw*{x2}:ih*{y2},{flip2}"
-                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,"
-                "cas=0.45,eq=contrast=1.05:saturation=1.07:gamma=0.97,pad=1920:1080:0:110:black,setsar=1"
+                "scale=1920:820:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:820,setsar=1"
             )
-            ass_filter = f"ass={rel_ass_path}," if rel_ass_path and Path(rel_ass_path).exists() else ""
-            cinema_bars = f"{ass_filter}fps=30,format=yuv420p"
-            fc_3in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[2:v]{vf2}[v2];[v0][v1][v2]concat=n=3:v=1:a=0,{cinema_bars}[vout]"
+            ass_filter = f",ass={rel_ass_path}" if rel_ass_path and Path(rel_ass_path).exists() else ""
+            post_cinema = (
+                "cas=0.45,eq=contrast=1.05:saturation=1.07:gamma=0.98,"
+                f"pad=1920:1080:0:110:black{ass_filter},fps=30,format=yuv420p"
+            )
+            fc_3in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[2:v]{vf2}[v2];[v0][v1][v2]concat=n=3:v=1:a=0,{post_cinema}[vout]"
             cmd_v = [
                 get_ffmpeg_exe(), "-y", "-v", "error",
                 "-ss", f"{s0_off:.2f}", "-t", f"{src_d0:.2f}", "-i", m_path,
@@ -884,14 +881,14 @@ Return ONLY valid JSON:
                 "-filter_complex", fc_3in,
                 "-map", "[vout]",
                 "-t", f"{target_dur:.4f}",
-                "-threads", "2",
-                "-c:v", "libx264", "-preset", "superfast", "-crf", "18", "-maxrate", "4500k", "-bufsize", "9000k",
+                "-threads", "3",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-maxrate", "3500k", "-bufsize", "7000k",
                 "-r", "30", "-pix_fmt", "yuv420p", "-video_track_timescale", "15360",
                 *BT709_COLOR_ARGS,
                 "-an", "-dn", "-sn",
                 out_clip,
             ]
-            subprocess.run(cmd_v, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
+            subprocess.run(cmd_v, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90, check=False)
             cmd_a = [
                 get_ffmpeg_exe(), "-y", "-v", "error",
                 "-i", a_in_path,
@@ -900,7 +897,7 @@ Return ONLY valid JSON:
                 "-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "192k",
                 a_out_path,
             ]
-            subprocess.run(cmd_a, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20, check=False)
+            subprocess.run(cmd_a, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=25, check=False)
 
         async def _slice_task(idx_s: int, sc: SceneContract) -> Tuple[SceneContract, str]:
             async with sem:
