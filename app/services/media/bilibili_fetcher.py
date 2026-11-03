@@ -331,16 +331,19 @@ def search_bilibili_videos(
     max_results: int = 12,
     min_dur_s: float = 8.0,
     max_dur_s: float = 600.0,
+    order: str = "click",
 ) -> List[Dict[str, Any]]:
     """
     Tìm kiếm video trên Bilibili trực tiếp qua API `/x/web-interface/search/type` (~0.7s).
-    Trả về danh sách ứng viên đã lọc bỏ video rác và sắp xếp theo lượt xem giảm dần.
+    Mặc định `order="click"` (`最多播放` — Top Hot-Hit nhiều lượt xem nhất trên Bilibili)
+    và sắp xếp ưu tiên theo `view_count` (`play`) từ hàng triệu view trở xuống.
     """
     kw = str(keyword or "").strip()
     if not kw:
         return []
 
-    cache_key = f"{kw.lower()}::{int(min_dur_s)}::{int(max_dur_s)}"
+    sort_order = str(order or "click").strip().lower()
+    cache_key = f"{kw.lower()}::{int(min_dur_s)}::{int(max_dur_s)}::{sort_order}"
     with _bili_lock:
         if cache_key in _bili_search_cache:
             return list(_bili_search_cache[cache_key][:max_results])
@@ -351,9 +354,13 @@ def search_bilibili_videos(
         sess.headers.update(_BILI_HEADERS)
         sess.cookies.set("buvid3", f"{uuid.uuid4()}infoc", domain=".bilibili.com")
 
+        search_params: Dict[str, Any] = {"search_type": "video", "keyword": kw, "page": 1}
+        if sort_order in ("click", "totalrank", "dm", "stow", "pubdate"):
+            search_params["order"] = sort_order
+
         resp = sess.get(
             "https://api.bilibili.com/x/web-interface/search/type",
-            params={"search_type": "video", "keyword": kw, "page": 1},
+            params=search_params,
             timeout=(3.5, 6.0),
         )
         if resp.status_code == 200:
@@ -414,15 +421,12 @@ def search_bilibili_videos(
         if anchor_matched:
             results = anchor_matched
 
-    # Sắp xếp ưu tiên: (1) Video bản sạch không phụ đề ('无字幕', '纯享', '素材', '4K', '实拍'), (2) Khớp nhiều từ khóa chữ Hán nhất, (3) Lượt xem cao
-    _clean_nosub_markers = ("无字幕", "纯享", "素材", "原片", "無字幕")
-    _hd_doc_markers = ("4k", "4K", "纪录片", "实拍", "CG", "3D", "高清")
+    # Sắp xếp ưu tiên Top Hot-Hit: (1) Video đạt mốc Viral (>= 100K views), (2) Lượt xem cao nhất (Triệu view -> Trăm nghìn view), (3) Độ khớp từ khóa chủ thể
     results.sort(
         key=lambda x: (
-            1 if any(m in f"{x.get('title', '')} {x.get('description', '')}" for m in _clean_nosub_markers) else 0,
-            sum(1 for t in zh_tokens if t in f"{x.get('title', '')} {x.get('description', '')}"),
-            1 if any(m in str(x.get("title", "")) for m in _hd_doc_markers) else 0,
+            1 if int(x.get("view_count") or 0) >= 100_000 else 0,
             int(x.get("view_count") or 0),
+            sum(1 for t in zh_tokens if t in f"{x.get('title', '')} {x.get('description', '')}"),
         ),
         reverse=True,
     )

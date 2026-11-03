@@ -106,7 +106,7 @@ class BilibiliLongformCompiler:
 
         tbr_kbps = float(info.get("tbr") or 0.0)
         v_h = int(info.get("height") or 0)
-        if v_h < 720 or (tbr_kbps > 0 and tbr_kbps < 650.0):
+        if v_h < 720 or (tbr_kbps > 0 and tbr_kbps < 500.0):
             logger.debug(f"[Bilibili3x3] Bỏ qua {bvid} vì độ phân giải/bitrate thấp ({v_h}p, {tbr_kbps:.0f}kbps)")
             return None
 
@@ -265,11 +265,11 @@ class BilibiliLongformCompiler:
         master_dir.mkdir(parents=True, exist_ok=True)
         selected_masters: List[Dict[str, Any]] = []
 
-        # Tái sử dụng ngay nếu trên ổ cứng đã tải sẵn 3 file master Bilibili hợp lệ (>= 15MB, >= 65s thực tế) của job này
+        # Tái sử dụng ngay nếu trên ổ cứng đã tải sẵn 3 file master Bilibili hợp lệ (>= 6MB, >= 65s thực tế) của job này
         cached_mp4s = sorted(master_dir.glob("bili_part_*.mp4"))
         if len(cached_mp4s) >= 3:
             for cm in cached_mp4s[:3]:
-                if cm.stat().st_size >= 15_000_000:
+                if cm.stat().st_size >= 6_000_000:
                     est_s = self._measure_playable_pts_duration_sec(str(cm), fallback_sec=(cm.stat().st_size / 250_000.0))
                     if est_s >= 65.0 and self._is_clean_cinematic_master(str(cm), playable_dur_s=est_s):
                         bv_match = cm.stem.split("_")[-1]
@@ -288,7 +288,12 @@ class BilibiliLongformCompiler:
             selected_masters.clear()
 
         used_set = used_bvids if used_bvids is not None else set()
-        queries_en = list(sub_queries or [])
+        queries_en: List[str] = []
+        if primary_entity:
+            queries_en.append(str(primary_entity).strip())
+        for sq in (sub_queries or []):
+            if sq and str(sq).strip() not in queries_en:
+                queries_en.append(str(sq).strip())
         if not queries_en:
             queries_en = [
                 f"{primary_entity or topic}",
@@ -300,21 +305,34 @@ class BilibiliLongformCompiler:
             "解说", "盘点", "辟谣", "评论", "网友", "一口气", "搞笑", "游戏",
             "动画", "漫画", "玩具", "手工", "测评", "说动物", "海洋公园", "表演", "水族馆",
             "绘本", "英文", "英语", "儿童", "少儿", "阅读", "朗读", "课件", "PPT",
+            "模拟器", "我的世界", "挑战", "搞笑配音", "烧烤", "人生一串", "美食", "厨", "性侵",
         )
         candidates_pool: List[Dict[str, Any]] = []
         seen_bv: Set[str] = set(used_set)
         for q_en in queries_en[:4]:
             zh_q = translate_query_to_chinese(q_en, primary_entity=primary_entity or topic)
-            cands_clean = search_bilibili_videos(f"{zh_q} 纪录片 无字幕", max_results=6, min_dur_s=110.0, max_dur_s=900.0)
-            cands_4k = search_bilibili_videos(f"{zh_q} 纪录片 4K", max_results=8, min_dur_s=110.0, max_dur_s=900.0)
-            cands_bbc = search_bilibili_videos(f"{zh_q} BBC 纪录片", max_results=8, min_dur_s=110.0, max_dur_s=900.0)
-            cands_std = search_bilibili_videos(f"{zh_q} 动物世界", max_results=8, min_dur_s=110.0, max_dur_s=900.0)
-            for c in [*cands_clean, *cands_4k, *cands_bbc, *cands_std]:
+            # Tách danh từ chủ thể tiếng Trung gốc (ví dụ: '虎鲸', '美洲豹', '鳄鱼') để săn trọn vẹn Top Hot-Hit Triệu View
+            base_zh = re.sub(r"\s*(纪录片|高清|4K|实拍|视频|捕猎|捕食|野生动物)\s*", " ", zh_q).strip() or zh_q
+            core_zh = base_zh.split()[0] if base_zh.split() else base_zh
+            cands_hunt = search_bilibili_videos(f"{core_zh} 捕猎", max_results=10, min_dur_s=95.0, max_dur_s=900.0, order="click")
+            cands_doc = search_bilibili_videos(f"{core_zh} 纪录片", max_results=10, min_dur_s=95.0, max_dur_s=900.0, order="click")
+            cands_world = search_bilibili_videos(f"{core_zh} 动物世界", max_results=10, min_dur_s=95.0, max_dur_s=900.0, order="click")
+            cands_full = search_bilibili_videos(f"{base_zh} 实拍", max_results=8, min_dur_s=95.0, max_dur_s=900.0, order="click")
+            for c in [*cands_hunt, *cands_doc, *cands_world, *cands_full]:
                 bv = str(c.get("bvid") or c.get("id") or "").strip()
                 t_str = str(c.get("title") or "")
                 if bv and bv not in seen_bv and not any(bt in t_str for bt in bad_title_tokens):
                     seen_bv.add(bv)
                     candidates_pool.append(c)
+
+        # Sắp xếp toàn bộ ứng viên theo lượt xem (view_count) giảm dần: Ưu tiên Top Hot-Hit Triệu View lên đầu!
+        candidates_pool.sort(key=lambda x: int(x.get("view_count") or 0), reverse=True)
+        if candidates_pool:
+            top_preview = ", ".join(
+                f"{c.get('bvid')} ({int(c.get('view_count') or 0):,} views)"
+                for c in candidates_pool[:5]
+            )
+            logger.info(f"🔥 [Bilibili Hot-Hit] Top 5 ứng viên nhiều view nhất: {top_preview}")
 
         from concurrent.futures import ThreadPoolExecutor
 
@@ -328,12 +346,15 @@ class BilibiliLongformCompiler:
                 slot_num, cand_obj = item_pair
                 bv_id = str(cand_obj.get("bvid") or cand_obj.get("id") or "").strip()
                 out_m = str(master_dir / f"bili_part_{slot_num:02d}_{bv_id}.mp4")
-                return self.download_bilibili_3min_segment(
+                res_dl = self.download_bilibili_3min_segment(
                     bvid=bv_id,
                     output_path=out_m,
                     target_duration_sec=192.0,
                     title_hint=str(cand_obj.get("title") or ""),
                 )
+                if res_dl is not None:
+                    res_dl["view_count"] = max(int(res_dl.get("view_count") or 0), int(cand_obj.get("view_count") or 0))
+                return res_dl
 
             with ThreadPoolExecutor(max_workers=3) as pool:
                 results = list(pool.map(_try_dl, [(b_start + i + 1, c) for i, c in enumerate(batch)]))
@@ -346,6 +367,7 @@ class BilibiliLongformCompiler:
                     selected_masters.append(res_info)
                     logger.info(
                         f"✅ [Bilibili 3x3] Đã tải Phần #{len(selected_masters)}/3 từ Bilibili ({bv}, "
+                        f"{int(res_info.get('view_count') or 0):,} views, "
                         f"{res_info.get('width')}x{res_info.get('height')} @ {res_info.get('tbr', 0):.0f}kbps, "
                         f"{res_info.get('clipped_duration_sec')}s): {res_info.get('title', '')[:45]}"
                     )
