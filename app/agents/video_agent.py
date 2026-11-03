@@ -142,7 +142,7 @@ class VideoAgent:
             )
 
             final_video_stage = muxed_video
-            if total_scenes < 22 and os.getenv("DISABLE_CINEMATIC_SFX", "false").lower() not in ("1", "true", "yes"):
+            if getattr(job, "enable_sfx", True) and total_scenes < 22 and os.getenv("DISABLE_CINEMATIC_SFX", "false").lower() not in ("1", "true", "yes"):
                 from app.utils.ffmpeg.audio_and_sfx import resolve_smart_sfx_cue
                 scene_timestamps = [0.0]
                 cum_sec = 0.0

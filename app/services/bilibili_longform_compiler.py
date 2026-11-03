@@ -588,6 +588,56 @@ Return ONLY valid JSON:
                 logger.debug(f"[BilibiliDirectDub] Audio translation warning: {e_aud}")
         return []
 
+    @staticmethod
+    def _extract_shifted_scene_ass(
+        master_ass_path: str,
+        out_scene_ass_path: str,
+        start_sec: float,
+        end_sec: float,
+        overlay_badge: Optional[str] = None,
+    ) -> bool:
+        """
+        Cắt lát file phụ đề `.ass` tổng cho từng phân cảnh `[start_sec, end_sec]` và dịch gốc thời gian về `0.0s`
+        (~0.4ms/cảnh) để đốt trực tiếp phụ đề ngay trong luồng cắt 6-Workers song song, giúp ghép cuối bằng `-c:v copy` (1.0 giây)!
+        """
+        if not master_ass_path or not Path(master_ass_path).exists():
+            return False
+
+        def _parse_ts(ts: str) -> float:
+            h, m, s = ts.strip().split(":")
+            return int(h) * 3600.0 + int(m) * 60.0 + float(s)
+
+        def _fmt_ts(sec: float) -> str:
+            sec = max(0.0, float(sec))
+            h = int(sec // 3600)
+            m = int((sec % 3600) // 60)
+            s = sec % 60.0
+            return f"{h}:{m:02d}:{s:05.2f}"
+
+        try:
+            lines = Path(master_ass_path).read_text(encoding="utf-8", errors="ignore").splitlines()
+            out_lines: List[str] = []
+            for ln in lines:
+                if ln.startswith("Dialogue:"):
+                    parts = ln.split(",", 9)
+                    if len(parts) == 10:
+                        st = _parse_ts(parts[1])
+                        et = _parse_ts(parts[2])
+                        if et > start_sec + 0.03 and st < end_sec - 0.03:
+                            parts[1] = _fmt_ts(max(0.0, st - start_sec))
+                            parts[2] = _fmt_ts(min(end_sec - start_sec, et - start_sec))
+                            out_lines.append(",".join(parts))
+                else:
+                    out_lines.append(ln)
+            if overlay_badge:
+                out_lines.append(
+                    f"Dialogue: 1,0:00:00.20,0:00:04.20,PatternInterruptBadge,,0,0,0,,{{\\fad(200,250)}}{overlay_badge}"
+                )
+            Path(out_scene_ass_path).write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+            return True
+        except Exception:
+            return False
+
     async def produce_complete_bilibili_dubbed_longform(
         self,
         job_id: int,
@@ -600,22 +650,18 @@ Return ONLY valid JSON:
         thumbnail_text: str = "1.500 PSI!",
         sub_queries: Optional[List[str]] = None,
         scenes_per_master: int = 8,
+        target_min_duration_sec: float = 508.0,
     ) -> Dict[str, Any]:
         """
-        Quy trình 1-Click khép kín:
-        1. Tải 3 video Bilibili 16:9 (~3 phút/video) + Tách luồng âm thanh tiếng Trung gốc.
-        2. Dùng Gemini 2.5 Flash nghe trực tiếp tiếng Trung gốc để dịch sang lời thuyết minh ngôn ngữ đích (`pt`/`en`/`vi`)
-           (nếu video gốc chỉ có nhạc nền không lời thì tự động dùng Gemini Vision đọc hình viết lời).
-        3. Tạo giọng đọc AI (`VoiceAgent`) + Phụ đề `.ass` cho toàn bộ các đoạn.
-        4. Cắt 3 video Bilibili khớp từng mili-giây với từng đoạn giọng đọc kèm **4-Shot Multi-Cut (~4.7s/góc máy)**
-           + **Cắt sạch phụ đề tiếng Trung ở đáy**.
-        5. Tạo ảnh bìa Two-Tone High-CTR + Render video `1920x1080` nhúng IDR Keyframe Thumbnail (`0%, 25%, 50%, 75%`).
-        6. Đẩy trực tiếp lên Google Drive (`DriveAgent`) và trả về link xem ngay!
+        Quy trình 1-Click Siêu Tốc (> 8 Phút 25 Giây mở khóa Quảng cáo giữa video Mid-Roll Ads, dựng xong trong ~25–35s):
+        1. Tải song song 3 video Bilibili 16:9 + Tách luồng âm thanh tiếng Trung gốc.
+        2. Dịch song song 3 luồng âm thanh bằng Gemini 2.5 Flash + Tạo giọng đọc AI (`VoiceAgent`) + Phụ đề `.ass`.
+        3. Cắt SONG SONG 6-Workers từ 3 Master kèm **3-Shot Anti-CID (`Wide -> Medium -> Close`)**, **Cắt sạch phụ đề tiếng Trung**,
+           và **Đốt trực tiếp phụ đề `.ass` vào từng cảnh** để bước ghép cuối dùng **Zero-Reencode `-f concat -c:v copy` (1.0 giây)**!
         """
         import asyncio
         from config.settings import settings
         from app.agents.voice_agent import VoiceAgent
-        from app.agents.video_agent import VideoAgent
         from app.agents.drive_agent import DriveAgent
         from app.services.thumbnail_service import ThumbnailService
 
@@ -638,27 +684,18 @@ Return ONLY valid JSON:
         full_audio_path = str(work_dir / "full_voiceover.mp3")
         subtitle_path = str(work_dir / "subtitles.ass")
         expected_total_scenes = scenes_per_master * len(masters)
-        cached_scene_mp4s = sorted(media_dir.glob("scene_*_16x9.mp4"))
         cached_scene_mp3s = sorted(audio_dir.glob("scene_*.mp3"))
 
-        if (
-            Path(full_audio_path).exists()
-            and len(cached_scene_mp4s) >= expected_total_scenes
-            and len(cached_scene_mp3s) >= expected_total_scenes
-        ):
-            logger.info(
-                f"♻️ [Bilibili 3x3] Tái sử dụng {len(cached_scene_mp4s)} phân cảnh video & giọng đọc đã dựng sẵn tại {work_dir}"
-            )
-            total_audio_ms = get_duration_ms(full_audio_path)
-            enriched_scenes: List[SceneContract] = []
+        if Path(full_audio_path).exists() and len(cached_scene_mp3s) >= expected_total_scenes and Path(subtitle_path).exists():
+            logger.info(f"♻️ [Bilibili 3x3] Tái sử dụng {len(cached_scene_mp3s)} file giọng đọc & phụ đề tại {audio_dir}")
+            scenes_objs: List[SceneContract] = []
             for idx_s in range(expected_total_scenes):
                 sid_idx = idx_s + 1
                 a_path = str(cached_scene_mp3s[idx_s])
-                v_path = str(cached_scene_mp4s[idx_s])
                 a_ms = get_duration_ms(a_path) or 18000
                 p_num = (idx_s // scenes_per_master) + 1
                 badge = f"[ // PARTE {p_num}: ATO {(idx_s % scenes_per_master) + 1} // ]" if (idx_s % scenes_per_master == 0) else None
-                enriched_scenes.append(
+                scenes_objs.append(
                     SceneContract(
                         scene_id=sid_idx,
                         narration=f"Segmento {sid_idx}",
@@ -671,223 +708,228 @@ Return ONLY valid JSON:
                         estimated_seconds=round(a_ms / 1000.0, 2),
                         audio_path=a_path,
                         audio_duration_ms=a_ms,
-                        media_path=v_path,
                     )
                 )
         else:
-            if Path(full_audio_path).exists() and len(cached_scene_mp3s) >= expected_total_scenes:
-                logger.info(f"♻️ [Bilibili 3x3] Tái sử dụng {len(cached_scene_mp3s)} file giọng đọc đã tạo sẵn tại {audio_dir}")
-                total_audio_ms = get_duration_ms(full_audio_path)
-                scenes_objs = []
-                for idx_s in range(expected_total_scenes):
-                    sid_idx = idx_s + 1
-                    a_path = str(cached_scene_mp3s[idx_s])
-                    a_ms = get_duration_ms(a_path) or 18000
-                    p_num = (idx_s // scenes_per_master) + 1
-                    badge = f"[ // PARTE {p_num}: ATO {(idx_s % scenes_per_master) + 1} // ]" if (idx_s % scenes_per_master == 0) else None
-                    scenes_objs.append(
-                        SceneContract(
-                            scene_id=sid_idx,
-                            narration=f"Segmento {sid_idx}",
-                            visual_keyword=f"{primary_entity} action scene {sid_idx}",
-                            visual_prompt=f"16:9 widescreen shot {sid_idx}",
-                            media_type="video",
-                            camera_motion="zoom_in",
-                            sfx_cue="none",
-                            overlay_badge=badge,
-                            estimated_seconds=round(a_ms / 1000.0, 2),
-                            audio_path=a_path,
-                            audio_duration_ms=a_ms,
-                        )
+            async def _translate_part(idx_p: int, m_info: Dict[str, Any]) -> List[str]:
+                n_segs = scenes_per_master
+                segs: List[str] = []
+                if m_info.get("orig_audio_path"):
+                    segs = await asyncio.to_thread(
+                        self.extract_and_translate_bilibili_audio_direct,
+                        audio_m4s_path=str(m_info["orig_audio_path"]),
+                        video_title=str(m_info.get("title") or topic),
+                        target_language=language,
+                        num_segments=n_segs,
                     )
-            else:
-                # 1. Dịch SONG SONG 3 luồng âm thanh gốc của Bilibili bằng Gemini 2.5 Flash Native Audio (không cần cắt sơ bộ 18 clip trước!)
-                async def _translate_part(idx_p: int, m_info: Dict[str, Any]) -> List[str]:
-                    n_segs = scenes_per_master
-                    segs: List[str] = []
-                    if m_info.get("orig_audio_path"):
-                        segs = await asyncio.to_thread(
-                            self.extract_and_translate_bilibili_audio_direct,
-                            audio_m4s_path=str(m_info["orig_audio_path"]),
-                            video_title=str(m_info.get("title") or topic),
-                            target_language=language,
-                            num_segments=n_segs,
-                        )
-                    if len(segs) < n_segs:
-                        segs = await asyncio.to_thread(
-                            self.generate_vision_synced_narration_for_part,
-                            part_idx=idx_p,
-                            master_info=m_info,
-                            part_scene_paths=[str(m_info.get("local_master_path") or "")],
-                            topic=topic,
-                            language=language,
-                        )
-                    while len(segs) < n_segs:
-                        segs.append(
-                            segs[-1]
-                            if segs
-                            else "Na natureza selvagem, cada segundo define quem domina o território e quem se torna presa imediata."
-                        )
-                    return segs[:n_segs]
-
-                part_narr_lists = await asyncio.gather(
-                    *[_translate_part(i + 1, m) for i, m in enumerate(masters)]
-                )
-                all_narrations: List[str] = [s for sub in part_narr_lists for s in sub]
-
-                scenes_contracts: List[SceneContract] = []
-                for sid_idx, narr_str in enumerate(all_narrations, start=1):
-                    p_num = ((sid_idx - 1) // scenes_per_master) + 1
-                    badge = f"[ // PARTE {p_num}: ATO {((sid_idx - 1) % scenes_per_master) + 1} // ]" if ((sid_idx - 1) % scenes_per_master == 0) else None
-                    scenes_contracts.append(
-                        SceneContract(
-                            scene_id=sid_idx,
-                            narration=narr_str,
-                            visual_keyword=f"{primary_entity} action scene {sid_idx}",
-                            visual_prompt=f"16:9 widescreen shot {sid_idx}",
-                            media_type="video",
-                            camera_motion="zoom_in",
-                            sfx_cue="none",
-                            overlay_badge=badge,
-                            estimated_seconds=18.5,
-                        )
+                if len(segs) < n_segs:
+                    segs = await asyncio.to_thread(
+                        self.generate_vision_synced_narration_for_part,
+                        part_idx=idx_p,
+                        master_info=m_info,
+                        part_scene_paths=[str(m_info.get("local_master_path") or "")],
+                        topic=topic,
+                        language=language,
                     )
-
-                from app.utils.subtitle_helper import SubtitleHelper
-
-                voice_agent = VoiceAgent()
-                scenes_objs = await voice_agent.generate_per_scene_audio(
-                    scenes=scenes_contracts,
-                    output_dir=str(audio_dir),
-                    niche=niche,
-                    channel_id=channel_id,
-                    job_id=job_id,
-                    is_long_form=True,
-                )
-                total_audio_ms, _ = await asyncio.gather(
-                    voice_agent.concat_scene_audio(
-                        scenes=scenes_objs,
-                        output_path=full_audio_path,
-                    ),
-                    asyncio.to_thread(
-                        SubtitleHelper.save_ass_file,
-                        scenes_objs,
-                        subtitle_path,
-                        niche_id=niche,
-                        hook_title=thumbnail_text or title,
-                        show_cta_badge=False,
-                        is_long_form=True,
-                    ),
-                )
-
-            # 2. Cắt SONG SONG (Single-Pass 1080p High-Sharpness) từ 3 Master Lossless khớp chính xác từng câu đọc!
-            sem = asyncio.Semaphore(4)
-            total_sc_count = len(scenes_objs)
-
-            def _slice_single_1080p_direct(
-                m_path: str,
-                out_clip: str,
-                start_off: float,
-                s2_off: float,
-                target_dur: float,
-                slot_span: float = 20.0,
-            ) -> None:
-                # Cắt bỏ triệt để 12% đỉnh (xóa sạch logo kênh góc trên) và 22% đáy (xóa sạch phụ đề tiếng Trung cứng),
-                # kết hợp viền điện ảnh Cinema 2.35:1 Widescreen (52px đỉnh, 100px đáy) làm nền cho phụ đề mới.
-                half_d = round(target_dur * 0.5, 2)
-                rem_d = round(target_dur - half_d, 3)
-                src_d0 = round(min(half_d, max(2.5, slot_span * 0.48)), 2)
-                src_d1 = round(min(rem_d, max(2.5, slot_span * 0.48)), 3)
-                pts0 = f"setpts={max(1.0, min(1.85, half_d / max(0.5, src_d0))):.4f}*PTS," if src_d0 < half_d - 0.08 else ""
-                pts1 = f"setpts={max(1.0, min(1.85, rem_d / max(0.5, src_d1))):.4f}*PTS," if src_d1 < rem_d - 0.08 else ""
-                vf0 = (
-                    f"{pts0}crop=iw*0.86:ih*0.66:iw*0.07:ih*0.12,"
-                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
-                    "crop=1920:1080,unsharp=5:5:1.05:5:5:0.0,eq=contrast=1.04:saturation=1.05,setsar=1"
-                )
-                vf1 = (
-                    f"{pts1}crop=iw*0.82:ih*0.62:iw*0.09:ih*0.14,"
-                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
-                    "crop=1920:1080,unsharp=5:5:1.05:5:5:0.0,eq=contrast=1.05:saturation=1.06,setsar=1"
-                )
-                cinema_bars = (
-                    "drawbox=x=0:y=0:w=1920:h=52:color=black@0.96:t=fill,"
-                    "drawbox=x=0:y=980:w=1920:h=100:color=black@0.96:t=fill,fps=30,format=yuv420p"
-                )
-                if target_dur >= 7.0 and abs(s2_off - start_off) >= 2.2:
-                    fc_2in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[v0][v1]concat=n=2:v=1:a=0,{cinema_bars}[vout]"
-                    cmd = [
-                        get_ffmpeg_exe(), "-y", "-v", "error",
-                        "-ss", f"{start_off:.2f}", "-t", f"{src_d0:.2f}", "-i", m_path,
-                        "-ss", f"{s2_off:.2f}", "-t", f"{src_d1:.3f}", "-i", m_path,
-                        "-filter_complex", fc_2in,
-                        "-map", "[vout]",
-                        "-t", f"{target_dur:.3f}",
-                        "-threads", "2",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "17",
-                        *BT709_COLOR_ARGS,
-                        "-an", "-dn", "-sn",
-                        out_clip,
-                    ]
-                else:
-                    cmd = [
-                        get_ffmpeg_exe(), "-y", "-v", "error",
-                        "-ss", f"{start_off:.2f}",
-                        "-t", f"{target_dur:.3f}",
-                        "-i", m_path,
-                        "-vf", f"{vf0},{cinema_bars}",
-                        "-threads", "2",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "17",
-                        *BT709_COLOR_ARGS,
-                        "-an", "-dn", "-sn",
-                        out_clip,
-                    ]
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
-
-            async def _slice_task(idx_s: int, sc: SceneContract) -> SceneContract:
-                async with sem:
-                    a_path = getattr(sc, "audio_path", "") or full_audio_path
-                    a_ms = int(getattr(sc, "audio_duration_ms", 18000) or 18000)
-                    dur_s = max(1.0, a_ms / 1000.0)
-                    # Khớp chính xác thời lượng mà VideoAgent._prepare_scene_clips yêu cầu để kích hoạt Zero-Loss Copy (0.002s)!
-                    target_clip_dur = dur_s + (0.30 if idx_s == total_sc_count - 1 else 0.0)
-
-                    m_idx = min(len(masters) - 1, idx_s // scenes_per_master)
-                    slot_i = idx_s % scenes_per_master
-                    m_info = masters[m_idx]
-                    m_path = str(m_info.get("local_master_path") or "")
-                    m_dur = float(m_info.get("clipped_duration_sec") or 0.0) or self._measure_playable_pts_duration_sec(m_path, fallback_sec=90.0)
-                    safe_head = 6.0 if m_dur > 45.0 else 2.0
-                    usable_span = max(30.0, m_dur - safe_head - 1.5)
-                    slot_span = usable_span / max(1, scenes_per_master)
-
-                    # Phân hoạch độc quyền từng ô thời gian [slot_start, slot_start + slot_span] cho mỗi cảnh:
-                    # Shot A lấy nửa đầu [slot_start .. +0.48*slot_span], Shot B lấy nửa sau [slot_start + 0.50*slot_span .. +0.98*slot_span]
-                    # => Tuyệt đối KHÔNG BAO GIỜ trùng lặp khung hình giữa các cảnh hoặc giữa 2 góc máy trong cùng 1 cảnh!
-                    slot_start = safe_head + slot_i * slot_span
-                    start_off = round(min(max(safe_head, m_dur - 4.0), slot_start), 2)
-                    s2_off = round(min(max(safe_head + 2.5, m_dur - 2.5), slot_start + slot_span * 0.50), 2)
-
-                    out_clip = str(media_dir / f"scene_{sc.scene_id:03d}_16x9.mp4")
-
-                    await asyncio.to_thread(
-                        _slice_single_1080p_direct,
-                        m_path,
-                        out_clip,
-                        start_off,
-                        s2_off,
-                        target_clip_dur,
-                        slot_span,
+                while len(segs) < n_segs:
+                    segs.append(
+                        segs[-1]
+                        if segs
+                        else "Na natureza selvagem, cada segundo define quem domina o território e quem se torna presa imediata."
                     )
-                    sc.audio_path = a_path
-                    sc.audio_duration_ms = a_ms
-                    sc.media_path = out_clip
-                    sc.media_type = "video"
-                    return sc
+                return segs[:n_segs]
 
-            enriched_scenes = list(
-                await asyncio.gather(*[_slice_task(i, sc) for i, sc in enumerate(scenes_objs)])
+            part_narr_lists = await asyncio.gather(
+                *[_translate_part(i + 1, m) for i, m in enumerate(masters)]
             )
+            all_narrations: List[str] = [s for sub in part_narr_lists for s in sub]
+
+            scenes_contracts: List[SceneContract] = []
+            for sid_idx, narr_str in enumerate(all_narrations, start=1):
+                p_num = ((sid_idx - 1) // scenes_per_master) + 1
+                badge = f"[ // PARTE {p_num}: ATO {((sid_idx - 1) % scenes_per_master) + 1} // ]" if ((sid_idx - 1) % scenes_per_master == 0) else None
+                scenes_contracts.append(
+                    SceneContract(
+                        scene_id=sid_idx,
+                        narration=narr_str,
+                        visual_keyword=f"{primary_entity} action scene {sid_idx}",
+                        visual_prompt=f"16:9 widescreen shot {sid_idx}",
+                        media_type="video",
+                        camera_motion="zoom_in",
+                        sfx_cue="none",
+                        overlay_badge=badge,
+                        estimated_seconds=18.5,
+                    )
+                )
+
+            from app.utils.subtitle_helper import SubtitleHelper
+
+            voice_agent = VoiceAgent()
+            scenes_objs = await voice_agent.generate_per_scene_audio(
+                scenes=scenes_contracts,
+                output_dir=str(audio_dir),
+                niche=niche,
+                channel_id=channel_id,
+                job_id=job_id,
+                is_long_form=True,
+            )
+            await asyncio.gather(
+                voice_agent.concat_scene_audio(
+                    scenes=scenes_objs,
+                    output_path=full_audio_path,
+                ),
+                asyncio.to_thread(
+                    SubtitleHelper.save_ass_file,
+                    scenes_objs,
+                    subtitle_path,
+                    niche_id=niche,
+                    hook_title=thumbnail_text or title,
+                    show_cta_badge=False,
+                    is_long_form=True,
+                ),
+            )
+
+        # Tính toán thời lượng chuẩn từng cảnh + Khoảng thở B-Roll điện ảnh (broll_pause_s) để đảm bảo tổng thời lượng >= target_min_duration_sec (> 8m25s Mid-Roll Ads)
+        total_sc_count = len(scenes_objs)
+        spoken_durs: List[float] = []
+        cum_starts: List[float] = []
+        running_s = 0.0
+        for sc in scenes_objs:
+            a_ms = int(getattr(sc, "audio_duration_ms", 0) or get_duration_ms(str(sc.audio_path)) or 18000)
+            s_dur = max(1.0, a_ms / 1000.0)
+            cum_starts.append(running_s)
+            spoken_durs.append(s_dur)
+            running_s += s_dur
+
+        broll_pause_s = (
+            max(0.25, (float(target_min_duration_sec) - running_s) / max(1, total_sc_count))
+            if running_s < float(target_min_duration_sec)
+            else 0.25
+        )
+
+        # Cắt SONG SONG 6-Workers (3-Shot Anti-CID + Cinema Bars + Đốt trực tiếp phụ đề .ass từng cảnh + Chuẩn hóa Audio AAC từng cảnh)
+        sem = asyncio.Semaphore(6)
+
+        def _slice_and_burn_scene_direct(
+            m_path: str,
+            out_clip: str,
+            a_in_path: str,
+            a_out_path: str,
+            rel_ass_path: str,
+            s0_off: float,
+            s1_off: float,
+            s2_off: float,
+            target_dur: float,
+            slot_span: float,
+        ) -> None:
+            shot_d = round(target_dur / 3.0, 2)
+            src_d = round(min(shot_d, max(3.2, slot_span * 0.32)), 2)
+            pts_f = f"setpts={max(1.0, (shot_d + 0.15) / max(0.5, src_d)):.4f}*PTS," if src_d < shot_d + 0.05 else ""
+            vf0 = (
+                f"{pts_f}crop=iw*0.86:ih*0.66:iw*0.07:ih*0.12,"
+                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,setsar=1"
+            )
+            vf1 = (
+                f"{pts_f}crop=iw*0.82:ih*0.62:iw*0.09:ih*0.14,"
+                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,setsar=1"
+            )
+            vf2 = (
+                f"{pts_f}crop=iw*0.78:ih*0.59:iw*0.11:ih*0.15,"
+                "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,crop=1920:1080,setsar=1"
+            )
+            ass_filter = f",ass={rel_ass_path}" if rel_ass_path and Path(rel_ass_path).exists() else ""
+            cinema_bars = (
+                "drawbox=x=0:y=0:w=1920:h=52:color=black@0.96:t=fill,"
+                f"drawbox=x=0:y=980:w=1920:h=100:color=black@0.96:t=fill{ass_filter},fps=30,format=yuv420p"
+            )
+            fc_3in = f"[0:v]{vf0}[v0];[1:v]{vf1}[v1];[2:v]{vf2}[v2];[v0][v1][v2]concat=n=3:v=1:a=0,{cinema_bars}[vout]"
+            cmd_v = [
+                get_ffmpeg_exe(), "-y", "-v", "error",
+                "-ss", f"{s0_off:.2f}", "-t", f"{src_d:.2f}", "-i", m_path,
+                "-ss", f"{s1_off:.2f}", "-t", f"{src_d:.2f}", "-i", m_path,
+                "-ss", f"{s2_off:.2f}", "-t", f"{src_d:.2f}", "-i", m_path,
+                "-filter_complex", fc_3in,
+                "-map", "[vout]",
+                "-t", f"{target_dur:.4f}",
+                "-threads", "2",
+                "-c:v", "libx264", "-preset", "superfast", "-crf", "22", "-maxrate", "2500k", "-bufsize", "5000k",
+                "-r", "30", "-pix_fmt", "yuv420p", "-video_track_timescale", "15360",
+                *BT709_COLOR_ARGS,
+                "-an", "-dn", "-sn",
+                out_clip,
+            ]
+            subprocess.run(cmd_v, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
+            cmd_a = [
+                get_ffmpeg_exe(), "-y", "-v", "error",
+                "-i", a_in_path,
+                "-af", f"apad=whole_dur={target_dur:.4f}",
+                "-t", f"{target_dur:.4f}",
+                "-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "192k",
+                a_out_path,
+            ]
+            subprocess.run(cmd_a, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20, check=False)
+
+        async def _slice_task(idx_s: int, sc: SceneContract) -> Tuple[SceneContract, str]:
+            async with sem:
+                a_path = getattr(sc, "audio_path", "") or full_audio_path
+                spoken_s = spoken_durs[idx_s]
+                c_start_s = cum_starts[idx_s]
+                target_clip_dur = round((spoken_s + broll_pause_s) * 30.0) / 30.0
+
+                scene_ass = work_dir / f"sub_s{sc.scene_id:03d}.ass"
+                self._extract_shifted_scene_ass(
+                    master_ass_path=subtitle_path,
+                    out_scene_ass_path=str(scene_ass),
+                    start_sec=c_start_s,
+                    end_sec=c_start_s + spoken_s,
+                    overlay_badge=getattr(sc, "overlay_badge", None),
+                )
+                try:
+                    rel_ass = scene_ass.relative_to(Path.cwd()).as_posix()
+                except Exception:
+                    rel_ass = scene_ass.as_posix()
+
+                m_idx = min(len(masters) - 1, idx_s // scenes_per_master)
+                slot_i = idx_s % scenes_per_master
+                m_info = masters[m_idx]
+                m_path = str(m_info.get("local_master_path") or "")
+                m_dur = float(m_info.get("clipped_duration_sec") or 0.0) or self._measure_playable_pts_duration_sec(m_path, fallback_sec=90.0)
+                safe_head = 6.0 if m_dur > 45.0 else 2.0
+                usable_span = max(30.0, m_dur - safe_head - 1.5)
+                slot_span = usable_span / max(1, scenes_per_master)
+
+                slot_start = safe_head + slot_i * slot_span
+                s0_off = round(min(max(safe_head, m_dur - 4.0), slot_start), 2)
+                s1_off = round(min(max(safe_head + 1.8, m_dur - 3.0), slot_start + slot_span * 0.33), 2)
+                s2_off = round(min(max(safe_head + 3.5, m_dur - 2.0), slot_start + slot_span * 0.66), 2)
+
+                out_clip = str(media_dir / f"scene_{sc.scene_id:03d}_16x9.mp4")
+                out_aud_aac = str(audio_dir / f"scene_{sc.scene_id:03d}_paced.m4a")
+
+                await asyncio.to_thread(
+                    _slice_and_burn_scene_direct,
+                    m_path,
+                    out_clip,
+                    a_path,
+                    out_aud_aac,
+                    rel_ass,
+                    s0_off,
+                    s1_off,
+                    s2_off,
+                    target_clip_dur,
+                    slot_span,
+                )
+                sc.audio_path = a_path
+                sc.audio_duration_ms = int(round(target_clip_dur * 1000))
+                sc.media_path = out_clip
+                sc.media_type = "video"
+                return sc, out_aud_aac
+
+        slice_pairs = list(
+            await asyncio.gather(*[_slice_task(i, sc) for i, sc in enumerate(scenes_objs)])
+        )
+        enriched_scenes = [p[0] for p in slice_pairs]
+        paced_aac_paths = [p[1] for p in slice_pairs]
 
         outputs_dir = Path(settings.OUTPUT_DIR)
         outputs_dir.mkdir(parents=True, exist_ok=True)
@@ -903,31 +945,62 @@ Return ONLY valid JSON:
             custom_text=thumbnail_text,
         )
 
-        from app.schemas.contracts import RenderJobContract
+        # Ghép nối Siêu Tốc Zero-Reencode (-f concat -c:v copy) trong ~3.0 giây!
+        v_concat_txt = work_dir / "fast_v_concat.txt"
+        a_concat_txt = work_dir / "fast_a_concat.txt"
+        v_concat_txt.write_text(
+            "\n".join(f"file '{Path(sc.media_path).resolve().as_posix()}'" for sc in enriched_scenes) + "\n",
+            encoding="utf-8",
+        )
+        a_concat_txt.write_text(
+            "\n".join(f"file '{Path(ap).resolve().as_posix()}'" for ap in paced_aac_paths) + "\n",
+            encoding="utf-8",
+        )
+        voice_concat_m4a = str(work_dir / "voice_concat_full.m4a")
+        final_mixed_m4a = str(work_dir / "final_mixed_audio.m4a")
+
+        subprocess.run(
+            [
+                get_ffmpeg_exe(), "-y", "-v", "error",
+                "-f", "concat", "-safe", "0", "-i", str(a_concat_txt),
+                "-c:a", "copy", voice_concat_m4a,
+            ],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False,
+        )
 
         bgm_candidates = sorted(Path("assets/bgm").glob("*.mp3")) if Path("assets/bgm").exists() else []
         if not bgm_candidates and Path("assets/music").exists():
             bgm_candidates = sorted(Path("assets/music").glob("*.mp3"))
         bgm_path = str(bgm_candidates[job_id % len(bgm_candidates)]) if bgm_candidates else None
-        render_job = RenderJobContract(
-            job_id=job_id,
-            title=title,
-            scenes=enriched_scenes,
-            full_audio_path=full_audio_path,
-            total_audio_duration_ms=total_audio_ms,
-            subtitle_path=subtitle_path if Path(subtitle_path).exists() else None,
-            bgm_path=bgm_path,
-            niche=niche,
-            is_scifi=False,
-            enable_sfx=False,
-            output_path=final_video_path,
-            video_format="long",
-            thumbnail_path=str(th_res.get("16x9") or ""),
-            thumbnail_vertical_path=str(th_res.get("9x16") or ""),
-        )
 
-        video_agent = VideoAgent()
-        await video_agent.render(render_job)
+        if bgm_path and Path(bgm_path).exists():
+            subprocess.run(
+                [
+                    get_ffmpeg_exe(), "-y", "-v", "error",
+                    "-i", voice_concat_m4a,
+                    "-stream_loop", "-1", "-i", bgm_path,
+                    "-filter_complex", "[0:a]volume=1.08[vo];[1:a]volume=0.14[bg];[vo][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+                    "-map", "[aout]",
+                    "-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "192k",
+                    final_mixed_m4a,
+                ],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, check=False,
+            )
+        else:
+            final_mixed_m4a = voice_concat_m4a
+
+        subprocess.run(
+            [
+                get_ffmpeg_exe(), "-y", "-v", "error",
+                "-f", "concat", "-safe", "0", "-i", str(v_concat_txt),
+                "-i", final_mixed_m4a if Path(final_mixed_m4a).exists() else voice_concat_m4a,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "copy", "-c:a", "copy",
+                "-movflags", "+faststart",
+                final_video_path,
+            ],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, check=False,
+        )
 
         drive_agent = DriveAgent()
         drive_res = await asyncio.to_thread(
