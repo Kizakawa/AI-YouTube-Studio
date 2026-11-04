@@ -473,15 +473,15 @@ async def run_post_gather_media_rescues(
                         except Exception as _re_doc:
                             logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Stock rescue ({sq_try}) skip: {_re_doc}")
 
-                # 2. YouTube Short Peak Clone (nếu Stock chưa có)
+                # 2. YouTube Short Peak Clone (nếu Stock chưa có — truyền skip_stock_fallback=True vì đã quét Pexels ở mục 1)
                 if not rescued_ok and not is_long_form and not _rescue_cancelled():
                     q_main = r_kw if not already_tried_scene_kw else f"{r_stock_q or r_kw} {facet_tag}".strip()
                     q_fb = r_stock_q or overall_rescue_q
                     try:
                         yt_sub_dl = (
-                            min(deadline_ts, time.monotonic() + 22.0)
+                            min(deadline_ts, time.monotonic() + 28.0)
                             if deadline_ts is not None
-                            else (time.monotonic() + 22.0)
+                            else (time.monotonic() + 28.0)
                         )
                         yt_rescue = await asyncio.to_thread(
                             execute_youtube_short_peak_clone_sync,
@@ -500,6 +500,7 @@ async def run_post_gather_media_rescues(
                             job_id=job_id,
                             scene_id=r_sid,
                             channel_id=channel_id_val,
+                            skip_stock_fallback=True,
                             cancel_event=cancel_event,
                             deadline_ts=yt_sub_dl,
                         )

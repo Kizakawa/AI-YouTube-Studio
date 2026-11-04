@@ -15,7 +15,7 @@ class MediaVisionCuratorMixin:
     @staticmethod
     def _fetch_video_thumbnails_for_llm(
         eval_pool: List[Dict[str, Any]],
-        timeout: float = 3.5,
+        timeout: float = 4.5,
     ) -> Tuple[List[Tuple[str, str]], Dict[int, int]]:
         """
         Tải song song ảnh preview (thumbnail) của ứng viên video Pexels/Pixabay
@@ -301,6 +301,9 @@ class MediaVisionCuratorMixin:
             if c.get("_thumb_low_quality"):
                 continue
             img_ord = idx_to_img_order.get(idx)
+            if img_ord is None:
+                # Tuyệt đối không đưa ứng viên mất ảnh preview vào danh sách duyệt để tránh LLM đoán mò qua URL slug
+                continue
             candidates_for_llm.append({
                 "index": idx,
                 "returned_url": c["url"],
@@ -308,11 +311,7 @@ class MediaVisionCuratorMixin:
                 "source": c["source"],
                 "duration": f"{c['duration']}s",
                 "resolution": f"{c['width']}x{c['height']}",
-                "attached_preview_image": (
-                    f"INDEX {img_ord} (stamped 'INDEX {img_ord}' at top of preview image)"
-                    if img_ord is not None
-                    else "None (evaluate via returned_url & slug_or_tags)"
-                ),
+                "attached_preview_image": f"INDEX {img_ord} (stamped 'INDEX {img_ord}' at top of preview image)",
             })
 
         if not candidates_for_llm:
@@ -335,12 +334,12 @@ DANH SÁCH ỨNG VIÊN VIDEO TỪ KHO:
 TIÊU CHUẨN SUY LUẬN & TUYỂN CHỌN THÔNG MINH 2 TẦNG (KHÔNG ĐẾM TỪ KHÓA MÁY MÓC):
 1. QUY TẮC B-ROLL PHIM TÀI LIỆU 2 TẦNG (2-TIER DOCUMENTARY B-ROLL):
    - Tầng 1 (`confidence_score: 8.5–9.8`): Ứng viên thể hiện trực tiếp toàn bộ tương tác nhiều thực thể hoặc đúng vi hành động vật lý trong `{narration}`.
-   - Tầng 2 (`confidence_score: 7.5–8.4`): Khi kịch bản là kèo đối đầu đa thực thể (`Thực thể A vs Thực thể B`) hoặc câu thoại mô tả pha va chạm hiếm / cơ chế sinh học - vật lý vi mô không thể có sẵn trọn vẹn trong một clip kho miễn phí (Pexels/Pixabay), TUYỆT ĐỐI KHÔNG chấm `6.0–6.9` hay đánh trượt (`winner_index: -1`) chỉ vì clip chỉ quay riêng MỘT trong các thực thể (Thực thể A HOẶC Thực thể B) hay bối cảnh/bộ phận cơ thể liên quan! Miễn là ứng viên quay THẬT, RÕ NÉT, SẠCH 100% đúng một trong các thực thể của kịch bản hoặc đúng hiện tượng/môi trường tự nhiên - lịch sử - đời thực được nhắc tới trong `{narration}` mà không vi phạm mục 2, BẮT BUỘC DUYỆT Ở TẦNG 2 (`confidence_score >= 7.5`, `should_fallback_to_ai: false`) làm cảnh B-Roll điện ảnh hợp lệ.
+   - Tầng 2 (`confidence_score: 7.5–8.4`): Khi kịch bản là kèo đối đầu đa thực thể (`Thực thể A vs Thực thể B`) hoặc câu thoại mô tả pha va chạm hiếm / cơ chế sinh học - vật lý vi mô không thể có sẵn trọn vẹn trong một clip kho miễn phí (Pexels/Pixabay), TUYỆT ĐỐI KHÔNG chấm `6.0–6.9` hay đánh trượt (`winner_index: -1`) chỉ vì clip chỉ quay riêng MỘT trong các thực thể (Thực thể A HOẶC Thực thể B) hay bối cảnh/bộ phận cơ thể liên quan! Miễn là ứng viên quay THẬT, RÕ NÉT, SẠCH 100% đúng chính xác loài/thực thể được nêu tên trong kịch bản hoặc đúng bối cảnh tự nhiên - lịch sử - đời thực được nhắc tới trong `{narration}` mà không vi phạm mục 2, BẮT BUỘC DUYỆT Ở TẦNG 2 (`confidence_score >= 7.5`, `should_fallback_to_ai: false`) làm cảnh B-Roll điện ảnh hợp lệ.
 2. TIÊU CHUẨN LOẠI BỎ NGHIÊM NGẶT (ĐỒNG BỘ VỚI GIÁM KHẢO CUỐI VISUAL CRITIC):
-   - BẮT BUỘC TỪ CHỐI ứng viên quay sai hẳn loài/chủ thể (ví dụ: thú cưng/gia súc thuần hóa có vòng mũi/dây xích, hoặc người bơi đeo kính bơi/bể bơi khi kịch bản nói về động vật hoang dã; hoặc động vật lọt vào kịch bản tâm lý học con người), quay trong lồng sắt/hàng rào lưới mắt cáo/bể bê tông sở thú, có con người/nhân viên cầm giữ, vuốt ve, cho ăn, đứng cạnh động vật hoang dã hoặc khách du lịch chụp ảnh trong cảnh thiên nhiên hoang dã, lệch hoàn toàn thời đại/hệ sinh thái/mùa của kịch bản, hoặc dính chữ/watermark/biểu tượng sao 4 cánh AI (`✦`) ở góc khung hình.
+   - BẮT BUỘC TỪ CHỐI ứng viên quay sai loài/phân loài cụ thể được nêu tên trong kịch bản (tuyệt đối KHÔNG lấy loài khác trong cùng họ/lớp hoặc khác vùng sinh thái rồi tự châm chước là "tuy là loài khác nhưng dùng tạm ở Tầng 2" — nếu kho miễn phí chỉ có loài khác với loài được chỉ đích danh trong `{topic_ctx}` / `{subject_req}`, BẮT BUỘC trả về `winner_index: -1`, `should_fallback_to_ai: true` để hệ thống chuyển sang kho tài liệu chuyên sâu!), thú cưng/gia súc thuần hóa, động vật có dây buộc chân huấn luyện (`jesses` / `ankle straps`) / vòng cổ / đậu trên cọc gỗ hoặc cột điện nhân tạo, quay trong lồng sắt/hàng rào lưới/bể bê tông sở thú, có con người/nhân viên cầm giữ/găng tay huấn luyện/cho ăn/khách du lịch, video đen trắng/đơn sắc (`black and white` / `monochrome`) trong phim tài liệu màu, lệch hoàn toàn thời đại/hệ sinh thái/mùa của kịch bản, hoặc dính chữ/watermark/biểu tượng sao 4 cánh AI (`✦`).
    - CẤM TUYỆT ĐỐI NGỤY BIỆN ẨN DỤ ĐỒNG ÂM / ĐỒNG TÊN (ZERO HOMONYM / METAPHORICAL ANIMAL SUBSTITUTION): Khi chủ thể có tên ghép chứa từ bổ nghĩa mượn từ loài/vật thể khác (ví dụ: sinh vật biển sâu mang tên chim/thú trên cạn hoặc ngược lại), TUYỆT ĐỐI KHÔNG ĐƯỢC chọn loài động vật/vật thể khác lớp sinh học hoặc khác hẳn môi trường sống (như chọn chim trên cạn/mặt hồ cho sinh vật biển sâu, hoặc người hóa trang cho sinh vật đại dương) rồi ngụy biện là 'minh họa ẩn dụ cấu trúc'! Nếu ứng viên sai lớp sinh học hoặc sai môi trường sống (trên cạn/mặt nước nông vs đáy biển sâu), BẮT BUỘC đánh trượt (`winner_index: -1`, `confidence_score: 1.0`, `should_fallback_to_ai: true`).
 3. ƯU TIÊN KHUNG HÌNH SỐNG ĐỘNG & GIỮ ỨNG VIÊN DỰ PHÒNG SẠCH:
-   - Chọn ứng viên có hành động rõ nét nhất, góc quay cận/trung cảnh giàu kịch tính làm `winner_index`, đồng thời liệt kê các ứng viên sạch đạt chuẩn còn lại (`>= 7.2`) vào `approved_alternate_indices` để làm phương án dự phòng tức thì.
+   - Chọn ứng viên có hành động rõ nét nhất, góc quay cận/trung cảnh giàu kịch tính làm `winner_index`, đồng thời liệt kê các ứng viên sạch đạt chuẩn còn lại (`>= 7.5`, tuyệt đối không vi phạm mục 2) vào `approved_alternate_indices` để làm phương án dự phòng tức thì.
    - Chỉ khi TẤT CẢ ứng viên đều vi phạm mục 2 hoặc lạc đề hoàn toàn (`confidence_score < 7.0`), mới trả về `"winner_index": -1`, `"winner_url": ""` và `"should_fallback_to_ai": true`.
 
 TRẢ VỀ JSON DUY NHẤT:
@@ -375,33 +374,8 @@ TRẢ VỀ JSON DUY NHẤT:
                             alt_indices.append(ai_int)
                     except Exception:
                         pass
-                # Bắt thêm các ứng viên dự phòng được Gemini nêu trong rationale (VD: "INDEX 3 và 4 là phương án dự phòng hợp lệ")
-                if not alt_indices and rationale:
-                    for m_alt in re.finditer(r"INDEX\s*(\d+)(?:\s*(?:,|và|and|or|hoặc)\s*(?:INDEX\s*)?(\d+))?", rationale, re.IGNORECASE):
-                        for grp_s in m_alt.groups():
-                            if grp_s and grp_s.isdigit():
-                                idx_cand = int(grp_s)
-                                if 0 <= idx_cand < len(eval_pool) and idx_cand != w_idx and idx_cand not in alt_indices:
-                                    # Không lấy ứng viên bị nêu trong câu từ chối
-                                    span_start = max(0, m_alt.start() - 35)
-                                    span_ctx = rationale[span_start : m_alt.end() + 45].lower()
-                                    if not any(neg_w in span_ctx for neg_w in ("loại", "từ chối", "sai", "lạc đề", "nhốt", "sở thú", "vòng mũi", "reject")):
-                                        alt_indices.append(idx_cand)
-                # Nếu vẫn dưới 2 backup, bổ sung ứng viên cùng từ khóa chủ thể với winner để chống va chạm đa luồng
-                if len(alt_indices) < 2:
-                    _w_stop = {"video", "clip", "footage", "shot", "view", "close", "slow", "motion", "nature", "wild", "wildlife", "animal", "animals"}
-                    w_tokens = {
-                        tok for tok in re.findall(r"[a-zA-Z]{4,}", str(winner.get("slug") or "").lower())
-                        if tok not in _w_stop
-                    }
-                    for cand_i, cand_obj in enumerate(eval_pool):
-                        if cand_i == w_idx or cand_i in alt_indices or cand_obj.get("_thumb_low_quality"):
-                            continue
-                        c_tokens = set(re.findall(r"[a-zA-Z]{4,}", str(cand_obj.get("slug") or "").lower()))
-                        if w_tokens and (w_tokens & c_tokens):
-                            alt_indices.append(cand_i)
-                            if len(alt_indices) >= 3:
-                                break
+                # Chỉ lấy các ứng viên dự phòng đã được Gemini Vision phê duyệt trong `approved_alternate_indices`
+                # (tuyệt đối không tự ghép mù các ứng viên khác trong eval_pool theo từ khóa vì sẽ lọt các clip đã bị Vision loại bỏ).
                 alt_urls = [
                     eval_pool[ai_int]["download_link"]
                     for ai_int in alt_indices

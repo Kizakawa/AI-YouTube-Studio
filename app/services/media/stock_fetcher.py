@@ -1210,20 +1210,25 @@ class StockFetcher:
                                 win_creator_k = str(
                                     formatted_winner.get("creator_key") or winner.get("creator_key") or ""
                                 ).strip()
-                                if win_creator_k and win_creator_k in live_used:
-                                    chosen_win_url = None
+                                if (
+                                    chosen_win_url == winner.get("url")
+                                    and win_creator_k
+                                    and win_creator_k in live_used
+                                ):
+                                    chosen_win_url = rem_alt_urls.pop(0) if rem_alt_urls else None
                             if chosen_win_url:
+                                is_primary_win = (chosen_win_url == winner.get("url"))
                                 formatted_winner["url"] = chosen_win_url
                                 formatted_winner["_vision_alternates"] = rem_alt_urls
                                 formatted_winner["vision_curated"] = (rationale != "Rule-based curation passed")
                                 formatted_winner["vision_score"] = round(float(score), 2)
                                 ids = extract_media_identity(chosen_win_url)
-                                if formatted_winner.get("web_url"):
+                                if is_primary_win and formatted_winner.get("web_url"):
                                     ids.update(extract_media_identity(str(formatted_winner["web_url"])))
                                 win_creator_k = str(
                                     formatted_winner.get("creator_key") or winner.get("creator_key") or ""
                                 ).strip()
-                                if win_creator_k:
+                                if is_primary_win and win_creator_k:
                                     ids.add(win_creator_k)
                                 used.update(ids)
                                 used.add(chosen_win_url)

@@ -460,16 +460,16 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex_v:
                     logger.debug(f"Scene {scene_id}: Video refine error: {ex_v}")
 
-            # 2. Tầng 2: Săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync — chỉ khi Stock Video chưa có)
+            # 2. Tầng 2: Săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync — skip_stock_fallback=True vì đã quét Pexels ở Tầng 1)
             if not replaced and not is_lf_refine and not _refine_cancelled():
                 try:
                     from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
                     from app.services.video_memory_rag import get_video_memory_rag
                     rag_yt_ref = get_video_memory_rag()
                     yt_ref_dl = (
-                        min(deadline_ts, time.monotonic() + 20.0)
+                        min(deadline_ts, time.monotonic() + 30.0)
                         if deadline_ts is not None
-                        else (time.monotonic() + 20.0)
+                        else (time.monotonic() + 30.0)
                     )
                     out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
                     yt_ref_res = await asyncio.to_thread(
@@ -489,6 +489,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         job_id=job_id_refine,
                         scene_id=scene_id,
                         channel_id=channel_id_refine,
+                        skip_stock_fallback=True,
                         cancel_event=cancel_event,
                         deadline_ts=yt_ref_dl,
                     )
@@ -547,25 +548,18 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             sf_t7.search_videos,
                             q_2w,
                             per_page=8,
-                            min_duration=2,
                             orientation="landscape" if is_lf_refine else "portrait",
-                            used_urls=used_refine_urls,
-                            topic=state.get("topic", ""),
-                            narration=narr,
                         ) or []
                         if not v_hits_2w:
                             v_hits_2w = await asyncio.to_thread(
                                 sf_t7.search_pixabay_videos,
                                 q_2w,
                                 per_page=8,
-                                min_duration=2,
-                                orientation="landscape" if is_lf_refine else "portrait",
-                                used_urls=used_refine_urls,
-                                topic=state.get("topic", ""),
-                                narration=narr,
+                                video_type="film",
                             ) or []
                         for vh_item in v_hits_2w[:4]:
-                            vh_u = str(vh_item.get("url") or "").strip()
+                            fmt_vh = sf_t7.format_video_candidate(vh_item, query=q_2w, used=used_refine_urls)
+                            vh_u = str((fmt_vh or {}).get("url") or "").strip()
                             if not vh_u or vh_u in used_refine_urls:
                                 continue
                             used_refine_urls.add(vh_u)
@@ -636,7 +630,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             item.pop("hook_sharpness", None)
 
     refine_sem = asyncio.Semaphore(8 if is_lf_refine else 6)
-    refine_item_timeout = 48.0 if is_lf_refine else 38.0
+    refine_item_timeout = 48.0 if is_lf_refine else 46.0
 
     async def _guarded_refine_single_item(item: Dict[str, Any]) -> None:
         if item.get("scene_id") not in failed_ids:

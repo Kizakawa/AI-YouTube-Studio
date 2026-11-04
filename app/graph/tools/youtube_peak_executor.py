@@ -62,6 +62,7 @@ def execute_youtube_short_peak_clone_sync(
     channel_id: str = "",
     allow_3d_cgi_monster: bool = False,
     skip_youtube_search: bool = False,
+    skip_stock_fallback: bool = False,
     storyline_queries: Optional[List[str]] = None,
     cancel_event: Optional[threading.Event] = None,
     deadline_ts: Optional[float] = None,
@@ -83,12 +84,19 @@ def execute_youtube_short_peak_clone_sync(
         if deadline_ts is not None
         else (t_fn_start + default_budget_sec)
     )
-    # Tách ngân sách Tầng 1 (YouTube) và Tầng 2/3 (Pexels/Pixabay/Bilibili):
-    # Giữ lại ~22s cho Tầng 2/3 và đảm bảo Tầng 1 YouTube có 44–48s để thử ít nhất 2-3 ứng viên!
+    # Tách ngân sách Tầng 1 (YouTube) và Tầng 2/3 (Pexels/Pixabay/Bilibili) tỷ lệ thuận theo ngân sách thực tế:
+    # Nếu caller đã quét Pexels trước đó (skip_stock_fallback=True), dành trọn ngân sách cho Tầng 1 YouTube!
+    total_avail_sec = max(8.0, deadline_ts - t_fn_start)
     yt_tier1_budget_sec = 48.0 if (clip_role or "").upper() == "HOOK" else 44.0
-    yt_tier1_deadline = min(deadline_ts - 16.0, t_fn_start + yt_tier1_budget_sec)
-    if yt_tier1_deadline <= t_fn_start + 5.0:
-        yt_tier1_deadline = max(t_fn_start + 5.0, deadline_ts - 12.0)
+    if skip_stock_fallback:
+        reserve_for_tier2_sec = 0.0
+    elif total_avail_sec >= 42.0:
+        reserve_for_tier2_sec = 14.0
+    else:
+        reserve_for_tier2_sec = min(6.0, max(3.0, total_avail_sec * 0.20))
+    yt_tier1_deadline = min(deadline_ts - reserve_for_tier2_sec, t_fn_start + yt_tier1_budget_sec)
+    if yt_tier1_deadline <= t_fn_start + 8.0:
+        yt_tier1_deadline = max(t_fn_start + 8.0, deadline_ts - 2.5)
 
     def _is_cancelled() -> bool:
         return cancel_event is not None and cancel_event.is_set()
@@ -227,10 +235,16 @@ def execute_youtube_short_peak_clone_sync(
                 if _is_cancelled():
                     return None
                 rem_budget = _yt_remaining_sec()
-                if (rem_budget <= 5.0 and claimed_probes >= 1) or _remaining_sec() <= 24.0:
+                min_tail_sec = 3.0 if skip_stock_fallback else reserve_for_tier2_sec
+                if (
+                    (rem_budget <= 4.0 and claimed_probes >= 1)
+                    or (_remaining_sec() <= min_tail_sec and claimed_probes >= 1)
+                    or _remaining_sec() <= 4.5
+                ):
                     logger.info(
-                        f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Hết ngân sách Tầng 1 YouTube (tổng còn {_remaining_sec():.1f}s) -> "
-                        f"Chuyển sang Tầng 2 Stock Video HD sạch!"
+                        f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Hết ngân sách Tầng 1 YouTube "
+                        f"(tổng còn {_remaining_sec():.1f}s, đã probe={claimed_probes}) -> "
+                        f"Chuyển sang tầng tiếp theo!"
                     )
                     break
                 if claimed_probes >= max_claimed_probes or dl_attempts >= max_dl_attempts:
@@ -337,7 +351,8 @@ def execute_youtube_short_peak_clone_sync(
                             # Nếu đã tải được >= 50% với tốc độ ổn định (>= 150 KiB/s), tuyệt đối không ngắt ngang khi sắp hoàn tất!
                             if pct_done >= 0.50 and dl_speed >= 150 * 1024:
                                 return
-                            if _yt_remaining_sec() <= 1.0 and pct_done < 0.40:
+                            eff_hook_rem = _remaining_sec() if claimed_probes == 0 else _yt_remaining_sec()
+                            if eff_hook_rem <= 1.0 and pct_done < 0.40:
                                 raise TimeoutError(
                                     f"Tier-1 deadline reached while downloading {vid_url}"
                                 )
@@ -367,12 +382,13 @@ def execute_youtube_short_peak_clone_sync(
                     })
                     # TUYỆT ĐỐI KHÔNG dùng download_ranges (vì yt-dlp gọi ffmpeg seek qua HTTP dễ bị treo vô hạn trên CDN YouTube).
                     # Tải thẳng file MP4 <= 28MB qua HTTP thuần; nếu quá 12s chưa tải xong hoặc nhận cancel_event thì hủy ngay!
-                    sem_wait = min(10.0, max(0.5, _yt_remaining_sec() - 2.5))
+                    eff_dl_rem = _remaining_sec() if claimed_probes == 0 else _yt_remaining_sec()
+                    sem_wait = min(10.0, max(0.5, eff_dl_rem - 2.0))
                     if not _yt_download_sem.acquire(timeout=sem_wait):
                         rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                         break
                     try:
-                        if _is_cancelled() or _yt_remaining_sec() <= 1.8:
+                        if _is_cancelled() or (_remaining_sec() if claimed_probes == 0 else _yt_remaining_sec()) <= 1.8:
                             raise TimeoutError("Cancelled or Tier-1 deadline reached right after _yt_download_sem acquire")
                         t_dl_start = time.monotonic()
                         with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
@@ -665,27 +681,28 @@ def execute_youtube_short_peak_clone_sync(
         return None
 
     # ── TẦNG 2 (ƯU TIÊN SỐ 2): PEXELS HD / PIXABAY HD / WIKIMEDIA STOCK VIDEO SẠCH 100% (TẢI SIÊU TỐC, KHÔNG DÍNH SUB TRUNG) ──
-    stock_res = _try_licensed_stock_video_fallback(
-        search_phrases=search_phrases,
-        search_query=search_query,
-        subject_entity=subject_entity,
-        topic=topic,
-        narration=narration,
-        overall_script_query=overall_script_query,
-        effective_scope=effective_scope,
-        output_path=output_path,
-        target_duration_sec=target_duration_sec,
-        max_peak_duration_sec=max_peak_duration_sec,
-        clip_role=clip_role,
-        allow_3d_cgi_monster=allow_3d_cgi_monster,
-        used=used,
-        job_id=job_id,
-        eff_scene_id=eff_scene_id,
-        cancel_event=cancel_event,
-        deadline_ts=deadline_ts,
-    )
-    if stock_res:
-        return stock_res
+    if not skip_stock_fallback:
+        stock_res = _try_licensed_stock_video_fallback(
+            search_phrases=search_phrases,
+            search_query=search_query,
+            subject_entity=subject_entity,
+            topic=topic,
+            narration=narration,
+            overall_script_query=overall_script_query,
+            effective_scope=effective_scope,
+            output_path=output_path,
+            target_duration_sec=target_duration_sec,
+            max_peak_duration_sec=max_peak_duration_sec,
+            clip_role=clip_role,
+            allow_3d_cgi_monster=allow_3d_cgi_monster,
+            used=used,
+            job_id=job_id,
+            eff_scene_id=eff_scene_id,
+            cancel_event=cancel_event,
+            deadline_ts=deadline_ts,
+        )
+        if stock_res:
+            return stock_res
 
     if _is_cancelled() or _remaining_sec() <= 3.0:
         return None

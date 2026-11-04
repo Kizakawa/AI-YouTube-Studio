@@ -227,10 +227,12 @@ Return ONLY valid JSON:
         from app.agents.curation.scene_context_analyzer_mixin import _VISION_SEM
         from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
         vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
+        # Đảm bảo bước gọi HTTP Gemini Vision luôn có tối thiểu 18s tính từ sau khi trích xuất xong verify_sheet.jpg
+        vision_http_deadline = max(deadline_ts or 0.0, time.monotonic() + 18.0)
         for model_name, api_key in rotator.iter_best_model_key_pairs(vision_models, max_total_attempts=8):
             if cancel_event is not None and cancel_event.is_set():
                 return False, 0.0, "Cancelled by parent task"
-            if deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.0:
+            if (vision_http_deadline - time.monotonic()) <= 2.0:
                 break
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             gen_cfg = KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1)
@@ -238,23 +240,15 @@ Return ONLY valid JSON:
                 "contents": payload["contents"],
                 "generationConfig": gen_cfg,
             }
-            sem_wait = (
-                min(25.0, max(0.5, deadline_ts - time.monotonic() - 2.5))
-                if deadline_ts is not None
-                else 25.0
-            )
+            sem_wait = min(15.0, max(0.5, vision_http_deadline - time.monotonic() - 2.0))
             if not _VISION_SEM.acquire(timeout=sem_wait):
                 break
             try:
                 if (cancel_event is not None and cancel_event.is_set()) or (
-                    deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.5
+                    (vision_http_deadline - time.monotonic()) <= 1.5
                 ):
                     break
-                eff_read = (
-                    min(11.0, max(3.8, deadline_ts - time.monotonic() - 0.5))
-                    if deadline_ts is not None
-                    else 11.0
-                )
+                eff_read = min(10.0, max(3.8, vision_http_deadline - time.monotonic() - 0.5))
                 t_req0 = time.monotonic()
                 resp = requests.post(url, json=req_payload, timeout=(3.5, eff_read))
                 if resp.status_code == 200:
@@ -286,21 +280,31 @@ Return ONLY valid JSON:
     except Exception as ex:
         logger.debug(f"[YouTubePeakTool] Vision check fallback: {ex}")
 
-    # Khi strict_no_fallback=True (YouTube Shorts dễ dính phụ đề chìm/watermark), BẮT BUỘC phải có xác nhận từ Gemini Vision API
-    # hoặc chỉ cho phép fallback CV khi strict_no_fallback=False (nguồn Stock sạch).
+    # Chỉ chạy đến đây khi TẤT CẢ các model Gemini Vision đều bị lỗi mạng/429/503 (không có phản hồi JSON nào).
+    # Khi đó, kiểm tra nghiêm ngặt bằng VisualCritic (bật check_watermark=True) + đối chiếu thực thể trong tiêu đề video
+    # để không vứt bỏ oan clip YouTube thật đã tải về chỉ vì Google API tạm quá tải 503!
     try:
-        if (not strict_no_fallback) and pre_gate.get("passed", False) and video_title:
+        if pre_gate.get("passed", False) and video_title and not is_edit_or_ai_slop_video_metadata(video_title):
             from app.services.media.entity_detector import is_incongruent_stock_image
             if not is_incongruent_stock_image(video_title, topic=topic, narration=narration):
-                anchor_text = f"{subject_entity} {topic} {overall_script_query}".lower()
-                anchor_tokens = {
-                    w for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", anchor_text)
-                    if w not in _YT_QUERY_FILLER_WORDS
-                }
-                title_tokens = set(re.findall(r"[a-zA-ZÀ-ÿ]{4,}", video_title.lower()))
-                if anchor_tokens and len(anchor_tokens.intersection(title_tokens)) >= 1:
-                    cv_score = max(7.4, min(8.2, float(pre_gate.get("score", 7.5))))
-                    return True, cv_score, f"CV VisualCritic + Title Anchor verified ({cv_score}/10 while Gemini Vision API rate-limited)"
+                wm_gate = VisualCritic.inspect_clip_before_concat(
+                    video_path,
+                    min_short_edge=720,
+                    min_sharpness=5.4,
+                    check_watermark=True,
+                    allow_snow=True,
+                    auto_sanitize=False,
+                )
+                if wm_gate.get("passed", False):
+                    anchor_text = f"{subject_entity} {topic} {overall_script_query}".lower()
+                    anchor_tokens = {
+                        w for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", anchor_text)
+                        if w not in _YT_QUERY_FILLER_WORDS
+                    }
+                    title_tokens = set(re.findall(r"[a-zA-ZÀ-ÿ]{4,}", video_title.lower()))
+                    if anchor_tokens and len(anchor_tokens.intersection(title_tokens)) >= 1:
+                        cv_score = max(7.5, min(8.2, float(wm_gate.get("score", 7.6))))
+                        return True, cv_score, f"CV WatermarkGate + Title Anchor verified ({cv_score}/10 while Gemini Vision API 503/rate-limited)"
     except Exception:
         pass
 

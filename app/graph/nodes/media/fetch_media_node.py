@@ -788,17 +788,17 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     except Exception as hk_vf_err:
                         logger.debug(f"Scene {scene.scene_id}: Video-first lookup fallback: {hk_vf_err}")
 
-                if not media_path:
+                if not media_path and (scene.scene_id == 1 or tool_name == "clone_youtube_short_peak_clip"):
                     _check_fetch_deadline()
                     # Riêng Cảnh 1 (Opening Hook) được cấp ngân sách ưu tiên 52s để chạy đủ 3 tầng Video (YouTube Peak + Stock HD + Bilibili Documentary);
-                    # các cảnh thân bài được cấp 24s (dự trữ 16s cuối cho tầng Google Multi-Chunk / Stock fallback) để không bao giờ bị timeout tổng.
+                    # các cảnh thân bài (đã quét Pexels ở trên) được cấp 32s chạy thẳng Tầng 1 YouTube + Tầng 3 Bilibili (skip_stock_fallback=True).
                     _prefer_non_yt_node = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
                     _yt_budget_sec = (
                         52.0
                         if scene.scene_id == 1
-                        else (26.0 if _prefer_non_yt_node else 24.0)
+                        else (26.0 if _prefer_non_yt_node else 32.0)
                     )
-                    _reserve_tail_sec = 4.0 if scene.scene_id == 1 else 16.0
+                    _reserve_tail_sec = 4.0 if scene.scene_id == 1 else 10.0
                     yt_sub_deadline = (
                         min(deadline_ts - _reserve_tail_sec, time.monotonic() + _yt_budget_sec)
                         if deadline_ts is not None
@@ -823,6 +823,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             scene_id=scene.scene_id,
                             channel_id=channel_id_val,
                             skip_youtube_search=(tool_name == "search_pexels_pixabay_stock_video"),
+                            skip_stock_fallback=(scene.scene_id >= 2),
                             storyline_queries=story_yt_qs,
                             cancel_event=cancel_event,
                             deadline_ts=yt_sub_deadline,
@@ -864,10 +865,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 + (sf_op.search_pixabay_videos(op_q, per_page=6, video_type="film") or [])
                             )
                             for op_vh in op_v_hits[:4]:
-                                op_v_url = str(op_vh.get("url") or "").strip()
+                                fmt_op_vh = sf_op.format_video_candidate(op_vh, query=op_q, used=used_pool_urls)
+                                op_v_url = str((fmt_op_vh or {}).get("url") or "").strip()
                                 if not op_v_url or op_v_url in used_pool_urls:
                                     continue
-                                op_v_title = str(op_vh.get("title") or op_q)
+                                op_v_title = str((fmt_op_vh or {}).get("title") or op_vh.get("title") or op_q)
                                 if not rag_op.try_claim_in_job_video(
                                     job_id=job_id, vid_id=op_v_url, url=op_v_url, title=op_v_title, scene_id=scene.scene_id
                                 ):
