@@ -414,6 +414,29 @@ class ScriptJsonParserMixin:
                 )
                 if m_title_echo_colon and len(m_title_echo_colon.group(1).strip().split()) >= 5:
                     cleaned_h1 = m_title_echo_colon.group(1).strip()
+
+                # Nếu Title bắt đầu bằng "Why / Por que / Como / How" và Scene 1 cũng lặp lại câu hỏi "Why / Por que..."
+                # -> Tự động ưu tiên chọn một biến thể Hook hành động/nghịch lý không lặp lại câu hỏi trong `hook_variants`:
+                _q_prefix_re = re.compile(
+                    r"^(?:why\b|how\b|por\s+que\b|por\s+quê\b|porque\b|como\b|tại\s+sao\b|vì\s+sao\b)",
+                    re.IGNORECASE | re.UNICODE,
+                )
+                raw_title_check = str(raw_data.get("title") or "").strip()
+                if _q_prefix_re.search(raw_title_check) and _q_prefix_re.search(cleaned_h1):
+                    h_vars = raw_data.get("hook_variants") or []
+                    if isinstance(h_vars, list):
+                        for hv in h_vars:
+                            hv_str = re.sub(
+                                r"^(?:archetype\s*\d*\s*[:\-–—]?\s*|variant\s*\d*\s*[:\-–—]?\s*|\(\s*priority[^)]*\)\s*[:\-–—]?\s*)",
+                                "",
+                                str(hv or "").strip(),
+                                flags=re.IGNORECASE,
+                            ).strip().strip('"\'')
+                            hv_words = hv_str.split()
+                            if 5 <= len(hv_words) <= 18 and not _q_prefix_re.search(hv_str):
+                                cleaned_h1 = hv_str
+                                break
+
                 if cleaned_h1 and len(cleaned_h1.split()) >= 3:
                     if cleaned_h1[0].islower():
                         cleaned_h1 = cleaned_h1[0].upper() + cleaned_h1[1:]

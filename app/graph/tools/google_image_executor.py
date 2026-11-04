@@ -57,7 +57,7 @@ def execute_google_cinematic_image_sync(
         search_scope=search_scope,
         scene_query=smart_query,
         overall_script_query=overall_script_query,
-        fallback_query=f"{subject_entity} {topic}",
+        fallback_query=overall_script_query or subject_entity or smart_query,
         subject_entity=subject_entity,
         topic=topic,
         narration=narration,

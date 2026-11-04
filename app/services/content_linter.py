@@ -261,10 +261,16 @@ class ScriptValidationLinter:
                 re.IGNORECASE,
             )
             is_open_curiosity_hook = bool(open_curiosity_hook_pattern.search(s1_narr.strip()))
+            is_title_open_question = bool(open_curiosity_hook_pattern.search(raw_title.strip()))
             if weak_yes_no_pattern.search(s1_narr) or ("?" in s1_narr and not is_open_curiosity_hook):
                 issues.append(
                     f"Scene 1 hook uses a weak Yes/No question ('{s1_narr}'). "
-                    f"Scene 1 MUST be either an open-loop 'Why / Por que / How / What if' curiosity hook OR a sharp declarative statement (NO weak Yes/No questions like 'Did you know...?' or 'Have you ever...?')."
+                    f"Scene 1 MUST be a sharp declarative action/paradox statement (or an open-loop 'Why / Por que' hook ONLY when the title is not already a question)."
+                )
+            elif is_title_open_question and is_open_curiosity_hook:
+                issues.append(
+                    f"TITLE-TO-HOOK QUESTION ECHO BLOCKED: Both Title ('{raw_title}') and Scene 1 ('{s1_narr}') open with a 'Why / Por que / How' question! "
+                    f"When the Title asks 'Why / Por que...', Scene 1 MUST NOT repeat the question—open Scene 1 immediately with a declarative physical shock, lethal strike, or survival paradox at 0.0s!"
                 )
 
             # Kiểm tra cấu trúc 2-Entity Matchup (`Entity A vs Entity B`): Chỉ áp dụng cho ngách đối đầu sinh vật vật lý (`wildlife`),

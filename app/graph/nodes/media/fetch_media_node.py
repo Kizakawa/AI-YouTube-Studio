@@ -276,7 +276,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media có sẵn: {Path(media_path).name}")
                 elif is_vid_pre:
                     Path(pre_m).unlink(missing_ok=True)
-            if not media_path:
+            if not media_path and state.get("edit_request"):
                 cached_files = sorted(
                     media_dir.glob(f"scene_{scene.scene_id:03d}_*"),
                     key=lambda p: (0 if "_cut" not in p.name else 1, p.name),
@@ -1847,7 +1847,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     rag.release_in_job_video_claim(
                                         job_id=job_id, vid_id=cand_u, url=cand_u, title=cand_fresh_title, scene_id=scene.scene_id
                                     )
-                        if not res:
+                        if not res and scene.scene_id != 1:
                             from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                             out_fresh_img = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_gsearch.jpg")
                             img_f_res = await asyncio.wait_for(
@@ -1927,7 +1927,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         "tool": "recovered_disk_video",
                         "strategy_rationale": "Recovered completed video from disk on timeout",
                     }
-                elif existing_disk_imgs:
+                elif existing_disk_imgs and scene.scene_id != 1:
                     img_list_disk = [str(p) for p in existing_disk_imgs[:2]]
                     res = {
                         "scene_id": scene.scene_id,

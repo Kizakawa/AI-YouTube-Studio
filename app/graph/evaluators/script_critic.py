@@ -223,11 +223,25 @@ class ScriptCritic:
             and not re.search(_num_word_re, s1_first_clause, re.IGNORECASE | re.UNICODE)
             and not is_staged_social_hook
         )
+        _q_lead_re = re.compile(
+            r"^(?:why\b|how\b|por\s+que\b|por\s+quê\b|porque\b|como\b|tại\s+sao\b|vì\s+sao\b)",
+            re.IGNORECASE | re.UNICODE,
+        )
+        is_dual_question_echo = bool(
+            _q_lead_re.search(title_clean_no_tag.strip())
+            and _q_lead_re.search(s1_narr.strip())
+        )
         if is_colon_header_echo or is_early_outcome_spoiler:
             score = min(score, 5.8)
             extra_critiques.append(
                 f"COLON TITLE HEADER ECHO BLOCKED: Scene 1 ('{s1_first_clause[:65]}') reads a colon header or spoils the winner at 0.0s! "
                 f"Write a natural active sentence naming the primary entity + visceral physical impact or life-or-death paradox at 0.0s."
+            )
+        elif is_dual_question_echo:
+            score = min(score, 6.2)
+            extra_critiques.append(
+                f"TITLE-TO-HOOK QUESTION ECHO BLOCKED: Both Title ('{title_clean_no_tag[:55]}') and Scene 1 ('{s1_narr[:65]}') open with a 'Why / Por que / How' question! "
+                f"When the Title asks 'Why / Por que...', Scene 1 MUST NOT repeat the question—drop straight into a declarative physical strike, lethal trap, or survival paradox at 0.0s!"
             )
         elif is_vague_pointer_prefix or is_entity_blind_hook:
             score = min(score, 5.8)
@@ -346,8 +360,8 @@ class ScriptCritic:
             "   - Fails (< 6.0) if it opens with generic 'Welcome back' greetings, weak Yes/No questions ('Did you know...'), or leaked foreign/Vietnamese words."
             if is_long_form
             else f"1. hook_strength (Hard gate >= {min_hook_req}/10 — Target: Viewed > 75%, Swipe-Away < 25%):\n"
-            "   - Scene 1 (6-13 spoken words) MUST jump straight into a spoken paradox, active split-second crisis, visceral physical clash/strike, or staged real-room quote (`\"...\"`). Reward (>= 8.8/10) whenever Scene 1 explicitly names the primary entity (or BOTH entities in an 'Entity A vs Entity B' matchup) + an immediate physical action, anatomical weapon strike, or life-or-death contrast with ZERO '?' questions!\n"
-            "   - Fails (< 6.0) ONLY if it hides the second entity in an A vs B matchup ('You'd think a massive whale wouldn't fear anything!'), opens with passive background scenery, dry textbook units (`PSI`, `Newtons`, `kPa`), weak Yes/No questions (`\"Did you know...\"`, `\"Você já viu...\"`), or leaked foreign/Vietnamese words."
+            "   - Scene 1 (6-12 spoken words) MUST complement `title` without echoing it: if `title` asks a 'Why / Por que / How' question, Scene 1 MUST drop straight into a declarative spoken paradox, active split-second crisis, visceral physical clash/strike, or staged real-room quote (`\"...\"`) without repeating the 'Why / Por que' question! Reward (>= 8.8/10) whenever Scene 1 explicitly names the primary entity (or BOTH entities in an 'Entity A vs Entity B' matchup) + an immediate physical action, anatomical weapon strike, or life-or-death contrast!\n"
+            "   - Fails (< 6.0) if Scene 1 repeats a 'Why / Por que' question from the title, hides the second entity in an A vs B matchup ('You'd think a massive whale wouldn't fear anything!'), opens with passive background scenery, dry textbook units (`PSI`, `Newtons`, `kPa`), weak Yes/No questions (`\"Did you know...\"`, `\"Você já viu...\"`), or leaked foreign/Vietnamese words."
         )
         pacing_criterion_desc = (
             "2. story_pacing & spoken_creator_voice (Target Long-Form 16:9 Documentary: 8.0 - 11.0 min, 1,200 - 1,750 words, 32 - 48 scenes across 8-10 Chapters — AUTHENTIC SPOKEN YOUTUBER VOICE, NEVER ABRUPT):"

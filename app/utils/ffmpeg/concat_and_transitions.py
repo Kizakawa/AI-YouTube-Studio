@@ -131,7 +131,12 @@ def concat_videos_with_xfade(
     """
     from app.utils.ffmpeg.subtitles_and_thumbnail import burn_subtitles
     has_sub = bool(subtitle_path and Path(subtitle_path).exists())
-    has_thumb_ov = bool(thumbnail_overlay_path and Path(str(thumbnail_overlay_path)).exists())
+    embed_in_video_thumb = os.getenv("EMBED_IN_VIDEO_THUMBNAIL_OVERLAY", "false").lower() in ("1", "true", "yes")
+    has_thumb_ov = bool(
+        embed_in_video_thumb
+        and thumbnail_overlay_path
+        and Path(str(thumbnail_overlay_path)).exists()
+    )
     res_w, res_h = (int(resolution[0]), int(resolution[1])) if (resolution and len(resolution) >= 2) else (1920 if transition_duration <= 0.01 else 1080, 1080 if transition_duration <= 0.01 else 1920)
     if len(video_paths) == 1:
         if has_sub:

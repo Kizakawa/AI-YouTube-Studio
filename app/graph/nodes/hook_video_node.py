@@ -59,6 +59,7 @@ from app.graph.nodes.media.hook_video_helpers import (
     _build_hook_video_search_queries,
     _splice_dual_beat_hook_clip,
     _ensure_hook_clip_sharpness_and_luma,
+    verify_hook_clip_genuine_motion,
 )
 
 
@@ -956,6 +957,17 @@ Return ONLY valid JSON:
                     f"{'; '.join(gate_res.get('issues') or [])}"
                 )
                 Path(clean_peak_path).unlink(missing_ok=True)
+                mp4.unlink(missing_ok=True)
+                results_for_cand.append((dl_idx, v_str, {"passed": False}))
+                continue
+
+            ok_mot_yt, mot_val_yt, mot_reason_yt = verify_hook_clip_genuine_motion(inspect_target)
+            if not ok_mot_yt:
+                logger.info(
+                    f"🚫 [HookMotionGate] Loại bỏ ứng viên Hook tĩnh/slideshow '{mp4.name}' tại @{peak_offset_sec:.1f}s: {mot_reason_yt}"
+                )
+                Path(clean_peak_path).unlink(missing_ok=True)
+                mp4.unlink(missing_ok=True)
                 results_for_cand.append((dl_idx, v_str, {"passed": False}))
                 continue
 
@@ -1174,6 +1186,7 @@ Return ONLY valid JSON:
     _early_stop_lock = threading.Lock()
     _strong_passing_count = 0
     _passing_count = 0
+    rejected_cand_tokens: set = set()
 
     def _grade_single_hook_candidate(idx_pair: tuple[int, str]) -> Optional[tuple[int, Dict[str, Any]]]:
         nonlocal _strong_passing_count, _passing_count
@@ -1280,12 +1293,12 @@ CRITICAL GRADING CALIBRATION (REAL VIDEO HOOK PRIORITY & PEAK INTENSITY):
 - Give the HIGHEST scores (8.8–10.0) on "motion_action_score" and "scroll_stop_score" when the frames show high-intensity peak action, close-up confrontation, or dramatic movement matching "{visual_hook_blueprint}".
 - DO NOT reject a real wild video just because it shows stalking/prowling/swimming rather than a literal movie-like explosion/strike, as we combine multiple video beats in a fast-cut!
 - STRICT ANTI-SUBTITLE & WATERMARK GATE: If ANY frame contains burned-in subtitles (especially Vietnamese text, TikTok/CapCut captions, or foreign text banners), giant text overlays, or channel watermarks, you MUST set "clean_frame_score" <= 3.0 and "recommended_hook_mode": "scene"!
-- ONLY return "recommended_hook_mode": "scene" (rejecting the video) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog/amateur webcam selfie speaking into a mic or isolated disembodied macro eyeball closeup, or (e) burned-in subtitles, Vietnamese/foreign text captions, giant text overlays, or watermarks.
+- ONLY return "recommended_hook_mode": "scene" (rejecting the video) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog/amateur webcam selfie speaking into a mic or isolated disembodied macro eyeball closeup, (e) burned-in subtitles, Vietnamese/foreign text captions, giant text overlays, or watermarks, or (f) a static image, AI-generated illustration/painting, or 2D slideshow with only a fake Ken-Burns zoom/pan where the subject's posture, body parts, water/environment, and 3D perspective remain frozen across all 3 frames (if the 3 frames are the exact same still picture/illustration just zoomed or panned, you MUST set "motion_action_score" <= 2.5 and "recommended_hook_mode": "scene"!).
 
 Score strictly from 1.0 to 10.0:
-1. "recommended_hook_mode": "video" if it shows any valid subject from "{topic}" in an authentic setting with clean frames; "scene" ONLY if it violates (a)-(e) above.
+1. "recommended_hook_mode": "video" if it shows any valid subject from "{topic}" in an authentic setting with clean frames and real 3D physical motion; "scene" ONLY if it violates (a)-(f) above.
 2. "entity_match_score": Does the clip show a valid subject from "{topic}" in an authentic natural habitat/setting? (7.5-10 = authentic subject in wild/natural habitat; <= 4.0 = wrong species, zoo cage/artificial wall, or contradicting biome).
-3. "motion_action_score": Is it real footage with physical movement/life rather than a talking head or static slide? (7.5-10 = real wildlife/cinematic footage; 1-3 = talking head or static slide).
+3. "motion_action_score": Is it real footage with physical movement/life rather than a talking head or static Ken-Burns slide? (7.5-10 = real wildlife/cinematic footage where posture/water/environment changes across frames; 1-2.5 = talking head, static painting/AI illustration, or frozen slideshow zoompan).
 4. "scroll_stop_score": Visual quality & intrigue for a fast-cut Hook (7.0-10 = clear, engaging footage of the subject; <= 5.0 = blurry, obstructed, or boring empty background).
 5. "clean_frame_score": Is the frame 100% clean without burned-in subtitles, Vietnamese/TikTok captions, text overlays, split-screen collages, or watermarks? (8.0-10 = clean footage; <= 3.0 = ANY visible burned-in subtitles, captions, or watermark/logo).
 6. "reason": Short 1-sentence explanation.
@@ -1534,6 +1547,24 @@ Return ONLY valid JSON:
             else:
                 logger.warning(f"⚠️ [HookVideoGrader] Không thể xác thực Gemini Vision cho '{Path(v_path).name}' -> Bỏ qua để tránh lọt video chưa kiểm duyệt!")
                 return None
+
+        if not score_res.get("passed") and (
+            float(score_res.get("overall_score", 0.0)) < 5.8
+            or float(score_res.get("motion_action_score", 0.0)) < 5.5
+            or float(score_res.get("entity_match_score", 0.0)) < 5.5
+            or float(score_res.get("clean_frame_score", 0.0)) < 6.8
+        ):
+            m_rej_yt = re.search(r"([A-Za-z0-9_-]{11})", Path(v_path).stem)
+            with _early_stop_lock:
+                rejected_cand_tokens.add(Path(v_path).stem)
+                if m_rej_yt:
+                    rejected_cand_tokens.add(m_rej_yt.group(1))
+            for _rej_p in (v_path, clean_peak_path, inspect_target):
+                if _rej_p:
+                    try:
+                        Path(str(_rej_p)).unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
         logger.info(
             f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name} @Peak {peak_offset_sec:.1f}s, len={peak_duration_sec:.1f}s): "
@@ -2026,6 +2057,9 @@ Return ONLY valid JSON:
                 for lc_mp4 in local_cand_mp4s[:4]:
                     if not lc_mp4.exists() or lc_mp4.stat().st_size < 25_000:
                         continue
+                    if any(tok and tok in lc_mp4.stem for tok in rejected_cand_tokens):
+                        lc_mp4.unlink(missing_ok=True)
+                        continue
                     lc_dur_s = get_duration_ms(str(lc_mp4)) / 1000.0
                     if lc_dur_s < 2.2:
                         continue
@@ -2059,6 +2093,14 @@ Return ONLY valid JSON:
                             auto_sanitize=True,
                         )
                         if not lc_pre_chk.get("passed"):
+                            Path(hook_output_clip).unlink(missing_ok=True)
+                            lc_mp4.unlink(missing_ok=True)
+                            continue
+                        ok_lc_mot, lc_mot_val, lc_mot_reason = verify_hook_clip_genuine_motion(hook_output_clip)
+                        if not ok_lc_mot:
+                            logger.info(
+                                f"🚫 [HookVideoNode Tier-2 Motion Rescue] Bỏ qua '{lc_mp4.name}' vì thiếu chuyển động thật: {lc_mot_reason}"
+                            )
                             Path(hook_output_clip).unlink(missing_ok=True)
                             lc_mp4.unlink(missing_ok=True)
                             continue

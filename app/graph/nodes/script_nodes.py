@@ -343,7 +343,7 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
             f"MANDATORY TARGET: Overall >= 8.2/10 and Scene 1 Hook >= 8.5/10]. "
             f"Surgically fix ALL of the following Critic issues: {'; '.join(critiques)}. "
             f"CORE SHORTS REQUIREMENTS: "
-            f"(1) TITLE vs. HOOK SEPARATION OF DUTY: Keep exact searchable entity names in `title` (`[Entity A] vs [Entity B]: [Metric]`, 28-55 chars, NEVER drop a main entity from `title`!), while Scene 1 Hook (0.0s, 6-10 words) uses 1 of the 4 Psychological-Visual Hook Archetypes without repeating `title` verbatim and without '?' questions; "
+            f"(1) TITLE vs. HOOK COMPLEMENTARITY (ZERO QUESTION ECHO): Keep exact searchable entity names in `title` (`Por Que / Why [Entity A] ...` or `[Entity A] vs [Entity B]: [Visceral Stakes]`, 28-55 chars), while Scene 1 Hook (0.0s, 6-12 words) drops straight into a declarative physical action, lethal mechanism strike, or life-or-death paradox WITHOUT repeating the `title` question; "
             f"(2) TOTAL SCRIPT LENGTH: 92-118 words across 7-8 complete scenes (11-16 words per body scene, golden duration 34s-40s); "
             f"(3) Final scene bridges seamlessly back to Scene 1 (Zero Spoken Subscribe CTA); "
             f"(4) 100% LANGUAGE INTEGRITY: Every single word in title, hook, and narration MUST be in '{language}' (ZERO Vietnamese words or syllables!)."

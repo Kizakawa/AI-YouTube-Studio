@@ -142,8 +142,9 @@ async def run_post_gather_media_rescues(
         current_video_slots = sum(1 for s_it in scenes_media if _is_real_video_slot(s_it))
 
         # Bắt buộc 100% Cảnh 1 (0), Cảnh 2 (1), Cảnh cuối (n_slots - 1) và Cảnh áp cuối (n_slots - 2) phải là Video chuyển động thật
+        # Ưu tiên Cảnh 1 (0) và Cảnh 2 (1) chạy TRƯỚC để đảm bảo Opening Hook luôn có đầy đủ ngân sách tải Video chuyển động thật!
         mandatory_slot_indices: List[int] = []
-        for m_idx in [n_slots - 1, n_slots - 2, 0, 1]:
+        for m_idx in [0, 1, n_slots - 1, n_slots - 2]:
             if 0 <= m_idx < n_slots and m_idx not in mandatory_slot_indices:
                 if not _is_real_video_slot(scenes_media[m_idx]):
                     mandatory_slot_indices.append(m_idx)
@@ -891,7 +892,7 @@ async def run_post_gather_media_rescues(
                                 sc_g["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
                                 replaced_g = True
                                 break
-                    if not replaced_g:
+                    if not replaced_g and sid_g != 1:
                         disk_g_jpgs = sorted(
                             [
                                 p for p in media_dir.glob(f"scene_{sid_g:03d}_*.jpg")

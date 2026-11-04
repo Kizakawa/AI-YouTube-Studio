@@ -123,27 +123,37 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇧🇷 REGIONAL HOOK MASTERY — MERCADO BRASILEIRO (pt-BR | META: STAYED-TO-WATCH >= 70% & APV >= 100%)
 ═══════════════════════════════════════════════════════════════════
-1. REGRA DE OURO: HOOK DE CURIOSIDADE "POR QUE..." OU PARADOXO MORTAL COM ENTIDADE EXPLÍCITA NO SEGUNDO 0,0s (6 A 12 PALAVRAS):
-   - TÍTULO (`title`): DEVE conter os nomes exatos das entidades de alto volume de busca + gancho "Por Que / Como" ou impacto físico fácil de imaginar (ex: "Por Que a Onça-Pintada Foge Desse Porco do Mato? 🐆🐗", "Por Que o Guepardo Tem Medo do Avestruz? 🐆⚡", "Como a Sucuri Engole um Jacaré Inteiro no Rio 🐍🐊"). PROIBIDO usar unidades científicas secas como PSI, Newtons, kPa ou Joules!
-   - HOOK DA CENA 1 (0,0s a 2,5s | 6 A 12 PALAVRAS — PRIORIZE O HOOK "POR QUE..." DE CURIOSIDADE IMEDIATA): No feed do Shorts, abrir o segundo 0,0s com uma pergunta contraintuitiva **"Por que + [Entidade A & B] + [Ação Chocante / Paradoxo]?"** (ou afirmação direta "Veja por que...") prende a atenção na hora porque o cérebro humano não consegue ignorar um "Por que" sem resposta! A Cena 1 DEVE nomear explicitamente a Entidade/Predador principal (e se o tema for `Entidade A vs Entidade B`, DEVE nomear AMBAS as entidades na Cena 1!). PROIBIDO fazer perguntas fechadas de Sim/Não ("Você sabia que...?", "Você já viu...?") e SEM unidades físicas abstratas como PSI ou Newtons!
-   - PROIBIDO USAR APONTAMENTOS VAGOS QUE ESCONDEM O SUJEITO ("Olhe bem para este pequeno crânio...", "Veja o momento exato em que este predador...", "Você sabia que...") — esconder o nome do animal ou usar pergunta de Sim/Não na Cena 1 derruba a retenção!
-2. AS 4 FÓRMULAS COMPROVADAS DE HOOK (>70% STAYED & >95% APV NO NOSSO CANAL):
-   - [Arquétipo 1 (PRIORIDADE #1) — O Hook de Curiosidade "Por Que..." Contraintuitivo com Sujeito Explícito]:
-     * "Por que uma onça-pintada sobe na árvore apavorada quando vê esse porco do mato?"
-     * "Por que a mamba-negra mais mortal da África não consegue acertar esse pequeno mangusto?"
-     * "Por que os cientistas trancaram esse buraco na Rússia a doze quilômetros de profundidade?"
-   - [Arquétipo 2 — Confronto Direto / Paradoxo Letal (Vencedor 40.225 views `TXPjVAIaKWw` — 51,4% Stay, 79,1% APV)]:
+1. LEI DA COMPLEMENTARIDADE TÍTULO vs. CENA 1 (PROIBIDO REPETIR A PERGUNTA DO TÍTULO NA CENA 1!):
+   - TÍTULO (`title` — 6 a 10 palavras, máx 55 caracteres): Use um gancho magnético de **Inversão de Poder ("Por Que [Predador/Gigante] Tem Medo / Foge / Morre Diante de [Oponente/Armadilha]?")** OU **Confronto Direto (`"[Entidade A] vs [Entidade B]: [Impacto Mortal]"`)** nomeando explicitamente as entidades de alto volume de busca (ex: "Por Que a Onça-Pintada Foge Desse Porco do Mato? 🐆🐗", "Por Que Esse Lago No Fundo Do Mar Paralisa Tubarões? 💀🦈", "Onça-Pintada vs Jacaré-Açu: O Bote No Crânio 🐆🐊"). PROIBIDO títulos longos/descritivos sem tensão e PROIBIDO unidades científicas secas (PSI, Newtons, kPa)!
+   - HOOK DA CENA 1 (0,0s a 2,5s | 6 A 11 PALAVRAS — CHOQUE VISUAL IMEDIATO SEM REPETIR O TÍTULO!):
+     * 🚨 REGRA ANTI-ECO (CRÍTICA): Se o `title` já começa com `"Por Que..."` ou `"Como..."`, a Cena 1 (`hook` e `scenes[0].narration`) é **ESTRITAMENTE PROIBIDA de repetir a pergunta "Por que..." do título!** Quando o espectador clica ou vê o título `"Por Que..."`, o segundo 0,0s do áudio DEVE entregá-lo direto na **ação física chocante, no bote letal ou no paradoxo absurdo acontecendo na tela naquele instante**!
+     * Exemplo 1 (Título "Por Que..." -> Cena 1 de Choque Físico Imediato):
+       - Título: `"Por Que Esse Lago No Fundo Do Mar Paralisa Tubarões? 💀🦈"`
+       - Cena 1 (0,0s): `"Nadar dentro dessa mancha escura no fundo do mar congela um tubarão em segundos!"` (NUNCA repita `"Por que tubarões ficam paralisados..."`!)
+     * Exemplo 2 (Título "Por Que..." -> Cena 1 de Inversão Brutal):
+       - Título: `"Por Que Uma Alcateia De Lobos Foge Desse Alce Gigante? 🐺🫎"`
+       - Cena 1 (0,0s): `"Dez lobos famintos cercam esse alce na neve—mas um único chute dele quebra crânios na hora!"`
+     * Exemplo 3 (Título Declarativo "A vs B" -> Cena 1 com Paradoxo ou Pergunta "Por Que" Curta):
+       - Título: `"Mamba-Negra vs Mangusto: O Duelo Mais Rápido Da África 🐍🦦"`
+       - Cena 1 (0,0s): `"Esta mamba-negra mata um homem em minutos, mas o mangusto ri do veneno dela!"` (ou `"Por que a serpente mais letal da África não consegue acertar esse pequeno mangusto?"`)
+     * A Cena 1 DEVE nomear explicitamente a Entidade/Predador principal (e se o tema for `Entidade A vs Entidade B`, DEVE nomear AMBAS as entidades na Cena 1!). PROIBIDO perguntas fechadas de Sim/Não ("Você sabia que...?", "Você já viu...?") e PROIBIDO apontamentos vagos que escondem o sujeito ("Olhe bem para...", "Veja o momento exato...")!
+2. AS 4 FÓRMULAS COMPROVADAS DE HOOK DE CENA 1 (>70% STAYED & >95% APV NO NOSSO CANAL):
+   - [Arquétipo 1 (PRIORIDADE #1 QUANDO O TÍTULO É "POR QUE...") — Choque Físico Instantâneo / Paradoxo Letal em Ação (Vencedor 40.225 views `TXPjVAIaKWw` — 51,4% Stay, 79,1% APV)]:
+     * "Nadar dentro dessa mancha escura no fundo do mar paralisa um tubarão na hora!"
      * "Esta mamba-negra mata em segundos, mas o mangusto ri do veneno!"
      * "A onça-pintada não sufoca o jacaré-açu—ela fura o crânio blindado dele na hora."
-   - [Arquétipo 3 — O Último Erro com Sujeito Explícito (Vencedor `XoeQ1I_WHsI` — 51,3% Stay)]:
-     * "O último erro de qualquer predador é desafiar as garras desse casuar."
-     * "Esse búfalo de meia tonelada saiu andando, mas já está morto."
-   - [Arquétipo 4 — Ameaça Direta em 2ª Pessoa com Nome da Entidade]:
-     * "Se esse polvo-de-anéis-azuis tocar sua pele, você para de respirar em minutos."
+   - [Arquétipo 2 — O "Morto-Vivo" / Último Erro com Sujeito Explícito (Vencedor `XoeQ1I_WHsI` — 51,3% Stay)]:
+     * "Esse búfalo de meia tonelada escapou da mordida do dragão-de-komodo, mas já está morto."
+     * "Sozinha, a onça-pintada domina o rio—mas sobe na árvore quando esse bando de queixadas chega."
+   - [Arquétipo 3 — O Hook "Por Que..." de Inversão de Poder (USE NA CENA 1 APENAS QUANDO O TÍTULO NÃO COMEÇAR COM "POR QUE")]:
+     * "Por que a serpente mais mortal da África entra em pânico diante desse pequeno mangusto?"
+   - [Arquétipo 4 — Ameaça Direta em 2ª Pessoa / Segredo de Interrogatório]:
+     * "Na sala de interrogatório do FBI, esse simples copo d'água é uma armadilha implacável."
 3. PROIBIDO NO MERCADO BRASILEIRO:
+   - NUNCA repita a mesma frase ou estrutura `"Por que..."` do `title` na `Cena 1`.
    - NUNCA use frases vagas como "Olhe bem para..." ou "Veja o momento exato..." sem dizer o nome da espécie/fenômeno na Cena 1.
    - NUNCA divida um Short de 35 segundos em "Round 1, Round 2, Round 3" trocando para um terceiro animal que não está no título.
-   - NUNCA faça perguntas fechadas de Sim/Não ("Você sabia que...?", "Você já viu...?") na Cena 1 — use perguntas abertas de alta curiosidade com **"Por que..."** ou **"Como..."**!
+   - NUNCA faça perguntas fechadas de Sim/Não ("Você sabia que...?", "Você já viu...?") na Cena 1!
 4. REGRA DE ALTERNÂNCIA VISUAL 1-1 & ANTI-FADIGA DE TEMA (QUEBRA DO TETO DE ~1.000 VIEWS):
    - Dados reais da YouTube Analytics API v2 provam que repetir o mesmo animal/sujeito principal no início do Título e na paleta visual das primeiras cenas em vídeos consecutivos causa fadiga imediata no público do canal (Stayed-to-Watch cai de ~48,5% para ~32,8%, travando o vídeo no lote inicial de ~1.000 views).
    - NUNCA inicie o Título (`title`) ou a Cena 1 com o mesmo sujeito/espécie que já liderou os últimos 2-3 vídeos recentes do canal! Se o tema envolver um fenômeno extremo (vulcão a 100°C, cratera a 1.000°C, lago tóxico, anomalia acústica) + um animal já usado recentemente, destaque SEMPRE o fenômeno extremo inédito ou o oponente novo na abertura do Título e na cor/visual da Cena 1!
@@ -158,9 +168,9 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇻🇳 REGIONAL HOOK MASTERY — THỊ TRƯỜNG VIỆT NAM (vi-VN | MỤC TIÊU: STAYED-TO-WATCH >= 70%)
 ═══════════════════════════════════════════════════════════════════
-1. QUY TẮC VÀNG MỞ ĐẦU 0.0s: HOOK "TẠI SAO / VÌ SAO..." GÂY TÒ MÒ TỨC THÌ HOẶC NGHỊCH LÝ SINH TỬ NÊU ĐÍCH DANH THỰC THỂ NGAY Ở CẢNH 1:
-   - TIÊU ĐỀ (`title`): Bắt buộc nêu đích danh thực thể + câu hỏi Tại Sao / Làm Sao hoặc hành động trực quan dễ hình dung. CẤM nhồi đơn vị vật lý khô khan như PSI, Newton, kPa!
-   - CÂU HOOK CẢNH 1 (6–12 từ): Ưu tiên số 1 là mở đầu bằng **"Tại sao / Vì sao + [Thực thể A & B] + [Hành động ngược đời gây sốc]?"** hoặc câu khẳng định nghịch lý sinh tử ngay ở giây 0.0s! Bắt buộc nêu đích danh Thực thể chính (nếu chủ đề là cặp đấu `A vs B` thì BẮT BUỘC nêu tên CẢ 2 thực thể A và B ngay ở Cảnh 1!). TUYỆT ĐỐI CẤM câu hỏi Yes/No yếu ("Bạn có biết...?", "Bạn đã bao giờ...?") và CẤM chỉ trỏ mơ hồ giấu tên chủ thể.{bench_block}
+1. QUY TẮC BÙ TRỪ TIÊU ĐỀ vs. CẢNH 1 (CẤM LẶP LẠI CÂU HỎI TIÊU ĐỀ Ở CẢNH 1):
+   - TIÊU ĐỀ (`title`): Nêu đích danh thực thể + nghịch lý đảo chiều quyền lực ("Tại Sao [Kẻ Săn Mồi] Khiếp Sợ [Đối Thủ Bất Ngờ]?" hoặc "[Thực Thể A] vs [Thực Thể B]: [Đòn Sinh Tử]"). CẤM nhồi đơn vị vật lý khô khan (PSI, Newton, kPa)!
+   - CÂU HOOK CẢNH 1 (6–11 từ): Nếu `title` đã hỏi "Tại sao...", Cảnh 1 TUYỆT ĐỐI KHÔNG lặp lại câu hỏi "Tại sao..." đó mà phải tung ngay đòn hành động vật lý hoặc nghịch lý sinh tử đang diễn ra trên màn hình ở giây 0.0s! Bắt buộc nêu đích danh Thực thể chính (nếu là cặp đấu `A vs B` thì nêu tên CẢ 2 thực thể ngay ở Cảnh 1). CẤM câu hỏi Yes/No yếu ("Bạn có biết...?") và CẤM chỉ trỏ mơ hồ giấu tên chủ thể.{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """
     else:
@@ -168,29 +178,39 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 ═══════════════════════════════════════════════════════════════════
 🇺🇸 REGIONAL HOOK MASTERY — US / GLOBAL ENGLISH MARKET (en-US | TARGET: STAYED-TO-WATCH >= 75%)
 ═══════════════════════════════════════════════════════════════════
-1. GOLDEN 0.0s RETENTION RULE: OPEN-LOOP "WHY..." CURIOSITY PARADOX OR VISCERAL CLASH NAMING EXPLICIT ENTITIES IN SCENE 1 (6 TO 12 WORDS | GRADE-5 ENGLISH):
-   - TITLE (`title`): MUST explicitly name the high-search-volume primary entities in a natural conversational "Why / How" or visceral stakes title (e.g., "Why Great White Sharks Are Terrified Of Orcas 🐋🦈", "Why Deadly Black Mambas Can't Kill A Mongoose 🦦🐍", "How Sea Turtles Eat Deadly Jellyfish Like Noodles 🐢🪼"). STRICTLY BAN dry textbook physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`) that ordinary viewers cannot picture!
-   - SCENE 1 HOOK (0.0s–2.5s, 6–12 words — PRIORITIZE THE "WHY..." CURIOSITY PARADOX HOOK): Opening the first 0.0s with a counter-intuitive **"Why + [Named Entity A & B] + [Shocking / Counter-Intuitive Action]?"** (or **"Here's why [Entity A]..."**) creates an instant psychological open loop that forces viewers to stay and find out the answer! Scene 1 MUST explicitly name the primary entity/combatants (and if the topic pits `Entity A vs Entity B`, Scene 1 MUST explicitly name BOTH `Entity A` AND `Entity B` right in Scene 1!). NEVER hide the second entity and NEVER use weak Yes/No questions (`"Did you know...?"`, `"Have you ever seen...?"`) or dry science units!
-   - STRICTLY FORBIDDEN VAGUE POINTERS: NEVER start Scene 1 with vague entity-blind pointers like `"Look closely at why you cannot find the exit"`, `"Look closely at these deadly floating blue tentacles"`, `"You'd think a massive whale wouldn't fear anything"`, or `"Did you know..."`!
-2. THE 4 PROVEN HIGH-RETENTION US HOOK ARCHETYPES (CHOOSE THE #1 BEST FIT FOR SCENE 1 IN 6–12 WORDS):
-   - [Archetype 1 (PRIORITY #1 SIGNATURE HOOK) — The Counter-Intuitive "Why..." Curiosity Paradox Naming Explicit Entities]:
-     * "Why do massive great white sharks panic and flee the second an orca shows up?"
-     * "Why can a sea turtle chew up venomous box jellyfish without feeling a thing?"
-     * "Why do FBI agents place one paper water cup six inches from a guilty suspect?"
-     * "Why did Soviet commanders refuse to turn the final nuclear launch key in 1962?"
-   - [Archetype 2 — Direct Scale / 2-Entity Extreme Clash (Proven Winner `A-oNKdpL0rM` 1,146 views & `w7iUy-8hjVo` 47.7% Stay)]:
+1. GOLDEN TITLE-VS-HOOK COMPLEMENTARITY LAW (ZERO QUESTION ECHO BETWEEN TITLE & SCENE 1!):
+   - TITLE (`title` — 6 to 10 words, under 55 chars): Use a high-velocity **Power-Reversal Curiosity Question ("Why [Apex Predator/Giant] Panics / Flees / Dies From [Unexpected Rival/Trap]")** OR **Direct Clash Header (`"[Entity A] vs [Entity B]: [Visceral Stakes]"`)** explicitly naming high-search-volume entities (e.g., "Why Great White Sharks Panic When Orcas Show Up 🐋🦈", "Why This Underwater Lake Paralyzes Deep-Sea Sharks 💀🦈", "Sea Turtle vs Box Jellyfish: Deadly Noodles 🐢🪼"). STRICTLY BAN slow descriptive titles and dry physics units (`PSI`, `Newtons`, `kPa`, `Joules`, `LD50`)!
+   - SCENE 1 HOOK (0.0s–2.5s, 6–11 words — INSTANT VISUAL PARADOX / ACTION WITH ZERO TITLE ECHO!):
+     * 🚨 ANTI-ECHO RULE (CRITICAL): When `title` starts with `"Why..."` or `"How..."`, Scene 1 (`hook` and `scenes[0].narration`) is **STRICTLY FORBIDDEN from repeating the "Why / How..." question from the title!** When a viewer sees a `"Why..."` title, the first 0.0s of audio MUST hit them immediately with the **visceral physical action, lethal strike, or upside-down survival paradox happening on screen right now**!
+     * Example 1 (`"Why..."` Title -> Instant Physical Paradox Hook in Scene 1):
+       - Title: `"Why Great White Sharks Panic When Orcas Show Up 🐋🦈"`
+       - Scene 1 (0.0s): `"One adult orca enters the bay, and every great white shark bolts for miles."` (NEVER repeat `"Why do great white sharks panic..."`!)
+     * Example 2 (`"Why..."` Title -> Instant Lethal Trap Hook in Scene 1):
+       - Title: `"Why This Underwater Lake Paralyzes Deep-Sea Sharks 💀🦈"`
+       - Scene 1 (0.0s): `"Swimming into this dark pool on the ocean floor paralyzes a shark in seconds."`
+     * Example 3 (Declarative `"A vs B"` Title -> Spoken Paradox OR Sharp `"Why..."` Hook in Scene 1):
+       - Title: `"Sea Turtle vs Box Jellyfish: The Deadly Snack 🐢🪼"`
+       - Scene 1 (0.0s): `"Swallowing a venomous box jellyfish is instant death—unless you're a hungry sea turtle."` (or `"Why can a sea turtle chew up deadly box jellyfish without feeling a thing?"`)
+     * Scene 1 MUST explicitly name the primary entity/combatants (and if the topic pits `Entity A vs Entity B`, Scene 1 MUST explicitly name BOTH `Entity A` AND `Entity B` right in Scene 1!). NEVER hide the second entity and NEVER use weak Yes/No questions (`"Did you know...?"`, `"Have you ever seen...?"`) or vague entity-blind pointers (`"Look closely at..."`, `"Watch the exact moment..."`)!
+2. THE 4 PROVEN HIGH-RETENTION US HOOK ARCHETYPES FOR SCENE 1 (6–11 WORDS):
+   - [Archetype 1 (PRIORITY #1 WHEN TITLE STARTS WITH "WHY/HOW") — Instant Visceral Action / Lethal Mechanism Strike (Proven Winner `A-oNKdpL0rM` 1,146 views & `w7iUy-8hjVo` 47.7% Stay)]:
+     * "Swimming into this dark pool on the ocean floor paralyzes a shark in seconds."
      * "Two miles down, a colossal squid's rotating hooks rip straight into a hunting sperm whale."
      * "A jaguar doesn't choke an armored caiman—it punches straight through its skull."
-   - [Archetype 3 — Walking Dead / Lethal Paradox Naming Both Entities (Proven Winner `1NeB0Qe6_t4` 1,325 views in 12h & `D_sIws9Buto` 123.8% APV)]:
+   - [Archetype 2 — Walking Dead / Role-Reversal Paradox Naming Both Entities (Proven Winner `1NeB0Qe6_t4` 1,325 views in 12h & `D_sIws9Buto` 123.8% APV)]:
      * "This twelve-hundred-pound buffalo walked away from a Komodo dragon, already dead."
      * "Swallowing a venomous box jellyfish is instant death—unless you're a sea turtle."
-   - [Archetype 4 — Named Psychological / Historical Shock Event]:
-     * "Las Vegas casinos remove every clock and window to trap your brain's dopamine."
+   - [Archetype 3 — Counter-Intuitive "Why..." Curiosity Paradox (USE IN SCENE 1 ONLY WHEN TITLE DOES NOT START WITH "WHY/HOW")]:
+     * "Why do massive great white sharks panic and flee the second an orca shows up?"
+     * "Why did Soviet commanders refuse to turn the final nuclear launch key in 1962?"
+   - [Archetype 4 — Named Psychological Trap / In-The-Room Crisis]:
+     * "In an FBI interrogation room, that harmless paper water cup is a hidden lie detector."
      * "One wrong turn by Archduke Franz Ferdinand's driver in 1914 erased four empires."
 3. STRICTLY BANNED IN US SHORTS:
+   - NEVER echo or paraphrase the `title` question inside `Scene 1`.
    - NO vague `"Look closely at..."` or `"Watch the exact moment..."` hooks that hide the primary subject in Scene 1.
    - NO multi-round gauntlets (`"Round One... Round Two... Round Three..."`) or bait-and-switch 3rd animals inside a 35-second Short: all 7–8 scenes MUST stay 100% focused on the exact entities promised in the `title`!
-   - NO abstract poetry ("loaded weapon", "silent cage"), and NO passive Yes/No questions ("Did you know...?", "Have you ever...?"). Open-loop `"Why..."` / `"How..."` / `"What if..."` curiosity hooks ARE strongly encouraged!
+   - NO abstract poetry ("loaded weapon", "silent cage"), and NO passive Yes/No questions ("Did you know...?", "Have you ever...?").
 4. 1-1 VISUAL CONTRAST & LEAD-SUBJECT ALTERNATION RULE (BREAKING THE ~1,000-VIEW SEED COHORT CEILING):
    - Real YouTube Analytics v2 telemetry proves that starting consecutive uploads with the exact same lead subject/species noun or identical opening visual color palette triggers Audience Cohort Fatigue (Stayed-to-Watch drops from ~48.5% to ~32.8%, capping views at ~1,000).
    - NEVER start the new `title` or Scene 1 visual hook with the same primary subject noun/entity that led the channel's last 2-3 videos! Always alternate visual palettes and foreground the freshest, most visually contrasting phenomenon or opponent.

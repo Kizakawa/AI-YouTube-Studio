@@ -478,28 +478,61 @@ _DANGLING_QUERY_CONNECTORS = {
     "inside", "where", "when", "while", "than",
 }
 
+_QUERY_QUESTION_AND_NON_EN_STOPWORDS = {
+    "why", "how", "what", "when", "where", "who", "whom", "whose", "which",
+    "does", "do", "did", "can", "could", "would", "should", "is", "are", "was", "were", "will",
+    "por", "que", "quê", "porque", "porquê", "como", "quando", "onde", "quem", "qual", "quais",
+    "uma", "um", "uns", "umas", "dos", "das", "nos", "nas", "num", "numa", "pelo", "pela", "pelos", "pelas",
+    "esse", "essa", "esses", "essas", "este", "esta", "estes", "estas", "isso", "isto", "aquilo",
+    "nesse", "nessa", "desse", "dessa", "neste", "nesta", "deste", "desta", "nao", "não", "mais", "muito",
+    "sobre", "para", "pra", "pro", "com", "sem", "sob", "entre", "contra", "dentro", "fora",
+    "fica", "ficam", "foge", "fogem", "ataca", "atacam", "nunca", "sempre",
+    "tai", "sao", "vi", "lam", "the", "nao", "nhung", "cac", "cua", "trong", "khong",
+}
+
 
 def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
-    """Làm sạch query tìm kiếm ảnh: loại bỏ toàn bộ từ rác kỹ thuật/nhiếp ảnh và từ nối cụt đuôi ('vs', 'and'...), giữ lại danh từ trọng tâm."""
+    """Làm sạch query tìm kiếm ảnh/video: loại bỏ từ để hỏi ('Why', 'Por Que'), từ phi tiếng Anh có dấu, từ rác kỹ thuật và từ nối cụt đuôi."""
     if not raw_query:
         return ""
+    # Nếu là tiêu đề câu hỏi tiếng Bồ Đào Nha / Việt chứa cụm 'Por Que' hoặc ký tự có dấu phi tiếng Anh
+    if re.search(
+        r"\b(?:por\s+que|por\s+quê|porque|como\s+(?:o|a|um|uma)|alcateia\s+de|fundo\s+do\s+mar|tại\s+sao|vì\s+sao)\b",
+        raw_query,
+        flags=re.IGNORECASE | re.UNICODE,
+    ):
+        raw_query = re.sub(
+            r"\b(?:por\s+que|por\s+quê|porque|como\s+(?:o|a|um|uma)|alcateia\s+de|fundo\s+do\s+mar|tại\s+sao|vì\s+sao)\b.*",
+            " ",
+            raw_query,
+            flags=re.IGNORECASE | re.UNICODE,
+        ).strip()
+    # Loại bỏ nguyên vẹn từ có dấu phi tiếng Anh (tránh cắt "Tubarões" thành "Tubar" + "es")
+    text = re.sub(r"\b\w*[^\x00-\x7F]+\w*\b", " ", raw_query, flags=re.UNICODE)
     # Loại bỏ tỉ lệ khung hình / độ phân giải trước (vd: "9:16", "16x9", "1080p", "60fps")
-    text = re.sub(r'\b\d+\s*[:x×/]\s*\d+\b', ' ', raw_query, flags=re.IGNORECASE)
+    text = re.sub(r'\b\d+\s*[:x×/]\s*\d+\b', ' ', text, flags=re.IGNORECASE)
     text = re.sub(r'\b\d+\s*(?:p|k|fps|mm)\b', ' ', text, flags=re.IGNORECASE)
-    words = re.sub(r'[^\w\s-]', ' ', text).split()
+    words = re.findall(r"[a-zA-Z0-9-]+", text)
 
     def _is_junk(w: str) -> bool:
-        lw = w.lower()
+        lw = w.lower().strip("-")
         return (
             lw in CAMERA_AND_STYLE_FLUFF
             or lw in _FORMAT_FLUFF
-            or len(w) <= 1
-            or lw.strip('-').isdigit()
+            or lw in _QUERY_QUESTION_AND_NON_EN_STOPWORDS
+            or lw in _DANGLING_QUERY_CONNECTORS
+            or len(lw) <= 1
+            or lw.isdigit()
         )
 
     clean = [w for w in words if not _is_junk(w)]
     if not clean:
-        clean = [w for w in words if len(w) > 1 and not w.isdigit()]
+        clean = [
+            w for w in words
+            if len(w) > 1
+            and not w.isdigit()
+            and w.lower() not in _QUERY_QUESTION_AND_NON_EN_STOPWORDS
+        ]
 
     # Nếu chuỗi có cấu trúc "Entity A vs Entity B" và max_words nhỏ (<= 3), lấy trọn vẹn thực thể A phía trước "vs"
     # để không bao giờ cắt cụt thành "Orca vs" hoặc "Orca vs Great" gây hỏng truy vấn Stock/Web!

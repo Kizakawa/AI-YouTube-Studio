@@ -21,6 +21,7 @@ from app.graph.tools.tool_schemas import (
     MEDIA_DIRECTOR_TOOLS,
     _clean_yt_search_phrase,
     _extract_subject_anchor_tokens,
+    _is_non_english_or_question_title,
     _sanitize_tool_arg,
     build_single_entity_stock_queries,
 )
@@ -257,8 +258,18 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
-    default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3)
-    default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5)
+    first_en_vk = str((scenes[0].get("visual_keyword") if scenes else "") or "").strip()
+    first_en_sq = str((scenes[0].get("stock_query") if scenes else "") or "").strip()
+    default_subj = (
+        _clean_yt_search_phrase(primary_entity or "", max_words=3, strip_distractor_props=True)
+        or _clean_yt_search_phrase(first_en_sq or first_en_vk, max_words=2, strip_distractor_props=True)
+        or _clean_yt_search_phrase(topic, max_words=3, strip_distractor_props=True)
+    )
+    default_overall_q = (
+        _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5)
+        or _clean_yt_search_phrase(first_en_vk or first_en_sq, subject_entity=default_subj, max_words=5)
+        or default_subj
+    )
 
     # Nếu LLM chỉ trả về functionCall cho một số cảnh đầu và bị thiếu các cảnh cuối,
     # lấy công cụ chủ đạo mà LLM đã chọn để bù vào các cảnh bị khuyết (TUYỆT ĐỐI không dùng danh sách từ khóa cứng để ép công cụ).
@@ -651,6 +662,7 @@ PROPOSED SCENE DECISIONS TO DECOMPOSE & AUDIT:
 
 YOUR 3-STEP COGNITIVE STORYLINE DECOMPOSITION PROTOCOL (STRICTLY GOVERNED BY THE YAML VIDEO SEARCH STRATEGY ABOVE):
 STEP 1 — FULL-SCRIPT STORYLINE ARC COMPREHENSION, PRONOUN RESOLUTION & EMOTIONAL MOOD LOCK:
+- 100% PURE ENGLISH SEARCH QUERIES MANDATE (ZERO PORTUGUESE / VIETNAMESE / QUESTION PREFIXES): Even when `Topic` or `FULL SCRIPT STORY` is in Portuguese (`pt-BR`, e.g. `"Por Que Tubarões..."`, `"Por Que uma Alcateia..."`), Vietnamese (`vi`), or starts with `"Why / How / Por Que / Como"`, EVERY search query (`overall_script_query`, `subject_entity`, `approved_subject_entity`, `approved_query`, `approved_secondary_query`, `approved_fallback_stock_query`) MUST be translated into 100% clean English visual nouns + physical actions! NEVER copy `"Por Que"`, `"Why"`, `"Como"`, `"uma"`, `"do"`, or non-English words into any search query field!
 - Read the FULL SCRIPT STORY from Scene 1 to Scene {len(scenes)} first so you understand the complete narrative arc (Act 1: Crisis/Hook -> Act 2: Mechanism/Escalation -> Act 3: Mid-Video Twist -> Act 4: Counter-Move/Climax -> Act 5: Payoff) and emotional atmosphere.
 - When a `split_sentence` uses pronouns ("It", "He", "She", "They", "This creature", "These witnesses", "This trap") or omits the subject, substitute the true camera-visible subject acting in that sentence.
 - 🚫 NEVER USE ABSTRACT THEORY NAMES AS `approved_subject_entity`: A camera cannot film an abstract psychological/philosophical term like `"Bystander Effect"`, `"Diffusion of Responsibility"`, `"Cognitive Dissonance"`, or `"Paradox"`. When the topic is an abstract concept, set `approved_subject_entity` to the **CONCRETE CAMERA-VISIBLE SUBJECT** of that specific scene (e.g., `"witness looking through window"`, `"flashing police lights night"`, `"glowing brain neurons"`, `"man pointing finger"`, `"person calling emergency phone"`).
@@ -731,10 +743,15 @@ Return ONLY a valid JSON object in this exact format:
                                     for d in proposed_decisions:
                                         sid = int(d.get("scene_id") or 0)
                                         item = dict(d)
-                                        if top_overall_q:
-                                            item["overall_script_query"] = top_overall_q
-                                        if top_subj and not item.get("creature_name") and not item.get("subject_entity"):
-                                            item["subject_entity"] = top_subj
+                                        if top_overall_q and not _is_non_english_or_question_title(top_overall_q):
+                                            item["overall_script_query"] = _clean_yt_search_phrase(top_overall_q, max_words=5) or top_overall_q
+                                        if (
+                                            top_subj
+                                            and not _is_non_english_or_question_title(top_subj)
+                                            and not item.get("creature_name")
+                                            and (not item.get("subject_entity") or _is_non_english_or_question_title(str(item.get("subject_entity") or "")))
+                                        ):
+                                            item["subject_entity"] = _clean_yt_search_phrase(top_subj, max_words=3) or top_subj
                                         if sid in audit_by_sid:
                                             au = audit_by_sid[sid]
                                             app_scope = str(au.get("approved_scope") or item.get("search_scope") or "SCENE_SPECIFIC").upper()

@@ -120,6 +120,44 @@ _YT_QUERY_FILLER_WORDS = {
     "the", "a", "an", "of", "in", "on", "at", "to", "for", "with", "by", "from", "and", "or",
 }
 
+_MULTILINGUAL_QUESTION_AND_STOP_WORDS = {
+    # Từ để hỏi & trợ động từ tiếng Anh (tránh lọt câu hỏi "Why do...", "How can..." vào truy vấn Stock/YouTube)
+    "why", "how", "what", "when", "where", "who", "whom", "whose", "which",
+    "does", "do", "did", "can", "could", "would", "should", "is", "are", "was", "were", "will",
+    "has", "have", "had", "never", "ever", "always", "every", "into", "onto", "upon", "within", "without",
+    "this", "that", "these", "those", "their", "there", "here", "about", "after", "before", "because",
+    # Từ để hỏi, mạo từ, giới từ & hư từ tiếng Bồ Đào Nha / Tây Ban Nha (tránh cắt nhầm tiêu đề "Por Que...", "Como uma...")
+    "por", "que", "quê", "porque", "porquê", "como", "quando", "onde", "quem", "qual", "quais",
+    "uma", "um", "uns", "umas", "dos", "das", "nos", "nas", "num", "numa", "pelo", "pela", "pelos", "pelas",
+    "esse", "essa", "esses", "essas", "este", "esta", "estes", "estas", "isso", "isto", "aquilo",
+    "aquele", "aquela", "aqueles", "aquelas", "nesse", "nessa", "nesses", "nessas", "neste", "nesta",
+    "desse", "dessa", "deste", "desta", "daquele", "daquela", "dele", "dela", "deles", "delas",
+    "seu", "sua", "seus", "suas", "meu", "minha", " não", "nao", "mais", "muito", "muita", "muitos", "muitas",
+    "sobre", "para", "pra", "pro", "pros", "pras", "com", "sem", "sob", "entre", "ate", "mesmo", "contra",
+    "dentro", "fora", "fica", "ficam", "ficou", "tem", "têm", "sao", "está", "estao", "pode", "podem",
+    "foge", "fogem", "ataca", "atacam", "nunca", "sempre", "todo", "toda", "todos", "todas", "outro", "outra",
+    # Từ để hỏi & hư từ tiếng Việt
+    "tai", "sao", "vi", "lam", "the", "nao", "nhung", "cac", "cua", "trong", "ngoai", "khong", "bao", "gio",
+}
+
+_NON_ENGLISH_TITLE_MARKER_RE = re.compile(
+    r"(?:[À-ỹ]|"
+    r"\b(?:por\s+que|por\s+quê|porque|como\s+(?:o|a|os|as|um|uma)\b|uma\b|uns\b|umas\b|dos\b|das\b|"
+    r"nesse\b|nessa\b|desse\b|dessa\b|pelo\b|pela\b|quando\s+(?:o|a|um|uma)\b|alcateia\b|fundo\s+do\s+mar\b|"
+    r"tại\s+sao|vì\s+sao|làm\s+sao)\b)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def _is_non_english_or_question_title(text: str) -> bool:
+    """Phát hiện chuỗi `topic`/`title` đang ở dạng câu tiếng Bồ Đào Nha/Việt hoặc chứa dấu thanh không phải truy vấn tiếng Anh chuẩn."""
+    s = str(text or "").strip()
+    if not s:
+        return False
+    # Loại bỏ emoji trước khi kiểm tra ký tự có dấu
+    s_no_emoji = re.sub(r"[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]", " ", s)
+    return bool(_NON_ENGLISH_TITLE_MARKER_RE.search(s_no_emoji))
+
 
 @tool
 def clone_youtube_short_peak_clip(
@@ -375,12 +413,18 @@ MEDIA_DIRECTOR_TOOLS = [
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _extract_subject_anchor_tokens(subject_entity: str, topic: str, search_query: str) -> Set[str]:
-    """Trích xuất tập token ngữ cảnh từ `subject_entity` / `topic` (không hardcode danh sách loài hay từ khóa cục bộ)."""
-    raw = f"{subject_entity or ''} {topic or ''}".strip()
-    if not raw:
-        raw = search_query or ""
+    """Trích xuất tập token ngữ cảnh tiếng Anh từ `subject_entity` / `topic` (bỏ qua tiêu đề phi tiếng Anh và từ để hỏi)."""
+    clean_subj = "" if _is_non_english_or_question_title(subject_entity) else (subject_entity or "")
+    clean_top = "" if _is_non_english_or_question_title(topic) else (topic or "")
+    raw = f"{clean_subj} {clean_top}".strip()
+    if not raw and search_query and not _is_non_english_or_question_title(search_query):
+        raw = search_query
     tokens = re.findall(r"[a-zA-Z]{3,}", raw.lower())
-    return {t for t in tokens if t not in _YT_QUERY_FILLER_WORDS}
+    return {
+        t for t in tokens
+        if t not in _YT_QUERY_FILLER_WORDS
+        and t not in _MULTILINGUAL_QUESTION_AND_STOP_WORDS
+    }
 
 
 def _clean_yt_search_phrase(
@@ -390,10 +434,10 @@ def _clean_yt_search_phrase(
     strip_distractor_props: bool = False,
 ) -> str:
     """
-    Chuẩn hóa nhẹ câu truy vấn do LLM sinh ra:
-    - Chỉ loại bỏ các tag kỹ thuật thừa (`4k`, `8k`, `hd`, `short`, `shorts`) và giới hạn độ dài `max_words`.
-    - Khi `strip_distractor_props=True` và rút gọn thực thể (`max_words <= 3`), tự động tách phần tiêu đề trước dấu `:` / `vs`
-      và giữ danh từ chính ở cuối cụm danh từ tiếng Anh (`core[-max_words:]`, VD: `'Crested Porcupine'` / `'Porcupine'` thay vì `'African Crested'`).
+    Chuẩn hóa câu truy vấn tìm kiếm Video/Ảnh sang tiếng Anh sạch:
+    - Chặn triệt để lỗi cắt nhầm tiêu đề tiếng Bồ Đào Nha / Việt ("Por Que Tubarões..." -> "Por Que Tubar es do")
+      hoặc lọt từ để hỏi ("Why", "How", "Por Que") vào truy vấn Pexels/YouTube/Google.
+    - Loại bỏ các tag kỹ thuật thừa (`4k`, `8k`, `hd`, `short`, `shorts`) và giới hạn độ dài `max_words`.
     """
     raw_q = str(q or "").strip()
     raw_q = re.sub(
@@ -402,23 +446,33 @@ def _clean_yt_search_phrase(
         raw_q,
         flags=re.IGNORECASE,
     ).strip()
+
+    # Nếu `raw_q` là câu tiêu đề tiếng Bồ Đào Nha / Việt hoặc chứa từ có dấu phi tiếng Anh -> Không cắt chữ rác mà chuyển sang `subject_entity` tiếng Anh
+    if _is_non_english_or_question_title(raw_q):
+        raw_q = ""
+
     if strip_distractor_props and max_words <= 3 and raw_q:
         raw_q = re.split(r"[:—–\-]\s+", raw_q, maxsplit=1)[0].strip()
         if max_words <= 3:
             raw_q = re.split(r"\b(?:vs\.?|versus)\b", raw_q, maxsplit=1, flags=re.IGNORECASE)[0].strip() or raw_q
 
+    # Loại bỏ nguyên vẹn mọi từ có ký tự dấu không thuộc bảng chữ cái tiếng Anh (tránh tách "Tubarões" thành "Tubar" + "es")
+    raw_q = re.sub(r"\b\w*[^\x00-\x7F]+\w*\b", " ", raw_q, flags=re.UNICODE)
     words = re.findall(r"[a-zA-Z0-9]+", raw_q)
     extra_skip = {"vs", "versus"} if strip_distractor_props else set()
     core = [
         w for w in words
         if w.lower() not in _YT_QUERY_FILLER_WORDS
+        and w.lower() not in _MULTILINGUAL_QUESTION_AND_STOP_WORDS
         and w.lower() not in extra_skip
         and len(w) >= 2
     ]
-    if not core and subject_entity:
+    if not core and subject_entity and not _is_non_english_or_question_title(subject_entity):
+        subj_ascii = re.sub(r"\b\w*[^\x00-\x7F]+\w*\b", " ", str(subject_entity), flags=re.UNICODE)
         core = [
-            w for w in re.findall(r"[a-zA-Z0-9]+", subject_entity)
+            w for w in re.findall(r"[a-zA-Z0-9]+", subj_ascii)
             if w.lower() not in _YT_QUERY_FILLER_WORDS
+            and w.lower() not in _MULTILINGUAL_QUESTION_AND_STOP_WORDS
             and w.lower() not in extra_skip
             and len(w) >= 2
         ]
@@ -435,44 +489,50 @@ def build_single_entity_stock_queries(
 ) -> List[str]:
     """
     Chuyển hóa danh sách truy vấn (có thể chứa 'Entity A vs Entity B' hoặc 'Entity A or Entity B')
-    thành các câu truy vấn ĐƠN CHỦ THỂ sạch ('Entity A + hành động/môi trường', 'Entity B + ...')
+    thành các câu truy vấn ĐƠN CHỦ THỂ tiếng Anh sạch ('Entity A + hành động/môi trường', 'Entity B + ...')
     để:
       1. Chạy nhánh song song (Dual-Track) cùng với 'A vs B' trên YouTube.
-      2. Tầng dự phòng Pexels / Pixabay / Wikimedia Stock tuyệt đối KHÔNG gửi cụm 'A vs B' gây lạc chủ đề.
-    Không hardcode bất kỳ từ khóa chủ đề/loài vật nào.
+      2. Tầng dự phòng Pexels / Pixabay / Wikimedia Stock tuyệt đối KHÔNG gửi cụm 'A vs B' hoặc tiêu đề phi tiếng Anh.
     """
     out: List[str] = []
     seen_low: Set[str] = set()
+    clean_topic_en = "" if _is_non_english_or_question_title(topic) else str(topic or "").strip()
+    clean_subj_en = "" if _is_non_english_or_question_title(subject_entity) else str(subject_entity or "").strip()
 
     def _add_clean(phrase: str) -> None:
+        if not phrase or _is_non_english_or_question_title(phrase):
+            return
         cleaned = _clean_yt_search_phrase(
             phrase,
             subject_entity="",
             max_words=max_words,
             strip_distractor_props=False,
         )
-        # Loại bỏ token 'vs' / 'versus' nếu còn sót ở rìa
-        toks = [t for t in cleaned.split() if t.lower() not in ("vs", "versus")]
+        toks = [
+            t for t in cleaned.split()
+            if t.lower() not in ("vs", "versus")
+            and t.lower() not in _MULTILINGUAL_QUESTION_AND_STOP_WORDS
+        ]
         final_p = " ".join(toks[:max_words]).strip()
         if final_p and final_p.lower() not in seen_low:
             seen_low.add(final_p.lower())
             out.append(final_p)
 
-    # 1. Giữ nguyên trước tất cả các câu truy vấn vốn đã ĐƠN CHỦ THỂ (không chứa 'vs'/'versus' hoặc 'A or B')
+    # 1. Giữ nguyên trước tất cả các câu truy vấn tiếng Anh vốn đã ĐƠN CHỦ THỂ (không chứa 'vs'/'versus' hoặc 'A or B')
     for rq in raw_queries:
         s = str(rq or "").strip()
-        if not s:
+        if not s or _is_non_english_or_question_title(s):
             continue
         head = re.split(r"[:—–]\s*", s, maxsplit=1)[0].strip()
         if not has_versus_pattern(head) and not re.search(r"\bor\b", head, re.IGNORECASE):
             _add_clean(head)
 
-    # 2. Tách các thực thể độc lập từ subject_entity ('A or B'), các câu 'A vs B' và topic
-    subj_low = str(subject_entity or "").lower()
+    # 2. Tách các thực thể độc lập từ subject_entity ('A or B'), các câu 'A vs B' và topic tiếng Anh
+    subj_low = clean_subj_en.lower()
     split_entities: List[str] = []
-    for src in (subject_entity, *raw_queries, topic):
+    for src in (clean_subj_en, *raw_queries, clean_topic_en):
         s = str(src or "").strip()
-        if not s:
+        if not s or _is_non_english_or_question_title(s):
             continue
         head = re.split(r"[:—–]\s*", s, maxsplit=1)[0].strip()
         if has_versus_pattern(head):
@@ -482,14 +542,12 @@ def build_single_entity_stock_queries(
         else:
             continue
         for pt in parts:
-            # Bỏ phần hashtag hoặc hậu tố số liệu đo lường (VD: '3700 PSI', '#Shorts')
             pt_clean = re.sub(r"#\S+", " ", pt)
             pt_clean = re.sub(r"\b\d[\d,.]*\s*(?:psi|lbs?|kg|km|mph|ft|meters?|m)\b", " ", pt_clean, flags=re.IGNORECASE)
             ent = _clean_yt_search_phrase(pt_clean, max_words=min(3, max_words), strip_distractor_props=True)
             if ent and ent.lower() not in {e.lower() for e in split_entities}:
                 split_entities.append(ent)
 
-    # Ưu tiên thực thể khớp với subject_entity của cảnh hiện tại lên trước (nếu subject_entity chỉ nêu 1 bên)
     if split_entities and subj_low and not re.search(r"\b(?:vs\.?|versus|or)\b", subj_low):
         split_entities.sort(
             key=lambda e: 0 if any(tok in subj_low for tok in e.lower().split() if len(tok) >= 3) else 1
@@ -498,18 +556,20 @@ def build_single_entity_stock_queries(
     for ent in split_entities:
         _add_clean(ent)
 
-    if not out and (subject_entity or topic):
+    if not out and (clean_subj_en or clean_topic_en):
         fallback_one = _clean_yt_search_phrase(
-            subject_entity or topic,
+            clean_subj_en or clean_topic_en,
             max_words=min(3, max_words),
             strip_distractor_props=True,
         )
         if fallback_one:
             _add_clean(fallback_one)
 
-    # Nếu phân cảnh này chỉ nói về 1 thực thể cụ thể (subject_entity không chứa 'vs'/'or'), ổn định thứ tự ưu tiên thực thể đó lên đầu!
     if len(out) > 1 and subj_low and not re.search(r"\b(?:vs\.?|versus|or)\b", subj_low):
-        subj_toks = [t for t in re.findall(r"[a-zA-Z0-9]{3,}", subj_low) if t not in _YT_QUERY_FILLER_WORDS]
+        subj_toks = [
+            t for t in re.findall(r"[a-zA-Z0-9]{3,}", subj_low)
+            if t not in _YT_QUERY_FILLER_WORDS and t not in _MULTILINGUAL_QUESTION_AND_STOP_WORDS
+        ]
         if subj_toks:
             out.sort(key=lambda q: 0 if any(st in q.lower() for st in subj_toks) else 1)
 
@@ -529,26 +589,33 @@ def _resolve_adaptive_search_queries(
 ) -> Tuple[str, List[str]]:
     """
     Chiến lược Tìm Kiếm Khớp Mạch Truyện Kịch Bản + Song Song 2 Nhánh (Dual-Track):
-    - Luôn ưu tiên số 1 cho bộ câu truy vấn phân cảnh (`scene_query` + `storyline_queries` + `fallback_query`)
-      do LLM phân rã trực tiếp từ mạch truyện kịch bản (tuyệt đối không để `overall_script_query` chung chung
-      đè lên câu truy vấn riêng của phân cảnh!).
-    - Đồng thời luôn kèm nhánh truy vấn ĐƠN CHỦ THỂ sạch (không chứa `vs`) để nếu `A vs B` chỉ toàn video `#edit`
-      hoặc AI thì có sẵn ngay clip quay thật của từng thực thể.
+    - Luôn ưu tiên số 1 cho bộ câu truy vấn phân cảnh tiếng Anh (`scene_query` + `storyline_queries` + `fallback_query`)
+      do LLM phân rã trực tiếp từ mạch truyện kịch bản.
+    - TUYỆT ĐỐI KHÔNG cắt chữ từ `topic` tiếng Bồ Đào Nha / tiếng Việt hoặc câu hỏi "Por Que... / Why..."
+      nhét vào danh sách truy vấn tìm video!
     """
     _ = narration
     scope_norm = (search_scope or "SCENE_SPECIFIC").strip().upper()
     if scope_norm not in ("SCENE_SPECIFIC", "SCRIPT_OVERALL"):
         scope_norm = "SCENE_SPECIFIC"
 
-    overall_base = re.split(r"[:—–]\s*", str(overall_script_query or topic or subject_entity or ""), maxsplit=1)[0].strip()
-    topic_base = re.split(r"[:—–]\s*", str(topic or subject_entity or ""), maxsplit=1)[0].strip()
-    q_overall = _clean_yt_search_phrase(overall_base, subject_entity=subject_entity, max_words=max_words)
-    q_topic = _clean_yt_search_phrase(topic_base, subject_entity="", max_words=max_words)
-    q_scene = _clean_yt_search_phrase(scene_query, subject_entity=subject_entity, max_words=max_words)
+    clean_topic_en = "" if _is_non_english_or_question_title(topic) else str(topic or "").strip()
+    clean_subj_en = "" if _is_non_english_or_question_title(subject_entity) else str(subject_entity or "").strip()
+    clean_overall_en = "" if _is_non_english_or_question_title(overall_script_query) else str(overall_script_query or "").strip()
+
+    overall_base = re.split(
+        r"[:—–]\s*",
+        str(clean_overall_en or clean_subj_en or clean_topic_en or ""),
+        maxsplit=1,
+    )[0].strip()
+    topic_base = re.split(r"[:—–]\s*", str(clean_topic_en or ""), maxsplit=1)[0].strip()
+    q_overall = _clean_yt_search_phrase(overall_base, subject_entity=clean_subj_en, max_words=max_words)
+    q_topic = _clean_yt_search_phrase(topic_base, subject_entity="", max_words=max_words) if topic_base else ""
+    q_scene = _clean_yt_search_phrase(scene_query, subject_entity=clean_subj_en, max_words=max_words)
 
     clean_story_qs: List[str] = []
     for sq in (storyline_queries or []):
-        c_sq = _clean_yt_search_phrase(str(sq or ""), subject_entity=subject_entity, max_words=max_words)
+        c_sq = _clean_yt_search_phrase(str(sq or ""), subject_entity=clean_subj_en, max_words=max_words)
         if (
             c_sq
             and c_sq.lower() != (q_scene or "").lower()
@@ -558,19 +625,19 @@ def _resolve_adaptive_search_queries(
 
     single_entity_fallbacks = build_single_entity_stock_queries(
         raw_queries=[*clean_story_qs, fallback_query, scene_query, overall_base, topic_base],
-        subject_entity=subject_entity,
-        topic=topic,
+        subject_entity=clean_subj_en,
+        topic=clean_topic_en,
         max_words=min(4, max_words),
     )
     q_fallback = (
-        _clean_yt_search_phrase(fallback_query, subject_entity=subject_entity, max_words=min(4, max_words))
-        if fallback_query
+        _clean_yt_search_phrase(fallback_query, subject_entity=clean_subj_en, max_words=min(4, max_words))
+        if (fallback_query and not _is_non_english_or_question_title(fallback_query))
         else (
             single_entity_fallbacks[0]
             if single_entity_fallbacks
             else _clean_yt_search_phrase(
-                subject_entity or topic,
-                subject_entity=subject_entity,
+                clean_subj_en or clean_topic_en,
+                subject_entity=clean_subj_en,
                 max_words=min(3, max_words),
                 strip_distractor_props=True,
             )
@@ -578,13 +645,13 @@ def _resolve_adaptive_search_queries(
     )
 
     if scope_norm == "SCRIPT_OVERALL":
-        base_list = [*clean_story_qs[:1], q_topic, *single_entity_fallbacks[:2], q_overall, q_scene, q_fallback]
+        base_list = [*clean_story_qs[:2], *single_entity_fallbacks[:2], q_overall, q_scene, q_fallback, q_topic]
     elif q_scene and has_versus_pattern(q_scene):
-        base_list = [q_scene, *single_entity_fallbacks[:2], *clean_story_qs[:1], q_fallback, q_topic, q_overall]
+        base_list = [q_scene, *single_entity_fallbacks[:2], *clean_story_qs[:2], q_fallback, q_overall, q_topic]
     elif q_scene:
-        base_list = [q_scene, *clean_story_qs[:1], q_topic, q_fallback, q_overall, *single_entity_fallbacks[:2]]
+        base_list = [q_scene, *clean_story_qs[:2], q_fallback, *single_entity_fallbacks[:2], q_overall, q_topic]
     else:
-        base_list = [*clean_story_qs[:1], q_topic, q_fallback, q_overall, *single_entity_fallbacks[:2]]
+        base_list = [*clean_story_qs[:2], q_fallback, *single_entity_fallbacks[:2], q_overall, q_topic]
 
     ordered: List[str] = []
     seen_q: Set[str] = set()

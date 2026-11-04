@@ -291,6 +291,113 @@ def _splice_dual_beat_hook_clip(
                 pass
 
 
+def verify_hook_clip_genuine_motion(
+    clip_path: str,
+    min_raw_diff: float = 6.2,
+    min_comp_diff: float = 4.2,
+    max_frozen_ratio: float = 0.22,
+) -> tuple[bool, float, str]:
+    """
+    Kiểm định Toán học Thị giác (CV Motion Gate) cho Cảnh 1 (Opening Hook):
+    - Phân biệt Video quay chuyển động vật lý thật (3D parallax, cử động cơ thể/dòng nước/khói lửa)
+      với các video "Slideshow / Ảnh AI tĩnh phóng to Ken-Burns" hoặc clip bị đóng băng khung hình đầu.
+    - Khử biến đổi phóng to/dịch chuyển 2D đồng nhất (Zoom/Pan Compensation) giữa các frame liên tiếp:
+      Nếu sau khi bù trừ tỷ lệ zoom (0.985x..1.022x) và dịch chuyển (-3..+3px), sai khác trung vị
+      (`med_comp`) sụt xuống thấp (< min_comp_diff hoặc < 6.2 kèm comp_ratio < 0.52), chứng tỏ clip
+      chỉ là 1 bức ảnh tĩnh đang zoom/pan chứ không phải video chuyển động thật.
+    """
+    import tempfile
+    from PIL import Image, ImageChops, ImageStat
+
+    p_clip = Path(clip_path)
+    if not p_clip.exists() or p_clip.stat().st_size < 10_000:
+        return False, 0.0, "File video không tồn tại hoặc kích thước quá nhỏ"
+
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            subprocess.run(
+                [
+                    "ffmpeg", "-nostdin", "-v", "error", "-y",
+                    "-ss", "0.30", "-t", "2.20",
+                    "-i", str(p_clip),
+                    "-vf", "fps=10,scale=180:320,crop=140:180:20:30",
+                    str(Path(td) / "m_%02d.jpg"),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=8,
+                check=False,
+            )
+            frames = sorted(Path(td).glob("m_*.jpg"))
+            if len(frames) < 4:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-nostdin", "-v", "error", "-y",
+                        "-t", "2.00",
+                        "-i", str(p_clip),
+                        "-vf", "fps=8,scale=160:284",
+                        str(Path(td) / "m_%02d.jpg"),
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=8,
+                    check=False,
+                )
+                frames = sorted(Path(td).glob("m_*.jpg"))
+            if len(frames) < 3:
+                return True, 8.0, "OK"
+
+            imgs = [Image.open(f).convert("L") for f in frames[:18]]
+            raw_diffs: List[float] = []
+            comp_diffs: List[float] = []
+            for idx_f in range(len(imgs) - 1):
+                a, b = imgs[idx_f], imgs[idx_f + 1]
+                w, h = a.size
+                mx, my = max(4, int(w * 0.10)), max(4, int(h * 0.10))
+                ac = a.crop((mx, my, w - mx, h - my))
+                bc = b.crop((mx, my, w - mx, h - my))
+                raw_d = float(ImageStat.Stat(ImageChops.difference(ac, bc)).mean[0])
+                best_d = raw_d
+                for z_fac in (0.985, 0.992, 1.0, 1.008, 1.015, 1.022):
+                    zw, zh = int(round(w * z_fac)), int(round(h * z_fac))
+                    ar = a.resize((zw, zh), Image.Resampling.BILINEAR)
+                    ox, oy = (zw - w) // 2, (zh - h) // 2
+                    for dx in (-3, -1, 0, 1, 3):
+                        for dy in (-3, -1, 0, 1, 3):
+                            bx0, by0 = ox + mx + dx, oy + my + dy
+                            bx1, by1 = ox + w - mx + dx, oy + h - my + dy
+                            if 0 <= bx0 and 0 <= by0 and bx1 <= zw and by1 <= zh:
+                                d_val = float(ImageStat.Stat(ImageChops.difference(ar.crop((bx0, by0, bx1, by1)), bc)).mean[0])
+                                if d_val < best_d:
+                                    best_d = d_val
+                raw_diffs.append(raw_d)
+                comp_diffs.append(best_d)
+
+            if not raw_diffs:
+                return True, 8.0, "OK"
+            s_raw = sorted(raw_diffs)
+            s_comp = sorted(comp_diffs)
+            med_raw = s_raw[len(s_raw) // 2]
+            med_comp = s_comp[len(s_comp) // 2]
+            frozen_ratio = sum(1 for x in raw_diffs if x < 1.8) / len(raw_diffs)
+            comp_ratio = med_comp / max(med_raw, 0.1)
+
+            if med_raw < min_raw_diff:
+                return False, round(med_comp, 2), f"Cảnh tĩnh đứng hình (med_raw={med_raw:.2f} < {min_raw_diff})"
+            if med_comp < min_comp_diff:
+                return False, round(med_comp, 2), f"Ảnh tĩnh / AI illustration zoompan giả chuyển động (med_comp={med_comp:.2f} < {min_comp_diff})"
+            if frozen_ratio > max_frozen_ratio and med_comp < 7.5:
+                return False, round(med_comp, 2), f"Đóng băng khung hình đầu (frozen_ratio={frozen_ratio:.2f}, med_comp={med_comp:.2f})"
+            if med_comp < 6.2 and comp_ratio < 0.52:
+                return False, round(med_comp, 2), f"Slideshow ảnh tĩnh Ken-Burns zoom (med_comp={med_comp:.2f}, comp_ratio={comp_ratio:.2f})"
+            return True, round(med_comp, 2), "OK"
+    except Exception as e_mot:
+        logger.debug(f"[HookMotionGate] Bỏ qua lỗi kiểm tra chuyển động '{clip_path}': {e_mot}")
+        return True, 8.0, "OK"
+
+
 def _ensure_hook_clip_sharpness_and_luma(
     clip_path: str,
     min_sharpness: float = 12.5,

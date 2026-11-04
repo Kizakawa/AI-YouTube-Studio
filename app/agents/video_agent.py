@@ -108,10 +108,15 @@ class VideoAgent:
             )
             logger.info(f"[VideoAgent] Dynamic transitions ({len(transition_sequence)} cuts): {transition_sequence}")
 
+            embed_in_video_thumb = os.getenv("EMBED_IN_VIDEO_THUMBNAIL_OVERLAY", "false").lower() in ("1", "true", "yes")
             thumb_ov_path = (
-                (job.thumbnail_path or job.thumbnail_vertical_path)
-                if job.video_format == "long"
-                else (job.thumbnail_vertical_path or job.thumbnail_path)
+                (
+                    (job.thumbnail_path or job.thumbnail_vertical_path)
+                    if job.video_format == "long"
+                    else (job.thumbnail_vertical_path or job.thumbnail_path)
+                )
+                if embed_in_video_thumb
+                else None
             )
             concat_videos_with_xfade(
                 video_paths=scene_clips,
