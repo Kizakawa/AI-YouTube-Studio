@@ -791,14 +791,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if not media_path:
                     _check_fetch_deadline()
                     # Riêng Cảnh 1 (Opening Hook) được cấp ngân sách ưu tiên 52s để chạy đủ 3 tầng Video (YouTube Peak + Stock HD + Bilibili Documentary);
-                    # các cảnh thân bài được cấp 38s để cân bằng tốc độ song song.
+                    # các cảnh thân bài được cấp 24s (dự trữ 16s cuối cho tầng Google Multi-Chunk / Stock fallback) để không bao giờ bị timeout tổng.
                     _prefer_non_yt_node = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
                     _yt_budget_sec = (
                         52.0
                         if scene.scene_id == 1
-                        else (38.0 if _prefer_non_yt_node else 36.0)
+                        else (26.0 if _prefer_non_yt_node else 24.0)
                     )
-                    _reserve_tail_sec = 4.0 if scene.scene_id == 1 else 12.0
+                    _reserve_tail_sec = 4.0 if scene.scene_id == 1 else 16.0
                     yt_sub_deadline = (
                         min(deadline_ts - _reserve_tail_sec, time.monotonic() + _yt_budget_sec)
                         if deadline_ts is not None
@@ -1753,22 +1753,30 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if not res:
                     try:
                         sc_s = strategy_map.get(scene.scene_id) or {}
+                        story_qs_f = list(
+                            sc_s.get("storyline_search_queries")
+                            or getattr(scene, "storyline_search_queries", None)
+                            or []
+                        )
                         fresh_q = clean_scene_search_query(
-                            sc_s.get("youtube_search_query")
+                            (story_qs_f[0] if story_qs_f else "")
+                            or sc_s.get("youtube_search_query")
                             or sc_s.get("smart_image_query")
                             or getattr(scene, "stock_query", "")
                             or getattr(scene, "visual_keyword", "")
                             or primary_entity
                             or state.get("topic", ""),
-                            max_words=4,
+                            max_words=5,
                         )
                         prim_toks = [
                             t.lower() for t in re.findall(r"[a-zA-Z]{3,}", str(primary_entity or ""))
                             if t.lower() not in {"the", "and", "with", "from"}
                         ]
-                        if prim_toks and not any(pt in fresh_q.lower() for pt in prim_toks[:3]):
+                        if len(fresh_q.split()) < 2 and prim_toks and not any(pt in fresh_q.lower() for pt in prim_toks[:3]):
                             fresh_q = clean_scene_search_query(f"{primary_entity} {fresh_q}", max_words=4) or fresh_q
                         fast_va = dict(batch_analyses.get(scene.scene_id) or {})
+                        if story_qs_f:
+                            fast_va["search_queries"] = list(dict.fromkeys([fresh_q, *story_qs_f]))[:4]
                         if is_long_form:
                             fast_va["video_format"] = "long"
                         best_fresh_vid = await asyncio.wait_for(
@@ -1865,7 +1873,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     job_id=job_id,
                                     scene_id=scene.scene_id,
                                     target_image_count=2 if scene.scene_id == 1 else 1,
-                                    storyline_queries=list(sc_strat_f.get("storyline_search_queries") or []),
+                                    storyline_queries=story_qs_f,
                                 ),
                                 timeout=18.0,
                             )
@@ -1970,6 +1978,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     "tool": "ffmpeg_placeholder",
                     "strategy_rationale": "Fallback safety guard",
                 }
+            if isinstance(res, dict) and not res.get("storyline_search_queries"):
+                _sc_st = strategy_map.get(scene.scene_id) or {}
+                _st_qs = list(_sc_st.get("storyline_search_queries") or getattr(scene, "storyline_search_queries", None) or [])
+                if _st_qs:
+                    res["storyline_search_queries"] = _st_qs
             nonlocal completed_count
             async with completed_lock:
                 completed_count += 1

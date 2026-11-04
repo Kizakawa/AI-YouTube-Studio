@@ -668,7 +668,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
     "Alternative 'How + [Entities] + [Everyday Analogy]' Title with Emoji (28-55 chars, NO 'Variant' prefix)",
     "Alternative Extreme Contrast / Counter-Move Title with Emoji (28-55 chars, NO 'Variant' prefix)"
   ],
-  "primary_entity": "Bare canonical 1-2 word name of main person/species/creature WITHOUT descriptive adjectives (e.g. 'Colossal Squid', 'Honey Badger', 'Julius Caesar') or null for psychology",
+  "primary_entity": "Bare canonical 1-2 word ENGLISH name of main person/species/creature WITHOUT descriptive adjectives (ALWAYS in English even when script language is pt-BR or vi, e.g. 'Whale Skeleton', 'Colossal Squid', 'Honey Badger', 'Julius Caesar') or null for psychology",
   "hook": "The opening 6-12 word Scene 1 hook sentence — deliver an immediate physical shock, lethal strike, or spoken paradox at 0.0s (NEVER repeats or paraphrases a 'Why / Por que' title question, ZERO weak Yes/No 'Did you know...?' questions)",
   "hook_variants": [
     "Archetype 1 (PRIORITY #1: Instant Physical Action / Lethal Trap Strike naming explicit entities, 6-12 words, declarative)",

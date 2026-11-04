@@ -692,8 +692,13 @@ async def run_post_gather_media_rescues(
                     return
 
                 short_subj = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3)
-                raw_sc_kw = sc_item.get("visual_keyword") or sc_item.get("visual_prompt") or short_subj
-                sc_kw = clean_scene_search_query(raw_sc_kw, max_words=4) or short_subj
+                sc_story_qs = list(
+                    sc_item.get("storyline_search_queries")
+                    or (strategy_map.get(sid) or {}).get("storyline_search_queries")
+                    or []
+                )
+                raw_sc_kw = (sc_story_qs[0] if sc_story_qs else "") or sc_item.get("visual_keyword") or sc_item.get("visual_prompt") or short_subj
+                sc_kw = clean_scene_search_query(raw_sc_kw, max_words=5) or short_subj
 
                 # Nếu phân cảnh đang rơi vào _graphic.png (chưa có ảnh thật nào), gọi công cụ chuẩn có Vision Curation
                 try:
@@ -713,6 +718,7 @@ async def run_post_gather_media_rescues(
                         job_id=job_id,
                         scene_id=sid,
                         target_image_count=1,
+                        storyline_queries=sc_story_qs,
                     )
                     if g_res and g_res.get("media_path") and Path(g_res["media_path"]).exists():
                         verified_poses.append(str(g_res["media_path"]))
@@ -832,7 +838,12 @@ async def run_post_gather_media_rescues(
             d_props_g = ["puppet_strings", "mask", "cage", "broken_compass", "scroll_feed", "treadmill"]
 
             def _anchor_zg_query(raw_kw: str, sc_obj: Optional[Dict[str, Any]] = None) -> str:
-                story_qs_zg = (sc_obj or {}).get("storyline_search_queries") or []
+                sid_z = int((sc_obj or {}).get("scene_id") or 0)
+                story_qs_zg = (
+                    (sc_obj or {}).get("storyline_search_queries")
+                    or (strategy_map.get(sid_z) or {}).get("storyline_search_queries")
+                    or []
+                )
                 base_zg = (story_qs_zg[0] if story_qs_zg else "") or raw_kw or primary_entity or state.get("topic", "")
                 kw_clean = clean_scene_search_query(base_zg, max_words=5)
                 kw_toks = set(re.findall(r"[a-zA-ZÀ-ỹ]{3,}", (kw_clean or "").lower()))
@@ -1086,6 +1097,7 @@ async def run_post_gather_media_rescues(
                                         job_id=job_id,
                                         scene_id=sid_g,
                                         target_image_count=1,
+                                        storyline_queries=zg_story_qs,
                                     )
                             g_zg_res = await asyncio.wait_for(asyncio.to_thread(_run_zg_gimg), timeout=18.0)
                             if g_zg_res and g_zg_res.get("media_path") and Path(g_zg_res["media_path"]).exists():

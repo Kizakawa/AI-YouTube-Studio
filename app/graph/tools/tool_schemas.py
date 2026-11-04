@@ -564,14 +564,6 @@ def build_single_entity_stock_queries(
         if fallback_one:
             _add_clean(fallback_one)
 
-    if len(out) > 1 and subj_low and not re.search(r"\b(?:vs\.?|versus|or)\b", subj_low):
-        subj_toks = [
-            t for t in re.findall(r"[a-zA-Z0-9]{3,}", subj_low)
-            if t not in _YT_QUERY_FILLER_WORDS and t not in _MULTILINGUAL_QUESTION_AND_STOP_WORDS
-        ]
-        if subj_toks:
-            out.sort(key=lambda q: 0 if any(st in q.lower() for st in subj_toks) else 1)
-
     return out
 
 

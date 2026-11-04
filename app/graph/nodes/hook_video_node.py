@@ -1036,12 +1036,12 @@ Return ONLY valid JSON:
                     break
 
         wave1_cands = list(enumerate(wave1_selected))
-        if wave1_cands and not _hook_cancelled(22.0):
+        if wave1_cands and not _hook_cancelled(24.0):
             dl_batches = _run_pool_map_nonblocking(
                 _download_and_extract_single_short,
                 wave1_cands,
                 max_workers=min(4, len(wave1_cands)),
-                stage_timeout=22.0,
+                stage_timeout=18.0,
             )
         else:
             dl_batches = []
@@ -1052,7 +1052,7 @@ Return ONLY valid JSON:
                 validated_peaks[v_str] = peak_meta
                 if peak_meta.get("passed") and len(candidate_videos) < 8:
                     candidate_videos.append(v_str)
-        if len(candidate_videos) == 0 and len(top_curated_yt_cands) > len(wave1_selected) and not _hook_cancelled(26.0):
+        if len(candidate_videos) == 0 and len(top_curated_yt_cands) > len(wave1_selected) and not _hook_cancelled(34.0):
             # Fast-Drop 'A vs B' ở Wave 2: Bỏ qua các video 'vs' còn lại, chỉ tải tối đa 2 clip đơn chủ thể sạch!
             rem_non_vs = [
                 c for c in top_curated_yt_cands
@@ -1065,7 +1065,7 @@ Return ONLY valid JSON:
                 _download_and_extract_single_short,
                 wave2_cands,
                 max_workers=min(2, len(wave2_cands)),
-                stage_timeout=15.0,
+                stage_timeout=12.0,
             )
             for batch in dl_batches2:
                 for _dl_i, v_str, peak_meta in batch:
@@ -1882,12 +1882,12 @@ Return ONLY valid JSON:
                 ]) if q
             ][:2]
             t15_deadline_ts = min(
-                (hook_deadline_ts - 2.5) if hook_deadline_ts is not None else (time.monotonic() + 25.0),
-                time.monotonic() + 25.0,
+                (hook_deadline_ts - 14.0) if hook_deadline_ts is not None else (time.monotonic() + 18.0),
+                time.monotonic() + 18.0,
             )
             skip_yt_in_rescue = (not allow_yt_hook) or bool(top_curated_yt_cands)
-            for rq_idx, st_q in enumerate(rescue_yt_queries):
-                if _hook_cancelled(3.5) or (t15_deadline_ts - time.monotonic()) <= 3.5:
+            for rq_idx, st_q in enumerate(rescue_yt_queries[:1]):
+                if _hook_cancelled(14.0) or (t15_deadline_ts - time.monotonic()) <= 3.5:
                     break
                 fb_q = rescue_yt_queries[rq_idx + 1] if (rq_idx + 1) < len(rescue_yt_queries) else topic
                 st_res = execute_youtube_short_peak_clone_sync(
@@ -1907,6 +1907,7 @@ Return ONLY valid JSON:
                     skip_youtube_search=skip_yt_in_rescue,
                     allow_3d_cgi_monster=is_3d_cgi_subject,
                     storyline_queries=list(stock_broll_queries or queries or []),
+                    cancel_event=cancel_event,
                     deadline_ts=t15_deadline_ts,
                 )
                 if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
