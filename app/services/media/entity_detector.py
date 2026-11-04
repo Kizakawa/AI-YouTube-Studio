@@ -636,6 +636,12 @@ def _is_incongruent_stock_heuristic(title_or_alt: str, topic: str = "", narratio
         ]
         if matched_bad:
             is_legit = any(re.search(rf"\b{re.escape(bw)}\b", context_lower) for bw in matched_bad)
+            if not is_legit and group_name == "domestic_pets_reptiles":
+                _reptile_words = {"snake", "python", "cobra", "viper", "boa", "serpent", "venom", "venomous", "lizard", "iguana", "gecko", "chameleon", "turtle", "tortoise", "frog", "toad"}
+                if any(b in _reptile_words for b in matched_bad) and any(
+                    re.search(rf"\b{rw}\b", context_lower) for rw in _reptile_words
+                ):
+                    is_legit = True
             if not is_legit:
                 logger.info(f"🚫 [EntityDetector:Heuristic] Từ chối ảnh stock lạc đề ('{title_or_alt[:45]}...') do chứa từ khóa: {matched_bad}")
                 return True

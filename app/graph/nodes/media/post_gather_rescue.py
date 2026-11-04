@@ -880,9 +880,15 @@ async def run_post_gather_media_rescues(
                     replaced_g = False
 
                     # 0. Phục hồi tức thì file video/ảnh thật của chính phân cảnh này vừa ghi xong trên đĩa (< 1ms)
+                    _cand_g_vids = list(media_dir.glob(f"scene_{sid_g:03d}_*.mp4"))
+                    if sid_g == 1:
+                        _cand_g_vids.extend([
+                            p for p in (work_dir / "hook_motion_001.mp4", work_dir / "hook_motion_001_fullpeak.mp4")
+                            if p.exists()
+                        ])
                     disk_g_vids = sorted(
                         [
-                            p for p in media_dir.glob(f"scene_{sid_g:03d}_*.mp4")
+                            p for p in _cand_g_vids
                             if is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
                         ],
                         key=_safe_mtime,

@@ -1901,9 +1901,15 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         res = None
             if not res or not isinstance(res, dict):
                 # Kiểm tra xem _fetch_one_scene đã kịp tải xong file video/ảnh thật nào cho cảnh này trên đĩa trước khi timeout chưa!
+                _cand_disk_vids = list(media_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4"))
+                if scene.scene_id == 1:
+                    _cand_disk_vids.extend([
+                        p for p in (work_dir / "hook_motion_001.mp4", work_dir / "hook_motion_001_fullpeak.mp4")
+                        if p.exists()
+                    ])
                 existing_disk_vids = sorted(
                     [
-                        p for p in media_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4")
+                        p for p in _cand_disk_vids
                         if is_completed_clean_mp4(p, min_size_bytes=15_000, min_duration_ms=1200)
                     ],
                     key=_safe_mtime,
