@@ -537,11 +537,6 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 or kw
             )
             ai_prompt = vp or search_query
-            v_analysis = batch_analyses.get(scene.scene_id) or {}
-            tier0_searched = True
-            channel_visual_mode = state.get("visual_mode") or "auto"
-            scene_media_pref = getattr(scene, 'media_type', None)
-
             from app.graph.tools.media_tools import _sanitize_tool_arg
             subj_ent = _sanitize_tool_arg(
                 sc_strat.get("creature_name") or sc_strat.get("subject_entity"),
@@ -549,6 +544,24 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             )
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
+            v_analysis = dict(batch_analyses.get(scene.scene_id) or {})
+            if subj_ent and not v_analysis.get("subject"):
+                v_analysis["subject"] = subj_ent
+            if (subj_ent or primary_entity) and not v_analysis.get("core_visual_entity"):
+                v_analysis["core_visual_entity"] = subj_ent or primary_entity
+            if sc_strat.get("resolved_scene_intent") and not v_analysis.get("narrative_subtext"):
+                v_analysis["narrative_subtext"] = str(sc_strat.get("resolved_scene_intent") or "")
+            elif sc_strat.get("scope_audit_reason") and not v_analysis.get("narrative_subtext"):
+                v_analysis["narrative_subtext"] = str(sc_strat.get("scope_audit_reason") or "")
+            if sc_strat.get("holistic_script_summary") and not v_analysis.get("holistic_script_summary"):
+                v_analysis["holistic_script_summary"] = str(sc_strat.get("holistic_script_summary") or "")
+            if sc_strat.get("canonical_protagonists") and not v_analysis.get("canonical_protagonists"):
+                v_analysis["canonical_protagonists"] = list(sc_strat.get("canonical_protagonists") or [])
+            if sc_strat.get("storyline_search_queries") and not v_analysis.get("search_queries"):
+                v_analysis["search_queries"] = list(sc_strat.get("storyline_search_queries") or [])
+            tier0_searched = True
+            channel_visual_mode = state.get("visual_mode") or "auto"
+            scene_media_pref = getattr(scene, 'media_type', None)
             import math as _math
             scene_target_imgs = 2 if dur >= 4.0 else 1
 

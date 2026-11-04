@@ -288,6 +288,8 @@ class MediaVisionCuratorMixin:
         mood = visual_analysis.get("mood", "cinematic")
         metaphor = visual_analysis.get("visual_metaphor", "")
         subtext = visual_analysis.get("narrative_subtext", "")
+        holistic_summary = visual_analysis.get("holistic_script_summary", "")
+        canonical_prots = visual_analysis.get("canonical_protagonists") or []
         subject_req = visual_analysis.get("subject") or visual_analysis.get("core_visual_entity") or ""
         topic_ctx = topic or visual_analysis.get("topic") or subject_req
         expected_vis = visual_analysis.get("expected_visual_content") or metaphor
@@ -319,13 +321,15 @@ class MediaVisionCuratorMixin:
             return None, 2.5, "Tất cả ứng viên video kho đều quá mờ hoặc thiếu tương phản (< chuẩn VisualCritic).", True
 
         prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Thẩm Định Ngữ Cảnh Kịch Bản Đa Phương Thức (Multimodal Script-Intent Video Auditor).
-Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để tự chấm điểm nghiêm ngặt và chọn ra VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản.
+Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Tóm tắt cốt truyện tổng thể, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để tự chấm điểm nghiêm ngặt và chọn ra VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản.
 
 NGỮ CẢNH KỊCH BẢN CỦA NGƯỜI DÙNG:
 - Chủ đề tổng thể (Topic): "{topic_ctx}"
-- Chủ thể cốt lõi của cảnh (Resolved Subject): "{subject_req}"
+- Tóm tắt cốt truyện toàn kịch bản (Holistic Script Summary): "{holistic_summary or topic_ctx}"
+- Các thực thể chính trong kịch bản (Canonical Protagonists): {json.dumps(canonical_prots, ensure_ascii=False) if canonical_prots else f'["{subject_req or topic_ctx}"]'}
+- Chủ thể đã giải mã của cảnh này (Resolved Subject): "{subject_req}"
 - Lời thoại phân cảnh (Narration): "{narration}"
-- Hàm ý câu chuyện (Narrative Subtext): "{subtext}"
+- Hàm ý câu chuyện của cảnh (Narrative Subtext): "{subtext}"
 - Hình ảnh kỳ vọng: "{expected_vis}" (Tâm trạng: "{mood}")
 - Các yếu tố sai lệch cần loại bỏ: {json.dumps(negative_cues, ensure_ascii=False)}
 
@@ -688,11 +692,13 @@ TRẢ VỀ JSON DUY NHẤT:
             vision_rationale = ""
             if vision_images and self.rotator:
                 paradigm_str = str(va.get("visual_paradigm") or "REAL_WORLD_ACTION").upper()
+                holistic_summary_p = str(va.get("holistic_script_summary") or topic_ctx)
                 photo_prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Tuyển Chọn Ảnh Đa Phương Thức (Multimodal Script-Intent Photo Director) cho YouTube Shorts.
-Hãy NHÌN TRỰC TIẾP vào {len(vision_images)} bức ảnh ứng viên đính kèm (đã in nhãn "INDEX 0", "INDEX 1"... ở góc trên) và đối chiếu sâu với Ý NGHĨA KỊCH BẢN CỦA NGƯỜI DÙNG để chọn ra bức ảnh xuất sắc nhất.
+Hãy NHÌN TRỰC TIẾP vào {len(vision_images)} bức ảnh ứng viên đính kèm (đã in nhãn "INDEX 0", "INDEX 1"... ở góc trên) và đối chiếu sâu với Ý NGHĨA KỊCH BẢN CỦA NGƯỜI DÙNG để tự chấm điểm 3 trục và chọn ra bức ảnh xuất sắc nhất.
 
 NGỮ CẢNH KỊCH BẢN CỦA NGƯỜI DÙNG:
 - Chủ đề câu chuyện (Topic): "{topic_ctx}"
+- Tóm tắt toàn kịch bản (Holistic Script Summary): "{holistic_summary_p}"
 - Chủ thể đã giải mã của cảnh (Resolved Subject): "{subject_req}"
 - Lời thoại phân cảnh (Narration): "{narration}"
 - Hàm ý trong mạch truyện (Narrative Subtext): "{subtext}"
@@ -701,39 +707,46 @@ NGỮ CẢNH KỊCH BẢN CỦA NGƯỜI DÙNG:
 DANH SÁCH ỨNG VIÊN:
 {json.dumps(vision_meta, ensure_ascii=False, indent=2)}
 
-TIÊU CHUẨN SUY LUẬN & TUYỂN CHỌN THÔNG MINH:
+QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM 3 TRỤC (MULTI-AXIS SELF-SCORING RUBRIC):
 1. ĐỌC ĐÚNG NHÃN "INDEX X" TRÊN ẢNH: `winner_index` BẮT BUỘC khớp chính xác với nhãn `INDEX X` in trên ảnh và trường `"index"` trong JSON.
-2. THẤU HIỂU NGỮ CẢNH KỊCH BẢN (TRÁNH BẪY TỪ KHÓA):
-   - Bức ảnh phải truyền tải đúng chủ thể thực sự, hành động và cảm xúc của phân cảnh `{narration}` khi đặt trong câu chuyện `{topic_ctx}`.
-   - Loại bỏ ngay ảnh chỉ trùng từ khóa bề mặt nhưng lệch nghĩa kịch bản (ví dụ: đồ chơi/thú nhồi bông, thú cưng trong nhà khi kịch bản nói về thiên nhiên hoang dã, động vật hoặc biển hiệu cửa hàng lọt vào kịch bản tâm lý học con người, hoặc ảnh chụp độc 1 nhãn cầu mắt rời rạc).
-3. ĐỒNG NHẤT MÔI TRƯỜNG SINH THÁI / MÙA / BỐI CẢNH THỜI ĐẠI:
-   - Môi trường tự nhiên, mùa và thời đại trong ảnh phải ăn khớp với thế giới của kịch bản (loại bỏ ảnh sai mùa/sai hệ sinh thái hoặc thú nhốt trong chuồng bê tông/lồng sắt sở thú).
-4. KHUNG HÌNH NGUYÊN BẢN SẠCH 100%:
-   - Tuyệt đối loại bỏ ảnh ghép chia đôi/chia ba khung hình (split-screen collage), ảnh có chữ chèn đè (text overlay, meme, quote card), biểu đồ/bản đồ, hoặc logo/watermark.
-5. Nếu KHÔNG CÓ bức ảnh nào thực sự truyền tải đúng ý kịch bản (`confidence_score < 6.8`), BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
+2. QUY CHIẾU ĐẠI TỪ / TỪ CHỈ VAI TRÒ / ẨN DỤ VỀ THỰC THỂ ĐÍCH DANH (`resolved_scene_entities`):
+   - Khi `{narration}` dùng đại từ ("It", "They"), từ chỉ vai trò ("the hunter", "the predator", "its living prey") hoặc ẩn dụ ("like steel clamps"), BẮT BUỘC quy chiếu ngược về đúng Thực thể Đích danh trong `{topic_ctx}` và `{subject_req}`.
+3. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP (Thang điểm 0.0–10.0):
+   - `entity_identity_score`: Chủ thể trong ảnh có đúng chính xác loài/thực thể đích danh của `{subject_req}` / `{topic_ctx}` (không chọn loài khác chỉ vì trùng nhóm chung, không chọn đồ chơi/thú nhồi bông/vật thể ẩn dụ nghĩa đen) hay không?
+   - `narrative_action_score`: Hành động, trạng thái và môi trường sinh thái/thời đại trong ảnh có khớp với phân cảnh `{narration}` hay không?
+   - `visual_integrity_score`: Khung hình có nguyên bản, tự nhiên (không lẫn dây buộc chân/lồng chuồng nuôi nhốt khi kịch bản ở hoang dã, không bị chia đôi màn hình split-screen, không có chữ chèn đè/watermark/meme/biểu đồ) hay không?
+4. Nếu ứng viên tốt nhất có bất kỳ trục nào `< 7.0` (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score) < 7.0`), BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
+  "resolved_scene_entities": "Tên thực thể đích danh được quy chiếu từ Topic cho câu thoại này",
   "winner_index": 0,
   "winner_url": "url_cua_ung_vien_thang_cuoc",
+  "entity_identity_score": 8.8,
+  "narrative_action_score": 8.8,
+  "visual_integrity_score": 8.8,
   "confidence_score": 8.8,
   "approved_alternate_indices": [],
-  "rationale": "Giải thích ngắn gọn vì sao bức ảnh INDEX X thể hiện sát nhất ý nghĩa kịch bản của người dùng",
+  "rationale": "Giải thích điểm 3 trục vì sao bức ảnh INDEX X thể hiện sát nhất ý nghĩa kịch bản của người dùng",
   "should_fallback_to_ai": false
 }}"""
                 photo_dec = self._call_gemini_json(photo_prompt, images=vision_images, timeout=9)
                 if photo_dec is not None:
                     w_idx = int(photo_dec.get("winner_index", -1))
                     w_url = str(photo_dec.get("winner_url") or "").strip()
-                    v_score = float(photo_dec.get("confidence_score", 0.0))
-                    v_fb = bool(photo_dec.get("should_fallback_to_ai", False))
+                    raw_p_conf = float(photo_dec.get("confidence_score", 0.0))
+                    p_ent_s = float(photo_dec.get("entity_identity_score", raw_p_conf))
+                    p_act_s = float(photo_dec.get("narrative_action_score", raw_p_conf))
+                    p_int_s = float(photo_dec.get("visual_integrity_score", raw_p_conf))
+                    v_score = round(min(raw_p_conf, p_ent_s, p_act_s, p_int_s), 2)
+                    v_fb = bool(photo_dec.get("should_fallback_to_ai", False)) or (v_score < 7.0)
                     v_rat = str(photo_dec.get("rationale", "")).strip()
                     if w_url:
                         for c_i, (_, _, c_obj) in enumerate(scored_sharp[:5]):
                             if c_obj.get("url") == w_url and c_i != w_idx:
                                 w_idx = c_i
                                 break
-                    if 0 <= w_idx < len(scored_sharp) and v_score >= 6.8 and not v_fb:
+                    if 0 <= w_idx < len(scored_sharp) and v_score >= 7.0 and not v_fb:
                         selected_idx = w_idx
                         vision_rationale = v_rat
                         approved_alts = [

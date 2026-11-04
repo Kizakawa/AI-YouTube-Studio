@@ -326,7 +326,7 @@ class ScriptCritic:
         scenes = script_data.get("scenes", [])
         title = script_data.get("title", "")
         scenes_formatted = "\n".join([
-            f"Scene {s.get('scene_id')}: [Visual: {s.get('visual_keyword')}] -> \"{s.get('narration')}\""
+            f"Scene {s.get('scene_id')}: [Visual Keyword: {s.get('visual_keyword')} | Stock Query: {s.get('stock_query')}] -> \"{s.get('narration')}\""
             for s in scenes
         ])
 
@@ -404,7 +404,13 @@ Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for
      * NEVER copy example phrases from this prompt into `ai_smell_phrases_detected` or `actionable_critiques` if they do NOT appear verbatim in `--- SCRIPT CONTENT ---`! If the script uses natural spoken language and contractions, set `sounds_like_real_youtuber: true`, `ai_smell_phrases_detected: []`, and score `story_pacing >= 8.8`.
 3. entity_coherence:
    - Deeply characterizes the exact entity/phenomenon's real macroscopic mechanism, human room dynamic, or `"What If"` 60-minute physical chain reaction rather than generic filler.
-4. visual_direction: `visual_keyword` and `stock_query` are concrete, everyday English nouns/actions matching the primary subject (>= 8.5).
+4. visual_direction (Hard gate >= 7.5/10 — Canonical Entity Specificity & Zero Metaphor/Pronoun Drift):
+   - AUDIT EVERY SCENE'S `[Visual Keyword: ... | Stock Query: ...]` in `--- SCRIPT CONTENT ---` above BEFORE scoring `visual_direction`!
+   - Populate `"flawed_visual_queries_detected"` with any `Scene X: <query>` from `--- SCRIPT CONTENT ---` whose `Visual Keyword` or `Stock Query`:
+     * Searches for a literal metaphor object from the narration (`"steel clamps"`, `"tendon grip"`, `"hydraulic press"`, `"bolt cutters"`, `"meat hook"`) instead of the real animal/subject's anatomy;
+     * Uses unresolved role epithets (`"predator"`, `"hunter"`, `"prey"`, `"the giant"`) without naming the canonical species/entity;
+     * Downgrades or shortens a specific multi-word species into a generic hypernym (`"bird"`, `"bird in tree branches"`, `"bird of prey"`, `"raptor"`, or bare `"eagle"` when the canonical species is `"Harpy Eagle"`).
+   - If `"flawed_visual_queries_detected"` is non-empty, you MUST set `visual_direction.score <= 5.5` and provide exact replacement queries in `actionable_critiques`!
 5. viral_loop (ZERO spoken Subscribe CTA; Concrete Mic-Drop Finale):
    - Final scene lands RIGHT on a concrete physical action, quiet room reaction, or the sharpest ironic physical twist (NEVER burying the twist in Scene 6 and ending Scene 7 on vague poetic wrap-ups!).
 
@@ -417,6 +423,7 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
 {{
   "sounds_like_real_youtuber": true,
   "ai_smell_phrases_detected": [],
+  "flawed_visual_queries_detected": [],
   "hook_strength": {{"score": 9.0, "feedback": "Detailed feedback on Scene 1 spoken creator hook..."}},
   "story_pacing": {{"score": 9.0, "feedback": "Feedback on spoken creator cadence, contractions, $1 words & 5-Act flow..."}},
   "entity_coherence": {{"score": 9.0, "feedback": "Detailed feedback..."}},
@@ -495,6 +502,14 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
         vis_s = float(v.get("score", 7.5))
         loop_s = float(l.get("score", 7.5))
 
+        flawed_vqs = [
+            str(x).strip()
+            for x in (parsed.get("flawed_visual_queries_detected") or [])
+            if str(x).strip()
+        ]
+        if flawed_vqs:
+            vis_s = min(vis_s, 5.5)
+
         full_script_lower = " ".join(
             str(s.get("narration") or "")
             for s in ((script_data or {}).get("scenes") or [])
@@ -538,10 +553,17 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
         s_data = script_data or {}
         is_lf = str(s_data.get("video_format") or "short").strip().lower() == "long" or len(s_data.get("scenes") or []) >= 14
         min_pace_req = 8.0 if is_lf else 8.5
+        min_vis_req = 7.5
         min_hook = float(cal.get("min_hook_score", 8.0))
         min_overall = float(cal.get("min_overall_score", 8.0))
-        # CHẶN CỨNG: Bắt buộc tổng điểm, điểm Hook Cảnh 1, nhịp điệu Spoken Voice Pacing (>= 8.5) VÀ sounds_human đều phải đạt chuẩn!
-        passed = (overall >= min_overall) and (hook_s >= min_hook) and (pace_s >= min_pace_req) and sounds_human
+        # CHẶN CỨNG: Bắt buộc tổng điểm, điểm Hook Cảnh 1, nhịp điệu Spoken Voice Pacing (>= 8.5), Visual Direction (>= 7.5) VÀ sounds_human đều phải đạt chuẩn!
+        passed = (
+            (overall >= min_overall)
+            and (hook_s >= min_hook)
+            and (pace_s >= min_pace_req)
+            and (vis_s >= min_vis_req)
+            and sounds_human
+        )
         if not passed and hook_s < min_hook:
             msg = f"Scene 1 Hook ({hook_s:.1f}/10) is below the channel anti-swipe threshold ({min_hook:.1f}/10 — Avg Swipe-Away: {cal.get('avg_swipe_away_pct', 31.0):.1f}%)."
             if msg not in critiques:
@@ -550,6 +572,10 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
             msg_p = f"Spoken Creator Voice & Pacing ({pace_s:.1f}/10) is below {min_pace_req}/10. Scrub all AI/textbook phrasing, add natural spoken contractions/$1 words, and end on a concrete physical mic-drop!"
             if msg_p not in critiques:
                 critiques.insert(0, msg_p)
+        if not passed and vis_s < min_vis_req:
+            msg_v = f"Visual Direction ({vis_s:.1f}/10) is below {min_vis_req}/10: Replace all literal metaphor props ('steel clamps'), role epithets ('predator', 'hunter', 'prey'), and generic hypernyms ('bird', bare 'eagle') in visual_keyword and stock_query with the full canonical entity name!"
+            if msg_v not in critiques:
+                critiques.insert(0, msg_v)
 
         return ScriptEvaluationReport(
             hook_strength=ScriptCriteriaScore(score=hook_s, feedback=h.get("feedback", "")),

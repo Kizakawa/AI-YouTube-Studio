@@ -192,27 +192,28 @@ def _verify_short_clip_with_gemini_vision(
             f'- METAPHOR / ANATOMY B-ROLL RULE: If the narration uses a metaphor or internal mechanism (e.g., "like car tires", "like a shield", "heart pumps like a racing engine"), it is illustrated externally by real footage matching "{eff_target_query}" (e.g. the animal running, panting, spreading wings, or striking)—APPROVE clean real footage of the animal!'
         )
 
-        prompt = f"""You are a Strict Copyright, Watermark & Visual Quality Inspector for a professional YouTube Shorts studio.
+        prompt = f"""You are a Strict Copyright, Watermark & Multimodal Script-Context Inspector for a professional YouTube Shorts studio.
 Look carefully at all 3 frames in this strip extracted from a candidate video clip:
 - Overall Script Topic: "{topic}"
 - Core Story Theme & Habitat: "{overall_script_query or topic}"
-- Main Subject: "{subject_entity or topic}"
+- Main Canonical Subject: "{subject_entity or topic}"
 - Directed Visual Query for this Scene: "{eff_target_query}"
 - Current Scene Line ({search_scope}): "{narration}"
 - Source Video Title: "{video_title}"
 
 {scope_note}
+- CROSS-SCENE PRONOUN & EPITHET RESOLUTION: If `Current Scene Line` uses pronouns ("It", "They") or generic role nouns ("the predator", "the hunter", "its living prey"), resolve them back to the exact canonical species/entities in `Overall Script Topic` ("{topic}") and `Main Canonical Subject` ("{subject_entity or topic}").
 
-REJECT IMMEDIATELY (passed=false, score < 4.0) IF YOU SEE ANY OF THESE IN ANY FRAME:
-1. ANY channel watermark, logo, corner bug, AI generator corner badge/sparkle icon (CHECK ALL 4 CORNERS CLOSELY — especially a small white/translucent 4-point diamond/star sparkle icon `✦` in the bottom-right corner from Gemini/Veo, or Sora/Kling/Runway/Pika/CapCut badges), username (@...), credit banner, burned-in TikTok/Shorts subtitle/caption, or mirrored/flipped text anywhere on the frame (e.g., "LatestSightings", "MR. FRIEND", TV logos, social handles, yellow/white captions).
-2. Blurry, pixelated, grainy, low-resolution, or color-shifted/washed-out video quality.
+SCORE 3 AXES INDEPENDENTLY (0.0–10.0) AND REJECT IMMEDIATELY (passed=false, score < 4.0) IF YOU SEE ANY OF THESE IN ANY FRAME:
+1. `visual_integrity_score`: REJECT (`< 4.0`) if you see ANY channel watermark, logo, corner bug, AI generator corner badge/sparkle icon (CHECK ALL 4 CORNERS CLOSELY — especially a small white/translucent 4-point diamond/star sparkle icon `✦` in the bottom-right corner from Gemini/Veo, or Sora/Kling/Runway/Pika/CapCut badges), username (@...), credit banner, burned-in TikTok/Shorts subtitle/caption, or mirrored/flipped text anywhere on the frame (e.g., "LatestSightings", "MR. FRIEND", TV logos, social handles, yellow/white captions), OR blurry/pixelated/washed-out quality.
 {cgi_rule}
-4. Habitat or environment mismatch with the script (e.g., an animal in a snowy zoo enclosure, behind cage bars/fences, with a human handler/leash, or indoors when the story takes place in the wild African savanna, jungle, or ocean).
-5. Wrong animal/subject species that matches neither "{eff_target_query}" nor "{subject_entity or topic}", or a talking head / vlog / product commercial.
+4. `narrative_action_score`: REJECT (`< 4.0`) if there is a habitat or environment mismatch with the script (e.g., an animal in a snowy zoo enclosure, behind cage bars/fences, wearing falconry jesses/anklet straps/leashes, with a human handler, or indoors when the story takes place in the wild rainforest, savanna, or ocean).
+5. `entity_identity_score`: REJECT (`< 4.0`) if the clip shows the wrong animal/subject species that matches neither "{eff_target_query}" nor the canonical species in "{subject_entity or topic}" (e.g., a different eagle/bird species from another continent just because it shares the generic word "eagle" or "bird"), or a talking head / vlog / product commercial.
 6. Bad framing / severely cropped subject where only a tiny unrecognizable corner, tail, or cut-off edge of the main subject fits inside the 9:16 vertical frame instead of a clear, well-composed view of the subject.
 
+Set `score = min(entity_identity_score, narrative_action_score, visual_integrity_score)` and `passed = true` ONLY when all 3 axes are `>= 7.2`.
 Return ONLY valid JSON:
-{{"passed": true, "score": 8.5, "reason": "100% clean HD footage with zero watermarks/AI corner icons/text matching subject and habitat"}}"""
+{{"passed": true, "entity_identity_score": 8.5, "narrative_action_score": 8.5, "visual_integrity_score": 8.5, "score": 8.5, "reason": "100% clean HD footage with zero watermarks/AI corner icons/text matching canonical subject and habitat"}}"""
 
         payload = {
             "contents": [{
@@ -266,7 +267,11 @@ Return ONLY valid JSON:
                         m = re.search(r"\{.*\}", txt, re.DOTALL)
                         if m:
                             data = json.loads(m.group(0))
-                            score = float(data.get("score", 0.0))
+                            raw_sc = float(data.get("score", 0.0))
+                            ent_s = float(data.get("entity_identity_score", raw_sc))
+                            act_s = float(data.get("narrative_action_score", raw_sc))
+                            int_s = float(data.get("visual_integrity_score", raw_sc))
+                            score = round(min(raw_sc, ent_s, act_s, int_s), 2)
                             passed = bool(data.get("passed", False)) and score >= 7.2
                             reason = str(data.get("reason", ""))
                             return passed, score, reason
@@ -522,7 +527,9 @@ Candidate YouTube Videos:
 {json.dumps(items_for_llm, ensure_ascii=False)}
 
 TASK:
-1. Semantically evaluate each candidate title + channel + duration + views + format against the Topic, Primary Subject, and Scene Narration (understand synonyms, scientific names, and contextual meaning—do NOT rely on naive exact word matching).
+1. CROSS-SCENE COREFERENCE & CANONICAL ENTITY LOCK:
+   - First, resolve any pronouns ("It", "They") or generic role epithets ("the predator", "the hunter", "its living prey") in `Scene Narration` back to the exact canonical species/entities in `Topic` ("{topic}") and `Primary Subject` ("{subject_entity or topic}").
+   - Semantically evaluate each candidate title + channel + duration + views + format against the Topic, Primary Subject, and Scene Narration (understand synonyms, scientific names, and contextual meaning—do NOT rely on naive exact word matching, and NEVER approve a different species just because it shares a generic class word like "eagle" or "bird").
 2. CLEAN RAW FOOTAGE OVER EDITED SHORTS (CRITICAL):
    - Prioritize CLEAN, AUTHENTIC, UNEDITED RAW FOOTAGE (both `"9:16_NATIVE_SHORT"` and `"16:9_LANDSCAPE"` wildlife/field/documentary/archival recordings—our FFmpeg engine smart-crops 16:9 cleanly!) OVER heavily-edited `#shorts` reposts, `"A vs B"` comparison edits, `"Who would win"` quizzes, or AI-generated Veo clips!
    - DUAL-TRACK "A vs B" RULE: If a candidate is a GENUINE real-life camera encounter of both entities interacting, score it highest (`9.0–10.0`). If `"A vs B"` candidates look like comparison edits, fan montages, debates, or AI renders, REJECT them into `"rejected_ids"` immediately and approve the cleanest single-entity real footage!

@@ -253,6 +253,24 @@ class ScriptJsonParserMixin:
                     vk = "confident man cold gaze noir"
                 if _animal_metaphor_re.search(sq):
                     sq = "confident man intense gaze"
+            else:
+                # Khôi phục tên thực thể đầy đủ cho `stock_query` / `visual_keyword` nếu LLM rút gọn thành danh từ chung ('eagle', 'bird of prey', 'predator')
+                raw_pe = str(raw_data.get("primary_entity") or getattr(self, "_last_primary_entity", "") or "").strip()
+                if raw_pe and len(raw_pe.split()) >= 2:
+                    try:
+                        from app.graph.tools.llm_media_director import _restore_full_canonical_entity_in_query
+                        pe_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", raw_pe)]
+                        vk_toks = {w.lower() for w in re.findall(r"[a-zA-Z]{3,}", vk)}
+                        sq_toks = {w.lower() for w in re.findall(r"[a-zA-Z]{3,}", sq)}
+                        # Nếu `vk` đã có đủ thực thể chính (VD: 'harpy eagle ...') mà `sq` bị rút gọn ('eagle ...' hoặc 'bird of prey ...')
+                        if pe_toks and (pe_toks[0] in vk_toks) and (pe_toks[0] not in sq_toks):
+                            sq = _restore_full_canonical_entity_in_query(sq, raw_pe, max_words=4)
+                        elif len(pe_toks) >= 2 and (pe_toks[-1] in sq_toks) and (pe_toks[0] not in sq_toks):
+                            sq = _restore_full_canonical_entity_in_query(sq, raw_pe, max_words=4)
+                        if len(pe_toks) >= 2 and (pe_toks[-1] in vk_toks) and (pe_toks[0] not in vk_toks):
+                            vk = _restore_full_canonical_entity_in_query(vk, raw_pe, max_words=5)
+                    except Exception:
+                        pass
 
             sc["stock_query"] = sq
 

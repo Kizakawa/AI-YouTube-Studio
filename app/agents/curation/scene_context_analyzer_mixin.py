@@ -103,8 +103,8 @@ def _clean_search_phrase(q: str) -> str:
 def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any]:
     """
     Chuẩn hóa nhẹ nhàng truy vấn tìm kiếm:
-    - TÔN TRỌNG 100% tư duy ngữ nghĩa của LLM Agent (`is_ai=True`), chỉ làm sạch các từ khóa góc máy (`8k`, `wide-angle`...)
-      mà KHÔNG dùng danh sách từ khóa cứng để sửa hoặc ghép đè lên truy vấn của LLM.
+    - TÔN TRỌNG tư duy ngữ nghĩa của LLM Agent, làm sạch các từ khóa góc máy (`8k`, `wide-angle`...)
+      và bảo toàn tính đặc thù của thực thể gốc (`core_visual_entity`, chống suy thoái về danh từ chung như `'bird'`, `'raptor'`, `'predator'`, `'hunter'`).
     """
     is_ai = (res.get("analysis_source") == "ai")
     core_entity = _clean_search_phrase(str(res.get("core_visual_entity") or "").strip())
@@ -114,18 +114,33 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
         return res
 
     from app.services.media.image_quality import subject_terms, creature_queries
+    from app.graph.tools.llm_media_director import (
+        _GENERIC_ROLE_OR_CLASS_HYPERNYMS,
+        _restore_full_canonical_entity_in_query,
+    )
     terms = subject_terms(core_entity or subject)
     short_subj = " ".join(subject_terms(subject)[:4]) if len(subject.split()) > 4 else subject
     anchor_subj = " ".join(terms[:3]) if terms else short_subj
+
+    # Nếu `subject` bị rút gọn thành danh từ chung ('bird in tree branches', 'predator', 'hunter') trong khi `core_entity` là thực thể cụ thể
+    if core_entity:
+        subj_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", subject)]
+        core_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", core_entity)]
+        subj_meaningful = [w for w in subj_toks if w not in _GENERIC_ROLE_OR_CLASS_HYPERNYMS]
+        if not subj_meaningful or (core_toks and not (set(subj_meaningful) & set(core_toks))):
+            subject = _restore_full_canonical_entity_in_query(subject, core_entity, max_words=4) or core_entity
+            short_subj = subject
 
     raw_queries = [q for q in (res.get("search_queries") or []) if isinstance(q, str) and q.strip()]
     queries = [_clean_search_phrase(q) for q in raw_queries if _clean_search_phrase(q)]
 
     fixed: List[str] = []
     for q in queries:
-        if not is_ai and core_entity and anchor_subj.lower() not in q.lower():
+        if core_entity:
+            q = _restore_full_canonical_entity_in_query(q, core_entity, max_words=5)
+        elif not is_ai and anchor_subj and anchor_subj.lower() not in q.lower():
             q = f"{anchor_subj} {q}" if len(q.split()) <= 4 else f"{anchor_subj} {' '.join(q.split()[:3])}"
-        if q and q not in fixed:
+        if q and q.lower() not in [x.lower() for x in fixed]:
             fixed.append(q)
     if not fixed and short_subj:
         fixed.append(short_subj)
@@ -146,7 +161,9 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
         if not gq:
             continue
         gq = re.sub(r"\s+", " ", gq).strip()
-        if not is_ai and core_entity and anchor_subj.lower() not in gq.lower():
+        if core_entity:
+            gq = _restore_full_canonical_entity_in_query(gq, core_entity, max_words=5)
+        elif not is_ai and anchor_subj and anchor_subj.lower() not in gq.lower():
             gq = f"{anchor_subj} {gq}"
         gq_words = gq.split()
         if len(gq_words) > 6:
@@ -350,18 +367,22 @@ THÔNG TIN KỊCH BẢN CỦA NGƯỜI DÙNG:
 QUY TRÌNH TƯ DUY SÂU 2 BƯỚC (2-STEP HOLISTIC SCRIPT & SUBTEXT REASONING):
 ══════════════════════════════════════════════════════════════════════════════
 BƯỚC 1 — ĐỌC HIỂU TOÀN CỤC & GIẢI MÃ ĐẠI TỪ / ẨN DỤ / CÂU CHUYỂN Ý:
-1. Giải mã Đại từ & Chủ ngữ ẩn (Pronoun & Implicit Subject Resolution):
-   - Khi một câu thoại bị tách nhỏ chỉ dùng đại từ ("It", "He", "She", "They", "This creature", "Nó", "Họ", "Kẻ này") hoặc chỉ nêu thông số/hệ quả mà không nhắc lại tên chủ thể, bạn PHẢI đối chiếu với `FULL USER SCRIPT` để khôi phục đúng Chủ thể cốt lõi đang thực hiện hành động ở câu đó.
-2. Giải mã Ẩn dụ, So sánh, Đạo cụ phụ & Câu chuyển ý (Metaphor, Side-Prop & Subtext Decoding):
-   - Nếu câu thoại dùng hình ảnh so sánh, ẩn dụ hoặc nhắc tới một đạo cụ phụ/người quan sát để nhấn mạnh quy mô của sự kiện chính (ví dụ: "động cơ ô tô chết máy giữa đường chạy trốn", "các kỹ sư quân sự nhận ra sức công phá", "bộ giáp vô hình", "cỗ máy nghiền thủy lực", "chiếc lồng im lặng", "như một con rối"), TUYỆT ĐỐI KHÔNG tìm kiếm vật thể nghĩa đen của từ ẩn dụ hay đạo cụ phụ đó (CẤM tìm bảng điều khiển ô tô `"car dashboard"`, phòng họp kỹ sư `"engineers planning"`, cái lồng, con rối hay máy thủy lực!). Hãy luôn giữ ống kính khóa chặt vào **hành động vật lý, hiện tượng cốt lõi, cận cảnh giải phẫu hoặc biểu cảm thực tế của chủ thể chính trong kịch bản**.
-3. Ngôn ngữ Tìm kiếm Phổ thông của Creator (Everyday YouTube/Stock Vocabulary — CẤM Từ ngữ Học thuật / Sách giáo khoa):
+1. Giải mã Đại từ, Từ chỉ vai trò & Chủ ngữ ẩn (Pronoun, Role Epithet & Implicit Subject Resolution):
+   - Khi một câu thoại bị tách nhỏ chỉ dùng đại từ ("It", "He", "She", "They", "This creature", "Nó", "Họ", "Kẻ này"), từ chỉ vai trò ("the predator", "the hunter", "its living prey", "the giant", "the bird") hoặc chỉ nêu thông số/hệ quả mà không nhắc lại tên chủ thể, bạn PHẢI đối chiếu với `FULL USER SCRIPT` để khôi phục đúng **Tên Thực Thể Cụ Thể Chính Xác (Canonical Entity)** đang thực hiện hành động ở câu đó.
+2. 🚨 KHÓA CHẶT TÍNH ĐẶC THÙ CỦA THỰC THỂ GỐC (CANONICAL ENTITY SPECIFICITY LOCK — CẤM SUY THOÁI VỀ DANH TỪ CHUNG):
+   - Một khi đã xác định thực thể cụ thể của kịch bản (ví dụ `"harpy eagle"`, `"three-toed sloth"`, `"komodo dragon"`, `"colossal squid"`), MỌI trường `"core_visual_entity"`, `"subject"`, `"search_queries"` và `"google_image_queries"` BẮT BUỘC phải giữ nguyên **TÊN ĐẦY ĐỦ CỦA THỰC THỂ ĐÓ** (ví dụ `"harpy eagle diving forest"`, `"harpy eagle talons branch"`, `"three toed sloth hanging"`).
+   - **CẤM TUYỆT ĐỐI** rút gọn hoặc thay thế tên loài/thực thể cụ thể bằng các danh từ chung mơ hồ như `"eagle"`, `"bird"`, `"bird of prey"`, `"raptor"`, `"predator"`, `"hunter"`, `"prey"`, `"animal"`, `"creature"`, `"beast"`!
+   - **CẤM SAO CHÉP GỢI Ý LỖI (`visual_keyword` / `stock_query` đầu vào)**: Xem `visual_keyword` và `stock_query` trong dữ liệu đầu vào chỉ là bản nháp thô có thể chứa lỗi ẩn dụ nghĩa đen (`"steel clamps"`), từ chỉ vai trò (`"hunter"`, `"predator"`, `"prey"`) hoặc danh từ chung (`"bird in tree branches"`). Nếu phát hiện các từ lỗi đó, hãy **VỨT BỎ HOÀN TOÀN** và tự viết mới truy vấn dựa trên `narration` + `FULL USER SCRIPT`!
+3. Giải mã Ẩn dụ, So sánh, Đạo cụ phụ & Câu chuyển ý (Metaphor, Side-Prop & Subtext Decoding):
+   - Nếu câu thoại dùng hình ảnh so sánh, ẩn dụ hoặc nhắc tới một đạo cụ phụ/người quan sát để nhấn mạnh quy mô của sự kiện chính (ví dụ: `"locking like steel clamps"`, `"động cơ ô tô chết máy giữa đường chạy trốn"`, `"các kỹ sư quân sự nhận ra sức công phá"`, `"bộ giáp vô hình"`, `"cỗ máy nghiền thủy lực"`, `"chiếc lồng im lặng"`, `"như một con rối"`), TUYỆT ĐỐI KHÔNG tìm kiếm vật thể nghĩa đen của từ ẩn dụ hay đạo cụ phụ đó (CẤM tìm `"steel clamps"`, `"car dashboard"`, `"engineers planning"`, cái lồng, con rối hay máy thủy lực!). Hãy luôn giữ ống kính khóa chặt vào **hành động vật lý, hiện tượng cốt lõi, cận cảnh giải phẫu hoặc biểu cảm thực tế của chủ thể chính trong kịch bản**.
+4. Ngôn ngữ Tìm kiếm Phổ thông của Creator (Everyday YouTube/Stock Vocabulary — CẤM Từ ngữ Học thuật / Sách giáo khoa):
    - Người đăng video lên YouTube/Pexels luôn đặt tiêu đề bằng từ vựng tiếng Anh đời thường, trực quan. Nếu lời thoại dùng thuật ngữ sinh học/địa chất/học thuật (như `"benthic crustacean"`, `"apex elapid"`, `"limnic eruption"`, `"cervical vertebrae"`), BẮT BUỘC dịch ngay sang cụm từ tìm kiếm phổ thông 2–5 từ mà video thật luôn dùng (như `"deep sea crab underwater"`, `"king cobra strike"`, `"volcanic crater lake gas"`, `"jaguar biting caiman"`).
-4. Suy luận Bối cảnh / Môi trường / Thời đại ngầm định (Implicit Habitat & Era Lock):
+5. Suy luận Bối cảnh / Môi trường / Thời đại ngầm định (Implicit Habitat & Era Lock):
    - Tự động suy luận môi trường sinh thái, mùa, độ sâu, ánh sáng hoặc thời đại lịch sử xuyên suốt của toàn bộ kịch bản (ví dụ: rừng tuyết Siberia, đáy biển sâu tối đen, sông Amazon, La Mã cổ đại, hay phòng tối tâm lý Noir) và giữ sự đồng nhất bối cảnh đó cho mọi phân cảnh.
 
 BƯỚC 2 — THIẾT KẾ TRUY VẤN SÁT Ý KỊCH BẢN (`google_image_queries` & `search_queries`):
-1. "core_visual_entity" (Danh từ gốc chỉ Chủ thể Vật lý Trung tâm bằng tiếng Anh, 1–2 từ):
-   - Chỉ đặt tên loài/thực thể/nhân vật gốc (vd: `"jaguar"`, `"honey badger"`, `"kraken"`, `"julius caesar"`). Không nhồi tính từ hoa mỹ.
+1. "core_visual_entity" (Danh từ gốc chỉ Chủ thể Vật lý Trung tâm bằng tiếng Anh, 1–3 từ):
+   - Đặt ĐẦY ĐỦ tên loài/thực thể/nhân vật cụ thể của phân cảnh đó (vd: `"harpy eagle"`, `"three toed sloth"`, `"honey badger"`, `"julius caesar"` — CẤM rút gọn `"harpy eagle"` thành `"eagle"` hay `"bird"`). Không nhồi tính từ hoa mỹ.
    - Nếu kịch bản thuộc chủ đề Tâm lý học, Hành vi con người, Mối quan hệ, Triết học: đặt `"core_visual_entity": ""` (chuỗi rỗng).
 2. "visual_paradigm":
    - `"CINEMATIC_REALISM"`: Tâm lý học, thao túng tâm lý, ngôn ngữ cơ thể, cảm xúc con người -> ưu tiên biểu cảm con người điện ảnh Dark Noir / Chiaroscuro sắc lạnh (cấm ảnh văn phòng cười giả tạo hoặc đạo cụ nghĩa đen).
@@ -370,33 +391,33 @@ BƯỚC 2 — THIẾT KẾ TRUY VẤN SÁT Ý KỊCH BẢN (`google_image_querie
    - `"SCIENTIFIC_3D"`: Vũ trụ, thiên văn, giải phẫu thần kinh/sinh học, vật lý.
    - `"HOLLYWOOD_VFX_MOVIE"`: Thần thoại, thủy quái, sinh vật tiền sử khổng lồ, viễn tưởng.
 3. Công thức tạo `google_image_queries` & `search_queries` (2–5 từ tiếng Anh):
-   - Tập trung vào **1 chủ thể duy nhất đang thực hiện hành động/trạng thái của phân cảnh đó + môi trường đặc trưng của kịch bản** (CẤM dùng `"vs"`, `"versus"` hoặc ghép 2 loài khác nhau trong 1 câu truy vấn để tránh ảnh ghép chia đôi màn hình).
+   - Tập trung vào **1 chủ thể cụ thể duy nhất (ghi đủ tên loài/thực thể đầy đủ) đang thực hiện hành động/trạng thái của phân cảnh đó + môi trường đặc trưng của kịch bản** (CẤM dùng `"vs"`, `"versus"` hoặc ghép 2 loài khác nhau trong 1 câu truy vấn để tránh ảnh ghép chia đôi màn hình, và CẤM dùng danh từ chung `"bird"`, `"raptor"`, `"predator"`, `"hunter"`, `"prey"`).
    - Không nhồi từ khóa kỹ thuật máy quay (`"8k"`, `"9:16"`, `"macro shot"`, `"photorealistic"`).
    - Đảm bảo cả {len(scenes_payload)} phân cảnh có góc tiếp cận/hành động đa dạng theo tiến trình câu chuyện, không trùng lặp câu truy vấn đầu tiên giữa các cảnh.
 
 TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
 {{
   "holistic_script_summary": "Tóm tắt 1 câu về cốt truyện thực sự, chủ thể trung tâm và bối cảnh ngầm định của toàn bộ kịch bản",
-  "core_visual_entity": "Tên tiếng Anh của thực thể vật lý cụ thể (hoặc '' nếu là tâm lý/con người)",
+  "core_visual_entity": "Tên tiếng Anh đầy đủ của thực thể vật lý cụ thể (hoặc '' nếu là tâm lý/con người)",
   "overall_visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | HOLLYWOOD_VFX_MOVIE | STYLIZED_ANIMATION",
   "scenes_analysis": [
     {{
       "scene_id": 1,
-      "core_visual_entity": "Thực thể vật lý cụ thể được giải mã cho cảnh này hoặc ''",
+      "core_visual_entity": "Tên tiếng Anh đầy đủ của thực thể vật lý cụ thể được giải mã cho cảnh này (cấm viết chung chung bird/eagle/predator/hunter/prey) hoặc ''",
       "visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | HOLLYWOOD_VFX_MOVIE | STYLIZED_ANIMATION",
       "preferred_engines": ["google"],
       "mood": "dark_ominous | tense_mysterious | epic_heroic | vibrant_energetic | melancholy_thoughtful | scientific_curiosity",
       "narrative_subtext": "Giải mã ý nghĩa thực sự của câu thoại này khi đặt trong toàn bộ kịch bản (đã giải quyết đại từ/ẩn dụ)",
       "visual_metaphor": "Mô tả khung hình cụ thể, sát ý kịch bản nhất để hiển thị lên màn hình",
-      "subject": "Chủ thể + hành động/trạng thái cụ thể của cảnh bằng tiếng Anh (2-4 từ)",
+      "subject": "Tên đầy đủ của chủ thể cụ thể + hành động/trạng thái của cảnh bằng tiếng Anh (2-4 từ)",
       "production_method": "IMAGE_TO_VIDEO | STOCK_FOOTAGE | TEXT_TO_VIDEO | REAL_ARCHIVE",
       "tool_choice": "ai_image_to_video | pexels_video_clip | ai_text_to_video | real_archive_photo",
       "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
-      "search_queries": ["2-4 word contextual query 1", "2-4 word contextual query 2", "2-4 word contextual query 3"],
+      "search_queries": ["2-5 word query 1 with full canonical entity name", "2-5 word query 2 with full canonical entity name", "2-5 word query 3 with full canonical entity name"],
       "google_image_queries": [
-        "Primary 2-5 word English query capturing this scene's true meaning in the script",
-        "Alternative 2-5 word English query for this scene's action and environment",
-        "Third distinct angle query for this scene (2-5 English words)"
+        "Primary 2-5 word English query with full canonical entity name capturing this scene's true meaning",
+        "Alternative 2-5 word English query with full canonical entity name for this scene's action and environment",
+        "Third distinct angle query with full canonical entity name for this scene (2-5 English words)"
       ],
       "negative_cues": ["text overlay", "watermark", "meme", "diagram", "chart", "infographic", "blurry", "low resolution", "split screen collage"],
       "cinematic_ai_prompt": "Detailed 8K vertical 9:16 photorealistic IMAX visual prompt in English faithfully depicting this scene within the full script's setting and mood"
@@ -408,6 +429,7 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
         if res and isinstance(res.get("scenes_analysis"), list):
             video_core_entity = str(res.get("core_visual_entity") or primary_entity or "").strip()
             video_paradigm = str(res.get("overall_visual_paradigm") or "").strip()
+            holistic_summary = str(res.get("holistic_script_summary") or "").strip()
             used_primary_queries: set = set()
 
             for item in res["scenes_analysis"]:
@@ -420,18 +442,20 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
                 item["scene_id"] = sid_int
                 item["is_hook_scene"] = (sid_int == 1)
                 item["analysis_source"] = "ai"
+                if holistic_summary:
+                    item["holistic_script_summary"] = holistic_summary
                 if not item.get("core_visual_entity") and video_core_entity:
                     item["core_visual_entity"] = video_core_entity
                 if not item.get("visual_paradigm") and video_paradigm:
                     item["visual_paradigm"] = video_paradigm
                 sc_orig = next((x for x in scenes_payload if x["scene_id"] == sid), {})
                 narr = sc_orig.get("narration", "")
-                orig_vk = _clean_search_phrase(str(sc_orig.get("visual_keyword") or "").strip())
-                if orig_vk and 2 <= len(orig_vk.split()) <= 6:
-                    existing_gqs = list(item.get("google_image_queries") or [])
-                    if orig_vk.lower() not in [str(x).lower() for x in existing_gqs]:
-                        existing_gqs.append(orig_vk)
-                    item["google_image_queries"] = existing_gqs
+                # KHÔNG nối mù quáng `orig_vk` (visual_keyword thô chưa giải mã) vào cuối `google_image_queries`
+                # khi LLM đã sinh ra danh sách truy vấn sạch, tránh tái nhiễm các cụm ẩn dụ như 'steel clamps' hay 'hunter dangling'!
+                if not item.get("google_image_queries"):
+                    orig_vk = _clean_search_phrase(str(sc_orig.get("visual_keyword") or "").strip())
+                    if orig_vk and 2 <= len(orig_vk.split()) <= 6:
+                        item["google_image_queries"] = [orig_vk]
 
                 subj = str(item.get("subject") or item.get("core_visual_entity") or "").strip() or extract_subject(narr, primary_entity)
                 item = _enforce_subject_queries(item, subj)
@@ -481,9 +505,9 @@ THÔNG TIN ĐẦU VÀO:
 - Lời thoại phân cảnh hiện tại: "{narration}"
 
 QUY TẮC SUY LUẬN NGỮ NGHĨA (KHÔNG DỊCH TỪ KHÓA MÁY MÓC):
-1. Giải mã Đại từ, Ẩn dụ & Chống lệch sang Đạo cụ phụ: Nếu lời thoại phân cảnh hiện tại dùng đại từ ("It", "He", "They", "Nó", "Họ"), ẩn dụ, hoặc nhắc tới đạo cụ phụ/người quan sát bên lề (như xe cộ, phòng họp, tán cây trống rỗng), hãy dựa vào `Topic` và `Surrounding Script Context` để giữ truy vấn bám chặt vào Chủ thể / Hiện tượng cốt lõi của câu chuyện.
-2. "core_visual_entity": Chỉ đặt tên thực thể/loài vật/nhân vật cụ thể bằng từ vựng tiếng Anh phổ thông (1–2 từ). Nếu là chủ đề Tâm lý học, Hành vi con người, Triết học -> đặt `""`.
-3. "search_queries" & "google_image_queries": Viết 3 câu truy vấn tiếng Anh phổ thông ngắn gọn (2–5 từ, dịch mọi thuật ngữ học thuật sang từ khóa đời thường dễ tìm video thật) mô tả đúng `[Chủ thể đơn lẻ của cảnh] + [Môi trường/bối cảnh của kịch bản] + [Hành động/trạng thái]`. Tuyệt đối không dùng `"vs"` hay ghép 2 loài khác nhau trong 1 câu truy vấn.
+1. Giải mã Đại từ, Từ chỉ vai trò, Ẩn dụ & Chống lệch sang Đạo cụ phụ: Nếu lời thoại phân cảnh hiện tại dùng đại từ ("It", "He", "They", "Nó", "Họ"), từ chỉ vai trò ("the predator", "the hunter", "its living prey", "the bird"), ẩn dụ ("like steel clamps"), hoặc nhắc tới đạo cụ phụ/người quan sát bên lề (như xe cộ, phòng họp, tán cây trống rỗng), hãy dựa vào `Topic` và `Surrounding Script Context` để khôi phục đúng **Tên Thực Thể Cụ Thể Chính Xác (Canonical Entity)** của câu chuyện.
+2. 🚨 KHÓA CHẶT TÍNH ĐẶC THÙ CỦA THỰC THỂ GỐC ("core_visual_entity"): Đặt ĐẦY ĐỦ tên thực thể/loài vật/nhân vật cụ thể bằng từ vựng tiếng Anh phổ thông (1–3 từ, ví dụ `"harpy eagle"`, `"three toed sloth"`, `"komodo dragon"` — CẤM TUYỆT ĐỐI rút gọn thành danh từ chung như `"eagle"`, `"bird"`, `"raptor"`, `"predator"`, `"hunter"`, `"prey"`). Nếu là chủ đề Tâm lý học, Hành vi con người, Triết học -> đặt `""`.
+3. "search_queries" & "google_image_queries": Viết 3 câu truy vấn tiếng Anh phổ thông ngắn gọn (2–5 từ, dịch mọi thuật ngữ học thuật sang từ khóa đời thường dễ tìm video thật) mô tả đúng `[Tên đầy đủ Chủ thể đơn lẻ của cảnh] + [Môi trường/bối cảnh của kịch bản] + [Hành động/trạng thái]`. Tuyệt đối không dùng `"vs"` hay ghép 2 loài khác nhau trong 1 câu truy vấn, và không dùng danh từ chung `"bird"`, `"predator"`, `"hunter"`, `"prey"`.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{

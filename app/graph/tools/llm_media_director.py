@@ -85,9 +85,12 @@ Individual Scenes Breakdown:
 YOUR 2-STEP COGNITIVE REASONING PROTOCOL (NO BRITTLE KEYWORD MATCHING):
 STEP 1 — HOLISTIC SCRIPT COMPREHENSION, PRONOUN RESOLUTION & SUBTEXT DECODING:
 - Read the FULL SCRIPT STORY and the YAML NICHE PRODUCTION BLUEPRINT above from start to finish before deciding any tool or search query.
-- Resolve all pronouns ("It", "He", "She", "They", "This creature", "Nó", "Họ", "Ele", "Ela") and restore missing subjects in split sentences back to the true protagonist ("{primary_entity or topic}").
+- Identify all CANONICAL PROTAGONIST ENTITIES in the story (e.g. both contenders in an "Entity A vs Entity B" or predator-prey story). Resolve all pronouns ("It", "He", "She", "They", "This creature", "Nó", "Họ", "Ele", "Ela") and generic role epithets ("the predator", "the hunter", "its living prey", "the giant", "the bird") back to the exact canonical entity acting in that specific sentence.
+- 🚨 CANONICAL ENTITY SPECIFICITY LOCK (ZERO GENERIC HYPERNYM DOWNGRADE & ZERO FLAWED HINT ECHO):
+  * Whenever a scene depicts a specific named species or entity (e.g. "Harpy Eagle", "Three-Toed Sloth", "Komodo Dragon", "Colossal Squid"), EVERY search query (`subject_entity`, `youtube_search_query`, `fallback_broad_query`, `primary_stock_query`, `smart_image_query`) MUST keep the **FULL CANONICAL SPECIFIC NAME** (e.g. `"harpy eagle ..."`, `"three toed sloth ..."`). NEVER shorten or downgrade a multi-word species into a generic hypernym like bare `"eagle"`, `"bird"`, `"bird of prey"`, `"raptor"`, `"predator"`, `"hunter"`, `"prey"`, `"animal"`, or `"creature"`!
+  * Treat `visual_keyword` in `Individual Scenes Breakdown` as an untrusted hint: if it contains literal metaphor objects (`"steel clamps"`, `"hydraulic press"`), unresolved epithets (`"predator"`, `"hunter"`, `"prey"`), or generic hypernyms (`"bird"`), IGNORE that flawed hint and derive the query from `narration` + `FULL SCRIPT STORY`.
 - Decode metaphors, similes, and abstract concepts into CONCRETE PHYSICAL QUERIES or 2D DOODLE VISUAL METAPHORS following the `abstract_to_physical_query_translations` in the YAML blueprint above:
-  * If a split sentence says "Its bite hits like a hydraulic press" or "A 230-decibel shockwave", NEVER search for factory machinery or speakers — search for the protagonist's actual physical action in its natural environment!
+  * If a split sentence says "Its bite hits like a hydraulic press", "locking like steel clamps", or "A 230-decibel shockwave", NEVER search for factory machinery, steel clamps, or speakers — search for the canonical protagonist's actual physical anatomy/action in its natural environment!
   * If a psychology/behavior sentence discusses abstract manipulation, gaslighting, dopamine traps, or mental cages, translate it using the YAML `abstract_to_physical_query_translations` into either: (a) a real forensic interrogation / 3D glowing brain MRI / iconic character YouTube Short (`clone_youtube_short_peak_clip` or `fetch_clean_cinematic_portrait_or_broll`), OR (b) a 2D Doodle animation (`render_doodle_2d_explainer_scene`).
 
 STEP 2 — SELECT THE OPTIMAL `@tool` & CONTEXT-ANCHORED SEARCH QUERY FOR EACH SCENE (scene_id=1 to {total_scenes}):
@@ -451,6 +454,18 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                         or "person intense eye contact closeup"
                     )
 
+    # Nếu Gemini functionCall không trả về đủ 100% số cảnh (ví dụ chỉ trả về Cảnh 1),
+    # chạy ngay bộ giải mã mạch truyện & thẩm định phạm vi bằng JSON Batch LLM (`audit_and_decide_search_scopes_with_llm_sync`)
+    # để đảm bảo 100% phân cảnh đều được LLM đọc hiểu toàn kịch bản, giải mã đại từ/ẩn dụ và khóa chặt thực thể!
+    if not kwargs.get("skip_scope_audit") and (len(decisions_by_scene) < total_scenes or not is_long_form_dir):
+        final_plan = audit_and_decide_search_scopes_with_llm_sync(
+            topic=topic,
+            scenes=scenes,
+            proposed_decisions=final_plan,
+            primary_entity=primary_entity,
+            channel_niche=channel_niche,
+        )
+
     return final_plan
 
 
@@ -458,6 +473,94 @@ _ANALOGY_SYNTAX_RE = re.compile(
     r"\b(?:like a|like an|as if|acting like|acts like|basically a|built-in)\b",
     re.IGNORECASE,
 )
+
+_GENERIC_ROLE_OR_CLASS_HYPERNYMS = {
+    "predator", "predators", "hunter", "hunters", "prey",
+    "animal", "animals", "creature", "creatures", "beast", "beasts",
+    "bird", "birds", "raptor", "raptors", "mammal", "mammals",
+    "reptile", "reptiles", "insect", "insects", "monster", "monsters",
+    "giant", "giants", "victim", "victims", "target", "opponent",
+    "contender", "attacker", "defender", "steel", "clamp", "clamps",
+    "hydraulic", "press", "machine", "trap",
+}
+
+
+def _restore_full_canonical_entity_in_query(
+    query: str,
+    lead_ent: str,
+    max_words: int = 5,
+) -> str:
+    """
+    Khôi phục tên đầy đủ của thực thể gốc (`lead_ent`, ví dụ `'harpy eagle'`, `'three toed sloth'`)
+    khi câu truy vấn bị rút gọn thành danh từ chung (`'eagle'`, `'bird'`, `'predator'`, `'hunter'`, `'prey'`)
+    hoặc bị dính vật thể ẩn dụ nghĩa đen (`'steel clamps'`).
+    """
+    q_clean = str(query or "").strip()
+    raw_lead = str(lead_ent or "").strip()
+    if not q_clean or not raw_lead:
+        return q_clean
+
+    q_words = re.findall(r"[a-zA-Z0-9]+", q_clean)
+    q_toks_low = {w.lower() for w in q_words if len(w) >= 3}
+
+    # Nếu `lead_ent` chứa 2 thực thể nối bằng 'and / or / vs / ,' (VD: 'harpy eagle and three-toed sloth'),
+    # tách thành từng thực thể đơn lẻ để không bao giờ bị cắt cụt ở từ thứ 3 thành 'harpy eagle three'!
+    multi_parts = [
+        _clean_yt_search_phrase(pt, max_words=3, strip_distractor_props=True)
+        for pt in re.split(r"\b(?:vs\.?|versus|and|or)\b|[,/&|+;]", raw_lead, flags=re.IGNORECASE)
+        if pt and pt.strip()
+    ]
+    multi_parts = [p for p in multi_parts if p]
+    if len(multi_parts) >= 2:
+        matched_part = None
+        for pt in multi_parts:
+            pt_toks = {w.lower() for w in re.findall(r"[a-zA-Z]{3,}", pt)}
+            if pt_toks & q_toks_low:
+                matched_part = pt
+                break
+        lead_clean = matched_part or multi_parts[0]
+    else:
+        lead_clean = _clean_yt_search_phrase(raw_lead, max_words=3, strip_distractor_props=True)
+
+    if not lead_clean:
+        return q_clean
+    lead_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", lead_clean)]
+    if not lead_toks:
+        return q_clean
+
+    # Trường hợp 1: Thực thể gồm >= 2 từ (VD: 'harpy eagle', 'komodo dragon', 'colossal squid')
+    # và câu truy vấn chỉ chứa từ đuôi chung ('eagle', 'dragon', 'squid') mà đánh rơi từ định danh đầu ('harpy', 'komodo', 'colossal')
+    if len(lead_toks) >= 2 and (lead_toks[-1] in q_toks_low) and (lead_toks[0] not in q_toks_low):
+        expanded_words: List[str] = []
+        replaced = False
+        for w in q_words:
+            if not replaced and w.lower() == lead_toks[-1]:
+                expanded_words.extend(lead_clean.split())
+                replaced = True
+            elif w.lower() not in _GENERIC_ROLE_OR_CLASS_HYPERNYMS:
+                expanded_words.append(w)
+        return _clean_yt_search_phrase(" ".join(expanded_words), subject_entity=lead_clean, max_words=max_words)
+
+    # Trường hợp 2: Câu truy vấn hoàn toàn không chứa bất kỳ token nào của `lead_ent`
+    # (VD: 'bird in tree branches', 'predator talons wood branch', 'steel clamps tendon grip')
+    if not (q_toks_low & set(lead_toks)):
+        filtered_action_words = [
+            w for w in q_words
+            if w.lower() not in _GENERIC_ROLE_OR_CLASS_HYPERNYMS
+            and w.lower() not in ("bird", "of", "prey")
+        ]
+        merged = f"{lead_clean} {' '.join(filtered_action_words)}".strip()
+        return _clean_yt_search_phrase(merged, subject_entity=lead_clean, max_words=max_words) or lead_clean
+
+    # Trường hợp 3: Có chứa token thực thể nhưng vẫn dính từ ẩn dụ/vai trò chung ('steel clamps', 'predator', 'hunter')
+    if q_toks_low & {"steel", "clamp", "clamps", "hydraulic", "predator", "hunter"}:
+        cleaned_words = [
+            w for w in q_words
+            if w.lower() not in {"steel", "clamp", "clamps", "hydraulic", "predator", "hunter"}
+        ]
+        return _clean_yt_search_phrase(" ".join(cleaned_words), subject_entity=lead_clean, max_words=max_words) or q_clean
+
+    return q_clean
 
 
 def _ensure_subject_anchored_decisions(
@@ -467,9 +570,9 @@ def _ensure_subject_anchored_decisions(
 ) -> List[Dict[str, Any]]:
     """
     Cổng bảo vệ gắn kết chủ thể không phụ thuộc chủ đề (Topic-Agnostic Subject Anchor Gate):
-    Nếu bất kỳ phân cảnh nào có câu truy vấn chính hoặc dự phòng hoàn toàn KHÔNG chứa token neo
-    của `primary_entity` / `topic` (ví dụ câu ẩn dụ hoặc câu phong cảnh bị trôi mất chủ thể),
-    tự động ghép danh từ chủ thể đơn gọn (`lead_ent`) lên đầu truy vấn.
+    Đảm bảo mọi phân cảnh đều giữ trọn vẹn tên thực thể cụ thể (`lead_ent`) trong cả
+    truy vấn chính, truy vấn phụ và truy vấn dự phòng Stock (chống suy thoái về danh từ chung
+    như `'bird'`, `'eagle'`, `'predator'`, `'hunter'`, `'prey'` hoặc vật thể ẩn dụ `'steel clamps'`).
     """
     anchor_toks = _extract_subject_anchor_tokens(primary_entity or "", topic or "", "")
     if not anchor_toks:
@@ -479,11 +582,12 @@ def _ensure_subject_anchored_decisions(
         raw_queries=[str(primary_entity or ""), str(topic or "")],
         subject_entity=str(primary_entity or ""),
         topic=str(topic or ""),
-        max_words=2,
+        max_words=3,
     )
     default_lead_ent = single_ents[0] if single_ents else _clean_yt_search_phrase(
-        str(primary_entity or topic or ""), max_words=2, strip_distractor_props=True
+        str(primary_entity or topic or ""), max_words=3, strip_distractor_props=True
     )
+    default_lead_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", str(default_lead_ent or ""))]
 
     out_decisions: List[Dict[str, Any]] = []
     for raw_d in decisions:
@@ -491,61 +595,51 @@ def _ensure_subject_anchored_decisions(
             out_decisions.append(raw_d)
             continue
         item = dict(raw_d)
+        t_name = str(item.get("tool_name") or "")
+        is_human_broll_tool = t_name in ("fetch_clean_cinematic_portrait_or_broll", "render_doodle_2d_explainer_scene")
         is_llm_decomposed = bool(item.get("llm_storyline_decomposed"))
         scene_subj = str(item.get("subject_entity") or "").strip()
-        scene_subj_toks = set(re.findall(r"[a-zA-Z]{3,}", scene_subj.lower()))
-        if scene_subj and ((scene_subj_toks & anchor_toks) or is_llm_decomposed):
+        scene_subj_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", scene_subj)]
+        scene_subj_meaningful = [w for w in scene_subj_toks if w not in _GENERIC_ROLE_OR_CLASS_HYPERNYMS]
+
+        # Nếu `scene_subj` chỉ là từ chỉ vai trò/loại chung ('predator', 'hunter', 'bird', 'prey') hoặc rút gọn thiếu định danh đầu ('eagle' thay vì 'harpy eagle')
+        if not scene_subj_meaningful:
+            lead_ent = default_lead_ent
+        elif (
+            len(default_lead_toks) >= 2
+            and scene_subj_meaningful == [default_lead_toks[-1]]
+        ):
+            lead_ent = default_lead_ent
+        elif (set(scene_subj_meaningful) & anchor_toks) or is_llm_decomposed:
             scene_ents = build_single_entity_stock_queries(
                 raw_queries=[scene_subj],
                 subject_entity=scene_subj,
                 topic=str(topic or ""),
-                max_words=2,
+                max_words=3,
             )
             lead_ent = scene_ents[0] if scene_ents else (scene_subj if is_llm_decomposed else default_lead_ent)
         else:
             lead_ent = default_lead_ent
-            if lead_ent and not item.get("creature_name"):
-                item["subject_entity"] = lead_ent
-        if not lead_ent:
+
+        if lead_ent and not item.get("creature_name") and not is_human_broll_tool:
+            item["subject_entity"] = lead_ent
+        if not lead_ent or is_human_broll_tool:
             out_decisions.append(item)
             continue
 
-        # Kiểm tra câu truy vấn chính của tool:
-        # Nếu phân cảnh đã được LLM phân rã mạch truyện (`is_llm_decomposed=True`) và câu truy vấn
-        # đã có >= 2 từ khóa thực thể/hành động rõ ràng, giữ nguyên câu truy vấn mạch truyện của LLM
-        # thay vì ép ghép `primary_entity` toàn bài (tránh biến "human nervous system" thành "Polygraph Lie 3d glowing").
-        for q_key in ("youtube_search_query", "primary_stock_query", "action_or_concept_query", "human_action_query", "smart_image_query"):
+        # Khóa chặt tính đặc thù thực thể (Canonical Entity Specificity Lock) cho mọi câu truy vấn của cảnh
+        for q_key in ("youtube_search_query", "primary_stock_query", "action_or_concept_query", "smart_image_query", "secondary_storyline_query"):
             q_val = str(item.get(q_key) or "").strip()
             if not q_val:
                 continue
-            q_toks = set(re.findall(r"[a-zA-Z]{3,}", q_val.lower()))
-            if is_llm_decomposed and len(q_toks) >= 2:
-                continue
-            if not (q_toks & anchor_toks):
-                anchored_q = _clean_yt_search_phrase(
-                    f"{lead_ent} {q_val}",
-                    subject_entity=lead_ent,
-                    max_words=5,
-                )
-                if anchored_q:
-                    item[q_key] = anchored_q
+            item[q_key] = _restore_full_canonical_entity_in_query(q_val, lead_ent, max_words=5)
 
         # Kiểm tra câu truy vấn dự phòng Stock
         for fb_key in ("fallback_broad_query", "secondary_stock_query"):
             fb_val = str(item.get(fb_key) or "").strip()
             if not fb_val:
                 continue
-            fb_toks = set(re.findall(r"[a-zA-Z]{3,}", fb_val.lower()))
-            if is_llm_decomposed and len(fb_toks) >= 2:
-                continue
-            if not (fb_toks & anchor_toks):
-                anchored_fb = _clean_yt_search_phrase(
-                    f"{lead_ent} {fb_val}",
-                    subject_entity=lead_ent,
-                    max_words=4,
-                )
-                if anchored_fb:
-                    item[fb_key] = anchored_fb
+            item[fb_key] = _restore_full_canonical_entity_in_query(fb_val, lead_ent, max_words=4)
 
         # Đảm bảo storyline_search_queries đồng bộ
         prim_q = str(
@@ -584,6 +678,15 @@ def audit_and_decide_search_scopes_with_llm_sync(
     áp dụng cổng bảo vệ gắn kết chủ thể (`_ensure_subject_anchored_decisions`) cho toàn bộ 40 cảnh.
     """
     if not scenes or not proposed_decisions:
+        return proposed_decisions
+
+    if (
+        not kwargs.get("force_reaudit")
+        and all(
+            isinstance(d, dict) and d.get("scope_audited") and d.get("llm_storyline_decomposed")
+            for d in proposed_decisions
+        )
+    ):
         return proposed_decisions
 
     full_script_text = " ".join(str(s.get("narration") or "").strip() for s in scenes if s.get("narration"))
@@ -647,43 +750,50 @@ Channel Niche: "{channel_niche or 'general'}"
 FULL SCRIPT STORY:
 "{full_script_text}"
 
-PROPOSED SCENE DECISIONS TO DECOMPOSE & AUDIT:
+PROPOSED SCENE DECISIONS TO DECOMPOSE & AUDIT (WARNING: `scene_visual_hint`, `proposed_query`, and `proposed_fallback_stock_query` may contain raw un-decoded metaphors, pronouns, or generic nouns — YOU MUST AUDIT AND OVERWRITE ANY FLAWED DRAFT QUERY!):
 {json.dumps(review_items, ensure_ascii=False, indent=2)}
 
 YOUR 3-STEP COGNITIVE STORYLINE DECOMPOSITION PROTOCOL (STRICTLY GOVERNED BY THE YAML VIDEO SEARCH STRATEGY ABOVE):
-STEP 1 — FULL-SCRIPT STORYLINE ARC COMPREHENSION, PRONOUN RESOLUTION & EMOTIONAL MOOD LOCK:
+STEP 1 — FULL-SCRIPT STORYLINE ARC COMPREHENSION, CANONICAL ENTITY LOCK & PRONOUN/METAPHOR RESOLUTION:
 - 100% PURE ENGLISH SEARCH QUERIES MANDATE (ZERO PORTUGUESE / VIETNAMESE / QUESTION PREFIXES): Even when `Topic` or `FULL SCRIPT STORY` is in Portuguese (`pt-BR`, e.g. `"Por Que Tubarões..."`, `"Por Que uma Alcateia..."`), Vietnamese (`vi`), or starts with `"Why / How / Por Que / Como"`, EVERY search query (`overall_script_query`, `subject_entity`, `approved_subject_entity`, `approved_query`, `approved_secondary_query`, `approved_fallback_stock_query`) MUST be translated into 100% clean English visual nouns + physical actions! NEVER copy `"Por Que"`, `"Why"`, `"Como"`, `"uma"`, `"do"`, or non-English words into any search query field!
-- Read the FULL SCRIPT STORY from Scene 1 to Scene {len(scenes)} first so you understand the complete narrative arc (Act 1: Crisis/Hook -> Act 2: Mechanism/Escalation -> Act 3: Mid-Video Twist -> Act 4: Counter-Move/Climax -> Act 5: Payoff) and emotional atmosphere.
-- When a `split_sentence` uses pronouns ("It", "He", "She", "They", "This creature", "These witnesses", "This trap") or omits the subject, substitute the true camera-visible subject acting in that sentence.
+- Read the FULL SCRIPT STORY from Scene 1 to Scene {len(scenes)} first so you understand the complete narrative arc (Act 1: Crisis/Hook -> Act 2: Mechanism/Escalation -> Act 3: Mid-Video Twist -> Act 4: Counter-Move/Climax -> Act 5: Payoff), the exact habitat/era, and the **Canonical Protagonist Entities** (`canonical_protagonists`, e.g., both specific species/entities in a predator-prey or 1v1 story).
+- When a `split_sentence` uses pronouns ("It", "He", "She", "They", "This creature", "These witnesses", "This trap"), role epithets ("the predator", "the hunter", "its living prey", "the giant", "the bird"), or omits the subject, resolve it against `FULL SCRIPT STORY` to identify the exact Canonical Entity acting in that sentence.
+- 🚨 CANONICAL ENTITY SPECIFICITY LOCK (ZERO GENERIC HYPERNYM DOWNGRADE & ZERO FLAWED HINT ECHO):
+  * NEVER shorten or downgrade a specific named entity/species into a generic hypernym or role noun such as bare `"bird"`, `"bird of prey"`, `"raptor"`, `"eagle"`, `"snake"`, `"shark"`, `"whale"`, `"animal"`, `"creature"`, `"beast"`, `"predator"`, `"hunter"`, or `"prey"`!
+  * For example, if the canonical protagonist is `"Harpy Eagle"` and the co-protagonist is `"Three-Toed Sloth"`, then every eagle scene MUST explicitly include `"harpy eagle"` in `approved_subject_entity`, `approved_query`, `approved_secondary_query`, AND `approved_fallback_stock_query` (e.g. `"harpy eagle flying rainforest canopy"`, `"harpy eagle talons branch closeup"`, `"harpy eagle carrying prey flight"` — NEVER bare `"eagle flying forest"`, `"bird of prey talons"`, `"predator talons wood branch"`, or `"bird in tree branches"`!), and every sloth scene MUST explicitly include `"three toed sloth"` (or `"sloth"`).
+  * DISTRUST FLAWED DRAFT HINTS: If `scene_visual_hint`, `proposed_query`, or `proposed_fallback_stock_query` contains a literal metaphor object (`"steel clamps"`, `"hydraulic press"`), an epithet (`"predator"`, `"hunter"`, `"prey"`), or a generic hypernym (`"bird"`, bare `"eagle"`), DISCARD it completely and write 100% fresh queries naming the exact canonical protagonist!
 - 🚫 NEVER USE ABSTRACT THEORY NAMES AS `approved_subject_entity`: A camera cannot film an abstract psychological/philosophical term like `"Bystander Effect"`, `"Diffusion of Responsibility"`, `"Cognitive Dissonance"`, or `"Paradox"`. When the topic is an abstract concept, set `approved_subject_entity` to the **CONCRETE CAMERA-VISIBLE SUBJECT** of that specific scene (e.g., `"witness looking through window"`, `"flashing police lights night"`, `"glowing brain neurons"`, `"man pointing finger"`, `"person calling emergency phone"`).
-- 🚫 PRESERVE DRAMATIC STORYLINE MOOD (NO TOURIST VLOG / HAPPY STREET DRIFT): Never flatten a tense/dark storyline moment into a generic casual phrase that returns unrelated tourist vlogs or fast-food queues! For example, if a scene says *"Thirty-eight people watched a brutal attack outside and nobody called the police"*, NEVER write `"urban crowd walking night street"` (which returns happy night-market walking tours)—write queries that match the exact dramatic storyline beat: `"police lights dark apartment street"`, `"witness looking through window night"`, `"crime scene flashing lights night"`.
-- 🚫 ZERO SIDE-PROP / OBSERVER ROOM / EMPTY SCENERY DRIFT: When a `split_sentence` mentions a secondary side-effect or metaphor to illustrate the scale of a phenomenon, NEVER search for the side-prop or empty trees—anchor queries to the primary phenomenon/action of the storyline.
+- 🚫 PRESERVE DRAMATIC STORYLINE MOOD (NO TOURIST VLOG / HAPPY STREET DRIFT): Never flatten a tense/dark storyline moment into a generic casual phrase that returns unrelated tourist vlogs or fast-food queues!
+- 🚫 ZERO SIDE-PROP / METAPHOR OBJECT / EMPTY SCENERY DRIFT: When a `split_sentence` uses a metaphor (`"locking like steel clamps"`, `"hits like a freight train"`) or mentions a secondary side-effect, NEVER search for the literal metaphor object (`"steel clamps"`, `"train"`) or empty trees—anchor all 3 queries to the canonical protagonist's real anatomical weapon or physical action!
 - 🚫 EVERYDAY YOUTUBE CREATOR VOCABULARY ONLY (BAN ACADEMIC / LATIN / TEXTBOOK JARGON): Translate any clinical/scientific terms (`"benthic crustacean"`, `"apex elapid"`, `"limnic eruption"`, `"diffusion of responsibility"`) into 3–5 everyday English words that real videos use in titles (`"deep sea crab underwater"`, `"king cobra strike"`, `"volcanic crater lake gas"`, `"3d glowing brain neurons"`).
 
 STEP 2 — DECOMPOSE EACH SCENE INTO 3 COMPLEMENTARY STORYLINE SEARCH QUERIES (`approved_query`, `approved_secondary_query`, `approved_fallback_stock_query`):
-For EVERY scene (`scene_id = 1..{len(scenes)}`), break that scene's narrative beat down into 3 distinct, storyline-matched search queries so our search engine finds frames that fit the exact storyline progression:
+For EVERY scene (`scene_id = 1..{len(scenes)}`), break that scene's narrative beat down into 3 distinct, storyline-matched search queries that ALL preserve the full canonical entity name:
 1. `approved_query` (3–5 English words — Primary YouTube Storyline Query):
-   - Captures the #1 most vivid, camera-visible physical action + mood of this exact beat in the script.
-   - Follow the YAML `Dual-Track Clash vs. Single-Entity Rule`: for single-entity body scenes, use **`[Single Canonical Entity] + [Real Physical Action / Environment]`** with ZERO `"vs"`; keep `"Entity A attacking/vs Entity B"` ONLY on direct 2-entity clash scenes when permitted by the YAML block.
+   - Captures the #1 most vivid, camera-visible physical action + mood of this exact beat in the script, explicitly naming the full canonical entity acting in this scene.
+   - Follow the YAML `Dual-Track Clash vs. Single-Entity Rule`: for single-entity body scenes, use **`[Full Canonical Entity] + [Real Physical Action / Environment]`** with ZERO `"vs"`; keep `"Entity A attacking/vs Entity B"` ONLY on direct 2-entity clash scenes when permitted by the YAML block.
 2. `approved_secondary_query` (3–5 English words — Alternate Camera Angle / Reaction Shot for the Same Storyline Beat):
-   - A second distinct search query capturing a complementary visual angle or reaction of the SAME scene beat in the story (e.g., if `approved_query` is `"police lights dark apartment street"`, `approved_secondary_query` can be `"witness looking through window blinds"`).
+   - A second distinct search query capturing a complementary visual angle or reaction of the SAME scene beat in the story, also explicitly naming the full canonical entity (never downgrading to `"bird"`, `"raptor"`, `"predator"`, or `"hunter"`).
 3. `approved_fallback_stock_query` (2–4 English words — Pexels/Pixabay Stock B-Roll Query, ZERO `"vs"`):
-   - Concrete, stock-indexable physical subject + action/setting in simple everyday English (`[Visible Subject Noun] + [Action/Setting]`), NEVER dropping the head noun and NEVER using `"vs"`.
+   - Concrete, stock-indexable physical subject + action/setting in simple everyday English (`[Full Canonical Subject Noun] + [Action/Setting]`), NEVER shortening a multi-word species to a bare generic noun (e.g. write `"harpy eagle perched branch"`, NEVER `"eagle perched branch"` or `"bird in tree branches"`) and NEVER using `"vs"`.
 4. ENFORCE INTRA-VIDEO STORYLINE PROGRESSION:
    - Never assign identical queries to two different scenes; each scene's queries must visually advance the story from beginning to end.
 
 Return ONLY a valid JSON object in this exact format:
 {{
-  "overall_script_query": "3-5 word core visual theme of the story",
-  "subject_entity": "main concrete camera-visible subject(s) of the story",
+  "holistic_script_summary": "1-sentence summary of the overarching script story, habitat/setting, and canonical protagonists",
+  "canonical_protagonists": ["Exact Canonical Entity 1", "Exact Canonical Entity 2"],
+  "overall_script_query": "3-5 word core visual theme of the story naming the primary canonical entity",
+  "subject_entity": "main concrete camera-visible canonical subject(s) of the story",
   "scenes_audit": [
     {{
       "scene_id": 1,
+      "resolved_scene_intent": "1-sentence explanation of what physically happens in this scene after resolving all pronouns, epithets, and metaphors",
       "approved_scope": "SCENE_SPECIFIC",
-      "approved_subject_entity": "concrete camera-visible subject in this scene",
-      "approved_query": "3-5 word primary YouTube query matching this storyline beat",
-      "approved_secondary_query": "3-5 word alternate angle query for this same storyline beat",
-      "approved_fallback_stock_query": "2-4 word concrete stock video query without vs",
+      "approved_subject_entity": "exact full canonical entity acting in this scene (never a generic hypernym like bird/predator/hunter/prey)",
+      "approved_query": "3-5 word primary YouTube query with full canonical entity name matching this storyline beat",
+      "approved_secondary_query": "3-5 word alternate angle query with full canonical entity name for this same storyline beat",
+      "approved_fallback_stock_query": "2-4 word concrete stock video query with full canonical entity name and zero vs",
       "reason": "Storyline-matched visual beat decomposition"
     }}
   ]
@@ -720,6 +830,12 @@ Return ONLY a valid JSON object in this exact format:
                             m = re.search(r"\{.*\}", txt, re.DOTALL)
                             if m:
                                 parsed = json.loads(m.group(0))
+                                holistic_summary = str(parsed.get("holistic_script_summary") or "").strip()
+                                canonical_prots = [
+                                    str(cp).strip()
+                                    for cp in (parsed.get("canonical_protagonists") or [])
+                                    if str(cp).strip()
+                                ]
                                 top_overall_q = str(parsed.get("overall_script_query") or "").strip()
                                 top_subj = str(parsed.get("subject_entity") or "").strip()
                                 audits = parsed.get("scenes_audit") or []
@@ -733,6 +849,10 @@ Return ONLY a valid JSON object in this exact format:
                                     for d in proposed_decisions:
                                         sid = int(d.get("scene_id") or 0)
                                         item = dict(d)
+                                        if holistic_summary:
+                                            item["holistic_script_summary"] = holistic_summary
+                                        if canonical_prots:
+                                            item["canonical_protagonists"] = canonical_prots
                                         if top_overall_q and not _is_non_english_or_question_title(top_overall_q):
                                             item["overall_script_query"] = _clean_yt_search_phrase(top_overall_q, max_words=5) or top_overall_q
                                         if (
@@ -749,8 +869,11 @@ Return ONLY a valid JSON object in this exact format:
                                             app_sec_query = str(au.get("approved_secondary_query") or "").strip()
                                             app_fb_query = str(au.get("approved_fallback_stock_query") or "").strip()
                                             app_subj_ent = str(au.get("approved_subject_entity") or "").strip()
+                                            res_intent = str(au.get("resolved_scene_intent") or "").strip()
                                             item["search_scope"] = app_scope if app_scope in ("SCENE_SPECIFIC", "SCRIPT_OVERALL") else "SCENE_SPECIFIC"
                                             item["scope_audit_reason"] = str(au.get("reason") or "")
+                                            if res_intent:
+                                                item["resolved_scene_intent"] = res_intent
                                             if app_subj_ent and not item.get("creature_name"):
                                                 item["subject_entity"] = app_subj_ent
                                             if app_sec_query:
@@ -772,12 +895,11 @@ Return ONLY a valid JSON object in this exact format:
                                                     item["human_action_query"] = app_query
                                                 else:
                                                     item["smart_image_query"] = app_query
-                                            prev_story_qs = item.get("storyline_search_queries") or []
+                                            # Chỉ giữ lại các câu truy vấn đã được LLM phê duyệt (không giữ câu raw `visual_keyword` lỗi từ bước trước)
                                             story_qs = [
                                                 q_s for q_s in dict.fromkeys([
                                                     app_query,
                                                     app_sec_query,
-                                                    *prev_story_qs,
                                                     app_fb_query,
                                                 ]) if q_s
                                             ]
