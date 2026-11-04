@@ -64,8 +64,14 @@ secrets_config.zip
 # Storage & Temporary Files
 storage/**
 !storage/**/.gitkeep
-output/**
-!output/**/.gitkeep
+output/**
+outputs/**
+tools/standalone_auditor/.audit_state.json
+tools/standalone_auditor/LATEST_AUDIT_REPORT.md
+!output/**
+outputs/**
+tools/standalone_auditor/.audit_state.json
+tools/standalone_auditor/LATEST_AUDIT_REPORT.md/.gitkeep
 *.jpg
 *.jpeg
 *.png

@@ -41,15 +41,8 @@ from app.utils.ffmpeg_helper import (
     trim_video,
     get_duration_ms,
     render_opening_hook_multi_cut,
-    find_hook_peak_action_offset,
     find_hook_peak_window,
     VIDEO_DURATION_SAFETY_MARGIN,
-)
-from app.services.media.media_history import (
-    extract_media_identity,
-    get_recent_media_urls,
-    is_media_already_used,
-    record_used_media,
 )
 
 logger = logging.getLogger(__name__)

@@ -1,20 +1,10 @@
 """app.graph.tools.google_image_executor — Thực thi tìm kiếm đa ảnh Top Google Images & Stock HD."""
-import base64
-import json
 import logging
-import os
-import re
-import subprocess
-import tempfile
-import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from langchain_core.tools import tool
 from app.utils.langsmith_tracer import trace_custom_span
-from app.agents.media_agent import MediaAgent, clean_scene_search_query
-from app.services.media import license_policy
-from config.settings import settings
+from app.agents.media_agent import MediaAgent
 
 logger = logging.getLogger(__name__)
 from app.graph.tools.tool_schemas import (

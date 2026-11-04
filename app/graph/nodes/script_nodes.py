@@ -1,10 +1,9 @@
-import json
 """
 app.graph.nodes.script_nodes — Các Node xử lý Kịch bản & Tinh chỉnh tự động trong LangGraph.
 """
+import json
 import logging
 import os
-from pathlib import Path
 from typing import Dict, Any
 
 from app.schemas.contracts import ScriptContract
@@ -22,7 +21,6 @@ def node_research_and_entity(state: VideoWorkflowState) -> Dict[str, Any]:
     title = state.get("title", "")
     existing_script = state.get("script_data") or {}
 
-    import os
     search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
     ent_name = existing_script.get("primary_entity") or state.get("primary_entity")
     ent_type = ""

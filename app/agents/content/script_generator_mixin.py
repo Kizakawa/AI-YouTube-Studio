@@ -1,12 +1,10 @@
 """app.agents.content.script_generator_mixin — Xây dựng bộ nhớ ngữ cảnh kênh, phác thảo Blueprint & sinh kịch bản 5 hồi."""
 import json
 import logging
-import requests
 import time
-import re
-from typing import Dict, List, Any, Optional
+from typing import List, Optional
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
+from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
 from app.utils.langsmith_tracer import trace_custom_span
 from app.schemas.contracts import ScriptContract
 

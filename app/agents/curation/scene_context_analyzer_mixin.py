@@ -10,7 +10,6 @@ import threading as _threading
 import time as _time_mod
 from typing import Any, Dict, List, Optional, Tuple
 
-from config.settings import settings
 from app.utils.key_rotator import GEMINI_PRIORITY_MODELS, KeyRotator
 from app.utils.langsmith_tracer import trace_custom_span
 

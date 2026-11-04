@@ -1,20 +1,15 @@
 """app.graph.nodes.media.post_gather_rescue — Các bước hậu kiểm, khử trùng lặp và cứu hộ Media sau khi gather."""
 import asyncio
 import logging
-import os
 import re
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Dict, Any, List, Optional, Set
 
-from app.schemas.contracts import ScriptContract, SceneContract
-from app.agents.media_agent import MediaAgent, detect_real_entity, match_best_pool_photo, clean_scene_search_query
+from app.schemas.contracts import ScriptContract
+from app.agents.media_agent import MediaAgent, clean_scene_search_query
 from app.agents.image_agent import ImageAgent
-from app.agents.visual_director_agent import VisualDirectorAgent
-from app.agents.video_strategist_agent import VideoStrategistAgent
-from app.agents.visual_curation_agent import VisualCurationAgent
-from app.agents.ai_video_agent import AIVideoAgent
 from app.graph.evaluators.visual_critic import VisualCritic
 from app.graph.state import VideoWorkflowState
 

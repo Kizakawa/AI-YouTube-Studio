@@ -552,6 +552,37 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
             f"(Score={video_score}/100): {'; '.join(combined_issues) or 'Lỗi kiểm định video'}"
         )
 
+    # Đọn dẹp ngay các file render trung gian nặng trong work_dir sau khi VideoQA đã đạt chuẩn (tránh phình đĩa hàng GB)
+    try:
+        work_dir_qa = Path(state.get("work_dir", "storage/cache"))
+        if work_dir_qa.exists() and "temp" in str(work_dir_qa).replace("\\", "/"):
+            for _inter_sub in ("clips", "hook_candidates", "render"):
+                _sub_p = work_dir_qa / _inter_sub
+                if _sub_p.exists():
+                    shutil.rmtree(_sub_p, ignore_errors=True)
+            for _dup_mp4 in (
+                *work_dir_qa.glob("final_shorts_*.mp4"),
+                *work_dir_qa.glob("silent_*.mp4"),
+                *work_dir_qa.glob("muxed_*.mp4"),
+                *(work_dir_qa / "media").glob("*_raw.mp4"),
+                *(work_dir_qa / "media").glob("chapter_*_master_*.mp4"),
+            ):
+                _dup_mp4.unlink(missing_ok=True)
+            # Tự động dọn các thư mục job_* cũ > 24h trong storage/temp
+            import time as _t_qa
+            _now_ts = _t_qa.time()
+            _temp_root = work_dir_qa.parent
+            if _temp_root.name == "temp" and _temp_root.exists():
+                for _old_job_dir in _temp_root.iterdir():
+                    if _old_job_dir.is_dir() and _old_job_dir != work_dir_qa:
+                        try:
+                            if (_now_ts - _old_job_dir.stat().st_mtime) > 86400:
+                                shutil.rmtree(_old_job_dir, ignore_errors=True)
+                        except Exception:
+                            pass
+    except Exception as _e_qa_clean:
+        logger.debug(f"[VideoQA] Post-QA temp cleanup skip: {_e_qa_clean}")
+
     return {
         "video_eval": qa_dict,
         "current_step": "QA_DONE",

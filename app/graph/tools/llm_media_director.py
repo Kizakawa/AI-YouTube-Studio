@@ -1,19 +1,9 @@
 """app.graph.tools.llm_media_director — Bộ não LLM Đạo diễn (`bind_tools`) & LLM Thẩm định phạm vi tìm kiếm (`search_scope`)."""
-import base64
 import json
 import logging
-import os
 import re
-import subprocess
-import tempfile
-import threading
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
-from langchain_core.tools import tool
-from app.utils.langsmith_tracer import trace_custom_span
-from app.agents.media_agent import MediaAgent, clean_scene_search_query
-from app.services.media import license_policy
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
