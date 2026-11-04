@@ -190,7 +190,7 @@ class GraphRunner:
         channel_style = "general"
         existing_script = None
 
-        for _db_try in range(3):
+        for _db_try in range(5):
             try:
                 with get_db() as db:
                     job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
@@ -213,7 +213,12 @@ class GraphRunner:
             except ValueError:
                 raise
             except Exception as _e_db_init:
-                if _db_try >= 2:
+                try:
+                    from app.database.models import engine
+                    engine.dispose()
+                except Exception:
+                    pass
+                if _db_try >= 4:
                     cp_init = self.work_dir / "step_checkpoint.json"
                     ls_init = Path("storage/logs/langsmith") / f"job_{self.job_id}.json"
                     if cp_init.exists():
@@ -368,16 +373,30 @@ class GraphRunner:
         except Exception as ex:
             self._finish_trace("FAILED", str(ex))
             logger.error(f"[LangGraph Job {self.job_id}] Thất bại tại đồ thị: {ex}", exc_info=True)
-            with get_db() as db:
-                j = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
-                if j:
-                    j.status = "FAILED"
-                    j.error_message = str(ex)
-                    if not j.scenes_json and isinstance(final_state.get("script_data"), dict) and final_state["script_data"].get("scenes"):
-                        try:
-                            j.scenes_json = json.dumps(final_state["script_data"], ensure_ascii=False)
-                        except Exception:
-                            pass
+            for _err_db_att in range(3):
+                try:
+                    with get_db() as db:
+                        j = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                        if j:
+                            j.status = "FAILED"
+                            j.error_message = str(ex)
+                            if not j.scenes_json and isinstance(final_state.get("script_data"), dict) and final_state["script_data"].get("scenes"):
+                                try:
+                                    j.scenes_json = json.dumps(final_state["script_data"], ensure_ascii=False)
+                                except Exception:
+                                    pass
+                    break
+                except Exception as _e_err_db:
+                    try:
+                        from app.database.models import engine
+                        engine.dispose()
+                    except Exception:
+                        pass
+                    if _err_db_att < 2:
+                        import time as _t_err_s
+                        _t_err_s.sleep(0.5 * (_err_db_att + 1))
+                    else:
+                        logger.warning(f"[LangGraph Job {self.job_id}] Không thể cập nhật trạng thái FAILED vào DB: {_e_err_db}")
             raise ex
 
         # 3.5. Tự động đẩy lên Google Drive đối với Video Dài 16:9 (hoặc khi bật ENABLE_DRIVE_VIDEO_BACKUP)
@@ -483,6 +502,11 @@ class GraphRunner:
                         j.error_message = None
                 break
             except Exception as _e_save_final:
+                try:
+                    from app.database.models import engine
+                    engine.dispose()
+                except Exception:
+                    pass
                 if _db_save_att < 2:
                     import time as _t_s
                     _t_s.sleep(0.8 * (_db_save_att + 1))

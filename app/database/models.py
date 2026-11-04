@@ -318,17 +318,26 @@ def get_db():
         yield db
         db.commit()
     except OperationalError:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
         try:
             engine.dispose()
         except Exception:
             pass
         raise
     except Exception:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
         raise
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 class User(Base):

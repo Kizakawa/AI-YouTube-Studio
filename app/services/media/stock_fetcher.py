@@ -973,11 +973,10 @@ class StockFetcher:
         clean_q = clean_scene_search_query(query, max_words=3)
         words = clean_q.split() if clean_q else query.split()
 
-        # Thang truy vấn: cụ thể -> đồng nghĩa phổ biến (caiman -> crocodile) -> cảnh toàn đúng bối cảnh
-        # CẤM TUYỆT ĐỐI dùng cảnh toàn (establishing shot rừng/sông trống rỗng) cho Cảnh 1 (Hook 0.0s)!
+        # Thang truy vấn: cụ thể -> đồng nghĩa phổ biến (caiman -> crocodile)
+        # CẤM TUYỆT ĐỐI tự ý tiêm cảnh toàn thiên nhiên trống rỗng (establishing shot) khi LLM/Vision đã từ chối ứng viên cụ thể!
         ladder = build_query_ladder(query, narration=narration, topic=topic)
-        skip_est = bool((visual_analysis or {}).get("skip_establishing_pass"))
-        establishing = [] if (_establishing_pass or is_hook_vid or skip_est) else ladder["establishing"]
+        establishing: List[str] = []
 
         candidate_queries: List[str] = []
 
@@ -1032,39 +1031,8 @@ class StockFetcher:
         _push(query)
 
         def _try_establishing_pass(reason: str) -> Optional[Dict]:
-            """Cảnh toàn đúng địa điểm/bối cảnh thật trước khi nhờ AI vẽ ảnh (chỉ chạy khi còn >= 11s ngân sách)."""
-            if not establishing or is_scene_cancelled_ctx(min_remaining_sec=11.0):
-                return None
-            if deadline_ts is not None and (deadline_ts - time.monotonic()) < 11.0:
-                return None
-            logger.info(f"[StockFetcher] {reason} -> thử cảnh toàn đúng bối cảnh: {establishing[:3]}")
-            est_va = dict(visual_analysis or {})
-            est_va["search_queries"] = list(establishing)
-            est_va["subject"] = f"Bối cảnh thiên nhiên / địa hình ({', '.join(establishing[:2])})"
-            est_va["core_visual_entity"] = establishing[0]
-            est_va["expected_visual_content"] = (
-                f"Cảnh toàn bối cảnh thiên nhiên trống trải ({', '.join(establishing[:2])}) "
-                f"hoặc đúng chủ thể của '{topic or query}' — TUYỆT ĐỐI KHÔNG chứa loài động vật khác lạc đề"
-            )
-            est_va["visual_metaphor"] = (
-                f"Pure landscape establishing shot of ({', '.join(establishing[:2])}) for '{topic or query}' with ZERO unrelated animal species"
-            )
-            est_va["mood"] = "bất kỳ (hệ thống sẽ tự chỉnh màu u tối theo kênh)"
-            est_narr = (
-                f"{narration or query}\n(Cảnh bối cảnh / establishing shot: CHỈ CHẤP NHẬN cảnh thiên nhiên/địa hình trống trải "
-                f"({', '.join(establishing[:3])}) hoặc có đúng chủ thể của '{topic or query}'. "
-                f"BẮT BUỘC TỪ CHỐI mọi clip quay loài động vật khác không có trong chủ đề '{topic or query}', người/vật hiện đại lạc đề, chữ/watermark.)"
-            )
-            return self.search_best_video_clip(
-                query=establishing[0],
-                used_urls=used_urls,
-                visual_analysis=est_va,
-                narration=est_narr,
-                topic=topic,
-                _establishing_pass=True,
-                cancel_event=cancel_event,
-                deadline_ts=deadline_ts,
-            )
+            """Đã vô hiệu hóa: Không tự động ghi đè sang cảnh thiên nhiên trống rỗng khi không có đúng chủ thể."""
+            return None
 
         collected_candidates = []
 

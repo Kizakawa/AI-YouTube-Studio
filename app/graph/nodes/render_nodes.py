@@ -123,7 +123,25 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                         cur_media_path = str(same_scene_vids[0])
                         cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
                         rescued_pre = True
-                    else:
+                    elif int(sc_id) not in (1, 2):
+                        same_scene_imgs = sorted(
+                            [
+                                p for p in (list(m_dir_pre.glob(f"scene_{int(sc_id):03d}_*.jpg")) if m_dir_pre.exists() else [])
+                                if p.exists() and p.stat().st_size > 3_000 and "_cand" not in p.name
+                            ],
+                            key=lambda p: (0 if "_cut" not in p.name else 1, -p.stat().st_mtime),
+                        )
+                        if same_scene_imgs:
+                            rec_sc_poses = [str(p) for p in same_scene_imgs[:2]]
+                            cur_media_path = rec_sc_poses[0]
+                            cur_media_type = "image"
+                            if sc_id in media_map:
+                                media_map[sc_id]["pose_images"] = rec_sc_poses
+                            rescued_pre = True
+                            logger.info(
+                                f"🛡️ [PreRenderRescue] Đã khôi phục ảnh thật '{same_scene_imgs[0].name}' trên đĩa cho Cảnh #{sc_id} (thay thế _graphic.png)!"
+                            )
+                    if not rescued_pre:
                         # 2. Chỉ cắt lát không chồng lấn từ các file Master dài (*_master.mp4 >= 14s),
                         # TUYỆT ĐỐI KHÔNG copy các clip ngắn (scene_YYY_*.mp4) của phân cảnh khác gây lặp cảnh!
                         from app.services.media.longform_chapter_pool import (

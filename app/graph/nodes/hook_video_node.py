@@ -40,6 +40,7 @@ from app.utils.langsmith_tracer import trace_custom_span
 from app.utils.ffmpeg_helper import (
     trim_video,
     get_duration_ms,
+    is_completed_clean_mp4,
     render_opening_hook_multi_cut,
     find_hook_peak_window,
     VIDEO_DURATION_SAFETY_MARGIN,
@@ -88,7 +89,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
         }
 
     cancel_event = threading.Event()
-    hook_deadline_ts = time.monotonic() + 78.0
+    hook_deadline_ts = time.monotonic() + 92.0
 
     def _entry() -> Dict[str, Any]:
         with bind_scene_cancellation(cancel_event, hook_deadline_ts):
@@ -99,7 +100,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
             )
 
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=82.0)
+        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=104.0)
     except asyncio.TimeoutError:
         cancel_event.set()
         recovered_pre_hook: Dict[int, Dict[str, Any]] = {}
@@ -1100,13 +1101,13 @@ Return ONLY valid JSON:
                 if len(wave1_selected) >= 4:
                     break
 
-        wave1_cands = list(enumerate(wave1_selected))
-        if wave1_cands and not _hook_cancelled(24.0):
+        wave1_cands = list(enumerate(wave1_selected[:3]))
+        if wave1_cands and not _hook_cancelled(28.0):
             dl_batches = _run_pool_map_nonblocking(
                 _download_and_extract_single_short,
                 wave1_cands,
-                max_workers=min(4, len(wave1_cands)),
-                stage_timeout=18.0,
+                max_workers=min(3, len(wave1_cands)),
+                stage_timeout=36.0,
             )
         else:
             dl_batches = []
@@ -1117,6 +1118,22 @@ Return ONLY valid JSON:
                 validated_peaks[v_str] = peak_meta
                 if peak_meta.get("passed") and len(candidate_videos) < 8:
                     candidate_videos.append(v_str)
+        if len(candidate_videos) == 0:
+            for p_disk_yt in sorted(hook_cand_dir.glob("hook_peak_clean_yt_*.mp4"), key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True):
+                p_disk_str = str(p_disk_yt)
+                if p_disk_str not in candidate_videos and is_completed_clean_mp4(p_disk_str, min_size_bytes=25_000, min_duration_ms=1800):
+                    ok_dm, dm_val, _ = verify_hook_clip_genuine_motion(p_disk_str)
+                    if ok_dm:
+                        validated_peaks[p_disk_str] = {
+                            "passed": True,
+                            "motion_score": dm_val,
+                            "peak_offset_sec": 0.0,
+                            "peak_duration_sec": max(target_hook_duration_sec, 4.5),
+                            "clean_peak_path": p_disk_str,
+                            "inspect_target": p_disk_str,
+                            "title": p_disk_yt.stem,
+                        }
+                        candidate_videos.append(p_disk_str)
         if len(candidate_videos) == 0 and len(top_curated_yt_cands) > len(wave1_selected) and not _hook_cancelled(34.0):
             # Fast-Drop 'A vs B' ở Wave 2: Bỏ qua các video 'vs' còn lại, chỉ tải tối đa 2 clip đơn chủ thể sạch!
             rem_non_vs = [
@@ -1283,7 +1300,9 @@ Return ONLY valid JSON:
     def _grade_single_hook_candidate(idx_pair: tuple[int, str]) -> Optional[tuple[int, Dict[str, Any]]]:
         nonlocal _strong_passing_count, _passing_count
         idx, v_path = idx_pair
-        if _hook_cancelled(4.0):
+        if cancel_event is not None and cancel_event.is_set():
+            return None
+        if idx >= 2 and _hook_cancelled(3.0):
             return None
         with _early_stop_lock:
             if _strong_passing_count >= 1 or _passing_count >= 2:
@@ -1366,6 +1385,14 @@ Return ONLY valid JSON:
                 )
                 Path(clean_peak_path).unlink(missing_ok=True)
                 return None
+            ok_hk_mot, hk_mot_sc, hk_mot_rsn = verify_hook_clip_genuine_motion(inspect_target)
+            if not ok_hk_mot:
+                logger.info(
+                    f"🚫 [HookVideoNode Motion Gate] Loại bỏ ứng viên Hook '{Path(v_path).name}' tại đoạn Peak @{peak_offset_sec:.1f}s vì: "
+                    f"{hk_mot_rsn} (score={hk_mot_sc})"
+                )
+                Path(clean_peak_path).unlink(missing_ok=True)
+                return None
 
         # 3.2. Trích xuất 3 khung hình đại diện NGAY TẠI ĐOẠN PEAK ĐÃ XỬ LÝ SẠCH (`inspect_target`)
         sheet_path = hook_cand_dir / f"hook_score_sheet_{idx}.jpg"
@@ -1409,26 +1436,30 @@ CRITICAL GRADING CALIBRATION (REAL VIDEO HOOK PRIORITY & PEAK INTENSITY):
 - For Psychology / Human Behavior topics (Niche="{niche}" or Strategy="CINEMATIC_BROLL_FAST_CUT"), valid visual subjects include cinematic human characters/actors, intense eye contact, cold micro-expressions, interrogation body language, or dramatic interpersonal tension matching "{visual_hook_blueprint}" (score entity_match_score 8.0–9.5 if it shows dramatic human behavior/expression without podcast mics or burned-in subtitles).
 - Give the HIGHEST scores (8.8–10.0) on "motion_action_score" and "scroll_stop_score" when the frames show high-intensity peak action, close-up confrontation, or dramatic movement matching "{visual_hook_blueprint}".
 - DO NOT reject a real wild video just because it shows stalking/prowling/swimming rather than a literal movie-like explosion/strike, as we combine multiple video beats in a fast-cut!
-- STRICT ANTI-SUBTITLE & WATERMARK GATE: If ANY frame contains burned-in subtitles (especially Vietnamese text, TikTok/CapCut captions, or foreign text banners), giant text overlays, or channel watermarks, you MUST set "clean_frame_score" <= 3.0 and "recommended_hook_mode": "scene"!
-- ONLY return "recommended_hook_mode": "scene" (rejecting the video) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog/amateur webcam selfie speaking into a mic or isolated disembodied macro eyeball closeup, (e) burned-in subtitles, Vietnamese/foreign text captions, giant text overlays, or watermarks, or (f) a static image, AI-generated illustration/painting, or 2D slideshow with only a fake Ken-Burns zoom/pan where the subject's posture, body parts, water/environment, and 3D perspective remain frozen across all 3 frames (if the 3 frames are the exact same still picture/illustration just zoomed or panned, you MUST set "motion_action_score" <= 2.5 and "recommended_hook_mode": "scene"!).
+- 0.0s OPENING FRAME & SUBJECT CLARITY GATE (CRITICAL FOR YOUTUBE SHORTS RETENTION): The LEFTMOST frame (Frame #1) represents the very first second (0.0s–1.2s) of the Short! If Frame #1 (or >= 2 of the 3 frames) shows ONLY blurry foliage/leaves/branches, severe handheld camera whip-pan blur, or an obstructed background where no clear, focused subject from "{topic}" is immediately discernible, you MUST set "scroll_stop_score" <= 4.0 and "recommended_hook_mode": "scene" so the system can seek a clearer timestamp window or pick a sharper candidate!
+- STRICT ANTI-SUBTITLE, WATERMARK & SYNTHETIC AI GATE: If ANY frame contains burned-in subtitles (especially Vietnamese text, TikTok/CapCut captions, or foreign text banners), giant text overlays, channel watermarks, or synthetic AI-generated video artifacts (Sora/Veo/Kling/Runway airbrushed plastic feathers/fur, glowing cartoon eyes, or hybrid anatomy), you MUST set "clean_frame_score" <= 3.0 and "recommended_hook_mode": "scene"!
+- ONLY return "recommended_hook_mode": "scene" (rejecting the video window) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage or wearing leather falconry jesses/straps when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog/amateur webcam selfie speaking into a mic or isolated disembodied macro eyeball closeup, (e) burned-in subtitles, Vietnamese/foreign text captions, giant text overlays, watermarks, or synthetic AI-generated CGI, (f) a static image, AI-generated illustration/painting, or 2D slideshow with only a fake Ken-Burns zoom/pan where the subject's posture, body parts, water/environment, and 3D perspective remain frozen across all 3 frames (if the 3 frames are the exact same still picture/illustration just zoomed or panned, you MUST set "motion_action_score" <= 2.5 and "recommended_hook_mode": "scene"!), or (g) blurry foliage / camera whip-pan obstruction in Frame #1 or >= 2 frames where the primary subject cannot be clearly seen.
 
 Score strictly from 1.0 to 10.0:
-1. "recommended_hook_mode": "video" if it shows any valid subject from "{topic}" in an authentic setting with clean frames and real 3D physical motion; "scene" ONLY if it violates (a)-(f) above.
-2. "entity_match_score": Does the clip show a valid subject from "{topic}" in an authentic natural habitat/setting? (7.5-10 = authentic subject in wild/natural habitat; <= 4.0 = wrong species, zoo cage/artificial wall, or contradicting biome).
-3. "motion_action_score": Is it real footage with physical movement/life rather than a talking head or static Ken-Burns slide? (7.5-10 = real wildlife/cinematic footage where posture/water/environment changes across frames; 1-2.5 = talking head, static painting/AI illustration, or frozen slideshow zoompan).
-4. "scroll_stop_score": Visual quality & intrigue for a fast-cut Hook (7.0-10 = clear, engaging footage of the subject; <= 5.0 = blurry, obstructed, or boring empty background).
-5. "clean_frame_score": Is the frame 100% clean without burned-in subtitles, Vietnamese/TikTok captions, text overlays, split-screen collages, or watermarks? (8.0-10 = clean footage; <= 3.0 = ANY visible burned-in subtitles, captions, or watermark/logo).
-6. "reason": Short 1-sentence explanation.
+1. "frames_with_clear_subject": Integer (0, 1, 2, or 3) counting how many of the 3 frames clearly show a close or medium view of a valid subject from "{topic}" (head/body/talons occupying >= 12% of the frame in focus, NOT just distant trees/foliage/sky where the animal is out of frame or a tiny speck!). Do NOT parrot "{visual_hook_blueprint}" if the actual pixels only show trees!
+2. "recommended_hook_mode": "video" ONLY if `frames_with_clear_subject >= 2` and it shows a valid subject from "{topic}" in an authentic setting with clean frames and real 3D physical motion; "scene" if `frames_with_clear_subject < 2` or if it violates (a)-(g) above.
+3. "entity_match_score": Does the clip clearly show a valid subject from "{topic}" in an authentic natural habitat/setting across >= 2 frames? (7.5-10 = authentic subject clearly visible in wild/natural habitat; <= 4.0 = wrong species, zoo cage/jesses, contradicting biome, or >= 2 frames of empty/distant trees with no clear subject).
+4. "motion_action_score": Is it real footage with physical movement/life rather than a talking head or static Ken-Burns slide? (7.5-10 = real wildlife/cinematic footage where posture/water/environment changes across frames; 1-2.5 = talking head, static painting/AI illustration, or frozen slideshow zoompan).
+5. "scroll_stop_score": Visual clarity & immediate 0.0s subject focus for a fast-cut Hook (8.0-10 = crisp, in-focus, unmistakable subject right from Frame #1; <= 4.0 = blurry foliage whip-pan, distant empty canopy, heavy camera shake obscuring the subject, or empty background).
+6. "clean_frame_score": Is the frame 100% clean without burned-in subtitles, Vietnamese/TikTok captions, text overlays, split-screen collages, or watermarks? (8.0-10 = clean footage; <= 3.0 = ANY visible burned-in subtitles, captions, or watermark/logo).
+7. "reason": Short 1-sentence explanation of what is literally visible in Frame 1, 2, and 3.
 
 Return ONLY valid JSON:
-{{"recommended_hook_mode": "video", "entity_match_score": 8.5, "motion_action_score": 8.5, "scroll_stop_score": 8.2, "clean_frame_score": 8.5, "reason": "..."}}"""
+{{"frames_with_clear_subject": 3, "recommended_hook_mode": "video", "entity_match_score": 8.5, "motion_action_score": 8.5, "scroll_stop_score": 8.2, "clean_frame_score": 8.5, "reason": "..."}}"""
 
         score_res: Optional[Dict[str, Any]] = None
-        for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=3, require_vision=True):
-            if _hook_cancelled(3.5):
+        for v_try_idx, (model_name, key) in enumerate(rotator.iter_best_model_key_pairs(max_total_attempts=3, require_vision=True)):
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            if v_try_idx >= 1 and _hook_cancelled(2.5):
                 break
             with _early_stop_lock:
-                if _strong_passing_count >= 1 or _passing_count >= 2:
+                if _strong_passing_count >= 2 or _passing_count >= 2:
                     return None
             _sem_ok = _VISION_SEM.acquire(timeout=3.5)
             try:
@@ -1465,6 +1496,7 @@ Return ONLY valid JSON:
                         if m:
                             data = json.loads(m.group(0))
                             rec_mode = str(data.get("recommended_hook_mode") or "video").strip().lower()
+                            f_clear = int(data.get("frames_with_clear_subject", 2))
                             e_score = float(data.get("entity_match_score", 5.0))
                             m_score = float(data.get("motion_action_score", 5.0))
                             s_score = float(data.get("scroll_stop_score", m_score))
@@ -1473,6 +1505,7 @@ Return ONLY valid JSON:
                             min_scroll_req = 6.5 if hook_production_strategy == "HYBRID_MOTION_AND_SCENE_MONTAGE" else 5.8
                             passed = (
                                 (rec_mode == "video")
+                                and (f_clear >= 2)
                                 and (overall >= 6.2)
                                 and (e_score >= 5.8)
                                 and (c_score >= 6.8)
@@ -1510,7 +1543,7 @@ Return ONLY valid JSON:
                     _strong_passing_count += 1
         elif score_res is not None and not score_res.get("passed"):
             with _early_stop_lock:
-                _skip_w2 = _skip_w2 or (_passing_count >= 1) or (_strong_passing_count >= 1)
+                _skip_w2 = _skip_w2 or (_passing_count >= 2) or (_strong_passing_count >= 2)
         if score_res is not None and not score_res.get("passed") and not _skip_w2:
             try:
                 alt_excl_v = [(max(0.0, peak_offset_sec - 1.5), peak_offset_sec + 5.5)]
@@ -1543,6 +1576,10 @@ Return ONLY valid JSON:
                         g_alt2 = VisualCritic.inspect_clip_before_concat(
                             alt_clean_path, min_short_edge=720, min_sharpness=5.4, check_watermark=True, allow_snow=True, auto_sanitize=True
                         )
+                        if g_alt2.get("passed", False):
+                            ok_mot_alt2, _, _ = verify_hook_clip_genuine_motion(alt_clean_path)
+                            if not ok_mot_alt2:
+                                g_alt2["passed"] = False
                         if g_alt2.get("passed", False):
                             alt_sheet = hook_cand_dir / f"hook_score_sheet_alt2_{idx}.jpg"
                             subprocess.run(
@@ -1593,13 +1630,19 @@ Return ONLY valid JSON:
                                                 if m2:
                                                     d2 = json.loads(m2.group(0))
                                                     rec2 = str(d2.get("recommended_hook_mode") or "video").strip().lower()
+                                                    f_clear2 = int(d2.get("frames_with_clear_subject", 2))
                                                     e2 = float(d2.get("entity_match_score", 5.0))
                                                     m2_s = float(d2.get("motion_action_score", 5.0))
                                                     s2_s = float(d2.get("scroll_stop_score", m2_s))
                                                     c2_s = float(d2.get("clean_frame_score", 5.0))
+                                                    if f_clear2 <= 1:
+                                                        e2 = min(e2, 4.5)
+                                                        s2_s = min(s2_s, 4.5)
+                                                        rec2 = "scene"
                                                     ov2 = round(e2 * 0.40 + m2_s * 0.25 + s2_s * 0.20 + c2_s * 0.15, 2)
                                                     pass2 = (
                                                         (rec2 == "video")
+                                                        and (f_clear2 >= 2)
                                                         and (ov2 >= 6.2)
                                                         and (e2 >= 5.8)
                                                         and (c2_s >= 6.8)
@@ -1710,7 +1753,7 @@ Return ONLY valid JSON:
                 if g_res:
                     graded_pairs.append(g_res)
                 with _early_stop_lock:
-                    should_stop = (_strong_passing_count >= 1) or (_passing_count >= 2)
+                    should_stop = (_strong_passing_count >= 2) or (_passing_count >= 2)
                 if should_stop or _hook_cancelled(3.5):
                     for pend_f in grade_futs:
                         if not pend_f.done():
@@ -1931,12 +1974,67 @@ Return ONLY valid JSON:
             hook_ov_score_a = float(best_candidate.get("overall_score", 8.0))
             hook_cl_score_a = float(best_candidate.get("clean_frame_score", 8.0))
             hook_sh_round_a = round(float(s1_sharp_val), 2)
+            fullpeak_persist_path = str(work_dir / "hook_motion_001_fullpeak.mp4")
+            try:
+                import shutil as _sh_fp
+                _src_fp = clean_p_path if use_precleaned else best_v_path
+                if _src_fp and Path(_src_fp).exists():
+                    _sh_fp.copy2(_src_fp, fullpeak_persist_path)
+            except Exception:
+                fullpeak_persist_path = clean_p_path if use_precleaned else best_v_path
+            try:
+                reserve_s2_path = str(work_dir / "hook_reserve_002.mp4")
+                unused_other_passing = [
+                    c for c in other_passing
+                    if c.get("video_path") not in used_second_paths and Path(str(c.get("clean_peak_path") or c.get("video_path") or "")).exists()
+                ]
+                if unused_other_passing:
+                    s2_cand = unused_other_passing[0]
+                    s2_src = str(s2_cand.get("clean_peak_path") or s2_cand["video_path"])
+                    s2_use_pre = bool(s2_cand.get("clean_peak_path") and Path(str(s2_cand["clean_peak_path"])).exists())
+                    s2_off = 0.0 if s2_use_pre else float(s2_cand.get("peak_offset_sec", 0.0))
+                    trim_video(
+                        input_path=s2_src,
+                        duration_seconds=max(3.8, scene_2_duration_sec + 0.25),
+                        output_path=reserve_s2_path,
+                        width=1080,
+                        height=1920,
+                        fps=30,
+                        is_scifi=is_scifi,
+                        niche=atmosphere_fx,
+                        apply_grading=True,
+                        is_hook_scene=False,
+                        fair_use_transform=not s2_use_pre,
+                        start_offset_sec=s2_off,
+                        preserve_continuous_flow=True,
+                    )
+                elif Path(fullpeak_persist_path).exists():
+                    fp_dur_s = get_duration_ms(fullpeak_persist_path) / 1000.0
+                    s2_cont_off = round(target_hook_duration_sec + 0.25, 2)
+                    if fp_dur_s >= s2_cont_off + max(2.8, scene_2_duration_sec * 0.8):
+                        trim_video(
+                            input_path=fullpeak_persist_path,
+                            duration_seconds=max(3.6, scene_2_duration_sec + 0.25),
+                            output_path=reserve_s2_path,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            is_scifi=is_scifi,
+                            niche=atmosphere_fx,
+                            apply_grading=True,
+                            is_hook_scene=False,
+                            fair_use_transform=True,
+                            start_offset_sec=s2_cont_off,
+                            preserve_continuous_flow=True,
+                        )
+            except Exception as _e_res_s2:
+                logger.debug(f"[HookVideoNode] Scene 2 reserve clip preparation skip: {_e_res_s2}")
             pre_resolved_hook_media[1] = {
                 "media_path": hook_output_clip,
                 "media_type": "hook_ready_video",
                 "production_method": hook_mode,
                 "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                "full_peak_path": clean_p_path if use_precleaned else best_v_path,
+                "full_peak_path": fullpeak_persist_path,
                 "full_peak_duration_sec": natural_peak_dur,
                 "youtube_id": hook_vid_id,
                 "source_url": hook_source_url,
@@ -1950,7 +2048,7 @@ Return ONLY valid JSON:
                 scene_1["media_path"] = hook_output_clip
                 scene_1["media_type"] = "hook_ready_video"
                 scene_1["production_method"] = hook_mode
-                scene_1["full_peak_path"] = clean_p_path if use_precleaned else best_v_path
+                scene_1["full_peak_path"] = fullpeak_persist_path
                 scene_1["full_peak_duration_sec"] = natural_peak_dur
                 scene_1["youtube_id"] = hook_vid_id
                 scene_1["source_url"] = hook_source_url
@@ -2350,96 +2448,8 @@ Return ONLY valid JSON:
                             logger.info(
                                 f"🔥 [HookVideoNode FullPeak Recovery] Đã khôi phục Video chuyển động thật '{fullpeak_disk.name}' cho Cảnh 1!"
                             )
-
-                if not stock_hook_ok and not _hook_cancelled(2.5):
-                    sf_t3 = StockFetcher()
-                    from app.agents.media_agent import MediaAgent
-                    ma_t3 = MediaAgent()
-                    t3_single_qs = build_single_entity_stock_queries(
-                        raw_queries=[
-                            *llm_s1_storyline_chunks,
-                            *(stock_broll_queries or []),
-                            *(queries or []),
-                            beat_1_subject,
-                            beat_2_subject,
-                            canonical_subject or primary_entity or visual_keyword or topic,
-                        ],
-                        subject_entity=s1_plan_subject or canonical_subject or primary_entity,
-                        topic=topic,
-                        max_words=2,
-                    )
-                    for t3_q in t3_single_qs[:4]:
-                        if stock_hook_ok or _hook_cancelled(2.0):
-                            break
-                        v_hits_t3 = (
-                            (sf_t3.search_videos(t3_q, per_page=6, orientation="portrait") or [])
-                            + (sf_t3.search_pixabay_videos(t3_q, per_page=6, video_type="film") or [])
-                        )
-                        for vh_t3 in v_hits_t3[:4]:
-                            v_u_t3 = str(vh_t3.get("url") or "").strip()
-                            if not v_u_t3:
-                                continue
-                            v_t_t3 = str(vh_t3.get("title") or t3_q)
-                            if not rag.try_claim_in_job_video(job_id=job_id, vid_id=v_u_t3, url=v_u_t3, title=v_t_t3, scene_id=1):
-                                continue
-                            raw_t3_dl = str(hook_cand_dir / "t3_pure_video_raw.mp4")
-                            ma_t3.download_file(v_u_t3, raw_t3_dl)
-                            if Path(raw_t3_dl).exists() and Path(raw_t3_dl).stat().st_size > 20_000:
-                                pk_t3_off, _ = find_hook_peak_window(
-                                    raw_t3_dl, min_duration=max(target_hook_duration_sec, 2.5), max_duration=10.0
-                                )
-                                trim_video(
-                                    input_path=raw_t3_dl,
-                                    duration_seconds=target_hook_duration_sec,
-                                    output_path=hook_output_clip,
-                                    width=1080,
-                                    height=1920,
-                                    fps=30,
-                                    is_scifi=is_scifi,
-                                    niche=atmosphere_fx,
-                                    apply_grading=True,
-                                    is_hook_scene=True,
-                                    fair_use_transform=True,
-                                    start_offset_sec=pk_t3_off,
-                                    preserve_continuous_flow=True,
-                                )
-                                Path(raw_t3_dl).unlink(missing_ok=True)
-                                if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 15_000:
-                                    ok_t3_mot, t3_mot_val, _ = verify_hook_clip_genuine_motion(hook_output_clip)
-                                    t3_chk = VisualCritic.inspect_clip_before_concat(
-                                        hook_output_clip, min_short_edge=540, min_sharpness=11.0, check_watermark=True, auto_sanitize=True
-                                    )
-                                    if ok_t3_mot and t3_chk.get("passed"):
-                                        ok_t3_sh, t3_sh_val = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.0)
-                                        stock_hook_ok = True
-                                        final_hook_visual_mode = "video"
-                                        hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
-                                        pre_resolved_hook_media[1] = {
-                                            "media_path": hook_output_clip,
-                                            "media_type": "hook_ready_video",
-                                            "production_method": hook_mode,
-                                            "visual_strategy": "STOCK_VIDEO",
-                                            "source_url": v_u_t3,
-                                            "hook_verified": True,
-                                            "hook_overall_score": 8.2,
-                                            "hook_clean_score": 8.4,
-                                            "hook_sharpness": round(float(t3_sh_val), 2),
-                                            "strategy_rationale": f"Tier-3 Pure Video Hook ('{t3_q}', motion={t3_mot_val:.1f})",
-                                        }
-                                        scene_1.update(pre_resolved_hook_media[1])
-                                        if scenes_media:
-                                            scenes_media[0] = scene_1
-                                        logger.info(
-                                            f"🎬 [HookVideoNode Tier-3 Pure Video] Đã nạp Video chuyển động thật cho Cảnh 1 ('{t3_q}', motion={t3_mot_val:.2f})!"
-                                        )
-                                        break
-                                    Path(hook_output_clip).unlink(missing_ok=True)
-                                    rag.release_in_job_video_claim(job_id=job_id, vid_id=v_u_t3, url=v_u_t3, title=v_t_t3, scene_id=1)
-                            else:
-                                Path(raw_t3_dl).unlink(missing_ok=True)
-                                rag.release_in_job_video_claim(job_id=job_id, vid_id=v_u_t3, url=v_u_t3, title=v_t_t3, scene_id=1)
             except Exception as e_g_hk:
-                logger.debug(f"[HookVideoNode] Tier-3 pure video hook rescue skip: {e_g_hk}")
+                logger.debug(f"[HookVideoNode] FullPeak hook recovery skip: {e_g_hk}")
 
         if not stock_hook_ok:
             final_hook_visual_mode = "video"
@@ -2449,12 +2459,13 @@ Return ONLY valid JSON:
                 "Ủy quyền Cảnh 1 sang node_fetch_media."
             )
 
-    # Dọn dẹp triệt để thư mục `hook_candidates/*.mp4` sau khi Cảnh 1 đã xong để KHÔNG BAO GIỜ có node phía sau cắt lại ứng viên của Cảnh 1!
-    try:
-        for _cand_mp4 in hook_cand_dir.glob("*.mp4"):
-            _cand_mp4.unlink(missing_ok=True)
-    except Exception:
-        pass
+    if cancel_event is None or not cancel_event.is_set():
+        # Dọn dẹp triệt để thư mục `hook_candidates/*.mp4` sau khi Cảnh 1 đã xong để KHÔNG BAO GIỜ có node phía sau cắt lại ứng viên của Cảnh 1!
+        try:
+            for _cand_mp4 in hook_cand_dir.glob("*.mp4"):
+                _cand_mp4.unlink(missing_ok=True)
+        except Exception:
+            pass
 
     actual_hook_window_sec = round(target_hook_duration_sec, 2)
     _hook_best_score = best_candidate["overall_score"] if best_candidate else (8.4 if pre_resolved_hook_media else None)

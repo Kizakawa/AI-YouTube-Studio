@@ -85,11 +85,12 @@ def execute_youtube_short_peak_clone_sync(
         else (t_fn_start + default_budget_sec)
     )
     # Tách ngân sách Tầng 1 (YouTube) và Tầng 2/3 (Pexels/Pixabay/Bilibili) tỷ lệ thuận theo ngân sách thực tế:
-    # Nếu caller đã quét Pexels trước đó (skip_stock_fallback=True), dành trọn ngân sách cho Tầng 1 YouTube!
+    # Ngay cả khi caller đã quét Pexels trước đó (skip_stock_fallback=True), vẫn giữ lại 8–12s cho Tầng 3 Bilibili Documentary Safe-Crop!
     total_avail_sec = max(8.0, deadline_ts - t_fn_start)
     yt_tier1_budget_sec = 48.0 if (clip_role or "").upper() == "HOOK" else 44.0
+    _bili_enabled = os.getenv("ALLOW_BILIBILI_BROLL_FALLBACK", "true").strip().lower() not in ("0", "false", "no", "off")
     if skip_stock_fallback:
-        reserve_for_tier2_sec = 0.0
+        reserve_for_tier2_sec = min(11.0, max(8.0, total_avail_sec * 0.26)) if (_bili_enabled and total_avail_sec >= 24.0) else 0.0
     elif total_avail_sec >= 42.0:
         reserve_for_tier2_sec = 14.0
     else:
@@ -235,11 +236,11 @@ def execute_youtube_short_peak_clone_sync(
                 if _is_cancelled():
                     return None
                 rem_budget = _yt_remaining_sec()
-                min_tail_sec = 3.0 if skip_stock_fallback else reserve_for_tier2_sec
+                min_tail_sec = max(3.0, reserve_for_tier2_sec)
                 if (
                     (rem_budget <= 4.0 and claimed_probes >= 1)
                     or (_remaining_sec() <= min_tail_sec and claimed_probes >= 1)
-                    or _remaining_sec() <= 4.5
+                    or _remaining_sec() <= max(4.5, min_tail_sec - 1.5)
                 ):
                     logger.info(
                         f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Hết ngân sách Tầng 1 YouTube "
@@ -351,7 +352,7 @@ def execute_youtube_short_peak_clone_sync(
                             # Nếu đã tải được >= 50% với tốc độ ổn định (>= 150 KiB/s), tuyệt đối không ngắt ngang khi sắp hoàn tất!
                             if pct_done >= 0.50 and dl_speed >= 150 * 1024:
                                 return
-                            eff_hook_rem = _remaining_sec() if claimed_probes == 0 else _yt_remaining_sec()
+                            eff_hook_rem = _yt_remaining_sec()
                             if eff_hook_rem <= 1.0 and pct_done < 0.40:
                                 raise TimeoutError(
                                     f"Tier-1 deadline reached while downloading {vid_url}"
@@ -382,13 +383,13 @@ def execute_youtube_short_peak_clone_sync(
                     })
                     # TUYỆT ĐỐI KHÔNG dùng download_ranges (vì yt-dlp gọi ffmpeg seek qua HTTP dễ bị treo vô hạn trên CDN YouTube).
                     # Tải thẳng file MP4 <= 28MB qua HTTP thuần; nếu quá 12s chưa tải xong hoặc nhận cancel_event thì hủy ngay!
-                    eff_dl_rem = _remaining_sec() if claimed_probes == 0 else _yt_remaining_sec()
-                    sem_wait = min(10.0, max(0.5, eff_dl_rem - 2.0))
+                    eff_dl_rem = _yt_remaining_sec()
+                    sem_wait = min(10.0, max(0.5, eff_dl_rem - 1.5))
                     if not _yt_download_sem.acquire(timeout=sem_wait):
                         rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                         break
                     try:
-                        if _is_cancelled() or (_remaining_sec() if claimed_probes == 0 else _yt_remaining_sec()) <= 1.8:
+                        if _is_cancelled() or _yt_remaining_sec() <= 1.5:
                             raise TimeoutError("Cancelled or Tier-1 deadline reached right after _yt_download_sem acquire")
                         t_dl_start = time.monotonic()
                         with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
@@ -516,22 +517,33 @@ def execute_youtube_short_peak_clone_sync(
                             deadline_ts=max(yt_tier1_deadline, time.monotonic() + 14.0),
                             target_visual_query=target_vq,
                         )
-                        # Chỉ chạy Subtitle-Safe Reframe Rescue trên ứng viên cuối cùng (khi đã hết lượt probe hoặc cạn ứng viên)
-                        # và lỗi chỉ là dòng phụ đề sát mép dưới/trên (tuyệt đối không lãng phí thời gian cứu video sở thú, sai loài hoặc kênh đóng logo giữa màn hình).
-                        if not passed_vis and claimed_probes >= max_claimed_probes and _remaining_sec() > 8.0:
+                        # Chạy Subtitle-Safe Reframe Rescue ngay khi ứng viên đã tải xong trên đĩa, đúng chủ thể thật nhưng bị từ chối chỉ vì dòng phụ đề sát mép dưới/trên
+                        # (tuyệt đối không cứu video sở thú, sai loài, AI/CGI hoặc talking head).
+                        if not passed_vis and claimed_probes >= 1 and not _is_cancelled():
                             reason_low = (vis_reason or "").lower()
                             hard_reject_tokens = (
                                 "zoo", "captive", "enclosure", "fence", "cage", "wrong",
-                                "species", "watermark", "logo", "edits", "channel", "animated", "cartoon", "talking",
+                                "species", "jesses", "strap", "anklet", "falconry", "animated", "cartoon",
+                                "talking", "presenter", "ai-generated", "cgi", "synthetic", "illustration",
+                                "static", "photograph", "slideshow", "ken-burns", "frozen",
                             )
                             if (
-                                any(k in reason_low for k in ("subtitle", "caption", "bottom", "top"))
+                                any(k in reason_low for k in ("subtitle", "caption", "bottom", "top", "text", "burned-in", "overlay", "banner"))
                                 and not any(bad in reason_low for bad in hard_reject_tokens)
                             ):
                                 rescue_crop_path = str(Path(tmp_dir) / "rescue_safecrop.mp4")
+                                if "top" in reason_low and "bottom" not in reason_low:
+                                    y_crop_expr = "ih*0.18"
+                                elif "bottom" in reason_low and "top" not in reason_low:
+                                    y_crop_expr = "ih*0.06"
+                                else:
+                                    y_crop_expr = "ih*0.12"
                                 vf_safecrop = (
-                                    "scale=1380:2454:force_original_aspect_ratio=increase,"
-                                    "crop=1080:1920:(iw-1080)/2:(ih-1920)*0.22,fps=30,format=yuv420p"
+                                    f"crop=iw*0.76:ih*0.76:iw*0.12:{y_crop_expr},"
+                                    "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
+                                    "crop=1080:1920:(iw-1080)/2:(ih-1920)/2,"
+                                    "eq=contrast=1.06:saturation=1.10:brightness=0.01,"
+                                    "unsharp=5:5:0.85:3:3:0.35,fps=30,format=yuv420p"
                                 )
                                 cmd_sc = [
                                     "ffmpeg", "-y", "-v", "error",

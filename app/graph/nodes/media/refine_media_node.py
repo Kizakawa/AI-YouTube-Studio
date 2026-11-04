@@ -383,9 +383,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     from app.services.video_memory_rag import get_video_memory_rag
                     rag_yt_first = get_video_memory_rag()
                     yt_first_dl = (
-                        min(deadline_ts - 16.0, time.monotonic() + 40.0)
+                        min(deadline_ts - 18.0, time.monotonic() + 34.0)
                         if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 24.0)
-                        else (deadline_ts or (time.monotonic() + 40.0))
+                        else (deadline_ts or (time.monotonic() + 34.0))
                     )
                     out_yt_first = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
                     yt_first_res = await asyncio.to_thread(
@@ -395,11 +395,11 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         target_duration_sec=sc_dur_sec,
                         clip_role="HOOK" if scene_id == 1 else "PEAK",
                         used_urls=used_refine_urls,
-                        fallback_query=overall_refine_q,
+                        fallback_query=critic_broll_q or overall_refine_q,
                         subject_entity=subj_refine,
                         narration=narr or state.get("topic", ""),
                         topic=state.get("topic", ""),
-                        search_scope="SCRIPT_OVERALL",
+                        search_scope="SCENE_SPECIFIC" if critic_sug_q else "SCRIPT_OVERALL",
                         overall_script_query=overall_refine_q,
                         max_peak_duration_sec=14.0,
                         job_id=job_id_refine,
@@ -447,17 +447,17 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     from app.utils.ffmpeg_helper import trim_video
                     from app.graph.tools.tool_schemas import build_single_entity_stock_queries
                     rag_ref = get_video_memory_rag()
-                    primary_pexels_q = critic_broll_q if (has_semantic_vision_defect and critic_broll_q) else clean_kw_q
+                    primary_pexels_q = clean_kw_q or critic_broll_q
                     ref_single_qs = build_single_entity_stock_queries(
                         primary_query=primary_pexels_q,
-                        secondary_query=clean_kw_q if primary_pexels_q != clean_kw_q else (audited_fb_q or overall_refine_q),
+                        secondary_query=critic_broll_q if primary_pexels_q != critic_broll_q else (audited_fb_q or overall_refine_q),
                         subject_entity=subj_refine or primary_entity or "",
                         topic=state.get("topic", ""),
                         narration=narr,
                         max_words=3,
                     )
                     custom_pexels_qs: List[str] = []
-                    for cq in (critic_broll_q, clean_kw_q, *(ref_single_qs or [])):
+                    for cq in (clean_kw_q, critic_broll_q, *(ref_single_qs or [])):
                         cq_s = str(cq or "").strip()
                         if cq_s and cq_s not in custom_pexels_qs:
                             custom_pexels_qs.append(cq_s)
@@ -467,6 +467,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         "subject": subj_refine or primary_entity or clean_kw_q,
                         "core_visual_entity": subj_refine or primary_entity or clean_kw_q,
                         "negative_cues": [critic_fb] if critic_fb else [],
+                        "skip_establishing_pass": True,
                     }
                     best_v = await asyncio.to_thread(
                         media_agent.search_best_video_clip,
@@ -623,47 +624,56 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                 from app.graph.tools.tool_schemas import build_single_entity_stock_queries
                 from app.services.media.stock_fetcher import StockFetcher
-                if scene_id in (1, 2):
-                    sf_t7 = StockFetcher()
-                    core_2w_qs = build_single_entity_stock_queries(
-                        primary_query=subj_refine or primary_entity or clean_kw_q,
-                        secondary_query=clean_kw_q,
-                        subject_entity=primary_entity or subj_refine or "",
+                if is_mandatory_vid:
+                    from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
+                    from app.utils.ffmpeg_helper import get_duration_ms
+                    from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion
+                    out_bili_open = str(media_dir / f"scene_{scene_id:03d}_refined_bili_open_r{retry_count}.mp4")
+                    bili_open_res = await asyncio.to_thread(
+                        _try_bilibili_broll_fallback,
+                        search_phrases=[q_x for q_x in dict.fromkeys([clean_kw_q, critic_broll_q, overall_refine_q]) if q_x][:4],
+                        search_query=clean_kw_q or overall_refine_q,
+                        subject_entity=subj_refine or primary_entity or "",
                         topic=state.get("topic", ""),
-                        narration=narr,
-                        max_words=2,
+                        narration=narr or state.get("topic", ""),
+                        overall_script_query=overall_refine_q,
+                        effective_scope="SCENE_SPECIFIC" if critic_sug_q else "SCRIPT_OVERALL",
+                        output_path=out_bili_open,
+                        target_duration_sec=sc_dur_sec,
+                        clip_role="HOOK" if scene_id == 1 else "PEAK",
+                        allow_3d_cgi_monster=False,
+                        used=used_refine_urls,
+                        job_id=job_id_refine,
+                        eff_scene_id=scene_id,
+                        cancel_event=cancel_event,
+                        deadline_ts=deadline_ts,
                     )
-                    for q_2w in core_2w_qs[:4]:
-                        if replaced or _refine_cancelled() or not q_2w:
-                            break
-                        v_hits_2w = await asyncio.to_thread(
-                            sf_t7.search_videos,
-                            q_2w,
-                            per_page=8,
-                            orientation="landscape" if is_lf_refine else "portrait",
-                        ) or []
-                        if not v_hits_2w:
-                            v_hits_2w = await asyncio.to_thread(
-                                sf_t7.search_pixabay_videos,
-                                q_2w,
-                                per_page=8,
-                                video_type="film",
-                            ) or []
-                        for vh_item in v_hits_2w[:4]:
-                            fmt_vh = sf_t7.format_video_candidate(vh_item, query=q_2w, used=used_refine_urls)
-                            vh_u = str((fmt_vh or {}).get("url") or "").strip()
-                            if not vh_u or vh_u in used_refine_urls:
-                                continue
-                            used_refine_urls.add(vh_u)
-                            raw_2w = str(media_dir / f"scene_{scene_id:03d}_t7_2w_raw_r{retry_count}.mp4")
-                            out_2w = str(media_dir / f"scene_{scene_id:03d}_refined_opening_video_r{retry_count}.mp4")
-                            await asyncio.to_thread(media_agent.download_file, vh_u, raw_2w)
-                            if Path(raw_2w).exists() and Path(raw_2w).stat().st_size > 15_000:
+                    if bili_open_res and bili_open_res.get("media_path") and Path(bili_open_res["media_path"]).exists():
+                        item["media_path"] = bili_open_res["media_path"]
+                        item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
+                        item["pose_images"] = []
+                        item["production_method"] = "REFINED_BILIBILI_DOCUMENTARY_VIDEO"
+                        item["source_url"] = str(bili_open_res.get("source_url") or bili_open_res["media_path"])
+                        replaced = True
+                        logger.info(f"Scene {scene_id}: 🎬 [Mandatory Video Bilibili Documentary] Đã nạp Video tư liệu kiểm định Vision cho '{clean_kw_q}'")
+                    if not replaced and scene_id in (1, 2):
+                        reserve_cand_ref = (
+                            work_dir / "hook_motion_001_fullpeak.mp4"
+                            if scene_id == 1
+                            else work_dir / "hook_reserve_002.mp4"
+                        )
+                        if not reserve_cand_ref.exists() and scene_id == 2:
+                            reserve_cand_ref = work_dir / "hook_motion_001_fullpeak.mp4"
+                        if reserve_cand_ref.exists() and reserve_cand_ref.stat().st_size > 20_000:
+                            res_dur_ref = get_duration_ms(str(reserve_cand_ref)) / 1000.0
+                            start_off_ref = 0.0 if reserve_cand_ref.name == "hook_reserve_002.mp4" or scene_id == 1 else 3.35
+                            if res_dur_ref >= start_off_ref + max(2.4, sc_dur_sec * 0.75):
+                                out_res_ref = str(media_dir / f"scene_{scene_id:03d}_refined_hook_reserve_r{retry_count}.mp4")
                                 await asyncio.to_thread(
                                     trim_video,
-                                    input_path=raw_2w,
+                                    input_path=str(reserve_cand_ref),
                                     duration_seconds=sc_dur_sec,
-                                    output_path=out_2w,
+                                    output_path=out_res_ref,
                                     width=w_ref,
                                     height=h_ref,
                                     fps=30,
@@ -671,28 +681,25 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     niche=current_niche,
                                     apply_grading=True,
                                     is_hook_scene=(scene_id == 1),
-                                    fair_use_transform=True,
-                                    start_offset_sec=0.0,
+                                    fair_use_transform=(start_off_ref > 0.0),
+                                    start_offset_sec=start_off_ref,
                                     preserve_continuous_flow=True,
                                 )
-                                Path(raw_2w).unlink(missing_ok=True)
-                                if Path(out_2w).exists() and Path(out_2w).stat().st_size > 12_000:
-                                    ok_2w_clean, _ = await asyncio.to_thread(
-                                        _verify_and_sanitize_refined_media, out_2w, True, scene_id
-                                    )
-                                    if ok_2w_clean:
-                                        item["media_path"] = out_2w
+                                if Path(out_res_ref).exists() and Path(out_res_ref).stat().st_size > 15_000:
+                                    ok_ref_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, out_res_ref)
+                                    if ok_ref_mot:
+                                        item["media_path"] = out_res_ref
                                         item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
                                         item["pose_images"] = []
-                                        item["production_method"] = "REFINED_OPENING_PURE_STOCK_VIDEO"
-                                        item["source_url"] = vh_u
+                                        item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
+                                        item["source_url"] = str(reserve_cand_ref)
                                         replaced = True
-                                        logger.info(f"Scene {scene_id}: 🎬 [Opening 5-7s Pure Video] Đã tải Video chuyển động thật ('{q_2w}')")
-                                        break
-                                    Path(out_2w).unlink(missing_ok=True)
-                            else:
-                                Path(raw_2w).unlink(missing_ok=True)
-                elif not is_mandatory_vid:
+                                        logger.info(
+                                            f"Scene {scene_id}: 🔥 [Opening 5-7s Hook Reserve] Đã nạp Video chuyển động thật đã duyệt Vision ('{reserve_cand_ref.name}') -> {Path(out_res_ref).name}"
+                                        )
+                                    else:
+                                        Path(out_res_ref).unlink(missing_ok=True)
+                if not replaced and scene_id not in (1, 2):
                     out_resc_img = str(media_dir / f"scene_{scene_id:03d}_refined_gimg_rescue_r{retry_count}.jpg")
                     g_res = await asyncio.to_thread(
                         execute_google_cinematic_image_sync,
@@ -755,6 +762,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         key=_safe_mtime,
                         reverse=True,
                     )
+                    recovered_to = False
                     for rc_p in ref_cands_to[:2]:
                         ok_rc_to, _ = await asyncio.to_thread(_verify_and_sanitize_refined_media, str(rc_p), True, sid_to)
                         if ok_rc_to:
@@ -762,10 +770,28 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             item["media_type"] = "hook_ready_video" if sid_to == 1 else "video"
                             item["pose_images"] = []
                             item["production_method"] = "REFINED_TIMEOUT_DISK_RECOVERED_VIDEO"
+                            recovered_to = True
                             logger.info(
                                 f"Scene {sid_to}: 🛡️ [RefineMedia Timeout Recovery] Đã khôi phục file '{rc_p.name}' vừa tải xong trên đĩa!"
                             )
                             break
+                    if not recovered_to and sid_to not in (1, 2):
+                        ref_imgs_to = sorted(
+                            [
+                                p for p in media_dir.glob(f"scene_{sid_to:03d}_*.jpg")
+                                if _safe_size(p) > 3_000 and "_cand" not in p.name
+                            ],
+                            key=lambda p: (0 if "_cut" not in p.name else 1, -_safe_mtime(p)),
+                        )
+                        if ref_imgs_to:
+                            rec_img_poses = [str(p) for p in ref_imgs_to[:2]]
+                            item["media_path"] = rec_img_poses[0]
+                            item["media_type"] = "image"
+                            item["pose_images"] = rec_img_poses
+                            item["production_method"] = "REFINED_TIMEOUT_DISK_RECOVERED_IMAGE"
+                            logger.info(
+                                f"Scene {sid_to}: 🛡️ [RefineMedia Timeout Recovery] Đã khôi phục ảnh '{ref_imgs_to[0].name}' vừa tải xong trên đĩa!"
+                            )
                 except Exception:
                     pass
                 if is_lf_refine and str(item.get("media_path") or "").lower().endswith("_graphic.png"):

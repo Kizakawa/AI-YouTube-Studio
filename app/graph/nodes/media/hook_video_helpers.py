@@ -387,12 +387,12 @@ def verify_hook_clip_genuine_motion(
                 raw_d = float(ImageStat.Stat(diff_im).mean[0])
                 best_d = raw_d
                 best_diff_im = diff_im
-                for z_fac in (0.975, 0.988, 1.0, 1.012, 1.025, 1.038):
+                for z_fac in (0.94, 0.96, 0.975, 0.988, 1.0, 1.012, 1.025, 1.04, 1.06):
                     zw, zh = int(round(w * z_fac)), int(round(h * z_fac))
                     ar = a.resize((zw, zh), Image.Resampling.BILINEAR)
                     ox, oy = (zw - w) // 2, (zh - h) // 2
-                    for dx in (-4, -2, 0, 2, 4):
-                        for dy in (-4, -2, 0, 2, 4):
+                    for dx in range(-14, 15, 2):
+                        for dy in range(-14, 15, 2):
                             bx0, by0 = ox + mx + dx, oy + my + dy
                             bx1, by1 = ox + w - mx + dx, oy + h - my + dy
                             if 0 <= bx0 and 0 <= by0 and bx1 <= zw and by1 <= zh:
@@ -429,8 +429,8 @@ def verify_hook_clip_genuine_motion(
                 return False, round(med_comp, 2), f"Ảnh tĩnh / AI illustration zoompan giả chuyển động (med_comp={med_comp:.2f}, med_act={med_act:.2f})"
             if frozen_ratio > max_frozen_ratio and med_comp < 7.5 and med_act < 12.0:
                 return False, round(med_comp, 2), f"Đóng băng khung hình đầu (frozen_ratio={frozen_ratio:.2f}, med_comp={med_comp:.2f})"
-            if med_comp < 6.2 and comp_ratio < 0.54 and med_act < 13.5:
-                return False, round(med_comp, 2), f"Slideshow ảnh tĩnh Ken-Burns zoom (med_comp={med_comp:.2f}, comp_ratio={comp_ratio:.2f})"
+            if (comp_ratio < 0.48 and med_comp < 18.0) or (med_comp < 6.2 and comp_ratio < 0.54 and med_act < 13.5):
+                return False, round(med_comp, 2), f"Slideshow ảnh tĩnh Ken-Burns zoom/pan (med_comp={med_comp:.2f}, comp_ratio={comp_ratio:.2f})"
             return True, round(max(med_comp, med_act * 0.55), 2), "OK"
 
     try:
@@ -498,8 +498,8 @@ def _ensure_hook_clip_sharpness_and_luma(
             return False, 0.0
         sorted_sc = sorted(scores, reverse=True)
         # Lấy trung bình các khung hình nét nhất (bỏ qua 1 frame có thể rơi đúng nhịp chuyển cảnh/motion blur nhanh)
-        top_k = sorted_sc[: max(1, len(sorted_sc) - 1)] if min(sorted_sc) >= 6.0 else sorted_sc
-        eff_sharp = sum(top_k) / len(top_k) if min(sorted_sc) >= 6.0 else min(sorted_sc)
+        top_k = sorted_sc[: max(1, len(sorted_sc) - 1)]
+        eff_sharp = sum(top_k) / len(top_k) if min(top_k) >= 6.0 else min(top_k)
         return eff_sharp >= min_sharpness, round(eff_sharp, 2)
 
     try:

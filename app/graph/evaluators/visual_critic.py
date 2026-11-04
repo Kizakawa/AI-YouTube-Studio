@@ -766,19 +766,52 @@ class VisualCritic:
                 im_obj: Optional[Image.Image] = None
                 try:
                     if p.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv"):
-                        f_jpg = str(Path(td) / f"s_{sid}.jpg")
+                        f_pattern = str(Path(td) / f"s_{sid}_%d.jpg")
                         subprocess.run(
                             [
                                 "ffmpeg", "-v", "error", "-y",
-                                "-ss", "1.0", "-i", str(p),
-                                "-frames:v", "1", "-vf", f"scale={tw}:{th}:force_original_aspect_ratio=increase,crop={tw}:{th}",
-                                f_jpg,
+                                "-t", "4.2", "-i", str(p),
+                                "-vf", f"fps=1,scale={tw}:{th}:force_original_aspect_ratio=increase,crop={tw}:{th}",
+                                "-frames:v", "4",
+                                f_pattern,
                             ],
                             capture_output=True,
                             timeout=8,
                         )
-                        if Path(f_jpg).exists() and Path(f_jpg).stat().st_size > 1000:
-                            with Image.open(f_jpg) as im_tmp:
+                        cand_frames = [
+                            cf for cf in sorted(Path(td).glob(f"s_{sid}_*.jpg"))
+                            if cf.exists() and cf.stat().st_size > 1000 and not cls._is_solid_color_or_black(str(cf))
+                        ]
+                        best_f_jpg: Optional[Path] = None
+                        if cand_frames:
+                            scored_cands = [
+                                (idx_cf, cf, cls._measure_sharpness(str(cf)))
+                                for idx_cf, cf in enumerate(cand_frames)
+                            ]
+                            core_sharp = [
+                                (idx_cf, cf, sh) for idx_cf, cf, sh in scored_cands[:3] if sh >= 9.5
+                            ]
+                            if core_sharp:
+                                mid_match = [cf for idx_cf, cf, sh in core_sharp if idx_cf in (1, 2) and sh >= 10.5]
+                                best_f_jpg = mid_match[0] if mid_match else max(core_sharp, key=lambda x: x[2])[1]
+                            else:
+                                best_f_jpg = max(scored_cands, key=lambda x: x[2])[1]
+                        else:
+                            f_jpg = Path(td) / f"s_{sid}.jpg"
+                            subprocess.run(
+                                [
+                                    "ffmpeg", "-v", "error", "-y",
+                                    "-ss", "0.8", "-i", str(p),
+                                    "-frames:v", "1", "-vf", f"scale={tw}:{th}:force_original_aspect_ratio=increase,crop={tw}:{th}",
+                                    str(f_jpg),
+                                ],
+                                capture_output=True,
+                                timeout=8,
+                            )
+                            if f_jpg.exists() and f_jpg.stat().st_size > 1000:
+                                best_f_jpg = f_jpg
+                        if best_f_jpg is not None:
+                            with Image.open(str(best_f_jpg)) as im_tmp:
                                 im_obj = im_tmp.convert("RGB").copy()
                     else:
                         with Image.open(str(p)) as im_tmp:
@@ -802,6 +835,20 @@ class VisualCritic:
 
         if not thumbs:
             return {}
+
+        if not hasattr(cls, "_cs_scene_pass_cache"):
+            cls._cs_scene_pass_cache = {}
+        scene_file_cache_keys: Dict[int, Tuple[str, int, int, str]] = {}
+        for it_m in scenes_media:
+            if isinstance(it_m, dict) and it_m.get("scene_id") and it_m.get("media_path"):
+                try:
+                    sid_m = int(it_m["scene_id"])
+                    p_m = Path(str(it_m["media_path"]))
+                    if p_m.exists():
+                        st_m = p_m.stat()
+                        scene_file_cache_keys[sid_m] = (str(p_m.resolve()), st_m.st_mtime_ns, st_m.st_size, anchor_topic)
+                except Exception:
+                    pass
 
         rotator = KeyRotator(settings.get_gemini_keys_pool())
         vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
@@ -832,16 +879,17 @@ SELF-SCORING PROTOCOL FOR EVERY SCENE TILE (0.0 to 10.0):
 1. CROSS-SCENE COREFERENCE & CROSS-TILE VISUAL IDENTITY CONSISTENCY (`entity_match_score`: 0.0–10.0):
    - Resolve any pronouns or generic nouns in each scene's narration (e.g., "the hunter", "the eagle", "its prey", "this creature", "he/she/it") back to the exact named protagonists in Overall Script Topic ("{anchor_topic}").
    - CROSS-TILE MORPHOLOGY CHECK: Compare the physical appearance (plumage/fur color, head crest, body structure, anatomy) of recurring protagonists across all tiles (`SCENE #1 .. SCENE #N`) in this contact sheet! If a tile shows a subject with a noticeably different species morphology or coloration from the true named protagonist shown in the other tiles (for example, a different species from the same broad animal family with different head/body coloration), you MUST score `entity_match_score < 5.0` and set `"passed": false`.
-   - 2-TIER DOCUMENTARY B-ROLL RULE: For rare multi-entity interactions or comparison sentences, a clean shot showing AT LEAST ONE of the exact named protagonists from "{anchor_topic}" OR a clean establishing shot of the exact natural habitat/environment described in the narration (containing ZERO wrong-species substitute subjects) scores `8.2–9.5` (`"passed": true`).
+   - 2-TIER DOCUMENTARY B-ROLL RULE: For rare multi-entity interactions or comparison sentences, a clean shot showing AT LEAST ONE of the exact named protagonists from "{anchor_topic}" in a natural pose OR a close-up of that protagonist's anatomical weapons/features (e.g., talons, claws, jaws, wings, eyes, feathers) scores `8.4–9.5` (`"passed": true`). An empty habitat/landscape shot WITHOUT any named protagonist ONLY passes if the spoken narration chunk itself is describing the environment/setting rather than a specific anatomical weapon, physical action, or confrontation of a protagonist.
 2. NARRATIVE ACTION & SETTING ALIGNMENT (`relevance_score`: 0.0–10.0):
    - Does the frame's action, physical state, mood, and setting align with the spoken narration chunk?
+   - Apply the 2-TIER DOCUMENTARY B-ROLL RULE here as well: when a spoken narration chunk describes a complex multi-entity interaction, biomechanics, or concluding reaction (such as one protagonist letting go / flying off or the other resting / clinging), any clean authentic documentary shot showing AT LEAST ONE of the canonical named protagonists from "{anchor_topic}" (or its anatomical weapons such as talons/claws/wings) in its natural wild habitat MUST ALSO score `relevance_score >= 8.4` (`"passed": true`). NEVER fail a scene just because a single extracted freeze-frame shows the protagonist's talons, claws, or perching pose rather than the literal micro-second of letting go or bouncing off!
 3. VISUAL CLEANLINESS & AUTHENTICITY (`cleanliness_score`: 0.0–10.0):
    - Score `< 4.0` (`"passed": false`) if the frame contains magazine/infographic text, callout arrows, channel logos, uploader watermarks ("By: ..."), black letterbox/pillarbox bars, AI corner badges (`✦`), surreal AI deformities, or artificial/captive staging that contradicts a wild/historical documentary context.
 4. SELF-CORRECTION QUERIES (`suggested_search_query` & `fallback_broll_query`):
    - A scene passes (`"passed": true`) ONLY if `entity_match_score >= 7.5`, `relevance_score >= 7.5`, AND `cleanliness_score >= 7.5`.
    - Whenever `"passed": false`, provide TWO concise 2–4 word English queries:
-     + `suggested_search_query`: Names the exact primary entity + action from "{anchor_topic}" (for specialist documentary video search).
-     + `fallback_broll_query`: Names either the co-protagonist OR the pure natural habitat/environment described in the scene's narration (e.g. canopy branches, ocean depth, ancient ruins — WITHOUT generic animal nouns that could return wrong species on stock libraries) for 2-Tier Documentary B-Roll.
+     + `suggested_search_query`: Names the exact primary entity + action/feature from "{anchor_topic}" (for specialist documentary video search).
+     + `fallback_broll_query`: Names either the exact primary entity OR the exact co-protagonist from "{anchor_topic}" in a broader natural documentary pose (e.g., perched on branch, hanging in canopy, swimming in ocean). NEVER output subjectless landscape queries unless the spoken narration chunk itself describes pure scenery without any entity.
 
 Return ONLY valid JSON in this exact format:
 {{
@@ -891,7 +939,11 @@ Return ONLY valid JSON in this exact format:
                                         rel_s = float(item_ev.get("relevance_score", 9.0))
                                         cln_s = float(item_ev.get("cleanliness_score", 9.0))
                                         is_p = bool(item_ev.get("passed", True)) and min(ent_s, rel_s, cln_s) >= 7.5
-                                        all_scene_evals[sid_e] = {
+                                        ck_e = scene_file_cache_keys.get(sid_e)
+                                        if not is_p and ck_e and ck_e in cls._cs_scene_pass_cache:
+                                            all_scene_evals[sid_e] = dict(cls._cs_scene_pass_cache[ck_e])
+                                            continue
+                                        ev_entry = {
                                             "passed": is_p,
                                             "entity_match_score": ent_s,
                                             "relevance_score": rel_s,
@@ -900,6 +952,9 @@ Return ONLY valid JSON in this exact format:
                                             "suggested_search_query": str(item_ev.get("suggested_search_query") or "").strip(),
                                             "fallback_broll_query": str(item_ev.get("fallback_broll_query") or "").strip(),
                                         }
+                                        all_scene_evals[sid_e] = ev_entry
+                                        if is_p and ck_e and min(ent_s, rel_s, cln_s) >= 8.0:
+                                            cls._cs_scene_pass_cache[ck_e] = dict(ev_entry)
                                 for item_f in (data.get("failed_scenes") or []):
                                     if isinstance(item_f, dict) and item_f.get("scene_id"):
                                         sid_f = int(item_f["scene_id"])
@@ -934,7 +989,9 @@ Return ONLY valid JSON in this exact format:
         def _inspect_single_scene(item: Dict[str, Any]) -> Dict[str, Any]:
             scene_id = item.get("scene_id", 0)
             media_path = item.get("media_path", "")
-            media_type = item.get("media_type", "image")
+            media_type = item.get("media_type") or (
+                "video" if str(media_path).lower().endswith((".mp4", ".mov", ".webm", ".mkv")) else "image"
+            )
             p = Path(media_path)
 
             issues: List[str] = []

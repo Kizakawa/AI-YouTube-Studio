@@ -147,6 +147,13 @@ def _verify_short_clip_with_gemini_vision(
         return False, float(pre_gate.get("score", 2.0)), "; ".join(pre_gate.get("issues") or ["Failed pre-assembly clip gate"])
     if float(pre_gate.get("brightness", 50.0)) < 34.0:
         return False, 2.5, f"Clip quá tối / thiếu chi tiết chủ thể (brightness={pre_gate.get('brightness', 0):.1f} < 34)"
+    try:
+        from app.graph.nodes.media.hook_video_helpers import verify_hook_clip_genuine_motion
+        ok_gen_mot, mot_sc, mot_rsn = verify_hook_clip_genuine_motion(video_path)
+        if not ok_gen_mot:
+            return False, 2.0, f"Clip là ảnh tĩnh phóng to Ken-Burns / đứng hình ({mot_rsn}, score={mot_sc})"
+    except Exception:
+        pass
     if (cancel_event is not None and cancel_event.is_set()) or (deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.5):
         return False, 0.0, "Cancelled/deadline exceeded after CV pre-gate"
 
@@ -182,7 +189,7 @@ def _verify_short_clip_with_gemini_vision(
             "3. 2D kids cartoon / chibi / Minecraft / Roblox / plastic toy / GMod (NOTE: Clean watermark-free photorealistic 3D CGI / Unreal Engine 5 / Blender / Thalassophobia underwater animation and dark murky abyssal silhouette scenes ARE APPROVED for this monster scene if they have ZERO watermarks, ZERO channel names, and ZERO burned-in subtitles!)\n"
             "6. Normal real-world tourist boats or weather towers in bright sunny daylight with zero monster/underwater tension"
             if allow_3d_cgi_monster
-            else "3. 2D drawings, paintings, illustrations, cartoons, anime, video games, or CGI renders mixed into a live-action documentary"
+            else "3. 2D drawings, paintings, illustrations, cartoons, anime, video games, CGI renders, OR AI-generated synthetic videos (e.g., Sora/Veo/Kling/Runway/Hailuo AI animals with airbrushed/plastic CGI fur/feathers, artificial golden rim-lighting, symmetrical slow-motion CGI flight straight at camera, unnatural glowing eyes, or hybrid owl-eagle facial anatomy) mixed into a live-action documentary"
         )
 
         eff_target_query = target_visual_query or overall_script_query or subject_entity or topic
@@ -210,6 +217,7 @@ SCORE 3 AXES INDEPENDENTLY (0.0–10.0) AND REJECT IMMEDIATELY (passed=false, sc
 4. `narrative_action_score`: REJECT (`< 4.0`) if there is a habitat or environment mismatch with the script (e.g., an animal in a snowy zoo enclosure, behind cage bars/fences, wearing falconry jesses/anklet straps/leashes, with a human handler, or indoors when the story takes place in the wild rainforest, savanna, or ocean).
 5. `entity_identity_score`: REJECT (`< 4.0`) if the clip shows the wrong animal/subject species that matches neither "{eff_target_query}" nor the canonical species in "{subject_entity or topic}" (e.g., a different eagle/bird species from another continent just because it shares the generic word "eagle" or "bird"), or a talking head / vlog / product commercial.
 6. Bad framing / severely cropped subject where only a tiny unrecognizable corner, tail, or cut-off edge of the main subject fits inside the 9:16 vertical frame instead of a clear, well-composed view of the subject.
+7. ANTI-SLIDESHOW / 2D KEN-BURNS STILL PHOTO & COMPOSITE GATE: Compare the 3 frames (LEFT -> CENTER -> RIGHT). If the 3 frames are a static photograph with only a 2D zoom/pan (Ken-Burns effect) or a static cut-out composite where the primary subject's 3D body posture, limbs/talons/wings, head angle, and feathers remain frozen in the exact same pose across all 3 frames, REJECT IMMEDIATELY (`narrative_action_score < 2.0`, `passed: false`). Real video footage MUST show genuine 3D physical movement across the 3 frames!
 
 Set `score = min(entity_identity_score, narrative_action_score, visual_integrity_score)` and `passed = true` ONLY when all 3 axes are `>= 7.2`.
 Return ONLY valid JSON:
