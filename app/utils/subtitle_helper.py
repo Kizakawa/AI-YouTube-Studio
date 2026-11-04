@@ -91,6 +91,7 @@ YCbCr Matrix: None
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,0.8,0,1,3.8,1.8,2,115,115,{margin_v},1
 Style: PatternInterruptBadge,{fontname},46,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,1.4,0,1,3.4,1.6,8,80,80,190,1
+Style: AutoThumbBanner,{fontname},64,&H0000E5FF,&H00FFFFFF,&H00000000,&HB4000000,-1,0,0,0,100,100,1.5,0,1,4.8,2.4,8,90,90,44,1
 Style: WatermarkStyle,Arial,34,&H38FFFFFF,&H38FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.0,1.2,8,60,60,90,1
 
 [Events]
@@ -655,6 +656,42 @@ class SubtitleHelper:
         return " ".join(parts)
 
     @classmethod
+    def format_auto_thumb_banner_text(cls, raw_title: Optional[str]) -> Optional[str]:
+        """
+        Chuyển tiêu đề hoặc hook_title thành dòng chữ Two-Tone (Trắng + Vàng Gold #FFE500)
+        ngắn gọn, sắc nét để hiển thị trên nền video đang chuyển động tại mốc 50% & 75%
+        (và 25% cho video dài), giúp YouTube Auto-Thumbnail chụp trúng khung hình có tiêu đề
+        nổi bật khi kênh chưa xác thực SĐT (không bao giờ chèn ở 0.0s đầu).
+        """
+        if not raw_title:
+            return None
+        clean = re.sub(r"#\S+", "", str(raw_title))
+        clean = cls._strip_ass_unsupported_emojis(clean)
+        clean = re.sub(r"\([^)]*\)|\[[^\]]*\]", "", clean)
+        clean = re.sub(r"\s+", " ", clean).strip(" :-–—|!?.").upper()
+        if not clean:
+            return None
+
+        if ":" in clean:
+            left_p, right_p = [p.strip() for p in clean.split(":", 1)]
+            w_left = left_p.split()[:5]
+            w_right = right_p.split()[:5]
+            if w_left and w_right:
+                return f"{{\\1c{ASS_WHITE}&}}{' '.join(w_left)}\\N{{\\1c{ASS_YELLOW}&}}{' '.join(w_right)}!"
+
+        words = clean.split()
+        if len(words) <= 4:
+            if len(words) >= 2:
+                return f"{{\\1c{ASS_WHITE}&}}{' '.join(words[:-1])} {{\\1c{ASS_YELLOW}&}}{words[-1]}!"
+            return f"{{\\1c{ASS_YELLOW}&}}{clean}!"
+
+        words = words[:8]
+        mid = max(2, len(words) // 2)
+        line1 = " ".join(words[:mid])
+        line2 = " ".join(words[mid:])
+        return f"{{\\1c{ASS_WHITE}&}}{line1}\\N{{\\1c{ASS_YELLOW}&}}{line2}"
+
+    @classmethod
     def build_ass_content(
         cls,
         scenes: List[SceneContract],
@@ -878,6 +915,24 @@ class SubtitleHelper:
                 current_offset_ms = scene.start_offset_ms + scene_duration_ms
             else:
                 current_offset_ms += scene_duration_ms
+
+        # ── Auto-Thumbnail Moving Title Banner tại 50% & 75% (gần cuối video) + 25% (Long-Form) ──
+        # Tuyệt đối KHÔNG chèn ở 0.0s đầu để bảo vệ 100% Retention. Hiển thị trên nền video đang chạy
+        # để khi kênh chưa xác thực SĐT, máy chủ YouTube tự chụp ảnh ở 50% / 75% sẽ bắt trúng tiêu đề nổi.
+        if hook_title and current_offset_ms >= 15000:
+            auto_banner_txt = cls.format_auto_thumb_banner_text(hook_title)
+            if auto_banner_txt:
+                pct_targets = (0.25, 0.50, 0.75) if (is_long_form or current_offset_ms >= 120000) else (0.50, 0.75)
+                half_win_ms = 3200 if is_long_form else 2200
+                for pct in pct_targets:
+                    center_ms = int(current_offset_ms * pct)
+                    b_st_ms = max(5500, center_ms - half_win_ms)
+                    b_en_ms = min(current_offset_ms - 500, center_ms + half_win_ms)
+                    if b_en_ms > b_st_ms + 800:
+                        dialogue_lines.append(
+                            f"Dialogue: 3,{cls._ms_to_ass_time(b_st_ms)},{cls._ms_to_ass_time(b_en_ms)},"
+                            f"AutoThumbBanner,,0,0,0,,{{\\fad(150,150)}}{auto_banner_txt}"
+                        )
 
         # ── Watermark / Credit tác giả gọn nhẹ trên đỉnh video (nếu có yêu cầu ghi nguồn) ──
         if credit_text and credit_text.strip():

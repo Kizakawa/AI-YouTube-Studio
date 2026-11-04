@@ -713,6 +713,9 @@ Return ONLY valid JSON:
         start_sec: float,
         end_sec: float,
         overlay_badge: Optional[str] = None,
+        auto_thumb_banner: Optional[str] = None,
+        auto_thumb_local_sec: Optional[float] = None,
+        scene_clip_dur_sec: Optional[float] = None,
     ) -> bool:
         """
         Cắt lát file phụ đề `.ass` tổng cho từng phân cảnh `[start_sec, end_sec]` và dịch gốc thời gian về `0.0s`
@@ -739,6 +742,9 @@ Return ONLY valid JSON:
                 if ln.startswith("Dialogue:"):
                     parts = ln.split(",", 9)
                     if len(parts) == 10:
+                        if parts[3].strip() == "AutoThumbBanner" and auto_thumb_banner:
+                            # Sẽ chèn theo tọa độ thời gian chính xác của clip cuối bên dưới
+                            continue
                         st = _parse_ts(parts[1])
                         et = _parse_ts(parts[2])
                         if et > start_sec + 0.03 and st < end_sec - 0.03:
@@ -747,9 +753,19 @@ Return ONLY valid JSON:
                             out_lines.append(",".join(parts))
                 else:
                     out_lines.append(ln)
-            if overlay_badge:
+            if overlay_badge and not auto_thumb_banner:
                 out_lines.append(
                     f"Dialogue: 1,0:00:00.20,0:00:04.20,PatternInterruptBadge,,0,0,0,,{{\\fad(200,250)}}{overlay_badge}"
+                )
+            if auto_thumb_banner and auto_thumb_local_sec is not None:
+                max_d = float(scene_clip_dur_sec or (end_sec - start_sec) or 15.0)
+                st_b = max(0.15, float(auto_thumb_local_sec) - 3.6)
+                et_b = min(max_d - 0.15, float(auto_thumb_local_sec) + 3.6)
+                if et_b <= st_b + 1.0:
+                    st_b = 0.20
+                    et_b = max(4.5, max_d - 0.20)
+                out_lines.append(
+                    f"Dialogue: 3,{_fmt_ts(st_b)},{_fmt_ts(et_b)},AutoThumbBanner,,0,0,0,,{{\\fad(150,150)}}{auto_thumb_banner}"
                 )
             Path(out_scene_ass_path).write_text("\n".join(out_lines) + "\n", encoding="utf-8")
             return True
@@ -925,6 +941,26 @@ Return ONLY valid JSON:
             else 0.25
         )
 
+        # Tính chính xác trục thời gian sau khi cộng broll_pause_s để xác định đúng phân cảnh chứa mốc 25% - 50% - 75%
+        from app.utils.subtitle_helper import SubtitleHelper as _SubH
+        auto_thumb_text = _SubH.format_auto_thumb_banner_text(title or thumbnail_text)
+        final_clip_durs: List[float] = [
+            round((s_d + broll_pause_s) * 30.0) / 30.0 for s_d in spoken_durs
+        ]
+        final_cum_starts: List[float] = []
+        f_run = 0.0
+        for f_d in final_clip_durs:
+            final_cum_starts.append(f_run)
+            f_run += f_d
+        total_final_dur_s = max(1.0, f_run)
+        auto_thumb_scene_map: Dict[int, float] = {}
+        for pct in (0.25, 0.50, 0.75):
+            t_target = total_final_dur_s * pct
+            for idx_cand, (f_st, f_d) in enumerate(zip(final_cum_starts, final_clip_durs)):
+                if idx_cand > 0 and f_st <= t_target <= (f_st + f_d):
+                    auto_thumb_scene_map[idx_cand] = round(t_target - f_st, 2)
+                    break
+
         # Cắt SONG SONG 4-Workers (3-Shot Anti-CID + Cinema Bars + Đốt trực tiếp phụ đề .ass từng cảnh + Chuẩn hóa Audio AAC từng cảnh)
         sem = asyncio.Semaphore(4)
 
@@ -1027,12 +1063,16 @@ Return ONLY valid JSON:
                 target_clip_dur = round((spoken_s + broll_pause_s) * 30.0) / 30.0
 
                 scene_ass = work_dir / f"sub_s{sc.scene_id:03d}.ass"
+                scene_auto_local_sec = auto_thumb_scene_map.get(idx_s)
                 self._extract_shifted_scene_ass(
                     master_ass_path=subtitle_path,
                     out_scene_ass_path=str(scene_ass),
                     start_sec=c_start_s,
                     end_sec=c_start_s + spoken_s,
                     overlay_badge=getattr(sc, "overlay_badge", None),
+                    auto_thumb_banner=auto_thumb_text if scene_auto_local_sec is not None else None,
+                    auto_thumb_local_sec=scene_auto_local_sec,
+                    scene_clip_dur_sec=target_clip_dur,
                 )
                 try:
                     rel_ass = scene_ass.relative_to(Path.cwd()).as_posix()
