@@ -95,7 +95,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
         }
 
     cancel_event = threading.Event()
-    hook_deadline_ts = time.monotonic() + 58.0
+    hook_deadline_ts = time.monotonic() + 78.0
 
     def _entry() -> Dict[str, Any]:
         with bind_scene_cancellation(cancel_event, hook_deadline_ts):
@@ -106,7 +106,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
             )
 
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=60.0)
+        return await asyncio.wait_for(asyncio.to_thread(_entry), timeout=82.0)
     except asyncio.TimeoutError:
         cancel_event.set()
         try:
@@ -1010,12 +1010,12 @@ Return ONLY valid JSON:
                     break
 
         wave1_cands = list(enumerate(wave1_selected))
-        if wave1_cands and not _hook_cancelled(8.0):
+        if wave1_cands and not _hook_cancelled(22.0):
             dl_batches = _run_pool_map_nonblocking(
                 _download_and_extract_single_short,
                 wave1_cands,
                 max_workers=min(4, len(wave1_cands)),
-                stage_timeout=16.0,
+                stage_timeout=22.0,
             )
         else:
             dl_batches = []
@@ -1026,7 +1026,7 @@ Return ONLY valid JSON:
                 validated_peaks[v_str] = peak_meta
                 if peak_meta.get("passed") and len(candidate_videos) < 8:
                     candidate_videos.append(v_str)
-        if len(candidate_videos) == 0 and len(top_curated_yt_cands) > len(wave1_selected) and not _hook_cancelled(14.0):
+        if len(candidate_videos) == 0 and len(top_curated_yt_cands) > len(wave1_selected) and not _hook_cancelled(26.0):
             # Fast-Drop 'A vs B' ở Wave 2: Bỏ qua các video 'vs' còn lại, chỉ tải tối đa 2 clip đơn chủ thể sạch!
             rem_non_vs = [
                 c for c in top_curated_yt_cands
@@ -1039,7 +1039,7 @@ Return ONLY valid JSON:
                 _download_and_extract_single_short,
                 wave2_cands,
                 max_workers=min(2, len(wave2_cands)),
-                stage_timeout=12.0,
+                stage_timeout=15.0,
             )
             for batch in dl_batches2:
                 for _dl_i, v_str, peak_meta in batch:
@@ -1928,17 +1928,29 @@ Return ONLY valid JSON:
         except Exception as e_st_hk:
             logger.debug(f"[HookVideoNode] Tier-1.5 video hook rescue skip: {e_st_hk}")
 
-        if not stock_hook_ok and not _hook_cancelled(4.0):
+        if not stock_hook_ok and not _hook_cancelled(2.0):
             try:
-                from app.agents.media_agent import MediaAgent
+                from app.agents.media_agent import MediaAgent, clean_scene_search_query
+                from app.services.media.stock_fetcher import StockFetcher
                 ma_s1 = MediaAgent()
-                s1_q_cands = [
+                base_s1_qs = [
                     q for q in dict.fromkeys([
                         *(stock_broll_queries or []),
                         *(queries or []),
                         canonical_subject or primary_entity or visual_keyword or topic,
                     ]) if q
-                ][:4]
+                ]
+                s1_q_cands: List[str] = []
+                for bq in base_s1_qs:
+                    bq_clean = clean_scene_search_query(str(bq), max_words=4)
+                    if bq_clean and bq_clean not in s1_q_cands:
+                        s1_q_cands.append(bq_clean)
+                    toks_bq = [w for w in bq_clean.split() if len(w) >= 3]
+                    if len(toks_bq) >= 3:
+                        for pair_q in (" ".join(toks_bq[:2]), " ".join(toks_bq[-2:])):
+                            if pair_q and pair_q not in s1_q_cands:
+                                s1_q_cands.append(pair_q)
+                s1_q_cands = s1_q_cands[:6]
                 if s1_q_cands:
                     s1_primary_q = s1_q_cands[0]
                     s1_va = {
@@ -1951,8 +1963,8 @@ Return ONLY valid JSON:
                         "search_queries": s1_q_cands,
                     }
                     s1_broll_deadline = min(
-                        (hook_deadline_ts - 3.0) if hook_deadline_ts is not None else (time.monotonic() + 16.0),
-                        time.monotonic() + 16.0,
+                        (hook_deadline_ts - 2.0) if hook_deadline_ts is not None else (time.monotonic() + 18.0),
+                        time.monotonic() + 18.0,
                     )
                     best_s1_vid = ma_s1.search_best_video_clip(
                         query=s1_primary_q,
@@ -1969,6 +1981,28 @@ Return ONLY valid JSON:
                         for alt_u in (best_s1_vid.get("_vision_alternates") or [])[:2]:
                             if alt_u and str(alt_u) not in s1_cand_urls:
                                 s1_cand_urls.append(str(alt_u))
+                    if not s1_cand_urls:
+                        sf_direct = StockFetcher()
+                        for q_broad_s1 in s1_q_cands[:4]:
+                            if _hook_cancelled(2.0):
+                                break
+                            v_hits_s1 = sf_direct.search_videos(
+                                q_broad_s1,
+                                per_page=6,
+                                orientation="portrait",
+                                min_duration=3,
+                                topic=topic,
+                                narration=hook_narration,
+                            ) or []
+                            for vh_s1 in v_hits_s1[:2]:
+                                u_vh = str(vh_s1.get("url") or "").strip()
+                                if u_vh and u_vh not in s1_cand_urls:
+                                    s1_cand_urls.append(u_vh)
+                                    if not best_s1_vid:
+                                        best_s1_vid = vh_s1
+                            if s1_cand_urls:
+                                s1_primary_q = q_broad_s1
+                                break
                     for s1_raw_url in s1_cand_urls:
                         if _hook_cancelled(3.5):
                             break
