@@ -141,22 +141,21 @@ _MULTILINGUAL_QUESTION_AND_STOP_WORDS = {
 }
 
 _NON_ENGLISH_TITLE_MARKER_RE = re.compile(
-    r"(?:[À-ỹ]|"
     r"\b(?:por\s+que|por\s+quê|porque|como\s+(?:o|a|os|as|um|uma)\b|uma\b|uns\b|umas\b|dos\b|das\b|"
     r"nesse\b|nessa\b|desse\b|dessa\b|pelo\b|pela\b|quando\s+(?:o|a|um|uma)\b|alcateia\b|fundo\s+do\s+mar\b|"
-    r"tại\s+sao|vì\s+sao|làm\s+sao)\b)",
-    re.IGNORECASE | re.UNICODE,
+    r"tại\s+sao|vì\s+sao|làm\s+sao)\b",
+    re.IGNORECASE,
 )
 
 
 def _is_non_english_or_question_title(text: str) -> bool:
-    """Phát hiện chuỗi `topic`/`title` đang ở dạng câu tiếng Bồ Đào Nha/Việt hoặc chứa dấu thanh không phải truy vấn tiếng Anh chuẩn."""
+    """Phát hiện chuỗi `topic`/`title` đang ở dạng câu tiếng Bồ Đào Nha/Việt hoặc chứa chữ cái có dấu phi tiếng Anh."""
     s = str(text or "").strip()
     if not s:
         return False
-    # Loại bỏ emoji trước khi kiểm tra ký tự có dấu
-    s_no_emoji = re.sub(r"[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]", " ", s)
-    return bool(_NON_ENGLISH_TITLE_MARKER_RE.search(s_no_emoji))
+    if any(ord(ch) > 127 and ch.isalpha() for ch in s):
+        return True
+    return bool(_NON_ENGLISH_TITLE_MARKER_RE.search(s))
 
 
 @tool
