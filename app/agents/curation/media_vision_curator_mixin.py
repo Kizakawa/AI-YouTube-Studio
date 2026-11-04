@@ -301,9 +301,6 @@ class MediaVisionCuratorMixin:
             if c.get("_thumb_low_quality"):
                 continue
             img_ord = idx_to_img_order.get(idx)
-            if img_ord is None:
-                # Tuyệt đối không đưa ứng viên mất ảnh preview vào danh sách duyệt để tránh LLM đoán mò qua URL slug
-                continue
             candidates_for_llm.append({
                 "index": idx,
                 "returned_url": c["url"],
@@ -311,14 +308,18 @@ class MediaVisionCuratorMixin:
                 "source": c["source"],
                 "duration": f"{c['duration']}s",
                 "resolution": f"{c['width']}x{c['height']}",
-                "attached_preview_image": f"INDEX {img_ord} (stamped 'INDEX {img_ord}' at top of preview image)",
+                "attached_preview_image": (
+                    f"INDEX {img_ord} (stamped 'INDEX {img_ord}' at top of preview image)"
+                    if img_ord is not None
+                    else "None (no visual preview available — cannot visually verify specific entity morphology)"
+                ),
             })
 
         if not candidates_for_llm:
             return None, 2.5, "Tất cả ứng viên video kho đều quá mờ hoặc thiếu tương phản (< chuẩn VisualCritic).", True
 
         prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Thẩm Định Ngữ Cảnh Kịch Bản Đa Phương Thức (Multimodal Script-Intent Video Auditor).
-Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để chọn ra VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản (kèm danh sách ứng viên dự phòng đạt chuẩn nếu có).
+Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để tự chấm điểm nghiêm ngặt và chọn ra VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản.
 
 NGỮ CẢNH KỊCH BẢN CỦA NGƯỜI DÙNG:
 - Chủ đề tổng thể (Topic): "{topic_ctx}"
@@ -331,40 +332,51 @@ NGỮ CẢNH KỊCH BẢN CỦA NGƯỜI DÙNG:
 DANH SÁCH ỨNG VIÊN VIDEO TỪ KHO:
 {json.dumps(candidates_for_llm, ensure_ascii=False, indent=2)}
 
-TIÊU CHUẨN SUY LUẬN & TUYỂN CHỌN THÔNG MINH 2 TẦNG (KHÔNG ĐẾM TỪ KHÓA MÁY MÓC):
-1. QUY TẮC B-ROLL PHIM TÀI LIỆU 2 TẦNG (2-TIER DOCUMENTARY B-ROLL):
-   - Tầng 1 (`confidence_score: 8.5–9.8`): Ứng viên thể hiện trực tiếp toàn bộ tương tác nhiều thực thể hoặc đúng vi hành động vật lý trong `{narration}`.
-   - Tầng 2 (`confidence_score: 7.5–8.4`): Khi kịch bản là kèo đối đầu đa thực thể (`Thực thể A vs Thực thể B`) hoặc câu thoại mô tả pha va chạm hiếm / cơ chế sinh học - vật lý vi mô không thể có sẵn trọn vẹn trong một clip kho miễn phí (Pexels/Pixabay), TUYỆT ĐỐI KHÔNG chấm `6.0–6.9` hay đánh trượt (`winner_index: -1`) chỉ vì clip chỉ quay riêng MỘT trong các thực thể (Thực thể A HOẶC Thực thể B) hay bối cảnh/bộ phận cơ thể liên quan! Miễn là ứng viên quay THẬT, RÕ NÉT, SẠCH 100% đúng chính xác loài/thực thể được nêu tên trong kịch bản hoặc đúng bối cảnh tự nhiên - lịch sử - đời thực được nhắc tới trong `{narration}` mà không vi phạm mục 2, BẮT BUỘC DUYỆT Ở TẦNG 2 (`confidence_score >= 7.5`, `should_fallback_to_ai: false`) làm cảnh B-Roll điện ảnh hợp lệ.
-2. TIÊU CHUẨN LOẠI BỎ NGHIÊM NGẶT (ĐỒNG BỘ VỚI GIÁM KHẢO CUỐI VISUAL CRITIC):
-   - BẮT BUỘC TỪ CHỐI ứng viên quay sai loài/phân loài cụ thể được nêu tên trong kịch bản (tuyệt đối KHÔNG lấy loài khác trong cùng họ/lớp hoặc khác vùng sinh thái rồi tự châm chước là "tuy là loài khác nhưng dùng tạm ở Tầng 2" — nếu kho miễn phí chỉ có loài khác với loài được chỉ đích danh trong `{topic_ctx}` / `{subject_req}`, BẮT BUỘC trả về `winner_index: -1`, `should_fallback_to_ai: true` để hệ thống chuyển sang kho tài liệu chuyên sâu!), thú cưng/gia súc thuần hóa, động vật có dây buộc chân huấn luyện (`jesses` / `ankle straps`) / vòng cổ / đậu trên cọc gỗ hoặc cột điện nhân tạo, quay trong lồng sắt/hàng rào lưới/bể bê tông sở thú, có con người/nhân viên cầm giữ/găng tay huấn luyện/cho ăn/khách du lịch, video đen trắng/đơn sắc (`black and white` / `monochrome`) trong phim tài liệu màu, lệch hoàn toàn thời đại/hệ sinh thái/mùa của kịch bản, hoặc dính chữ/watermark/biểu tượng sao 4 cánh AI (`✦`).
-   - CẤM TUYỆT ĐỐI NGỤY BIỆN ẨN DỤ ĐỒNG ÂM / ĐỒNG TÊN (ZERO HOMONYM / METAPHORICAL ANIMAL SUBSTITUTION): Khi chủ thể có tên ghép chứa từ bổ nghĩa mượn từ loài/vật thể khác (ví dụ: sinh vật biển sâu mang tên chim/thú trên cạn hoặc ngược lại), TUYỆT ĐỐI KHÔNG ĐƯỢC chọn loài động vật/vật thể khác lớp sinh học hoặc khác hẳn môi trường sống (như chọn chim trên cạn/mặt hồ cho sinh vật biển sâu, hoặc người hóa trang cho sinh vật đại dương) rồi ngụy biện là 'minh họa ẩn dụ cấu trúc'! Nếu ứng viên sai lớp sinh học hoặc sai môi trường sống (trên cạn/mặt nước nông vs đáy biển sâu), BẮT BUỘC đánh trượt (`winner_index: -1`, `confidence_score: 1.0`, `should_fallback_to_ai: true`).
-3. ƯU TIÊN KHUNG HÌNH SỐNG ĐỘNG & GIỮ ỨNG VIÊN DỰ PHÒNG SẠCH:
-   - Chọn ứng viên có hành động rõ nét nhất, góc quay cận/trung cảnh giàu kịch tính làm `winner_index`, đồng thời liệt kê các ứng viên sạch đạt chuẩn còn lại (`>= 7.5`, tuyệt đối không vi phạm mục 2) vào `approved_alternate_indices` để làm phương án dự phòng tức thì.
-   - Chỉ khi TẤT CẢ ứng viên đều vi phạm mục 2 hoặc lạc đề hoàn toàn (`confidence_score < 7.0`), mới trả về `"winner_index": -1`, `"winner_url": ""` và `"should_fallback_to_ai": true`.
+QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM ĐA TRỤC (MULTI-AXIS SELF-SCORING RUBRIC):
+1. QUY CHIẾU ĐẠI TỪ & DANH TỪ CHUNG VỀ THỰC THỂ ĐÍCH DANH (`resolved_scene_entities`):
+   - Khi `{narration}` sử dụng đại từ hoặc danh từ chung/ẩn dụ (ví dụ: "the hunter", "its prey", "this creature", "the leader", "the machine"), BẮT BUỘC phải quy chiếu ngược về đúng Thực thể Đích danh trong `{topic_ctx}` và `{subject_req}`.
+   - Tuyệt đối KHÔNG chọn một thực thể/chủng loại khác chỉ vì khớp từ khóa danh từ chung trong câu thoại hay URL slug.
+2. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP CHO ỨNG VIÊN TỐT NHẤT (Thang điểm 0.0–10.0):
+   - `entity_identity_score` (0.0–10.0): Nếu ứng viên có xuất hiện chủ thể, hình thái nhận diện của chủ thể trong ảnh preview có khớp chính xác với Thực thể Đích danh của `{topic_ctx}` / `{subject_req}` hay không?
+     + Nếu ứng viên thể hiện sai thực thể đích danh (dù cùng nhóm chung), hoặc là chủ thể đặc thù nhưng không có ảnh preview (`attached_preview_image == None`) để xác minh hình thái, BẮT BUỘC chấm `entity_identity_score < 5.0`.
+     + Trường hợp câu thoại mô tả pha tương tác đa thực thể hiếm, ứng viên quay thật và đúng chính xác MỘT trong các thực thể đích danh của `{topic_ctx}` hoặc quay bối cảnh môi trường tự nhiên/lịch sử đúng câu thoại (không chứa chủ thể sai lệch) được chấm `7.8–8.5`.
+   - `narrative_action_score` (0.0–10.0): Hành động, trạng thái vật lý và bối cảnh trong ứng viên có truyền tải đúng nội dung của chunk `{narration}` hay không?
+   - `visual_integrity_score` (0.0–10.0): Khung hình có nguyên bản, tự nhiên đúng bối cảnh kịch bản (không lẫn yếu tố nhân tạo/nuôi nhốt/hiện đại lệch ngữ cảnh, không bị đơn sắc/đen trắng lệch tông, không chứa chữ/watermark/biểu tượng AI `✦`) hay không?
+3. QUYẾT ĐỊNH DUYỆT HOẶC TỰ ĐỘNG CHUYỂN TẦNG (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score)`):
+   - Chỉ duyệt ứng viên khi CẢ 3 TRỤC đều đạt `>= 7.5` (`confidence_score >= 7.5`, `should_fallback_to_ai: false`). Đồng thời chỉ liệt kê vào `approved_alternate_indices` các ứng viên khác cũng đạt cả 3 trục `>= 7.5`.
+   - Nếu ứng viên cao nhất có bất kỳ trục nào `< 7.5`, BẮT BUỘC trả về `"winner_index": -1`, `"should_fallback_to_ai": true` để bộ điều phối chuyển sang luồng tìm kiếm chuyên sâu.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
+  "resolved_scene_entities": "Tên thực thể đích danh được quy chiếu từ Topic cho câu thoại này",
   "winner_index": -1,
   "winner_url": "",
+  "entity_identity_score": 2.0,
+  "narrative_action_score": 2.0,
+  "visual_integrity_score": 2.0,
   "confidence_score": 2.0,
   "approved_alternate_indices": [],
-  "rationale": "Giải thích ngắn gọn vì sao ứng viên INDEX N khớp (hoặc không khớp) với ý nghĩa kịch bản của người dùng",
+  "rationale": "Giải thích điểm 3 trục của ứng viên và lý do duyệt hoặc từ chối",
   "should_fallback_to_ai": true
 }}"""
         agent_dec = self._call_gemini_json(prompt, images=thumb_images if thumb_images else None)
         if agent_dec is not None:
             w_idx = int(agent_dec.get("winner_index", -1))
             w_url = str(agent_dec.get("winner_url") or "").strip()
-            score = float(agent_dec.get("confidence_score", 0.0))
+            raw_conf = float(agent_dec.get("confidence_score", 0.0))
+            ent_sc = float(agent_dec.get("entity_identity_score", raw_conf))
+            act_sc = float(agent_dec.get("narrative_action_score", raw_conf))
+            int_sc = float(agent_dec.get("visual_integrity_score", raw_conf))
+            score = round(min(raw_conf, ent_sc, act_sc, int_sc), 2)
             rationale = str(agent_dec.get("rationale", ""))
-            fallback_ai = bool(agent_dec.get("should_fallback_to_ai", False))
+            fallback_ai = bool(agent_dec.get("should_fallback_to_ai", False)) or (score < 7.5)
 
             if w_url and not fallback_ai:
                 url_matched_idx = next((i for i, c in enumerate(eval_pool) if c["url"] == w_url), None)
                 if url_matched_idx is not None and url_matched_idx != w_idx:
                     w_idx = url_matched_idx
 
-            if 0 <= w_idx < len(eval_pool) and score >= 7.0 and not fallback_ai:
+            if 0 <= w_idx < len(eval_pool) and score >= 7.5 and not fallback_ai:
                 winner = eval_pool[w_idx]
                 alt_indices: List[int] = []
                 for a_i in (agent_dec.get("approved_alternate_indices") or []):

@@ -214,6 +214,22 @@ class GraphRunner:
                 raise
             except Exception as _e_db_init:
                 if _db_try >= 2:
+                    cp_init = self.work_dir / "step_checkpoint.json"
+                    ls_init = Path("storage/logs/langsmith") / f"job_{self.job_id}.json"
+                    if cp_init.exists():
+                        try:
+                            cp_d = json.loads(cp_init.read_text(encoding="utf-8"))
+                            topic = str(cp_d.get("topic") or "")
+                            if not topic and ls_init.exists():
+                                ls_d = json.loads(ls_init.read_text(encoding="utf-8"))
+                                topic = str(ls_d.get("topic") or "")
+                                channel_id = str(ls_d.get("channel_id") or "ch_wild_odyssey")
+                            logger.warning(
+                                f"[GraphRunner] Cloud DB tạm ngắt ({_e_db_init}) -> Khôi phục metadata Job #{self.job_id} từ checkpoint đĩa (topic='{topic}')!"
+                            )
+                            break
+                        except Exception:
+                            pass
                     raise
                 logger.warning(f"[GraphRunner] Thử kết nối lại DB cho Job #{self.job_id} ({_e_db_init})...")
                 await asyncio.sleep(0.8 * (_db_try + 1))
@@ -227,7 +243,32 @@ class GraphRunner:
                     cp_topic = str(cp_payload.get("topic") or "").strip().lower()
                     if not cp_topic or cp_topic == topic.strip().lower():
                         cp_valid_for_topic = True
-                        cp_script = ((cp_payload.get("nodes") or {}).get("generate_audio") or {}).get("script_data")
+                        cp_nodes = cp_payload.get("nodes") or {}
+                        cp_script = (cp_nodes.get("generate_audio") or {}).get("script_data")
+                        if not (isinstance(cp_script, dict) and cp_script.get("scenes")):
+                            cp_sm = (cp_nodes.get("fetch_media") or {}).get("scenes_media") or (cp_nodes.get("generate_audio") or {}).get("scenes_audio") or []
+                            if isinstance(cp_sm, list) and len(cp_sm) >= 3:
+                                cp_script = {
+                                    "title": title or topic or f"Video #{self.job_id}",
+                                    "hook": str(cp_sm[0].get("narration") or topic),
+                                    "full_narration": " ".join(str(s.get("narration") or "") for s in cp_sm if isinstance(s, dict)),
+                                    "scenes": [
+                                        {
+                                            "scene_id": int(s.get("scene_id") or (i + 1)),
+                                            "narration": str(s.get("narration") or ""),
+                                            "visual_keyword": str(s.get("visual_keyword") or topic),
+                                            "estimated_seconds": 5.0,
+                                            "camera_motion": s.get("camera_motion"),
+                                            "sfx_cue": s.get("sfx_cue"),
+                                            "highlight_words": s.get("highlight_words"),
+                                            "overlay_badge": s.get("overlay_badge"),
+                                        }
+                                        for i, s in enumerate(cp_sm)
+                                        if isinstance(s, dict)
+                                    ],
+                                    "tags": ["shorts", "viral"],
+                                    "video_format": str((cp_nodes.get("generate_audio") or {}).get("video_format") or "short"),
+                                }
                         if isinstance(cp_script, dict) and cp_script.get("scenes"):
                             cp_script.setdefault("_pre_evaluated_score", 89.0)
                             cp_script.setdefault("_pre_evaluated_hook", 9.1)

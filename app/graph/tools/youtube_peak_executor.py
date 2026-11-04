@@ -572,6 +572,13 @@ def execute_youtube_short_peak_clone_sync(
                                 f"🚫 [YouTubePeakTool] Gemini Vision từ chối clip '{cand_title[:45]}' "
                                 f"(điểm={vis_score}/10: {vis_reason}) -> Thử ứng viên tiếp theo!"
                             )
+                            used.add(vid_url)
+                            if vid_id:
+                                used.add(f"yt:{vid_id}")
+                            if isinstance(used_urls, set):
+                                used_urls.add(vid_url)
+                                if vid_id:
+                                    used_urls.add(f"yt:{vid_id}")
                             rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                             Path(cand_stage_out).unlink(missing_ok=True)
                             continue

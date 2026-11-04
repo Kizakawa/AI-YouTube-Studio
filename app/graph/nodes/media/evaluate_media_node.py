@@ -14,43 +14,22 @@ logger = logging.getLogger(__name__)
 def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     """Node Visual Critic thẩm định chất lượng KỸ THUẬT & THỊ GIÁC (Single Responsibility — chỉ chấm điểm và điều hướng sang refine_media, tuyệt đối không tự tải đè media)."""
     scenes_media = [m for m in state.get("scenes_media", []) if isinstance(m, dict)]
-    primary_entity = state.get("primary_entity")
+    script_d = state.get("script_data") if isinstance(state.get("script_data"), dict) else {}
+    primary_entity = (
+        state.get("primary_entity")
+        or script_d.get("primary_entity")
+        or state.get("topic")
+        or script_d.get("title")
+        or ""
+    )
 
     critic = VisualCritic()
-    prev_eval = state.get("media_eval") if isinstance(state.get("media_eval"), dict) else None
-    prev_failed_ids = set(int(x) for x in (prev_eval.get("failed_scene_ids") or []) if x) if prev_eval else set()
     retry_count = int(state.get("media_retry_count", 0))
-    max_media_retries_gate = max(0, int(os.getenv("MAX_MEDIA_RETRIES", "1")))
+    max_media_retries_gate = max(0, int(os.getenv("MAX_MEDIA_RETRIES", "3")))
 
-    # Tối ưu tốc độ: Ở vòng retry (media_retry_count >= 1), chỉ chạy thẩm định chuyên sâu (ContactSheet Vision + CV)
-    # trên các cảnh vừa được refine_media thay mới, giữ nguyên điểm của các cảnh đã đạt chuẩn ở vòng 1!
-    if retry_count >= 1 and prev_eval and prev_failed_ids and len(scenes_media) > len(prev_failed_ids):
-        delta_scenes = [m for m in scenes_media if int(m.get("scene_id") or 0) in prev_failed_ids]
-        delta_report = critic.evaluate_media(scenes_media=delta_scenes, primary_entity=primary_entity)
-        merged_scores_map: Dict[int, SceneVisualScore] = {}
-        for old_sc in (prev_eval.get("scene_scores") or []):
-            try:
-                sc_obj = old_sc if isinstance(old_sc, SceneVisualScore) else SceneVisualScore(**old_sc)
-                merged_scores_map[int(sc_obj.scene_id)] = sc_obj
-            except Exception:
-                pass
-        for new_sc in (delta_report.scene_scores or []):
-            merged_scores_map[int(new_sc.scene_id)] = new_sc
-        merged_scores = [merged_scores_map[k] for k in sorted(merged_scores_map.keys())]
-
-        def _sc_avg(s_item: SceneVisualScore) -> float:
-            return (float(s_item.relevance_score) + float(s_item.entity_match_score) + float(s_item.aesthetic_score)) / 3.0
-
-        avg_overall = round(sum(_sc_avg(s) for s in merged_scores) / max(len(merged_scores), 1), 1)
-        eval_report = VisualEvaluationReport(
-            overall_score=avg_overall,
-            passed=(len(delta_report.failed_scene_ids) == 0 and avg_overall >= 7.5),
-            scene_scores=merged_scores,
-            failed_scene_ids=list(delta_report.failed_scene_ids),
-            summary=delta_report.summary,
-        )
-    else:
-        eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
+    # Luôn đánh giá toàn bộ scenes_media trên cùng 1 Contact Sheet (các cảnh không đổi đã có cache CV 0.01s)
+    # để bảo toàn đối chiếu hình thái thực thể xuyên cảnh (Cross-Tile Identity) và chống trùng dHash xuyên cảnh ở mọi vòng retry!
+    eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
 
     # Thu hồi tức thì chứng chỉ (`*_meta.txt` / `*.meta`) của mọi Chapter Master bị VisualCritic ContactSheet Vision bắt lỗi ngữ nghĩa,
     # đảm bảo `node_refine_media` không bao giờ cắt lại từ Master lỗi trên bất kỳ cảnh nào!

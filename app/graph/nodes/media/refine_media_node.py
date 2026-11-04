@@ -212,6 +212,25 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         sc_dur_sec = _scene_audio_duration(work_dir, scene_id)
         sc_issues_list = scene_eval_issues_map.get(scene_id) or []
         has_semantic_vision_defect = any("Gemini Vision ContactSheet" in iss or "trùng lặp" in iss.lower() for iss in sc_issues_list)
+        critic_sug_q = str(item.get("critic_suggested_query") or "").strip()
+        critic_broll_q = str(item.get("critic_fallback_broll_query") or "").strip()
+        critic_fb = str(item.get("critic_feedback") or "").strip()
+        if not critic_sug_q or not critic_broll_q:
+            for iss_s in sc_issues_list:
+                if not critic_sug_q:
+                    m_sq = re.search(r"\[Suggested Query:\s*([^\]]+)\]", str(iss_s))
+                    if m_sq:
+                        critic_sug_q = m_sq.group(1).strip()
+                if not critic_broll_q:
+                    m_bq = re.search(r"\[Fallback B-Roll:\s*([^\]]+)\]", str(iss_s))
+                    if m_bq:
+                        critic_broll_q = m_bq.group(1).strip()
+        if critic_sug_q:
+            clean_kw_q = clean_scene_search_query(critic_sug_q, max_words=4) or critic_sug_q
+            logger.info(
+                f"🎯 [Self-Scoring Refine] Cảnh #{scene_id}: Đổi truy vấn theo đánh giá của VisualCritic -> '{clean_kw_q}' "
+                f"(B-Roll dự phòng: '{critic_broll_q}' | Lý do loại vòng trước: {critic_fb or '; '.join(sc_issues_list)})"
+            )
 
         # 0. Bảo vệ Video Hook thật ở Cảnh 1 & Cảnh 2 (CHỈ khi không bị Gemini Vision ContactSheet bắt lỗi AI dị dạng/chữ rác/trùng lặp):
         # Lưu ý: File video Hook thật của Cảnh 1 có tên `hook_motion_001.mp4` (`CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK` / `CLIMAX_STOCK_VIDEO_REAL_MOTION`),
@@ -355,30 +374,103 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex_lf_r:
                     logger.debug(f"Scene {scene_id}: Long-form 16:9 refine error: {ex_lf_r}")
 
-            # 1. Tầng 1: Tìm kiếm Video Clip Pexels/Pixabay HD mới (truyền bộ truy vấn đơn thực thể 2-3 từ trong 1 lần gọi)
+            # Khi cảnh bị VisualCritic bắt lỗi sai thực thể/ngữ nghĩa (has_semantic_vision_defect=True),
+            # ưu tiên săn YouTube Shorts chuyên sâu TRƯỚC (vì kho Pexels miễn phí đã trượt ở vòng đầu),
+            # sau đó mới quét Pexels với truy vấn B-Roll bối cảnh/thực thể phụ (`critic_broll_q`) do VisualCritic đề xuất!
+            if has_semantic_vision_defect and not replaced and not is_lf_refine and not _refine_cancelled():
+                try:
+                    from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                    from app.services.video_memory_rag import get_video_memory_rag
+                    rag_yt_first = get_video_memory_rag()
+                    yt_first_dl = (
+                        min(deadline_ts - 16.0, time.monotonic() + 40.0)
+                        if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 24.0)
+                        else (deadline_ts or (time.monotonic() + 40.0))
+                    )
+                    out_yt_first = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
+                    yt_first_res = await asyncio.to_thread(
+                        execute_youtube_short_peak_clone_sync,
+                        search_query=clean_kw_q or overall_refine_q,
+                        output_path=out_yt_first,
+                        target_duration_sec=sc_dur_sec,
+                        clip_role="HOOK" if scene_id == 1 else "PEAK",
+                        used_urls=used_refine_urls,
+                        fallback_query=overall_refine_q,
+                        subject_entity=subj_refine,
+                        narration=narr or state.get("topic", ""),
+                        topic=state.get("topic", ""),
+                        search_scope="SCRIPT_OVERALL",
+                        overall_script_query=overall_refine_q,
+                        max_peak_duration_sec=14.0,
+                        job_id=job_id_refine,
+                        scene_id=scene_id,
+                        channel_id=channel_id_refine,
+                        skip_stock_fallback=True,
+                        cancel_event=cancel_event,
+                        deadline_ts=yt_first_dl,
+                    )
+                    if yt_first_res and yt_first_res.get("media_path") and Path(yt_first_res["media_path"]).exists():
+                        ok_yt1_clean, _ = await asyncio.to_thread(
+                            _verify_and_sanitize_refined_media, yt_first_res["media_path"], True, scene_id
+                        )
+                        ok_yt1_sig, _ = (
+                            rag_yt_first.verify_and_commit_in_job_clip(
+                                job_id=job_id_refine,
+                                scene_id=scene_id,
+                                media_path=yt_first_res["media_path"],
+                                vid_id=str(yt_first_res.get("source_url") or yt_first_res["media_path"]),
+                                url=str(yt_first_res.get("source_url") or yt_first_res["media_path"]),
+                                title=str(yt_first_res.get("title") or clean_kw_q),
+                            )
+                            if ok_yt1_clean
+                            else (False, "failed_refine_gate")
+                        )
+                        if ok_yt1_clean and ok_yt1_sig:
+                            if yt_first_res.get("source_url"):
+                                used_refine_urls.add(str(yt_first_res["source_url"]))
+                            item["media_path"] = yt_first_res["media_path"]
+                            item["media_type"] = "video"
+                            item["pose_images"] = []
+                            item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
+                            item["source_url"] = str(yt_first_res.get("source_url") or yt_first_res["media_path"])
+                            replaced = True
+                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi thực thể/ngữ nghĩa bằng YouTube Short Peak 9:16 mới: '{Path(yt_first_res['media_path']).name}'")
+                        else:
+                            Path(yt_first_res["media_path"]).unlink(missing_ok=True)
+                except Exception as ex_yt1:
+                    logger.debug(f"Scene {scene_id}: YouTube Short priority refine error: {ex_yt1}")
+
+            # 1. Tầng 1: Tìm kiếm Video Clip Pexels/Pixabay HD mới (sử dụng critic_broll_q nếu có để lấy B-Roll bối cảnh/thực thể phụ sạch chuẩn Tầng 2)
             if not replaced and not _refine_cancelled():
                 try:
                     from app.services.video_memory_rag import get_video_memory_rag
                     from app.utils.ffmpeg_helper import trim_video
                     from app.graph.tools.tool_schemas import build_single_entity_stock_queries
                     rag_ref = get_video_memory_rag()
+                    primary_pexels_q = critic_broll_q if (has_semantic_vision_defect and critic_broll_q) else clean_kw_q
                     ref_single_qs = build_single_entity_stock_queries(
-                        primary_query=clean_kw_q,
-                        secondary_query=audited_fb_q or overall_refine_q,
+                        primary_query=primary_pexels_q,
+                        secondary_query=clean_kw_q if primary_pexels_q != clean_kw_q else (audited_fb_q or overall_refine_q),
                         subject_entity=subj_refine or primary_entity or "",
                         topic=state.get("topic", ""),
                         narration=narr,
                         max_words=3,
                     )
+                    custom_pexels_qs: List[str] = []
+                    for cq in (critic_broll_q, clean_kw_q, *(ref_single_qs or [])):
+                        cq_s = str(cq or "").strip()
+                        if cq_s and cq_s not in custom_pexels_qs:
+                            custom_pexels_qs.append(cq_s)
                     va_ref_v = {
                         "video_format": "long" if is_lf_refine else "short",
-                        "search_queries": (ref_single_qs[:3] if ref_single_qs else [clean_kw_q]),
+                        "search_queries": custom_pexels_qs[:4] if custom_pexels_qs else [clean_kw_q],
                         "subject": subj_refine or primary_entity or clean_kw_q,
                         "core_visual_entity": subj_refine or primary_entity or clean_kw_q,
+                        "negative_cues": [critic_fb] if critic_fb else [],
                     }
                     best_v = await asyncio.to_thread(
                         media_agent.search_best_video_clip,
-                        ref_single_qs[0] if ref_single_qs else clean_kw_q,
+                        custom_pexels_qs[0] if custom_pexels_qs else clean_kw_q,
                         used_refine_urls,
                         va_ref_v,
                         narr,
@@ -460,8 +552,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex_v:
                     logger.debug(f"Scene {scene_id}: Video refine error: {ex_v}")
 
-            # 2. Tầng 2: Săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync — skip_stock_fallback=True vì đã quét Pexels ở Tầng 1)
-            if not replaced and not is_lf_refine and not _refine_cancelled():
+            # 2. Tầng 2: Săn YouTube Shorts dọc 9:16 mới (chỉ chạy nếu chưa chạy ở nhánh ưu tiên has_semantic_vision_defect phía trên)
+            if not replaced and not has_semantic_vision_defect and not is_lf_refine and not _refine_cancelled():
                 try:
                     from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
                     from app.services.video_memory_rag import get_video_memory_rag
@@ -630,7 +722,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             item.pop("hook_sharpness", None)
 
     refine_sem = asyncio.Semaphore(8 if is_lf_refine else 6)
-    refine_item_timeout = 48.0 if is_lf_refine else 46.0
+    refine_item_timeout = 68.0 if is_lf_refine else 66.0
 
     async def _guarded_refine_single_item(item: Dict[str, Any]) -> None:
         if item.get("scene_id") not in failed_ids:

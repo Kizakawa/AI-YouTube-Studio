@@ -708,13 +708,15 @@ class VisualCritic:
         cls,
         scenes_media: List[Dict[str, Any]],
         primary_entity: Optional[str] = None,
-    ) -> Dict[int, str]:
+    ) -> Dict[int, Dict[str, Any]]:
         """
         Trích xuất khung hình đại diện của toàn bộ các phân cảnh, ghép thành 1 bảng Contact Sheet
-        có đánh số `S1, S2, ...` và gửi cho Gemini Vision kiểm tra trực quan:
-        - Phát hiện ảnh/video chứa chữ giải thích tạp chí/infographic ('HOW IT WORKS', sơ đồ mũi tên, watermark lớn).
-        - Phát hiện cảnh lệch hoàn toàn chủ đề/bối cảnh (VD: bàn DJ âm thanh, rừng cây ban ngày, xe hơi trên tuyết khi đang nói về thủy quái biển sâu, hoặc nhầm loài vật như chồn hôi/báo đốm khi nói về lửng mật).
-        Trả về dict `{scene_id: lý_do_loại}`.
+        có đánh số `SCENE #1, SCENE #2, ...` và gửi cho Gemini Vision tự chấm điểm 3 trục cho từng cảnh:
+        - `entity_match_score` (0.0–10.0): Khớp đúng Thực thể Đích danh của kịch bản (sau khi quy chiếu đại từ/danh từ chung trong câu thoại về Topic).
+        - `relevance_score` (0.0–10.0): Khớp hành động, trạng thái vật lý và bối cảnh của phân cảnh.
+        - `cleanliness_score` (0.0–10.0): Không chứa chữ tạp chí/infographic, watermark, viền đen hoặc bối cảnh nhân tạo lệch ngữ cảnh.
+        - `suggested_search_query`: Truy vấn tiếng Anh 2–4 từ gợi ý sửa chữa khi cảnh không đạt (`< 7.5`).
+        Trả về dict `{scene_id: {"passed": bool, "entity_match_score": float, "relevance_score": float, "cleanliness_score": float, "reason": str, "suggested_search_query": str}}`.
         """
         import base64
         import io
@@ -727,11 +729,16 @@ class VisualCritic:
         from config.settings import settings
         from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 
-        if not scenes_media or not primary_entity:
+        if not scenes_media:
             return {}
         keys = settings.get_gemini_keys_pool()
         if not keys:
             return {}
+
+        anchor_topic = str(primary_entity or "").strip()
+        if not anchor_topic:
+            first_narrs = [str(it.get("narration") or "").strip() for it in scenes_media[:2] if isinstance(it, dict)]
+            anchor_topic = " | ".join(x for x in first_narrs if x) or "General Documentary"
 
         is_widescreen_sheet = any(
             "16X9" in str(it.get("production_method") or "").upper()
@@ -749,8 +756,6 @@ class VisualCritic:
                 prod_m_cs = str(item.get("production_method") or "")
                 narr = str(item.get("narration") or item.get("visual_keyword") or "")
                 if sid <= 0 or not mpath or not Path(mpath).exists():
-                    return None
-                if bool(item.get("hook_verified")):
                     return None
                 if (
                     "DOODLE_2D" in prod_m_cs
@@ -786,8 +791,7 @@ class VisualCritic:
                     draw = ImageDraw.Draw(im_obj)
                     draw.rectangle([(0, 0), (96, 30)], fill=(0, 0, 0))
                     draw.text((8, 7), f"SCENE #{sid}", fill=(255, 230, 0))
-                    vis_kw_t = str(item.get("visual_keyword") or "").strip()
-                    label_desc = f"[Target Visual: {vis_kw_t}] {narr[:90]}" if vis_kw_t else narr[:90]
+                    label_desc = narr[:220]
                     return (sid, im_obj, label_desc)
                 return None
 
@@ -801,7 +805,7 @@ class VisualCritic:
 
         rotator = KeyRotator(settings.get_gemini_keys_pool())
         vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
-        all_out_reasons: Dict[int, str] = {}
+        all_scene_evals: Dict[int, Dict[str, Any]] = {}
         batch_chunk_size = 20
         for b_start in range(0, len(thumbs), batch_chunk_size):
             chunk_thumbs = thumbs[b_start : b_start + batch_chunk_size]
@@ -819,22 +823,39 @@ class VisualCritic:
             sheet.save(buf, format="JPEG", quality=80)
             b64_sheet = base64.b64encode(buf.getvalue()).decode("ascii")
 
-            prompt = f"""You are a strict Visual Continuity & Quality Director inspecting the final scene frames of a YouTube {'16:9 Documentary' if is_widescreen_sheet else 'Short'} BEFORE rendering.
-Primary Protagonist / Anchor Entity of this video: "{primary_entity}"
-Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ... along with each scene's [Target Visual] and spoken narration):
+            prompt = f"""You are the Chief Multimodal Visual Critic inspecting and self-scoring the final scene frames of a YouTube {'16:9 Documentary' if is_widescreen_sheet else 'Short'} BEFORE rendering.
+Overall Script Topic & Named Protagonists: "{anchor_topic}"
+Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ... along with each scene's spoken narration):
 {chr(10).join(scene_lines)}
 
-Inspect every labeled tile carefully and flag ONLY scenes that have severe visual defects:
-1. Magazine / Textbook / Infographic / Burned-in Subtitle, Uploader Watermark ("By: ..."), Black Letterbox/Pillarbox Bars, or AI Generator Corner Watermark clutter: Frames containing explanatory text, anatomy callout arrows/labels, channel logos/banners, creator watermarks (including Chinese/foreign "By: ..." text at the top/corners), black horizontal letterbox or vertical pillarbox borders, burned-in third-party subtitles, OR any AI video generator corner badge/sparkle icon (`✦`).
-2. Surreal AI Deformities: Frames showing grotesque AI hallucinations (e.g. a human arm/leg grafted onto an animal, gibberish digital meters, or mutated body parts).
-3. Wrong Animal Family / Wrong Ecosystem / Contradictory Subject (2-TIER DOCUMENTARY B-ROLL & FAMILY-LEVEL CHECK):
-   - 2-TIER B-ROLL RULE FOR MULTI-ENTITY & HABITAT SCENES: When a scene mentions multiple entities or describes their wild ecosystem/river/forest/ocean/historical setting, a clean shot showing AT LEAST ONE of the named entities OR a clean wild establishing shot of that exact named ecosystem/habitat (with ZERO tourists/boats/unrelated animals) is 100% VALID documentary cutaway B-Roll.
-   - STRICT WRONG-SPECIES / WRONG-CONTINENT / CAPTIVE-HANDLER REJECTION: IMMEDIATELY FAIL any scene showing animals/prey from a completely different continent or family not mentioned in the video (e.g., African savanna zebra/giraffe/lion/elephant in an Amazonian story, whale shark for predatory shark, domestic pet/livestock instead of wild predator, human handler/zookeeper holding or standing beside a wild animal, wire/chain-link zoo cage, or modern human office/DJ mixer/car/snowboarder).
+SELF-SCORING PROTOCOL FOR EVERY SCENE TILE (0.0 to 10.0):
+1. CROSS-SCENE COREFERENCE & CROSS-TILE VISUAL IDENTITY CONSISTENCY (`entity_match_score`: 0.0–10.0):
+   - Resolve any pronouns or generic nouns in each scene's narration (e.g., "the hunter", "the eagle", "its prey", "this creature", "he/she/it") back to the exact named protagonists in Overall Script Topic ("{anchor_topic}").
+   - CROSS-TILE MORPHOLOGY CHECK: Compare the physical appearance (plumage/fur color, head crest, body structure, anatomy) of recurring protagonists across all tiles (`SCENE #1 .. SCENE #N`) in this contact sheet! If a tile shows a subject with a noticeably different species morphology or coloration from the true named protagonist shown in the other tiles (for example, a different species from the same broad animal family with different head/body coloration), you MUST score `entity_match_score < 5.0` and set `"passed": false`.
+   - 2-TIER DOCUMENTARY B-ROLL RULE: For rare multi-entity interactions or comparison sentences, a clean shot showing AT LEAST ONE of the exact named protagonists from "{anchor_topic}" OR a clean establishing shot of the exact natural habitat/environment described in the narration (containing ZERO wrong-species substitute subjects) scores `8.2–9.5` (`"passed": true`).
+2. NARRATIVE ACTION & SETTING ALIGNMENT (`relevance_score`: 0.0–10.0):
+   - Does the frame's action, physical state, mood, and setting align with the spoken narration chunk?
+3. VISUAL CLEANLINESS & AUTHENTICITY (`cleanliness_score`: 0.0–10.0):
+   - Score `< 4.0` (`"passed": false`) if the frame contains magazine/infographic text, callout arrows, channel logos, uploader watermarks ("By: ..."), black letterbox/pillarbox bars, AI corner badges (`✦`), surreal AI deformities, or artificial/captive staging that contradicts a wild/historical documentary context.
+4. SELF-CORRECTION QUERIES (`suggested_search_query` & `fallback_broll_query`):
+   - A scene passes (`"passed": true`) ONLY if `entity_match_score >= 7.5`, `relevance_score >= 7.5`, AND `cleanliness_score >= 7.5`.
+   - Whenever `"passed": false`, provide TWO concise 2–4 word English queries:
+     + `suggested_search_query`: Names the exact primary entity + action from "{anchor_topic}" (for specialist documentary video search).
+     + `fallback_broll_query`: Names either the co-protagonist OR the pure natural habitat/environment described in the scene's narration (e.g. canopy branches, ocean depth, ancient ruins — WITHOUT generic animal nouns that could return wrong species on stock libraries) for 2-Tier Documentary B-Roll.
 
 Return ONLY valid JSON in this exact format:
 {{
-  "failed_scenes": [
-    {{"scene_id": 4, "reason": "Contains creator watermark or wrong continent species"}}
+  "scene_evaluations": [
+    {{
+      "scene_id": 1,
+      "entity_match_score": 9.2,
+      "relevance_score": 9.0,
+      "cleanliness_score": 9.5,
+      "passed": true,
+      "reason": "Exact named subject and habitat match",
+      "suggested_search_query": "",
+      "fallback_broll_query": ""
+    }}
   ]
 }}"""
 
@@ -853,7 +874,7 @@ Return ONLY valid JSON in this exact format:
                 }
                 try:
                     t_req_cs = time.monotonic()
-                    resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(15))
+                    resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(18))
                     cs_elapsed = time.monotonic() - t_req_cs
                     if resp.status_code == 200:
                         rotator.record_model_success(api_key, model_name, cs_elapsed)
@@ -863,16 +884,40 @@ Return ONLY valid JSON in this exact format:
                             m = re.search(r"\{.*\}", txt, re.DOTALL)
                             if m:
                                 data = json.loads(m.group(0))
+                                for item_ev in (data.get("scene_evaluations") or []):
+                                    if isinstance(item_ev, dict) and item_ev.get("scene_id"):
+                                        sid_e = int(item_ev["scene_id"])
+                                        ent_s = float(item_ev.get("entity_match_score", 9.0))
+                                        rel_s = float(item_ev.get("relevance_score", 9.0))
+                                        cln_s = float(item_ev.get("cleanliness_score", 9.0))
+                                        is_p = bool(item_ev.get("passed", True)) and min(ent_s, rel_s, cln_s) >= 7.5
+                                        all_scene_evals[sid_e] = {
+                                            "passed": is_p,
+                                            "entity_match_score": ent_s,
+                                            "relevance_score": rel_s,
+                                            "cleanliness_score": cln_s,
+                                            "reason": str(item_ev.get("reason") or ""),
+                                            "suggested_search_query": str(item_ev.get("suggested_search_query") or "").strip(),
+                                            "fallback_broll_query": str(item_ev.get("fallback_broll_query") or "").strip(),
+                                        }
                                 for item_f in (data.get("failed_scenes") or []):
                                     if isinstance(item_f, dict) and item_f.get("scene_id"):
-                                        all_out_reasons[int(item_f["scene_id"])] = str(item_f.get("reason") or "Lệch chủ đề/chứa chữ rác")
+                                        sid_f = int(item_f["scene_id"])
+                                        all_scene_evals[sid_f] = {
+                                            "passed": False,
+                                            "entity_match_score": 4.0,
+                                            "relevance_score": 4.0,
+                                            "cleanliness_score": 4.0,
+                                            "reason": str(item_f.get("reason") or "Lệch chủ đề/chứa chữ rác"),
+                                            "suggested_search_query": str(item_f.get("suggested_search_query") or "").strip(),
+                                        }
                                 break
                     elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                         rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
                 except Exception as e_v:
                     rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_v))
                     continue
-        return all_out_reasons
+        return all_scene_evals
 
     @trace_custom_span("VisualCritic.evaluate_media", run_type="chain")
     def evaluate_media(
@@ -1111,7 +1156,7 @@ Return ONLY valid JSON in this exact format:
             }
 
         max_workers = min(max(len(scenes_media), 1), 12)
-        vision_semantic_failures: Dict[int, str] = {}
+        vision_scene_evals: Dict[int, Dict[str, Any]] = {}
         with ThreadPoolExecutor(max_workers=max_workers + 1) as pool:
             cs_future = pool.submit(
                 self._gemini_vision_audit_contact_sheet,
@@ -1120,15 +1165,23 @@ Return ONLY valid JSON in this exact format:
             )
             inspected_list = list(pool.map(_inspect_single_scene, scenes_media))
             try:
-                vision_semantic_failures = cs_future.result(timeout=35.0) or {}
-                if vision_semantic_failures:
+                vision_scene_evals = cs_future.result(timeout=35.0) or {}
+                failed_cs_map = {
+                    k: v.get("reason")
+                    for k, v in vision_scene_evals.items()
+                    if isinstance(v, dict) and not v.get("passed", True)
+                }
+                if failed_cs_map:
                     logger.warning(
-                        f"👁️ [VisualCritic ContactSheet Vision] Phát hiện {len(vision_semantic_failures)} cảnh lệch nội dung/chứa chữ tạp chí: "
-                        f"{vision_semantic_failures}"
+                        f"👁️ [VisualCritic ContactSheet Vision] Phát hiện {len(failed_cs_map)} cảnh chưa đạt chuẩn ngữ nghĩa/thực thể: "
+                        f"{failed_cs_map}"
                     )
             except Exception as e_cs:
                 logger.debug(f"[VisualCritic ContactSheet Vision] skip: {e_cs}")
 
+        scene_media_by_id: Dict[int, Dict[str, Any]] = {
+            int(m.get("scene_id") or 0): m for m in scenes_media if isinstance(m, dict) and m.get("scene_id")
+        }
         scene_scores: List[SceneVisualScore] = []
         failed_scene_ids: List[int] = []
         seen_hashes: Dict[str, int] = {}
@@ -1144,13 +1197,29 @@ Return ONLY valid JSON in this exact format:
             sig = res["sig"]
             is_long_peak_cont = bool(res.get("is_long_peak_cont"))
 
-            if scene_id in vision_semantic_failures:
-                v_reason = vision_semantic_failures[scene_id]
-                issues.append(f"Gemini Vision ContactSheet: {v_reason}")
-                res["rel_score"] = 4.0
-                res["entity_score"] = 4.0
-                aes_score = min(aes_score, 4.5)
-                failed = True
+            v_eval = vision_scene_evals.get(scene_id)
+            if isinstance(v_eval, dict):
+                res["rel_score"] = float(v_eval.get("relevance_score", res["rel_score"]))
+                res["entity_score"] = float(v_eval.get("entity_match_score", res["entity_score"]))
+                cln_s = float(v_eval.get("cleanliness_score", 9.0))
+                if not v_eval.get("passed", True) or min(res["rel_score"], res["entity_score"], cln_s) < 7.5:
+                    v_reason = str(v_eval.get("reason") or "Lệch thực thể/ngữ cảnh kịch bản")
+                    v_sug_q = str(v_eval.get("suggested_search_query") or "").strip()
+                    v_broll_q = str(v_eval.get("fallback_broll_query") or "").strip()
+                    issues.append(
+                        f"Gemini Vision ContactSheet: {v_reason}"
+                        + (f" [Suggested Query: {v_sug_q}]" if v_sug_q else "")
+                        + (f" [Fallback B-Roll: {v_broll_q}]" if v_broll_q else "")
+                    )
+                    aes_score = min(aes_score, cln_s, 5.5)
+                    failed = True
+                    target_m = scene_media_by_id.get(int(scene_id))
+                    if isinstance(target_m, dict):
+                        target_m["critic_feedback"] = v_reason
+                        if v_sug_q:
+                            target_m["critic_suggested_query"] = v_sug_q
+                        if v_broll_q:
+                            target_m["critic_fallback_broll_query"] = v_broll_q
 
             if img_hash:
                 if img_hash in seen_hashes:
@@ -1187,13 +1256,17 @@ Return ONLY valid JSON in this exact format:
             ))
 
         total_scenes = len(scene_scores)
-        overall = sum(s.aesthetic_score for s in scene_scores) / total_scenes if total_scenes > 0 else 0.0
-        passed = len(failed_scene_ids) == 0 and overall >= 7.0
+        overall = (
+            sum((s.relevance_score + s.entity_match_score + s.aesthetic_score) / 3.0 for s in scene_scores) / total_scenes
+            if total_scenes > 0
+            else 0.0
+        )
+        passed = len(failed_scene_ids) == 0 and overall >= 7.5
 
         return VisualEvaluationReport(
             scene_scores=scene_scores,
             overall_score=round(overall, 1),
             failed_scene_ids=list(set(failed_scene_ids)),
             passed=passed,
-            summary="\n".join(issues_summary) if issues_summary else "Tất cả hình ảnh/video đạt chuẩn độ sắc nét & độ phân giải."
+            summary="\n".join(issues_summary) if issues_summary else "Tất cả hình ảnh/video đạt chuẩn ngữ nghĩa, thực thể & độ sắc nét."
         )
