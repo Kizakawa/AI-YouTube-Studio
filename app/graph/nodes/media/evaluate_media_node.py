@@ -118,19 +118,55 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
         or len(scenes_media) >= 14
     )
     if not is_lf_check and len(scenes_media) >= 5:
+        from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
+
         def _is_eval_real_video(sc_d: Dict[str, Any]) -> bool:
-            mp_s = str(sc_d.get("media_path") or "").lower()
+            raw_mp = str(sc_d.get("media_path") or "")
+            mp_s = raw_mp.lower()
             mt_s = str(sc_d.get("media_type") or "").lower()
             pm_s = str(sc_d.get("production_method") or "").upper()
             if any(t_k in mp_s for t_k in ("_i2v", "_fb_motion", "_anim", "_motion3d", "_gsearch_3d", "_creature_3d")):
                 return False
-            if any(t_p in pm_s for t_p in ("IMAGE_TO_VIDEO", "STOCK_PHOTO_I2V", "GOOGLE_TOP_IMAGE", "CLIMAX_IMAGES_LIVE_FX")):
+            if any(
+                t_p in pm_s
+                for t_p in (
+                    "IMAGE_TO_VIDEO",
+                    "STOCK_PHOTO_I2V",
+                    "GOOGLE_TOP_IMAGE",
+                    "CLIMAX_IMAGES_LIVE_FX",
+                    "GOOGLE_MULTI_CHUNK_HOOK_VIDEO",
+                    "FINAL_GATE_GOOGLE_IMAGE_RESCUE",
+                    "REFINED_GOOGLE_IMAGE_RESCUE",
+                )
+            ):
                 return False
-            return mt_s in ("video", "hook_ready_video") and mp_s.endswith((".mp4", ".mov", ".webm"))
+            if not (mt_s in ("video", "hook_ready_video") and mp_s.endswith((".mp4", ".mov", ".webm"))):
+                return False
+            if int(sc_d.get("scene_id") or 0) in (1, 2):
+                ok_gen_m, _, _ = verify_hook_clip_genuine_motion(raw_mp)
+                if not ok_gen_m:
+                    return False
+            return True
 
         n_sc_eval = len(scenes_media)
         min_req_vid = max(5, int((n_sc_eval * 0.80) + 0.999))
         real_vid_count = sum(1 for sc_x in scenes_media if _is_eval_real_video(sc_x))
+
+        # Bắt buộc 100% 5-7s đầu tiên (Scene 1 & Scene 2) phải là Video chuyển động thật
+        opening_failed_sids: List[int] = []
+        for open_idx in (0, 1):
+            if open_idx < n_sc_eval and not _is_eval_real_video(scenes_media[open_idx]):
+                open_sid = int(scenes_media[open_idx].get("scene_id") or (open_idx + 1))
+                if open_sid not in eval_report.failed_scene_ids:
+                    eval_report.failed_scene_ids.append(open_sid)
+                opening_failed_sids.append(open_sid)
+        if opening_failed_sids:
+            eval_report.passed = False
+            logger.warning(
+                f"🎬 [Opening 5-7s Pure Video Gate] Cảnh mở đầu {opening_failed_sids} chưa phải là Video chuyển động thật 100% "
+                f"-> Đưa bắt buộc vào luồng nâng cấp Video Hook!"
+            )
+
         if real_vid_count < min_req_vid:
             deficit_v = min_req_vid - real_vid_count
             static_priority_order = [0, 1, n_sc_eval - 1, n_sc_eval - 2] + [
@@ -219,17 +255,29 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 ]
                 fg_narr = str(m.get("narration") or state.get("topic", "")).strip()
 
-                # 0. Phục hồi tức thì file `scene_{sid:03d}_refined_*.mp4` vừa tải xong trên đĩa nếu đạt chuẩn VisualCritic
+                # 0. Phục hồi tức thì file `hook_motion_001_fullpeak.mp4` / `scene_{sid:03d}_refined_*.mp4` vừa tải xong trên đĩa nếu đạt chuẩn VisualCritic + Genuine Motion
+                from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
+                from app.graph.tools.tool_schemas import build_single_entity_stock_queries
+                from app.services.media.stock_fetcher import StockFetcher
                 existing_cur_mp = str(m.get("media_path") or "")
-                refined_disk_cands = sorted(
-                    [
-                        p for p in media_dir.glob(f"scene_{sid:03d}_refined_*.mp4")
-                        if str(p) != existing_cur_mp and is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
-                    ],
-                    key=_safe_mtime,
-                    reverse=True,
+                disk_cands_fg: List[Path] = []
+                if sid == 1:
+                    for hk_p in (work_dir / "hook_motion_001_fullpeak.mp4", work_dir / "hook_motion_001.mp4"):
+                        if hk_p.exists() and is_completed_clean_mp4(hk_p, min_size_bytes=20_000, min_duration_ms=1200):
+                            disk_cands_fg.append(hk_p)
+                disk_cands_fg.extend(
+                    sorted(
+                        [
+                            p for p in media_dir.glob(f"scene_{sid:03d}_refined_*.mp4")
+                            if str(p) != existing_cur_mp and is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
+                        ],
+                        key=_safe_mtime,
+                        reverse=True,
+                    )
                 )
-                for ref_cand_p in refined_disk_cands[:3]:
+                for ref_cand_p in disk_cands_fg[:4]:
+                    if sid in (1, 2) and not verify_hook_clip_genuine_motion(str(ref_cand_p))[0]:
+                        continue
                     fg_ref_chk = critic.inspect_clip_before_concat(
                         str(ref_cand_p),
                         min_short_edge=540,
@@ -238,14 +286,34 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         auto_sanitize=True,
                     )
                     if fg_ref_chk.get("passed") and is_clip_visually_unique_in_job(str(ref_cand_p), job_id_fg, scene_id=sid):
+                        target_fg_rec = str(ref_cand_p)
+                        if sid == 1 and "fullpeak" in ref_cand_p.name:
+                            out_fg_hk_trim = str(media_dir / "scene_001_final_fullpeak_trim.mp4")
+                            trim_video(
+                                input_path=str(ref_cand_p),
+                                duration_seconds=sc_dur,
+                                output_path=out_fg_hk_trim,
+                                width=1920 if is_lf_eval else 1080,
+                                height=1080 if is_lf_eval else 1920,
+                                fps=30,
+                                is_scifi=is_scifi_val,
+                                niche=current_niche,
+                                apply_grading=True,
+                                is_hook_scene=True,
+                                fair_use_transform=True,
+                                start_offset_sec=0.0,
+                                preserve_continuous_flow=True,
+                            )
+                            if Path(out_fg_hk_trim).exists() and _safe_size(Path(out_fg_hk_trim)) > 12_000:
+                                target_fg_rec = out_fg_hk_trim
                         with fg_lock:
-                            used_active_paths.add(str(ref_cand_p.resolve()))
-                        m["media_path"] = str(ref_cand_p)
+                            used_active_paths.add(str(Path(target_fg_rec).resolve()))
+                        m["media_path"] = target_fg_rec
                         m["media_type"] = "hook_ready_video" if sid == 1 else "video"
                         m["pose_images"] = []
                         m["production_method"] = "FINAL_GATE_RECOVERED_REFINED_VIDEO"
                         logger.info(
-                            f"🛡️ [FinalVisualGate] Đã khôi phục clip sạch '{ref_cand_p.name}' từ đĩa cho Cảnh #{sid}"
+                            f"🛡️ [FinalVisualGate] Đã khôi phục clip chuyển động thật '{Path(target_fg_rec).name}' từ đĩa cho Cảnh #{sid}"
                         )
                         return True
                 # Ưu tiên số 1 cho Video Dài 16:9 (< 2s trên ổ cứng): cắt lát 16:9 độc lập từ ChapterPool đã duyệt Vision!
@@ -282,9 +350,18 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     except Exception as _e_fg_pool0:
                         logger.debug(f"[FinalVisualGate 16:9] ChapterPool priority rescue skip: {_e_fg_pool0}")
 
-                q_fg = anchored_base_kw or clean_scene_search_query(
-                    f"{primary_entity or state.get('topic', '')} {fg_facets[rescue_idx % len(fg_facets)]}",
-                    max_words=5,
+                fg_single_qs = build_single_entity_stock_queries(
+                    primary_query=anchored_base_kw,
+                    secondary_query=(fg_story_qs[1] if len(fg_story_qs) > 1 else ""),
+                    subject_entity=str(m.get("subject_entity") or primary_entity or ""),
+                    topic=state.get("topic", ""),
+                    narration=fg_narr,
+                    max_words=3,
+                )
+                q_fg = (
+                    fg_single_qs[0]
+                    if fg_single_qs
+                    else (anchored_base_kw or clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3))
                 )
                 with fg_lock:
                     snap_fg_used = set(used_active_paths | used_active_vids)
@@ -293,25 +370,23 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     "subject": str(m.get("subject_entity") or q_fg),
                     "core_visual_entity": str(m.get("subject_entity") or q_fg),
                     "topic": state.get("topic", ""),
-                    "search_queries": fg_story_qs[:4] if fg_story_qs else [q_fg],
+                    "search_queries": fg_single_qs[:4] if fg_single_qs else [q_fg],
                 }
-                # Ưu tiên số 1 cho Shorts trong FinalVisualGate: Tìm Video Stock sạch chữ (Pexels/Pixabay ~2-4s) theo đúng truy vấn mạch truyện của cảnh
-                best_fg_v = ma_fg.search_best_video_clip(
-                    q_fg,
-                    snap_fg_used,
-                    va_fg,
-                    fg_narr,
-                    state.get("topic", ""),
-                )
-                if not best_fg_v and primary_entity:
-                    q_fg_single = clean_scene_search_query(f"{primary_entity} {fg_facets[rescue_idx % len(fg_facets)]}", max_words=4)
+                # Ưu tiên số 1 cho Shorts trong FinalVisualGate: Tìm Video Stock sạch chữ (Pexels/Pixabay ~2-4s) theo đúng truy vấn đơn thực thể
+                best_fg_v = None
+                for q_fg_try in (fg_single_qs[:3] if fg_single_qs else [q_fg]):
+                    if not q_fg_try:
+                        continue
                     best_fg_v = ma_fg.search_best_video_clip(
-                        q_fg_single,
+                        q_fg_try,
                         snap_fg_used,
                         va_fg,
-                        str(primary_entity),
-                        str(primary_entity),
+                        fg_narr,
+                        state.get("topic", ""),
                     )
+                    if best_fg_v and best_fg_v.get("url"):
+                        q_fg = q_fg_try
+                        break
                 if best_fg_v and best_fg_v.get("url"):
                     fg_cand_urls = [
                         best_fg_v["url"],
@@ -348,7 +423,8 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             )
                             Path(raw_fg_dl).unlink(missing_ok=True)
                             if Path(out_final_rescue).exists() and _safe_size(Path(out_final_rescue)) > 12_000:
-                                if is_clip_visually_unique_in_job(out_final_rescue, job_id_fg, scene_id=sid):
+                                ok_fg_mot = verify_hook_clip_genuine_motion(out_final_rescue)[0]
+                                if ok_fg_mot and is_clip_visually_unique_in_job(out_final_rescue, job_id_fg, scene_id=sid):
                                     with fg_lock:
                                         used_active_vids.add(fg_url)
                                         used_active_paths.add(str(Path(out_final_rescue).resolve()))
@@ -386,10 +462,11 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             max_peak_duration_sec=10.0,
                             job_id=job_id_fg,
                             scene_id=sid,
-                            storyline_queries=fg_story_qs,
+                            storyline_queries=fg_single_qs[:4] if fg_single_qs else fg_story_qs,
                             deadline_ts=time.monotonic() + 20.0,
                         )
                         if bili_fg_res and bili_fg_res.get("media_path") and Path(bili_fg_res["media_path"]).exists():
+                            ok_bili_mot = True if sid not in (1, 2) else verify_hook_clip_genuine_motion(bili_fg_res["media_path"])[0]
                             bili_chk = critic.inspect_clip_before_concat(
                                 bili_fg_res["media_path"],
                                 min_short_edge=540,
@@ -397,7 +474,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 check_watermark=True,
                                 auto_sanitize=True,
                             )
-                            if bili_chk.get("passed"):
+                            if ok_bili_mot and bili_chk.get("passed"):
                                 with fg_lock:
                                     if bili_fg_res.get("source_url"):
                                         used_active_vids.add(str(bili_fg_res["source_url"]))
@@ -414,16 +491,18 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     except Exception as _e_bfg:
                         logger.debug(f"[FinalVisualGate] Bilibili/Peak rescue skip: {_e_bfg}")
 
-                # Bảo vệ Cảnh 1 (Opening Hook): CHỈ giữ lại Video Cảnh 1 khi thực sự sạch chữ/sạch viền qua `inspect_clip_before_concat`!
+                # Bảo vệ Cảnh 1 & Cảnh 2 (5-7s đầu tiên): CHỈ giữ lại Video khi thực sự chuyển động thật (`verify_hook_clip_genuine_motion`) và sạch chữ!
                 existing_fg_mp = str(m.get("media_path") or "")
                 existing_fg_pm = str(m.get("production_method") or "").upper()
                 if (
-                    sid == 1
+                    sid in (1, 2)
                     and existing_fg_mp
                     and Path(existing_fg_mp).exists()
                     and existing_fg_mp.lower().endswith((".mp4", ".mov", ".webm"))
                     and "CLIMAX_IMAGES_LIVE_FX" not in existing_fg_pm
+                    and "GOOGLE_MULTI_CHUNK_HOOK_VIDEO" not in existing_fg_pm
                     and is_completed_clean_mp4(existing_fg_mp, min_size_bytes=12_000, min_duration_ms=1000)
+                    and verify_hook_clip_genuine_motion(existing_fg_mp)[0]
                 ):
                     s1_fg_chk = critic.inspect_clip_before_concat(
                         existing_fg_mp,
@@ -433,12 +512,99 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         auto_sanitize=True,
                     )
                     if s1_fg_chk.get("passed"):
-                        m["media_type"] = "hook_ready_video"
+                        m["media_type"] = "hook_ready_video" if sid == 1 else "video"
                         logger.info(
-                            f"🛡️ [FinalVisualGate] Giữ nguyên Video chuyển động thật sạch lỗi cho Cảnh #1 ({Path(existing_fg_mp).name})!"
+                            f"🛡️ [FinalVisualGate] Giữ nguyên Video chuyển động thật sạch lỗi cho Cảnh #{sid} ({Path(existing_fg_mp).name})!"
                         )
                         return True
-                # Fallback ảnh thật Google Top Image nếu kho video không trả về clip cho cảnh lỗi (Scene >= 2 hoặc chưa có video)
+
+                # Nếu là Cảnh 1 hoặc Cảnh 2 (5-7s đầu tiên): CẤM tải ảnh tĩnh Google/Stock! Quét trực tiếp StockFetcher Video bằng từ khóa 2 từ cốt lõi!
+                if sid in (1, 2):
+                    try:
+                        sf_fg_vid = StockFetcher()
+                        core_fg_2w_qs = build_single_entity_stock_queries(
+                            primary_query=str(m.get("subject_entity") or primary_entity or anchored_base_kw),
+                            secondary_query=anchored_base_kw,
+                            subject_entity=str(primary_entity or m.get("subject_entity") or ""),
+                            topic=state.get("topic", ""),
+                            narration=fg_narr,
+                            max_words=2,
+                        )
+                        with fg_lock:
+                            snap_fg_v2w = set(used_active_vids)
+                        for q_fg_2w in core_fg_2w_qs[:4]:
+                            if not q_fg_2w:
+                                continue
+                            v_fg_hits = (
+                                sf_fg_vid.search_videos(
+                                    q_fg_2w,
+                                    per_page=8,
+                                    min_duration=2,
+                                    orientation="landscape" if is_lf_eval else "portrait",
+                                    used_urls=snap_fg_v2w,
+                                    topic=state.get("topic", ""),
+                                    narration=fg_narr,
+                                )
+                                or sf_fg_vid.search_pixabay_videos(
+                                    q_fg_2w,
+                                    per_page=8,
+                                    min_duration=2,
+                                    orientation="landscape" if is_lf_eval else "portrait",
+                                    used_urls=snap_fg_v2w,
+                                    topic=state.get("topic", ""),
+                                    narration=fg_narr,
+                                )
+                                or []
+                            )
+                            for vh_fg in v_fg_hits[:4]:
+                                vh_u_fg = str(vh_fg.get("url") or "").strip()
+                                if not vh_u_fg or vh_u_fg in snap_fg_v2w:
+                                    continue
+                                snap_fg_v2w.add(vh_u_fg)
+                                raw_fg_2w = str(media_dir / f"scene_{sid:03d}_fg_2w_raw.mp4")
+                                out_fg_2w = str(media_dir / f"scene_{sid:03d}_final_opening_video.mp4")
+                                ma_fg.download_file(vh_u_fg, raw_fg_2w)
+                                if Path(raw_fg_2w).exists() and _safe_size(Path(raw_fg_2w)) > 15_000:
+                                    trim_video(
+                                        input_path=raw_fg_2w,
+                                        duration_seconds=sc_dur,
+                                        output_path=out_fg_2w,
+                                        width=1920 if is_lf_eval else 1080,
+                                        height=1080 if is_lf_eval else 1920,
+                                        fps=30,
+                                        is_scifi=is_scifi_val,
+                                        niche=current_niche,
+                                        apply_grading=True,
+                                        is_hook_scene=(sid == 1),
+                                        fair_use_transform=True,
+                                        start_offset_sec=0.0,
+                                        preserve_continuous_flow=True,
+                                    )
+                                    Path(raw_fg_2w).unlink(missing_ok=True)
+                                    if (
+                                        Path(out_fg_2w).exists()
+                                        and _safe_size(Path(out_fg_2w)) > 12_000
+                                        and verify_hook_clip_genuine_motion(out_fg_2w)[0]
+                                    ):
+                                        with fg_lock:
+                                            used_active_vids.add(vh_u_fg)
+                                            used_active_paths.add(str(Path(out_fg_2w).resolve()))
+                                        m["media_path"] = out_fg_2w
+                                        m["media_type"] = "hook_ready_video" if sid == 1 else "video"
+                                        m["pose_images"] = []
+                                        m["production_method"] = "FINAL_GATE_OPENING_PURE_VIDEO"
+                                        logger.info(
+                                            f"🎬 [FinalVisualGate Opening 5-7s] Đã tải Video chuyển động thật cho Cảnh #{sid} ('{q_fg_2w}') -> {Path(out_fg_2w).name}"
+                                        )
+                                        return True
+                                    Path(out_fg_2w).unlink(missing_ok=True)
+                                else:
+                                    Path(raw_fg_2w).unlink(missing_ok=True)
+                    except Exception as _e_fg_2w:
+                        logger.debug(f"[FinalVisualGate] Opening 5-7s direct video rescue skip: {_e_fg_2w}")
+                    return False
+
+                # Fallback ảnh thật Google Top Image CHỈ cho các cảnh thân bài (Scene >= 3)
                 from app.graph.tools.google_image_executor import execute_google_cinematic_image_sync
                 out_fg_img = str(media_dir / f"scene_{sid:03d}_final_gimg_rescue.jpg")
                 with fg_lock:
@@ -449,7 +615,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     narration=fg_narr,
                     topic=state.get("topic", ""),
                     used_urls=snap_fg_vids,
-                    is_hook_scene=(sid == 1),
+                    is_hook_scene=False,
                     subject_entity=primary_entity or state.get("topic", ""),
                     job_id=job_id_fg,
                     scene_id=sid,
@@ -467,9 +633,8 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         f"🛡️ [FinalVisualGate] Đã thay thế Cảnh #{sid} bằng Ảnh thật Top Google độc lập -> {Path(g_fg_res['media_path']).name}"
                     )
                     return True
-                # Tầng cuối cùng: Ảnh Stock ngang/dọc HD trực tiếp qua StockFetcher (tuyệt đối không để sót _graphic.png)
+                # Tầng cuối cùng (Scene >= 3): Ảnh Stock ngang/dọc HD trực tiếp qua StockFetcher (tuyệt đối không để sót _graphic.png)
                 try:
-                    from app.services.media.stock_fetcher import StockFetcher
                     sf_fg = StockFetcher()
                     fg_broad_q = clean_scene_search_query(primary_entity or anchored_base_kw or state.get("topic", ""), max_words=3)
                     with fg_lock:

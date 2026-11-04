@@ -129,7 +129,18 @@ async def run_post_gather_media_rescues(
                 return False
             if vs in ("HOOK_MULTI_IMAGE_RAPID_PEAK", "GEMINI_SEARCH_3D", "CREATURE_ART", "AI_IMAGE"):
                 return False
-            return mt in ("video", "hook_ready_video") and mp.endswith((".mp4", ".mov", ".webm"))
+            if not (mt in ("video", "hook_ready_video") and mp.endswith((".mp4", ".mov", ".webm"))):
+                return False
+            sid_slot = int(sc_dict.get("scene_id") or 0)
+            if sid_slot in (1, 2) and Path(str(sc_dict.get("media_path") or "")).exists():
+                try:
+                    from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion
+                    ok_slot_mot, _, _ = verify_hook_clip_genuine_motion(str(sc_dict.get("media_path")))
+                    if not ok_slot_mot:
+                        return False
+                except Exception:
+                    pass
+            return True
 
         n_slots = len(scenes_media)
         min_vid_ratio = 0.80 if is_long_form else 0.85
@@ -326,23 +337,60 @@ async def run_post_gather_media_rescues(
                         nonlocal rescued_ok
                         if rescued_ok or _rescue_cancelled():
                             return
+                        # 0. Với Cảnh 1, khôi phục tức thì hook_motion_001_fullpeak.mp4 hoặc hook_motion_001.mp4 nếu đã có chuyển động thật trên đĩa
+                        if r_sid == 1:
+                            try:
+                                from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion
+                                for p_hk_disk in (work_dir / "hook_motion_001.mp4", work_dir / "hook_motion_001_fullpeak.mp4"):
+                                    if p_hk_disk.exists() and _safe_size(p_hk_disk) > 20_000:
+                                        ok_hk_m, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, str(p_hk_disk))
+                                        if ok_hk_m:
+                                            await asyncio.to_thread(
+                                                trim_video,
+                                                input_path=str(p_hk_disk),
+                                                duration_seconds=r_dur + 0.25,
+                                                output_path=r_out_mp4,
+                                                width=1920 if is_long_form else 1080,
+                                                height=1080 if is_long_form else 1920,
+                                                fps=30,
+                                                is_scifi=is_scifi_val,
+                                                niche=current_niche,
+                                                apply_grading=True,
+                                                is_hook_scene=True,
+                                                fair_use_transform=False,
+                                                start_offset_sec=0.0,
+                                                preserve_continuous_flow=True,
+                                            )
+                                            if Path(r_out_mp4).exists() and _safe_size(Path(r_out_mp4)) > 15_000:
+                                                r_sc["media_path"] = r_out_mp4
+                                                r_sc["media_type"] = "hook_ready_video"
+                                                r_sc["pose_images"] = []
+                                                r_sc["production_method"] = "MOTION_FLOOR_RESCUE_HOOK_RECOVERY"
+                                                r_sc["visual_strategy"] = "HOOK_PEAK_SHORT_VIDEO"
+                                                rescued_ok = True
+                                                logger.info(
+                                                    f"  🔥 [Real-Motion Floor Rescue] Scene 1: Khôi phục Video Hook chuyển động thật từ '{p_hk_disk.name}' -> {Path(r_out_mp4).name}"
+                                                )
+                                                return
+                            except Exception as _e_hk_r:
+                                logger.debug(f"[Real-Motion Floor Rescue] Scene 1 disk hook recovery skip: {_e_hk_r}")
+
                         stock_queries: List[str] = []
                         cand_sq_list = (
                             (portrait_broll_facets[r_pos % len(portrait_broll_facets)], r_stock_q, overall_rescue_q)
                             if is_portrait_tool
                             else (
+                                *(scene_single_queries[:4]),
                                 r_stock_q,
                                 r_kw,
-                                *(scene_single_queries[:2]),
                                 overall_rescue_q,
-                                f"{r_subj} {facet_tag}".strip(),
                             )
                         )
                         for sq in cand_sq_list:
                             sq_clean = (sq or "").strip()
                             if sq_clean and sq_clean not in stock_queries:
                                 stock_queries.append(sq_clean)
-                        for sq_try in stock_queries[:2]:
+                        for sq_try in stock_queries[:3]:
                             if rescued_ok or _rescue_cancelled():
                                 break
                             try:
@@ -896,15 +944,23 @@ async def run_post_gather_media_rescues(
                     )
                     if disk_g_vids:
                         for dv_p in disk_g_vids:
+                            if sid_g in (1, 2):
+                                try:
+                                    from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion
+                                    ok_dv_m, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, str(dv_p))
+                                    if not ok_dv_m:
+                                        continue
+                                except Exception:
+                                    pass
                             if is_clip_visually_unique_in_job(str(dv_p), job_id, scene_id=sid_g):
                                 sc_g["media_path"] = str(dv_p)
-                                sc_g["media_type"] = "video"
+                                sc_g["media_type"] = "hook_ready_video" if sid_g == 1 else "video"
                                 sc_g["pose_images"] = []
                                 sc_g["production_method"] = "ZERO_GRAPHIC_RECOVERED_VIDEO"
                                 sc_g["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
                                 replaced_g = True
                                 break
-                    if not replaced_g:
+                    if not replaced_g and sid_g not in (1, 2):
                         disk_g_jpgs = sorted(
                             [
                                 p for p in media_dir.glob(f"scene_{sid_g:03d}_*.jpg")
@@ -916,7 +972,7 @@ async def run_post_gather_media_rescues(
                         if disk_g_jpgs:
                             sc_g["media_path"] = str(disk_g_jpgs[0])
                             sc_g["media_type"] = "image"
-                            sc_g["pose_images"] = [str(p) for p in disk_g_jpgs[: (3 if sid_g == 1 else 2)]]
+                            sc_g["pose_images"] = [str(p) for p in disk_g_jpgs[:2]]
                             sc_g["production_method"] = "ZERO_GRAPHIC_RECOVERED_PHOTO"
                             sc_g["visual_strategy"] = "GEMINI_SEARCH_3D"
                             replaced_g = True
@@ -947,10 +1003,22 @@ async def run_post_gather_media_rescues(
                         except Exception as _e_zgp:
                             logger.debug(f"[Zero-Graphic-Card Guard] Scene {sid_g} chapter pool rescue skip: {_e_zgp}")
 
+                    from app.graph.tools.tool_schemas import build_single_entity_stock_queries
                     zg_q = _anchor_zg_query(str(sc_g.get("visual_keyword") or ""), sc_g)
+                    zg_single_qs = build_single_entity_stock_queries(
+                        raw_queries=[
+                            zg_q,
+                            *(sc_g.get("storyline_search_queries") or []),
+                            str(sc_g.get("visual_keyword") or ""),
+                        ],
+                        subject_entity=primary_entity,
+                        topic=state.get("topic", ""),
+                        max_words=3,
+                    )
                     zg_story_qs = [
                         clean_scene_search_query(str(q_x), max_words=5)
                         for q_x in dict.fromkeys([
+                            *zg_single_qs,
                             zg_q,
                             *(sc_g.get("storyline_search_queries") or []),
                             str(sc_g.get("visual_keyword") or ""),
@@ -961,12 +1029,19 @@ async def run_post_gather_media_rescues(
                     if not replaced_g:
                         t2_ev = threading.Event()
                         try:
+                            zg_vid_q_main = zg_single_qs[0] if zg_single_qs else zg_q
+                            va_zg_vid = {
+                                "video_format": "long" if is_long_form else "short",
+                                "subject": primary_entity or zg_vid_q_main,
+                                "core_visual_entity": primary_entity or zg_vid_q_main,
+                                "search_queries": zg_story_qs[:4],
+                            }
                             def _run_zg_vid():
                                 with bind_scene_cancellation(t2_ev, time.monotonic() + 14.0):
                                     return media_agent.search_best_video_clip(
-                                        zg_q,
+                                        zg_vid_q_main,
                                         used_pool_urls,
-                                        {"video_format": "long", "subject": primary_entity or zg_q} if is_long_form else None,
+                                        va_zg_vid,
                                         zg_narr,
                                         state.get("topic", ""),
                                     )
@@ -1022,14 +1097,14 @@ async def run_post_gather_media_rescues(
                                             if ok_zg_sig and is_clip_visually_unique_in_job(out_g_mp4, job_id, scene_id=sid_g):
                                                 used_pool_urls.add(zg_v_url)
                                                 sc_g["media_path"] = out_g_mp4
-                                                sc_g["media_type"] = "video"
+                                                sc_g["media_type"] = "hook_ready_video" if sid_g == 1 else "video"
                                                 sc_g["pose_images"] = []
                                                 sc_g["production_method"] = "ZERO_GRAPHIC_FRESH_STOCK_VIDEO"
                                                 sc_g["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
                                                 sc_g["source_url"] = zg_v_url
                                                 replaced_g = True
                                                 logger.info(
-                                                    f"  ✅ [Zero-Graphic-Card Guard] Scene {sid_g}: Đã thay thẻ placeholder bằng Video Stock HD độc lập mới ('{zg_q}')"
+                                                    f"  ✅ [Zero-Graphic-Card Guard] Scene {sid_g}: Đã thay thẻ placeholder bằng Video Stock HD độc lập mới ('{zg_vid_q_main}')"
                                                 )
                                                 break
                                             else:
@@ -1047,7 +1122,7 @@ async def run_post_gather_media_rescues(
                         finally:
                             t2_ev.set()
 
-                    if not replaced_g:
+                    if not replaced_g and sid_g not in (1, 2):
                         t3_ev = threading.Event()
                         try:
                             def _run_zg_ph():
@@ -1083,7 +1158,7 @@ async def run_post_gather_media_rescues(
                         finally:
                             t3_ev.set()
 
-                    if not replaced_g:
+                    if not replaced_g and sid_g not in (1, 2):
                         t4_ev = threading.Event()
                         try:
                             from app.graph.tools.media_tools import execute_google_cinematic_image_sync
@@ -1096,7 +1171,7 @@ async def run_post_gather_media_rescues(
                                         narration=zg_narr,
                                         topic=state.get("topic", ""),
                                         used_urls=used_pool_urls,
-                                        is_hook_scene=(sid_g == 1),
+                                        is_hook_scene=False,
                                         subject_entity=primary_entity or state.get("topic", ""),
                                         search_scope="SCENE_SPECIFIC",
                                         overall_script_query=primary_entity or state.get("topic", ""),
@@ -1185,8 +1260,69 @@ async def run_post_gather_media_rescues(
                             except Exception:
                                 pass
 
-                    # Tầng bảo hiểm cuối: Ảnh Stock ngang/dọc HD trực tiếp qua StockFetcher (không để sót bất kỳ _graphic.png nào)
-                    if not replaced_g:
+                    # Tầng bảo hiểm Video trực tiếp cho Cảnh 1 & 2 (5-7s đầu bắt buộc 100% Video chuyển động thật)
+                    if not replaced_g and sid_g in (1, 2):
+                        try:
+                            from app.services.media.stock_fetcher import StockFetcher
+                            sf_zg_v = StockFetcher()
+                            v_orient_zg = "landscape" if is_long_form else "portrait"
+                            for q_zv in (zg_single_qs[:3] or [zg_q]):
+                                if replaced_g or not q_zv:
+                                    break
+                                raw_v_hits = await asyncio.wait_for(
+                                    asyncio.to_thread(
+                                        lambda q_run=q_zv: (
+                                            (sf_zg_v.search_videos(q_run, per_page=6, orientation=v_orient_zg) or [])
+                                            + (sf_zg_v.search_pixabay_videos(q_run, per_page=6, video_type="film") or [])
+                                        )
+                                    ),
+                                    timeout=12.0,
+                                )
+                                for vh_z in raw_v_hits[:4]:
+                                    vu_z = str(vh_z.get("url") or "").strip()
+                                    if not vu_z or vu_z in used_pool_urls:
+                                        continue
+                                    raw_zv_dl = str(media_dir / f"scene_{sid_g:03d}_zg_direct_raw.mp4")
+                                    await asyncio.wait_for(
+                                        asyncio.to_thread(media_agent.download_file, vu_z, raw_zv_dl),
+                                        timeout=10.0,
+                                    )
+                                    if Path(raw_zv_dl).exists() and _safe_size(Path(raw_zv_dl)) > 18_000:
+                                        await asyncio.to_thread(
+                                            trim_video,
+                                            input_path=raw_zv_dl,
+                                            duration_seconds=dur_g + 0.25,
+                                            output_path=out_g_mp4,
+                                            width=1920 if is_long_form else 1080,
+                                            height=1080 if is_long_form else 1920,
+                                            fps=30,
+                                            is_scifi=is_scifi_val,
+                                            niche=current_niche,
+                                            apply_grading=True,
+                                            is_hook_scene=(sid_g == 1),
+                                            fair_use_transform=True,
+                                        )
+                                        Path(raw_zv_dl).unlink(missing_ok=True)
+                                        if Path(out_g_mp4).exists() and _safe_size(Path(out_g_mp4)) > 15_000:
+                                            used_pool_urls.add(vu_z)
+                                            sc_g["media_path"] = out_g_mp4
+                                            sc_g["media_type"] = "hook_ready_video" if sid_g == 1 else "video"
+                                            sc_g["pose_images"] = []
+                                            sc_g["production_method"] = "ZERO_GRAPHIC_DIRECT_STOCK_VIDEO"
+                                            sc_g["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
+                                            sc_g["source_url"] = vu_z
+                                            replaced_g = True
+                                            logger.info(
+                                                f"  ✅ [Zero-Graphic-Card Guard] Scene {sid_g}: Đã nạp Video Stock HD trực tiếp ('{q_zv}') -> {Path(out_g_mp4).name}"
+                                            )
+                                            break
+                                    else:
+                                        Path(raw_zv_dl).unlink(missing_ok=True)
+                        except Exception as _e_zg_dv:
+                            logger.debug(f"[Zero-Graphic-Card Guard] Scene {sid_g} direct video skip: {_e_zg_dv}")
+
+                    # Tầng bảo hiểm cuối (chỉ áp dụng cho Scene >= 3): Ảnh Stock ngang/dọc HD trực tiếp qua StockFetcher
+                    if not replaced_g and sid_g not in (1, 2):
                         try:
                             from app.services.media.stock_fetcher import StockFetcher
                             sf_zg = StockFetcher()

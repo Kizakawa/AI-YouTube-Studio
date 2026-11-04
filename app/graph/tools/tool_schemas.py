@@ -481,18 +481,31 @@ def _clean_yt_search_phrase(
 
 
 def build_single_entity_stock_queries(
-    raw_queries: List[str],
+    raw_queries: Optional[List[str]] = None,
     subject_entity: str = "",
     topic: str = "",
     max_words: int = 4,
+    primary_query: str = "",
+    secondary_query: str = "",
+    narration: str = "",
+    **kwargs: Any,
 ) -> List[str]:
     """
-    Chuyển hóa danh sách truy vấn (có thể chứa 'Entity A vs Entity B' hoặc 'Entity A or Entity B')
+    Chuyển hóa danh sách truy vấn (có thể chứa 'Entity A vs Entity B', 'Entity A, Entity B' hoặc 'Entity A or Entity B')
     thành các câu truy vấn ĐƠN CHỦ THỂ tiếng Anh sạch ('Entity A + hành động/môi trường', 'Entity B + ...')
     để:
       1. Chạy nhánh song song (Dual-Track) cùng với 'A vs B' trên YouTube.
       2. Tầng dự phòng Pexels / Pixabay / Wikimedia Stock tuyệt đối KHÔNG gửi cụm 'A vs B' hoặc tiêu đề phi tiếng Anh.
     """
+    merged_raw_queries: List[str] = []
+    if isinstance(raw_queries, str):
+        merged_raw_queries.append(raw_queries)
+    elif raw_queries:
+        merged_raw_queries.extend(str(q) for q in raw_queries if q)
+    for extra_q in (primary_query, secondary_query):
+        if extra_q and str(extra_q).strip():
+            merged_raw_queries.append(str(extra_q).strip())
+    raw_queries = merged_raw_queries
     out: List[str] = []
     seen_low: Set[str] = set()
     clean_topic_en = "" if _is_non_english_or_question_title(topic) else str(topic or "").strip()
@@ -517,16 +530,18 @@ def build_single_entity_stock_queries(
             seen_low.add(final_p.lower())
             out.append(final_p)
 
-    # 1. Giữ nguyên trước tất cả các câu truy vấn tiếng Anh vốn đã ĐƠN CHỦ THỂ (không chứa 'vs'/'versus' hoặc 'A or B')
+    _multi_entity_sep_re = re.compile(r"\b(?:vs\.?|versus|or|and)\b|[,/&|+;]", re.IGNORECASE)
+
+    # 1. Giữ nguyên trước tất cả các câu truy vấn tiếng Anh vốn đã ĐƠN CHỦ THỂ (không chứa 'vs'/'versus', 'A or B' hoặc dấu phẩy ngăn cách 2 thực thể)
     for rq in raw_queries:
         s = str(rq or "").strip()
         if not s or _is_non_english_or_question_title(s):
             continue
         head = re.split(r"[:—–]\s*", s, maxsplit=1)[0].strip()
-        if not has_versus_pattern(head) and not re.search(r"\bor\b", head, re.IGNORECASE):
+        if not _multi_entity_sep_re.search(head):
             _add_clean(head)
 
-    # 2. Tách các thực thể độc lập từ subject_entity ('A or B'), các câu 'A vs B' và topic tiếng Anh
+    # 2. Tách các thực thể độc lập từ subject_entity ('A, B' / 'A or B' / 'A vs B'), các câu truy vấn và topic tiếng Anh
     subj_low = clean_subj_en.lower()
     split_entities: List[str] = []
     for src in (clean_subj_en, *raw_queries, clean_topic_en):
@@ -534,10 +549,8 @@ def build_single_entity_stock_queries(
         if not s or _is_non_english_or_question_title(s):
             continue
         head = re.split(r"[:—–]\s*", s, maxsplit=1)[0].strip()
-        if has_versus_pattern(head):
-            parts = _VERSUS_TOKEN_RE.split(head)
-        elif re.search(r"\bor\b", head, re.IGNORECASE):
-            parts = re.split(r"\bor\b", head, flags=re.IGNORECASE)
+        if _multi_entity_sep_re.search(head):
+            parts = _multi_entity_sep_re.split(head)
         else:
             continue
         for pt in parts:
@@ -547,13 +560,35 @@ def build_single_entity_stock_queries(
             if ent and ent.lower() not in {e.lower() for e in split_entities}:
                 split_entities.append(ent)
 
-    if split_entities and subj_low and not re.search(r"\b(?:vs\.?|versus|or)\b", subj_low):
+    if split_entities and subj_low and not _multi_entity_sep_re.search(subj_low):
         split_entities.sort(
             key=lambda e: 0 if any(tok in subj_low for tok in e.lower().split() if len(tok) >= 3) else 1
         )
 
     for ent in split_entities:
         _add_clean(ent)
+
+    # 3. Tự động trích xuất cặp 2 từ cốt lõi (2-word core noun pairs) từ các cụm dài >= 3 từ làm fallback cho kho Pexels/Pixabay (AND-matching)
+    two_word_pairs: List[str] = []
+    for cand_p in list(out) + [clean_subj_en, *raw_queries]:
+        s_p = str(cand_p or "").strip()
+        if not s_p or _is_non_english_or_question_title(s_p):
+            continue
+        c_p = _clean_yt_search_phrase(s_p, subject_entity="", max_words=6, strip_distractor_props=True)
+        w_list = [
+            w for w in c_p.split()
+            if len(w) >= 3
+            and w.lower() not in ("vs", "versus")
+            and w.lower() not in _MULTILINGUAL_QUESTION_AND_STOP_WORDS
+        ]
+        if len(w_list) >= 3:
+            p_head = f"{w_list[0]} {w_list[1]}"
+            p_tail = f"{w_list[-2]} {w_list[-1]}"
+            for p2 in (p_head, p_tail):
+                if p2.lower() not in seen_low and p2.lower() not in {x.lower() for x in two_word_pairs}:
+                    two_word_pairs.append(p2)
+    for p2 in two_word_pairs[:4]:
+        _add_clean(p2)
 
     if not out and (clean_subj_en or clean_topic_en):
         fallback_one = _clean_yt_search_phrase(

@@ -181,8 +181,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.info(f"[RenderNode] 🛡️ Đã thay thế _graphic.png/missing ở Cảnh #{sc_id} trước khi render -> {Path(cur_media_path).name}")
             except Exception as _e_pre_g:
                 logger.debug(f"[RenderNode] Pre-render graphic rescue skip for Scene #{sc_id}: {_e_pre_g}")
-        if sc_id == 1 and cur_media_path and Path(cur_media_path).exists():
-            if is_lf_pre and (
+        if sc_id in (1, 2):
+            if sc_id == 1 and is_lf_pre and cur_media_path and Path(cur_media_path).exists() and (
                 not cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
                 or "hook_motion_" in Path(cur_media_path).name.lower()
             ):
@@ -205,33 +205,125 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                         logger.info(f"[RenderNode 16:9] Đã nâng cấp Cảnh 1 sang Video 16:9 sắc nét: {Path(cur_media_path).name}")
                 except Exception as _e_lf_s1:
                     logger.debug(f"[RenderNode 16:9] Pre-render Scene 1 pool upgrade skip: {_e_lf_s1}")
-            if not cur_media_path.lower().endswith((".mp4", ".mov", ".webm")):
+            # CỔNG BẢO VỆ 5-7S ĐẦU TIÊN (Scene 1 & Scene 2): Bắt buộc 100% là Video chuyển động thật, TUYỆT ĐỐI CẤM dùng ảnh tĩnh hay render_opening_hook_multi_cut!
+            if not is_lf_pre:
                 try:
-                    from app.utils.ffmpeg_helper import render_opening_hook_multi_cut
-                    pose_imgs = [p for p in (m.get("pose_images") or [cur_media_path]) if p and Path(str(p)).exists()]
-                    if pose_imgs:
-                        pre_hook_mp4 = str(work_dir / "hook_motion_001.mp4")
-                        render_opening_hook_multi_cut(
-                            image_paths=pose_imgs,
-                            duration_seconds=max(dur_ms / 1000.0, 2.2) + 0.18,
-                            output_path=pre_hook_mp4,
-                            width=target_w,
-                            height=target_h,
-                            fps=30,
-                            min_cuts=3,
-                            is_scifi=bool(state.get("is_scifi")),
-                            niche=str(state.get("channel_style") or state.get("niche") or "general"),
-                            is_hook_scene=True,
-                        )
-                        if Path(pre_hook_mp4).exists() and Path(pre_hook_mp4).stat().st_size > 12_000:
-                            cur_media_path = pre_hook_mp4
-                            cur_media_type = "hook_ready_video"
-                            m["media_path"] = pre_hook_mp4
-                            m["media_type"] = "hook_ready_video"
+                    from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion, trim_video, is_completed_clean_mp4
+                    from app.graph.tools.tool_schemas import build_single_entity_stock_queries
+                    from app.services.media.stock_fetcher import StockFetcher
+                    from app.agents.media_agent import MediaAgent
+                    is_cur_genuine_vid = (
+                        bool(cur_media_path)
+                        and Path(cur_media_path).exists()
+                        and cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
+                        and verify_hook_clip_genuine_motion(cur_media_path)[0]
+                    )
+                    if not is_cur_genuine_vid:
+                        target_dur_open = max(dur_ms / 1000.0, 2.2) + 0.18
+                        disk_open_cands: List[Path] = []
+                        if sc_id == 1:
+                            for p_hk_d in (
+                                work_dir / "hook_motion_001_fullpeak.mp4",
+                                work_dir / "hook_motion_001.mp4",
+                                *sorted((work_dir / "hook_candidates").glob("*.mp4")),
+                            ):
+                                if p_hk_d.exists() and is_completed_clean_mp4(p_hk_d, min_size_bytes=18_000, min_duration_ms=1200):
+                                    disk_open_cands.append(p_hk_d)
+                        for p_sc_d in sorted((work_dir / "media").glob(f"scene_{sc_id:03d}_*.mp4")):
+                            if p_sc_d.exists() and is_completed_clean_mp4(p_sc_d, min_size_bytes=18_000, min_duration_ms=1200):
+                                disk_open_cands.append(p_sc_d)
+                        recovered_open = False
+                        for cand_op in disk_open_cands:
+                            if verify_hook_clip_genuine_motion(str(cand_op))[0]:
+                                out_op_trim = str(work_dir / ("hook_motion_001.mp4" if sc_id == 1 else f"media/scene_{sc_id:03d}_prerender_pure_vid.mp4"))
+                                if str(cand_op.resolve()) != str(Path(out_op_trim).resolve()):
+                                    trim_video(
+                                        input_path=str(cand_op),
+                                        duration_seconds=target_dur_open,
+                                        output_path=out_op_trim,
+                                        width=target_w,
+                                        height=target_h,
+                                        fps=30,
+                                        is_scifi=bool(state.get("is_scifi")),
+                                        niche=str(state.get("channel_style") or state.get("niche") or "general"),
+                                        apply_grading=True,
+                                        is_hook_scene=(sc_id == 1),
+                                        fair_use_transform=True,
+                                        start_offset_sec=0.0,
+                                        preserve_continuous_flow=True,
+                                    )
+                                final_op_p = out_op_trim if (Path(out_op_trim).exists() and Path(out_op_trim).stat().st_size > 12_000) else str(cand_op)
+                                cur_media_path = final_op_p
+                                cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                m["media_path"] = cur_media_path
+                                m["media_type"] = cur_media_type
+                                m["pose_images"] = []
+                                m["production_method"] = "PRERENDER_RECOVERED_GENUINE_MOTION_VIDEO"
+                                recovered_open = True
+                                logger.info(f"[RenderNode] 🎬 Đã khôi phục Video chuyển động thật '{cand_op.name}' cho Cảnh #{sc_id} (cấm ảnh tĩnh 5-7s đầu)!")
+                                break
+                        if not recovered_open:
+                            sf_pre = StockFetcher()
+                            ma_pre = MediaAgent()
+                            open_2w_qs = build_single_entity_stock_queries(
+                                primary_query=str(m.get("visual_keyword") or state.get("primary_entity") or state.get("topic") or ""),
+                                secondary_query=str(state.get("primary_entity") or ""),
+                                subject_entity=str(m.get("subject_entity") or state.get("primary_entity") or ""),
+                                topic=str(state.get("topic") or ""),
+                                narration=str(m.get("narration") or ""),
+                                max_words=2,
+                            )
+                            for q_op_2w in open_2w_qs[:4]:
+                                if recovered_open or not q_op_2w:
+                                    break
+                                v_op_hits = (
+                                    sf_pre.search_videos(q_op_2w, per_page=6, min_duration=2, orientation="portrait")
+                                    or sf_pre.search_pixabay_videos(q_op_2w, per_page=6, min_duration=2, orientation="portrait")
+                                    or []
+                                )
+                                for vh_op in v_op_hits[:3]:
+                                    vh_op_u = str(vh_op.get("url") or "").strip()
+                                    if not vh_op_u:
+                                        continue
+                                    raw_op_dl = str(work_dir / "media" / f"scene_{sc_id:03d}_prerender_raw.mp4")
+                                    out_op_dl = str(work_dir / ("hook_motion_001.mp4" if sc_id == 1 else f"media/scene_{sc_id:03d}_prerender_pure_vid.mp4"))
+                                    ma_pre.download_file(vh_op_u, raw_op_dl)
+                                    if Path(raw_op_dl).exists() and Path(raw_op_dl).stat().st_size > 15_000:
+                                        trim_video(
+                                            input_path=raw_op_dl,
+                                            duration_seconds=target_dur_open,
+                                            output_path=out_op_dl,
+                                            width=target_w,
+                                            height=target_h,
+                                            fps=30,
+                                            is_scifi=bool(state.get("is_scifi")),
+                                            niche=str(state.get("channel_style") or state.get("niche") or "general"),
+                                            apply_grading=True,
+                                            is_hook_scene=(sc_id == 1),
+                                            fair_use_transform=True,
+                                            start_offset_sec=0.0,
+                                            preserve_continuous_flow=True,
+                                        )
+                                        Path(raw_op_dl).unlink(missing_ok=True)
+                                        if Path(out_op_dl).exists() and verify_hook_clip_genuine_motion(out_op_dl)[0]:
+                                            cur_media_path = out_op_dl
+                                            cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                            m["media_path"] = cur_media_path
+                                            m["media_type"] = cur_media_type
+                                            m["pose_images"] = []
+                                            m["production_method"] = "PRERENDER_PURE_STOCK_OPENING_VIDEO"
+                                            recovered_open = True
+                                            logger.info(f"[RenderNode] 🎬 Đã tải Video chuyển động thật cho Cảnh #{sc_id} ('{q_op_2w}') trước khi render!")
+                                            break
+                                    else:
+                                        Path(raw_op_dl).unlink(missing_ok=True)
                 except Exception as e_s1_conv:
-                    logger.debug(f"[RenderNode] Pre-render hook image-to-multicut skip: {e_s1_conv}")
+                    logger.debug(f"[RenderNode] Pre-render pure video opening guard skip: {e_s1_conv}")
             if (
-                cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
+                sc_id == 1
+                and cur_media_path
+                and Path(cur_media_path).exists()
+                and cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
                 and not cur_media_path.lower().endswith(("_doodle.mp4", "_doodle_2d.mp4"))
             ):
                 try:
@@ -517,6 +609,18 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
         video_score = max(0, video_score - 30)
         combined_passed = False
         combined_issues.append(f"Còn sót thẻ chữ placeholder (_graphic.png) ở cảnh {graphic_scenes}")
+
+    # Hard-block bất kỳ video Shorts nào có 5-7s đầu tiên là ảnh tĩnh hoặc bị khựng khung hình (freeze_max_sec > 0)
+    if video_format != "long" and rendered_video_path and Path(rendered_video_path).exists():
+        try:
+            from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
+            ok_final_hook_mot, _, final_hook_rsn = verify_hook_clip_genuine_motion(rendered_video_path)
+            if not ok_final_hook_mot:
+                video_score = max(0, video_score - 35)
+                combined_passed = False
+                combined_issues.append(f"Mở đầu 5-7s đầu tiên không phải video chuyển động thật ({final_hook_rsn})")
+        except Exception as _e_qa_mot:
+            logger.debug(f"[VideoQA] Opening motion check warning: {_e_qa_mot}")
 
     logger.info(
         f"🎬 [VideoQA] File: {Path(qa_report.video_path).name} | "

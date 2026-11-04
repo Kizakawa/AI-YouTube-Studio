@@ -108,4 +108,11 @@ __all__ = [
     "run_ffmpeg_with_gpu_fallback",
     "trim_video",
     "validate_output",
+    "verify_hook_clip_genuine_motion",
 ]
+
+
+def verify_hook_clip_genuine_motion(video_path: str) -> tuple[bool, float, str]:
+    """Kiểm định video mở đầu 5-7s có chuyển động thực sự (không phải ảnh tĩnh/slideshow hay bị khựng frame)."""
+    from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion as _verify_hook_mot
+    return _verify_hook_mot(video_path)

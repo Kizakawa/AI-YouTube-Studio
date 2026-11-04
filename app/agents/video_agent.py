@@ -646,57 +646,90 @@ class VideoAgent:
                     if max_cb >= 0.10:
                         bs_0 = float(cb_matches[0].group(1))
                         be_0 = float(cb_matches[0].group(2))
-                        logger.warning(
-                            f"  ⚠️ Scene {scene.scene_id}: Phát hiện chớp đen {max_cb:.2f}s ({bs_0:.2f}s->{be_0:.2f}s) "
-                            f"trong '{Path(clip_path).name}' → Tự động trích xuất khung hình sáng rõ và dựng lại Ken Burns sạch 100%!"
-                        )
-                        rescue_t = round(bs_0 * 0.5, 2) if bs_0 >= 0.5 else round(min(duration - 0.25, be_0 + 0.45), 2)
-                        rescue_jpg = str(Path(work_dir) / f"rescue_nobk_{scene.scene_id:03d}.jpg")
-                        _sp_cb.run(
-                            [
-                                "ffmpeg", "-v", "error", "-y",
-                                "-ss", f"{max(0.05, rescue_t):.2f}", "-i", clip_path,
-                                "-frames:v", "1", "-q:v", "2", rescue_jpg,
-                            ],
-                            capture_output=True,
-                            timeout=8,
-                            check=False,
-                        )
-                        pose_candidates = [
-                            p for p in (getattr(scene, "pose_images", None) or [])
-                            if p and Path(p).exists() and str(p).lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
-                        ]
-                        if Path(rescue_jpg).exists() and Path(rescue_jpg).stat().st_size > 5000:
-                            pose_candidates.insert(0, rescue_jpg)
-                        if pose_candidates:
-                            if len(pose_candidates) >= 2 and duration >= 3.2:
-                                render_opening_hook_multi_cut(
-                                    image_paths=pose_candidates[:2],
-                                    duration_seconds=duration,
-                                    output_path=clip_path,
-                                    width=job.resolution_w,
-                                    height=job.resolution_h,
-                                    fps=job.fps,
-                                    min_cuts=1,
-                                    is_scifi=is_scifi_clip,
-                                    niche=clip_niche,
-                                    is_hook_scene=is_hook,
+                        # Ưu tiên số 1 cho Video chuyển động thật: Cắt bỏ đoạn chớp đen và giữ nguyên 100% chuyển động video thật (TUYỆT ĐỐI không biến video thành ảnh tĩnh!)
+                        repaired_by_video_trim = False
+                        if is_video_file:
+                            bright_start = round(be_0 + 0.06, 2) if bs_0 < 1.2 else 0.0
+                            bright_dur_avail = (duration - bright_start) if bs_0 < 1.2 else max(0.8, bs_0 - 0.05)
+                            if bright_dur_avail >= 0.8:
+                                nobk_vid = str(Path(work_dir) / f"nobk_vid_{scene.scene_id:03d}.mp4")
+                                src_for_nobk = str(scene.media_path) if (scene.media_path and Path(scene.media_path).exists()) else str(clip_path)
+                                _sp_cb.run(
+                                    [
+                                        "ffmpeg", "-y", "-v", "error",
+                                        "-stream_loop", "-1",
+                                        "-ss", f"{max(0.0, bright_start):.2f}",
+                                        "-i", src_for_nobk,
+                                        "-t", f"{duration:.3f}",
+                                        "-vf", f"scale={job.resolution_w}:{job.resolution_h}:force_original_aspect_ratio=increase,crop={job.resolution_w}:{job.resolution_h},setsar=1,fps={job.fps},format=yuv420p",
+                                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-threads", "2", "-an",
+                                        nobk_vid,
+                                    ],
+                                    stdout=_sp_cb.DEVNULL,
+                                    stderr=_sp_cb.DEVNULL,
+                                    timeout=45,
+                                    check=False,
                                 )
-                            else:
-                                image_to_video(
-                                    image_path=pose_candidates[0],
-                                    duration_seconds=duration,
-                                    output_path=clip_path,
-                                    width=job.resolution_w,
-                                    height=job.resolution_h,
-                                    fps=job.fps,
-                                    zoom_effect=True,
-                                    camera_motion=motion,
-                                    is_hook_scene=is_hook,
-                                    is_scifi=is_scifi_clip,
-                                    niche=clip_niche,
-                                )
-                            logger.info(f"  ✅ Scene {scene.scene_id}: Đã khử sạch 100% khung hình đen bằng Ken Burns từ ảnh thật sáng rõ!")
+                                if is_completed_clean_mp4(nobk_vid, min_size_bytes=20_000, min_duration_ms=int((duration - 0.25) * 1000)):
+                                    Path(nobk_vid).replace(clip_path)
+                                    repaired_by_video_trim = True
+                                    logger.info(
+                                        f"  ✅ Scene {scene.scene_id}: Đã cắt bỏ khoảng tối ({bs_0:.2f}s->{be_0:.2f}s) và giữ nguyên 100% Video chuyển động thật!"
+                                    )
+                                else:
+                                    Path(nobk_vid).unlink(missing_ok=True)
+                        if not repaired_by_video_trim and scene.scene_id not in (1, 2):
+                            logger.warning(
+                                f"  ⚠️ Scene {scene.scene_id}: Phát hiện chớp đen {max_cb:.2f}s ({bs_0:.2f}s->{be_0:.2f}s) "
+                                f"trong '{Path(clip_path).name}' → Tự động trích xuất khung hình sáng rõ và dựng lại Ken Burns sạch 100%!"
+                            )
+                            rescue_t = round(bs_0 * 0.5, 2) if bs_0 >= 0.5 else round(min(duration - 0.25, be_0 + 0.45), 2)
+                            rescue_jpg = str(Path(work_dir) / f"rescue_nobk_{scene.scene_id:03d}.jpg")
+                            _sp_cb.run(
+                                [
+                                    "ffmpeg", "-v", "error", "-y",
+                                    "-ss", f"{max(0.05, rescue_t):.2f}", "-i", clip_path,
+                                    "-frames:v", "1", "-q:v", "2", rescue_jpg,
+                                ],
+                                capture_output=True,
+                                timeout=8,
+                                check=False,
+                            )
+                            pose_candidates = [
+                                p for p in (getattr(scene, "pose_images", None) or [])
+                                if p and Path(p).exists() and str(p).lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+                            ]
+                            if Path(rescue_jpg).exists() and Path(rescue_jpg).stat().st_size > 5000:
+                                pose_candidates.insert(0, rescue_jpg)
+                            if pose_candidates:
+                                if len(pose_candidates) >= 2 and duration >= 3.2:
+                                    render_opening_hook_multi_cut(
+                                        image_paths=pose_candidates[:2],
+                                        duration_seconds=duration,
+                                        output_path=clip_path,
+                                        width=job.resolution_w,
+                                        height=job.resolution_h,
+                                        fps=job.fps,
+                                        min_cuts=1,
+                                        is_scifi=is_scifi_clip,
+                                        niche=clip_niche,
+                                        is_hook_scene=is_hook,
+                                    )
+                                else:
+                                    image_to_video(
+                                        image_path=pose_candidates[0],
+                                        duration_seconds=duration,
+                                        output_path=clip_path,
+                                        width=job.resolution_w,
+                                        height=job.resolution_h,
+                                        fps=job.fps,
+                                        zoom_effect=True,
+                                        camera_motion=motion,
+                                        is_hook_scene=is_hook,
+                                        is_scifi=is_scifi_clip,
+                                        niche=clip_niche,
+                                    )
+                                logger.info(f"  ✅ Scene {scene.scene_id}: Đã khử sạch 100% khung hình đen bằng Ken Burns từ ảnh thật sáng rõ!")
             except Exception as ex_cb:
                 logger.debug(f"[PreConcatBlackGuard] Scene {scene.scene_id} check skip: {ex_cb}")
 

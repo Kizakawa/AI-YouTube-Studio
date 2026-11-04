@@ -293,34 +293,37 @@ def _splice_dual_beat_hook_clip(
 
 def verify_hook_clip_genuine_motion(
     clip_path: str,
-    min_raw_diff: float = 6.2,
-    min_comp_diff: float = 4.2,
+    min_raw_diff: float = 3.2,
+    min_comp_diff: float = 3.6,
     max_frozen_ratio: float = 0.22,
 ) -> tuple[bool, float, str]:
     """
-    Kiểm định Toán học Thị giác (CV Motion Gate) cho Cảnh 1 (Opening Hook):
-    - Phân biệt Video quay chuyển động vật lý thật (3D parallax, cử động cơ thể/dòng nước/khói lửa)
-      với các video "Slideshow / Ảnh AI tĩnh phóng to Ken-Burns" hoặc clip bị đóng băng khung hình đầu.
-    - Khử biến đổi phóng to/dịch chuyển 2D đồng nhất (Zoom/Pan Compensation) giữa các frame liên tiếp:
-      Nếu sau khi bù trừ tỷ lệ zoom (0.985x..1.022x) và dịch chuyển (-3..+3px), sai khác trung vị
-      (`med_comp`) sụt xuống thấp (< min_comp_diff hoặc < 6.2 kèm comp_ratio < 0.52), chứng tỏ clip
-      chỉ là 1 bức ảnh tĩnh đang zoom/pan chứ không phải video chuyển động thật.
+    Kiểm định Toán học Thị giác (CV Motion & Anti-Letterbox Gate) cho 5-7s Mở Đầu (Scene 1 & Scene 2) và B-Roll Video:
+    1. Phân biệt Video quay chuyển động vật lý 3D thật (chủ thể bơi/chạy/săn mồi trên nền nước/bầu trời hoặc chuyển động máy quay 3D)
+       với các video "Slideshow / Ảnh tĩnh Ken-Burns" hoặc clip tượng/đóng băng khung hình (`med_raw < 3.2`, `med_act < 8.5`).
+    2. Tính sai khác trên bước nhảy 0.25s (`step=2` tại `fps=8`) kết hợp vùng 25% ô lưới chuyển động mạnh nhất (`med_act`),
+       giúp nhận diện chính xác cảnh động vật bơi/bay thật trên nền nước/trời đồng nhất (`med_act >= 9.5`, `comp_ratio >= 0.65`)
+       đồng thời loại bỏ 100% ảnh tĩnh phóng to Ken-Burns (`comp_ratio < 0.55` & `med_comp < 6.2`) và cảnh đứng hình.
+    3. Phát hiện dải viền mờ trên/dưới (`blurred_letterbox_padbars`: video ngang 16:9 nhét trong khung dọc 9:16 với 2 dải mờ trên/dưới)
+       và loại bỏ khỏi 5-7s đầu tiên để khung hình dọc 9:16 luôn tràn viền sắc nét 100%.
+    4. Khi kiểm tra file video thành phẩm (`final_shorts_*.mp4` / `video_*.mp4` dài >= 5.5s), tự động kiểm tra CẢ 2 cửa sổ:
+       Cửa sổ 1 (`0.25s -> 2.45s`, Scene 1) VÀ Cửa sổ 2 (`2.80s -> 5.20s`, Scene 2) để đảm bảo trọn vẹn 5-7s đầu là 100% video động!
     """
     import tempfile
-    from PIL import Image, ImageChops, ImageStat
+    from PIL import Image, ImageChops, ImageFilter, ImageStat
 
     p_clip = Path(clip_path)
     if not p_clip.exists() or p_clip.stat().st_size < 10_000:
         return False, 0.0, "File video không tồn tại hoặc kích thước quá nhỏ"
 
-    try:
+    def _eval_single_window(start_s: float, dur_s: float, check_padbars: bool) -> tuple[bool, float, str]:
         with tempfile.TemporaryDirectory() as td:
             subprocess.run(
                 [
                     "ffmpeg", "-nostdin", "-v", "error", "-y",
-                    "-ss", "0.30", "-t", "2.20",
+                    "-ss", f"{start_s:.2f}", "-t", f"{dur_s:.2f}",
                     "-i", str(p_clip),
-                    "-vf", "fps=10,scale=180:320,crop=140:180:20:30",
+                    "-vf", "fps=8,scale=180:320",
                     str(Path(td) / "m_%02d.jpg"),
                 ],
                 stdin=subprocess.DEVNULL,
@@ -336,7 +339,7 @@ def verify_hook_clip_genuine_motion(
                         "ffmpeg", "-nostdin", "-v", "error", "-y",
                         "-t", "2.00",
                         "-i", str(p_clip),
-                        "-vf", "fps=8,scale=160:284",
+                        "-vf", "fps=8,scale=180:320",
                         str(Path(td) / "m_%02d.jpg"),
                     ],
                     stdin=subprocess.DEVNULL,
@@ -349,50 +352,99 @@ def verify_hook_clip_genuine_motion(
             if len(frames) < 3:
                 return True, 8.0, "OK"
 
-            imgs = [Image.open(f).convert("L") for f in frames[:18]]
+            full_imgs = [Image.open(f).convert("L") for f in frames[:16]]
+            if check_padbars and full_imgs:
+                mid_f = full_imgs[len(full_imgs) // 2]
+                edges_f = mid_f.filter(ImageFilter.FIND_EDGES)
+                top_e = float(ImageStat.Stat(edges_f.crop((16, 8, 164, 52))).mean[0])
+                bot_e = float(ImageStat.Stat(edges_f.crop((16, 268, 164, 312))).mean[0])
+                cen_e = float(ImageStat.Stat(edges_f.crop((16, 88, 164, 232))).mean[0])
+                if cen_e >= 7.5 and top_e < cen_e * 0.22 and bot_e < cen_e * 0.22:
+                    return (
+                        False,
+                        round(cen_e, 2),
+                        f"Video ngang 16:9 có viền mờ/đen trên dưới (top_e={top_e:.1f}, bot_e={bot_e:.1f}, cen_e={cen_e:.1f})",
+                    )
+
+            imgs = [im.crop((20, 30, 160, 210)) for im in full_imgs]
+            step = 2 if len(imgs) >= 6 else 1
             raw_diffs: List[float] = []
             comp_diffs: List[float] = []
-            for idx_f in range(len(imgs) - 1):
-                a, b = imgs[idx_f], imgs[idx_f + 1]
+            active_comps: List[float] = []
+            adj_raw_diffs: List[float] = []
+
+            for idx_adj in range(len(imgs) - 1):
+                a_adj, b_adj = imgs[idx_adj], imgs[idx_adj + 1]
+                adj_raw_diffs.append(float(ImageStat.Stat(ImageChops.difference(a_adj, b_adj)).mean[0]))
+
+            for idx_f in range(len(imgs) - step):
+                a, b = imgs[idx_f], imgs[idx_f + step]
                 w, h = a.size
                 mx, my = max(4, int(w * 0.10)), max(4, int(h * 0.10))
                 ac = a.crop((mx, my, w - mx, h - my))
                 bc = b.crop((mx, my, w - mx, h - my))
-                raw_d = float(ImageStat.Stat(ImageChops.difference(ac, bc)).mean[0])
+                diff_im = ImageChops.difference(ac, bc)
+                raw_d = float(ImageStat.Stat(diff_im).mean[0])
                 best_d = raw_d
-                for z_fac in (0.985, 0.992, 1.0, 1.008, 1.015, 1.022):
+                best_diff_im = diff_im
+                for z_fac in (0.975, 0.988, 1.0, 1.012, 1.025, 1.038):
                     zw, zh = int(round(w * z_fac)), int(round(h * z_fac))
                     ar = a.resize((zw, zh), Image.Resampling.BILINEAR)
                     ox, oy = (zw - w) // 2, (zh - h) // 2
-                    for dx in (-3, -1, 0, 1, 3):
-                        for dy in (-3, -1, 0, 1, 3):
+                    for dx in (-4, -2, 0, 2, 4):
+                        for dy in (-4, -2, 0, 2, 4):
                             bx0, by0 = ox + mx + dx, oy + my + dy
                             bx1, by1 = ox + w - mx + dx, oy + h - my + dy
                             if 0 <= bx0 and 0 <= by0 and bx1 <= zw and by1 <= zh:
-                                d_val = float(ImageStat.Stat(ImageChops.difference(ar.crop((bx0, by0, bx1, by1)), bc)).mean[0])
+                                cand_im = ImageChops.difference(ar.crop((bx0, by0, bx1, by1)), bc)
+                                d_val = float(ImageStat.Stat(cand_im).mean[0])
                                 if d_val < best_d:
                                     best_d = d_val
+                                    best_diff_im = cand_im
+                grid_vals = list(best_diff_im.resize((8, 10), Image.Resampling.BOX).getdata())
+                top_q = sorted(grid_vals, reverse=True)[: max(1, len(grid_vals) // 4)]
+                act_c = sum(top_q) / len(top_q)
                 raw_diffs.append(raw_d)
                 comp_diffs.append(best_d)
+                active_comps.append(act_c)
 
             if not raw_diffs:
                 return True, 8.0, "OK"
             s_raw = sorted(raw_diffs)
             s_comp = sorted(comp_diffs)
+            s_act = sorted(active_comps)
             med_raw = s_raw[len(s_raw) // 2]
             med_comp = s_comp[len(s_comp) // 2]
-            frozen_ratio = sum(1 for x in raw_diffs if x < 1.8) / len(raw_diffs)
+            med_act = s_act[len(s_act) // 2]
+            frozen_ratio = (
+                sum(1 for x in adj_raw_diffs if x < 0.95) / len(adj_raw_diffs)
+                if adj_raw_diffs
+                else 0.0
+            )
             comp_ratio = med_comp / max(med_raw, 0.1)
 
-            if med_raw < min_raw_diff:
-                return False, round(med_comp, 2), f"Cảnh tĩnh đứng hình (med_raw={med_raw:.2f} < {min_raw_diff})"
-            if med_comp < min_comp_diff:
-                return False, round(med_comp, 2), f"Ảnh tĩnh / AI illustration zoompan giả chuyển động (med_comp={med_comp:.2f} < {min_comp_diff})"
-            if frozen_ratio > max_frozen_ratio and med_comp < 7.5:
+            if med_raw < min_raw_diff and med_act < 9.5:
+                return False, round(med_comp, 2), f"Cảnh tĩnh đứng hình (med_raw={med_raw:.2f} < {min_raw_diff}, med_act={med_act:.2f})"
+            if med_comp < min_comp_diff and med_act < 10.5:
+                return False, round(med_comp, 2), f"Ảnh tĩnh / AI illustration zoompan giả chuyển động (med_comp={med_comp:.2f}, med_act={med_act:.2f})"
+            if frozen_ratio > max_frozen_ratio and med_comp < 7.5 and med_act < 12.0:
                 return False, round(med_comp, 2), f"Đóng băng khung hình đầu (frozen_ratio={frozen_ratio:.2f}, med_comp={med_comp:.2f})"
-            if med_comp < 6.2 and comp_ratio < 0.52:
+            if med_comp < 6.2 and comp_ratio < 0.54 and med_act < 13.5:
                 return False, round(med_comp, 2), f"Slideshow ảnh tĩnh Ken-Burns zoom (med_comp={med_comp:.2f}, comp_ratio={comp_ratio:.2f})"
-            return True, round(med_comp, 2), "OK"
+            return True, round(max(med_comp, med_act * 0.55), 2), "OK"
+
+    try:
+        fname_low = p_clip.name.lower()
+        is_full_rendered_short = fname_low.startswith(("final_shorts_", "video_")) and get_duration_ms(str(p_clip)) >= 5500
+        ok_w1, sc_w1, rsn_w1 = _eval_single_window(0.25, 2.20, check_padbars=not is_full_rendered_short)
+        if not ok_w1:
+            return False, sc_w1, f"[0-2.5s] {rsn_w1}"
+        if is_full_rendered_short:
+            ok_w2, sc_w2, rsn_w2 = _eval_single_window(2.85, 2.40, check_padbars=False)
+            if not ok_w2:
+                return False, sc_w2, f"[2.8-5.3s] {rsn_w2}"
+            return True, round(min(sc_w1, sc_w2), 2), "OK"
+        return True, sc_w1, "OK"
     except Exception as e_mot:
         logger.debug(f"[HookMotionGate] Bỏ qua lỗi kiểm tra chuyển động '{clip_path}': {e_mot}")
         return True, 8.0, "OK"

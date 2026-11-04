@@ -494,8 +494,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         if tool_name == "render_doodle_2d_explainer_scene":
             tool_name = "fetch_clean_cinematic_portrait_or_broll"
-        if scene.scene_id == 1 and not is_long_form and tool_name in ("search_google_cinematic_image", ""):
-            tool_name = "clone_youtube_short_peak_clip"
+        if scene.scene_id in (1, 2) and not is_long_form and tool_name in ("search_google_cinematic_image", ""):
+            tool_name = "clone_youtube_short_peak_clip" if scene.scene_id == 1 else "search_pexels_pixabay_stock_video"
         allowed_tools = (
             ()
             if is_long_form
@@ -839,9 +839,102 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 f"YouTube Shorts Peak [{yt_res.get('search_scope', sc_scope)}] "
                                 f"({yt_res.get('window')}, full_peak={full_peak_duration_sec:.1f}s): {yt_res.get('title', '')[:45]}"
                             )
-                if not media_path:
+                if not media_path and scene.scene_id in (1, 2):
+                    # 100% Pure Video Guarantee cho 5-7s đầu (Cảnh 1 & Cảnh 2): Quét trực tiếp các cặp 1-2 từ cốt lõi đơn chủ thể
+                    try:
+                        from app.graph.tools.tool_schemas import build_single_entity_stock_queries
+                        from app.services.media.stock_fetcher import StockFetcher
+                        from app.services.video_memory_rag import get_video_memory_rag
+                        from app.utils.ffmpeg_helper import trim_video
+                        from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion
+                        rag_op = get_video_memory_rag()
+                        sf_op = StockFetcher()
+                        op_single_qs = build_single_entity_stock_queries(
+                            raw_queries=[yt_q, *story_yt_qs, fb_q, kw, sq, overall_q],
+                            subject_entity=subj_ent or primary_entity,
+                            topic=state.get("topic", ""),
+                            max_words=2,
+                        )
+                        for op_q in op_single_qs[:4]:
+                            if media_path:
+                                break
+                            _check_fetch_deadline()
+                            op_v_hits = (
+                                (sf_op.search_videos(op_q, per_page=6, orientation="landscape" if is_long_form else "portrait") or [])
+                                + (sf_op.search_pixabay_videos(op_q, per_page=6, video_type="film") or [])
+                            )
+                            for op_vh in op_v_hits[:4]:
+                                op_v_url = str(op_vh.get("url") or "").strip()
+                                if not op_v_url or op_v_url in used_pool_urls:
+                                    continue
+                                op_v_title = str(op_vh.get("title") or op_q)
+                                if not rag_op.try_claim_in_job_video(
+                                    job_id=job_id, vid_id=op_v_url, url=op_v_url, title=op_v_title, scene_id=scene.scene_id
+                                ):
+                                    used_pool_urls.add(op_v_url)
+                                    continue
+                                raw_op_mp4 = str(media_dir / f"scene_{scene.scene_id:03d}_op_raw.mp4")
+                                out_op_mp4 = str(
+                                    work_dir / "hook_motion_001.mp4"
+                                    if scene.scene_id == 1
+                                    else media_dir / f"scene_{scene.scene_id:03d}_op_video.mp4"
+                                )
+                                await asyncio.to_thread(media_agent.download_file, op_v_url, raw_op_mp4)
+                                if Path(raw_op_mp4).exists() and Path(raw_op_mp4).stat().st_size > 18_000:
+                                    await asyncio.to_thread(
+                                        trim_video,
+                                        input_path=raw_op_mp4,
+                                        duration_seconds=max(3.0, dur + 0.25),
+                                        output_path=out_op_mp4,
+                                        width=1920 if is_long_form else 1080,
+                                        height=1080 if is_long_form else 1920,
+                                        fps=30,
+                                        is_scifi=is_scifi_val,
+                                        niche=current_niche,
+                                        apply_grading=True,
+                                        is_hook_scene=(scene.scene_id == 1),
+                                        fair_use_transform=True,
+                                    )
+                                    Path(raw_op_mp4).unlink(missing_ok=True)
+                                    if Path(out_op_mp4).exists() and Path(out_op_mp4).stat().st_size > 15_000:
+                                        ok_op_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, out_op_mp4)
+                                        ok_op_sig, _ = rag_op.verify_and_commit_in_job_clip(
+                                            job_id=job_id,
+                                            scene_id=scene.scene_id,
+                                            media_path=out_op_mp4,
+                                            vid_id=op_v_url,
+                                            url=op_v_url,
+                                            title=op_v_title,
+                                        )
+                                        used_pool_urls.add(op_v_url)
+                                        if ok_op_mot and ok_op_sig:
+                                            media_path = out_op_mp4
+                                            media_type = "hook_ready_video" if scene.scene_id == 1 else "video"
+                                            vision_curated = True
+                                            prod_method = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                                            chosen_strategy = "STOCK_VIDEO"
+                                            source_url_used = op_v_url
+                                            rationale = f"Opening Pure Motion Video ('{op_q}'): {op_v_title[:45]}"
+                                            logger.info(
+                                                f"Scene {scene.scene_id}: 🔥 [Opening 5-7s Pure Video] Đã nạp Video chuyển động thật ('{op_q}') -> {Path(out_op_mp4).name}"
+                                            )
+                                            break
+                                        else:
+                                            Path(out_op_mp4).unlink(missing_ok=True)
+                                            rag_op.release_in_job_video_claim(
+                                                job_id=job_id, vid_id=op_v_url, url=op_v_url, title=op_v_title, scene_id=scene.scene_id
+                                            )
+                                else:
+                                    Path(raw_op_mp4).unlink(missing_ok=True)
+                                    rag_op.release_in_job_video_claim(
+                                        job_id=job_id, vid_id=op_v_url, url=op_v_url, title=op_v_title, scene_id=scene.scene_id
+                                    )
+                    except Exception as _e_op_v:
+                        logger.debug(f"Scene {scene.scene_id}: Opening pure video rescue skip: {_e_op_v}")
+
+                if not media_path and scene.scene_id not in (1, 2):
                     _check_fetch_deadline()
-                    g_target_cnt = 3 if scene.scene_id == 1 else scene_target_imgs
+                    g_target_cnt = scene_target_imgs
                     logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts & Stock Vision không có clip đạt chuẩn cho '{yt_q}' -> Chuyển sang tìm bộ {g_target_cnt} ảnh Top Google Images theo các chunk LLM!")
                     out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
                     img_res = await asyncio.to_thread(
@@ -851,7 +944,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         narration=scene.narration,
                         topic=state.get("topic", ""),
                         used_urls=used_pool_urls,
-                        is_hook_scene=(scene.scene_id == 1),
+                        is_hook_scene=False,
                         subject_entity=subj_ent,
                         search_scope=sc_scope,
                         overall_script_query=overall_q,
@@ -1144,7 +1237,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # PHƯƠNG PHÁP 2: IMAGE_TO_VIDEO (Tạo video phụ thuộc vào ảnh chủ đề 8K)
         # Giữ nét tuyệt đối, không méo mặt, chuyển hóa ảnh thành video 3D
         # ══════════════════════════════════════════════════════════════════════
-        elif prod_method == "IMAGE_TO_VIDEO":
+        elif not media_path and prod_method == "IMAGE_TO_VIDEO":
             try:
                 ai_vid_path = str(media_dir / f"scene_{scene.scene_id:03d}_i2v.mp4")
                 prompt_ai = ai_prompt if len(ai_prompt.strip()) > 10 else f"Cinematic 8k dramatic vertical photo of {kw}"
@@ -1193,7 +1286,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         # PHƯƠNG PHÁP 3: TEXT_TO_VIDEO (Tạo video AI trực tiếp cho cảnh kỳ ảo)
         # ══════════════════════════════════════════════════════════════════════
-        elif prod_method == "TEXT_TO_VIDEO" or chosen_strategy == "AI_VIDEO":
+        elif not media_path and (prod_method == "TEXT_TO_VIDEO" or chosen_strategy == "AI_VIDEO"):
             try:
                 ai_vid_path = str(media_dir / f"scene_{scene.scene_id:03d}_t2v.mp4")
                 prompt_ai = ai_prompt if len(ai_prompt.strip()) > 10 else f"Mysterious glowing {kw}, 8k vertical cinematic video"
@@ -1243,7 +1336,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         # PHƯƠNG PHÁP 4: STOCK_FOOTAGE (Video B-Roll chuyển động thực tế 9:16)
         # ══════════════════════════════════════════════════════════════════════
-        elif prod_method == "STOCK_FOOTAGE" or chosen_strategy == "STOCK_VIDEO":
+        elif not media_path and (prod_method == "STOCK_FOOTAGE" or chosen_strategy == "STOCK_VIDEO"):
             try:
                 best_vid = await asyncio.to_thread(
                     media_agent.search_best_video_clip,
@@ -1311,7 +1404,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         # CHIẾN LƯỢC 4: AI_IMAGE (Ảnh nghệ thuật AI điện ảnh 8K)
         # ══════════════════════════════════════════════════════════════════════
-        elif chosen_strategy == "AI_IMAGE":
+        elif not media_path and chosen_strategy == "AI_IMAGE":
             try:
                 ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai_image.jpg")
                 prompt_to_use = ai_prompt if len(ai_prompt.strip()) > 10 else f"Cinematic 8k dramatic vertical photo of {kw}"
@@ -1656,9 +1749,15 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 )
                 res = None
                 # Chỉ phục hồi các file .mp4 đã ghi hoàn tất (có moov atom & duration >= 1.2s, tuyệt đối bỏ qua file tạm _fftmp_ / .tmp*)
+                _cand_early_vids = list(media_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4"))
+                if scene.scene_id == 1:
+                    _cand_early_vids.extend([
+                        p for p in (work_dir / "hook_motion_001.mp4", work_dir / "hook_motion_001_fullpeak.mp4")
+                        if p.exists()
+                    ])
                 early_vids = sorted(
                     [
-                        p for p in media_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4")
+                        p for p in _cand_early_vids
                         if is_completed_clean_mp4(p, min_size_bytes=15_000, min_duration_ms=1200)
                     ],
                     key=_safe_mtime,
@@ -1691,7 +1790,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         "strategy_rationale": f"Recovered completed video from disk ({early_vids[0].name})",
                         "source_url": str(early_vids[0]),
                     }
-                elif early_imgs and scene.scene_id != 1:
+                elif early_imgs and scene.scene_id not in (1, 2):
                     rec_early_poses = [str(p) for p in early_imgs[:2]]
                     res = {
                         "scene_id": scene.scene_id,
@@ -1855,7 +1954,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     rag.release_in_job_video_claim(
                                         job_id=job_id, vid_id=cand_u, url=cand_u, title=cand_fresh_title, scene_id=scene.scene_id
                                     )
-                        if not res:
+                        if not res and scene.scene_id not in (1, 2):
                             from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                             out_fresh_img = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_gsearch.jpg")
                             img_f_res = await asyncio.wait_for(

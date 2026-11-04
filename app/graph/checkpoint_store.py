@@ -123,7 +123,14 @@ def _can_reuse_cached_node(node_name: str, state: Dict[str, Any], cached_out: Di
         if not isinstance(pre_hook, dict) or not pre_hook:
             return False
         s1 = pre_hook.get(1) or pre_hook.get("1") or {}
-        return _file_valid(s1.get("media_path"), min_bytes=10_000)
+        s1_mp = str(s1.get("media_path") or "")
+        if not _file_valid(s1_mp, min_bytes=10_000) or not s1_mp.lower().endswith((".mp4", ".mov", ".webm")):
+            return False
+        try:
+            from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
+            return bool(verify_hook_clip_genuine_motion(s1_mp)[0])
+        except Exception:
+            return True
 
     if node_name == "fetch_media":
         if int(state.get("media_retry_count") or 0) > 0:
@@ -132,7 +139,24 @@ def _can_reuse_cached_node(node_name: str, state: Dict[str, Any], cached_out: Di
         expected_n = len(((state.get("script_data") or {}).get("scenes")) or [])
         if not scenes_media or (expected_n > 0 and len(scenes_media) < expected_n):
             return False
-        return all(_file_valid(sm.get("media_path"), min_bytes=4000) and "_graphic.png" not in str(sm.get("media_path") or "").lower() and str(sm.get("media_type") or "").lower() != "graphic" for sm in scenes_media if isinstance(sm, dict))
+        if not all(_file_valid(sm.get("media_path"), min_bytes=4000) and "_graphic.png" not in str(sm.get("media_path") or "").lower() and str(sm.get("media_type") or "").lower() != "graphic" for sm in scenes_media if isinstance(sm, dict)):
+            return False
+        is_lf_cp = (
+            str(state.get("video_format") or (state.get("script_data") or {}).get("video_format") or "short").strip().lower() == "long"
+            or len(scenes_media) >= 14
+        )
+        if not is_lf_cp:
+            try:
+                from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
+                for sm in scenes_media[:2]:
+                    if not isinstance(sm, dict):
+                        continue
+                    mp_open = str(sm.get("media_path") or "")
+                    if not mp_open.lower().endswith((".mp4", ".mov", ".webm")) or not verify_hook_clip_genuine_motion(mp_open)[0]:
+                        return False
+            except Exception:
+                pass
+        return True
 
     return False
 

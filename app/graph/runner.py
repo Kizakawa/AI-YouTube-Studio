@@ -190,54 +190,65 @@ class GraphRunner:
         channel_style = "general"
         existing_script = None
 
-        with get_db() as db:
-            job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
-            if not job:
-                raise ValueError(f"Không tìm thấy VideoJob với ID {self.job_id}")
-            
-            topic = job.topic or ""
-            title = job.title or ""
-            channel_id = job.target_channel_id or "default"
-            job.status = "RENDERING"
-            job.progress_percent = 5
-            job.progress_message = "Bắt đầu điều phối qua LangGraph Multi-Agent Engine..."
-            
-            if job.scenes_json:
+        for _db_try in range(3):
+            try:
+                with get_db() as db:
+                    job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                    if not job:
+                        raise ValueError(f"Không tìm thấy VideoJob với ID {self.job_id}")
+                    
+                    topic = job.topic or ""
+                    title = job.title or ""
+                    channel_id = job.target_channel_id or "default"
+                    job.status = "RENDERING"
+                    job.progress_percent = 5
+                    job.progress_message = "Bắt đầu điều phối qua LangGraph Multi-Agent Engine..."
+                    
+                    if job.scenes_json:
+                        try:
+                            existing_script = json.loads(job.scenes_json)
+                        except Exception:
+                            pass
+                break
+            except ValueError:
+                raise
+            except Exception as _e_db_init:
+                if _db_try >= 2:
+                    raise
+                logger.warning(f"[GraphRunner] Thử kết nối lại DB cho Job #{self.job_id} ({_e_db_init})...")
+                await asyncio.sleep(0.8 * (_db_try + 1))
+
+        if not existing_script:
+            cp_file = self.work_dir / "step_checkpoint.json"
+            cp_valid_for_topic = False
+            if cp_file.exists():
                 try:
-                    existing_script = json.loads(job.scenes_json)
+                    cp_payload = json.loads(cp_file.read_text(encoding="utf-8"))
+                    cp_topic = str(cp_payload.get("topic") or "").strip().lower()
+                    if not cp_topic or cp_topic == topic.strip().lower():
+                        cp_valid_for_topic = True
+                        cp_script = ((cp_payload.get("nodes") or {}).get("generate_audio") or {}).get("script_data")
+                        if isinstance(cp_script, dict) and cp_script.get("scenes"):
+                            cp_script.setdefault("_pre_evaluated_score", 89.0)
+                            cp_script.setdefault("_pre_evaluated_hook", 9.1)
+                            existing_script = cp_script
+                            logger.info(
+                                f"⚡ [StepCheckpoint Resume] Job #{self.job_id}: Khôi phục script_data từ step_checkpoint.json "
+                                f"('{cp_script.get('title', '')}', {len(cp_script.get('scenes', []))} cảnh)"
+                            )
                 except Exception:
                     pass
-            if not existing_script:
-                cp_file = self.work_dir / "step_checkpoint.json"
-                cp_valid_for_topic = False
+            if not cp_valid_for_topic:
+                # Dọn sạch media/clips tồn đọng từ Job cũ trùng ID trước khi reset DB để tuyệt đối không tái sử dụng nhầm cảnh!
+                import shutil as _sh_clean
+                for _stale_sub in ("media", "clips", "hook_candidates", "render"):
+                    _stale_dir = self.work_dir / _stale_sub
+                    if _stale_dir.exists():
+                        _sh_clean.rmtree(_stale_dir, ignore_errors=True)
+                for _stale_f in self.work_dir.glob("hook_motion_*.mp4"):
+                    _stale_f.unlink(missing_ok=True)
                 if cp_file.exists():
-                    try:
-                        cp_payload = json.loads(cp_file.read_text(encoding="utf-8"))
-                        cp_topic = str(cp_payload.get("topic") or "").strip().lower()
-                        if not cp_topic or cp_topic == topic.strip().lower():
-                            cp_valid_for_topic = True
-                            cp_script = ((cp_payload.get("nodes") or {}).get("generate_audio") or {}).get("script_data")
-                            if isinstance(cp_script, dict) and cp_script.get("scenes"):
-                                cp_script.setdefault("_pre_evaluated_score", 89.0)
-                                cp_script.setdefault("_pre_evaluated_hook", 9.1)
-                                existing_script = cp_script
-                                logger.info(
-                                    f"⚡ [StepCheckpoint Resume] Job #{self.job_id}: Khôi phục script_data từ step_checkpoint.json "
-                                    f"('{cp_script.get('title', '')}', {len(cp_script.get('scenes', []))} cảnh)"
-                                )
-                    except Exception:
-                        pass
-                if not cp_valid_for_topic:
-                    # Dọn sạch media/clips tồn đọng từ Job cũ trùng ID trước khi reset DB để tuyệt đối không tái sử dụng nhầm cảnh!
-                    import shutil as _sh_clean
-                    for _stale_sub in ("media", "clips", "hook_candidates", "render"):
-                        _stale_dir = self.work_dir / _stale_sub
-                        if _stale_dir.exists():
-                            _sh_clean.rmtree(_stale_dir, ignore_errors=True)
-                    for _stale_f in self.work_dir.glob("hook_motion_*.mp4"):
-                        _stale_f.unlink(missing_ok=True)
-                    if cp_file.exists():
-                        cp_file.unlink(missing_ok=True)
+                    cp_file.unlink(missing_ok=True)
 
         # Lấy channel niche / style, language và preferred_voice từ config (hỗ trợ cả canonical alias ch_*)
         channels = settings.get_channels_config()

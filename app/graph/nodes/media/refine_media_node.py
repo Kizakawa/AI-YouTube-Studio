@@ -89,6 +89,11 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         if is_video_file:
             if p_cand.stat().st_size < 10_000:
                 return False, "video_too_small"
+            if scene_id in (1, 2):
+                from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
+                ok_gen_m, _, gen_m_rsn = verify_hook_clip_genuine_motion(str(p_cand))
+                if not ok_gen_m:
+                    return False, f"static_or_frozen_opening:{gen_m_rsn}"
             if scene_id == 1:
                 from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
                 ok_hk_sh, hk_sh_val = _ensure_hook_clip_sharpness_and_luma(str(p_cand), min_sharpness=12.0)
@@ -221,6 +226,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             and existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
             and "_i2v" not in existing_mp.lower()
             and "CLIMAX_IMAGES_LIVE_FX" not in existing_pm
+            and "GOOGLE_MULTI_CHUNK_HOOK_VIDEO" not in existing_pm
         ):
             try:
                 ok_inp_clean, _ = await asyncio.to_thread(
@@ -232,6 +238,44 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.info(f"Scene {scene_id}: 🛡️ Đã làm sạch/nâng nét tại chỗ Video chuyển động thật '{Path(existing_mp).name}' (giữ nguyên Hook Video thật)")
             except Exception as _e_inp:
                 logger.debug(f"Scene {scene_id}: In-place hook video sanitize skip: {_e_inp}")
+
+        if scene_id == 1 and not replaced and not has_semantic_vision_defect:
+            for hk_disk_cand in (work_dir / "hook_motion_001_fullpeak.mp4", work_dir / "hook_motion_001.mp4"):
+                if not hk_disk_cand.exists() or str(hk_disk_cand) == existing_mp:
+                    continue
+                try:
+                    ok_hk_d, _ = await asyncio.to_thread(
+                        _verify_and_sanitize_refined_media, str(hk_disk_cand), True, 1
+                    )
+                    if ok_hk_d:
+                        from app.utils.ffmpeg_helper import trim_video
+                        out_hk_rec = str(media_dir / f"scene_001_refined_fullpeak_r{retry_count}.mp4")
+                        await asyncio.to_thread(
+                            trim_video,
+                            input_path=str(hk_disk_cand),
+                            duration_seconds=sc_dur_sec,
+                            output_path=out_hk_rec,
+                            width=w_ref,
+                            height=h_ref,
+                            fps=30,
+                            is_scifi=is_scifi_val,
+                            niche=current_niche,
+                            apply_grading=True,
+                            is_hook_scene=True,
+                            fair_use_transform=True,
+                            start_offset_sec=0.0,
+                            preserve_continuous_flow=True,
+                        )
+                        target_hk_p = out_hk_rec if (Path(out_hk_rec).exists() and Path(out_hk_rec).stat().st_size > 12_000) else str(hk_disk_cand)
+                        item["media_path"] = target_hk_p
+                        item["media_type"] = "hook_ready_video"
+                        item["pose_images"] = []
+                        item["production_method"] = "REFINED_RECOVERED_HOOK_FULLPEAK_VIDEO"
+                        replaced = True
+                        logger.info(f"Scene 1: 🛡️ Đã khôi phục Video Hook chuyển động thật '{hk_disk_cand.name}' cho Cảnh 1!")
+                        break
+                except Exception as _e_hk_d:
+                    logger.debug(f"Scene 1: Fullpeak disk recovery skip: {_e_hk_d}")
 
         if is_video:
             if is_lf_refine and not _refine_cancelled():
@@ -580,20 +624,42 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         # 7. Tầng 7 (Zero-Failed-Scene Guarantee): Tuyệt đối KHÔNG lấy video/ảnh của cảnh khác (`clean_video_donors`)
         # để tránh trùng lặp cảnh 100%! Thay vào đó, tải 1 nguồn Stock Video hoặc Ảnh Google độc lập hoàn toàn mới.
+        # Riêng 5-7s đầu tiên (Scene 1 & Scene 2): 100% BẮT BUỘC là Video chuyển động thật, CẤM fallback sang ảnh tĩnh!
         if not replaced and not _refine_cancelled():
             try:
                 from app.utils.ffmpeg_helper import trim_video
                 from app.graph.tools.media_tools import execute_google_cinematic_image_sync
+                from app.graph.tools.tool_schemas import build_single_entity_stock_queries
+                from app.services.media.stock_fetcher import StockFetcher
                 out_resc_v = str(media_dir / f"scene_{scene_id:03d}_refined_clean_rescue_r{retry_count}.mp4")
-                q_broad_r = clean_scene_search_query(f"{subj_refine or primary_entity or clean_kw_q} cinematic motion", max_words=4)
-                best_v_t7 = await asyncio.to_thread(
-                    media_agent.search_best_video_clip,
-                    q_broad_r,
-                    used_refine_urls,
-                    {"video_format": "long"} if is_lf_refine else None,
-                    narr,
-                    state.get("topic", ""),
+                t7_single_qs = build_single_entity_stock_queries(
+                    primary_query=clean_kw_q,
+                    secondary_query=audited_fb_q or overall_refine_q,
+                    subject_entity=subj_refine or primary_entity or "",
+                    topic=state.get("topic", ""),
+                    narration=narr,
+                    max_words=3,
                 )
+                q_broad_r = (
+                    t7_single_qs[0]
+                    if t7_single_qs
+                    else clean_scene_search_query(subj_refine or primary_entity or clean_kw_q, max_words=2)
+                )
+                best_v_t7 = None
+                for q_t7_cand in (t7_single_qs[:3] if t7_single_qs else [q_broad_r]):
+                    if not q_t7_cand or _refine_cancelled():
+                        continue
+                    best_v_t7 = await asyncio.to_thread(
+                        media_agent.search_best_video_clip,
+                        q_t7_cand,
+                        used_refine_urls,
+                        {"video_format": "long"} if is_lf_refine else None,
+                        narr,
+                        state.get("topic", ""),
+                    )
+                    if best_v_t7 and best_v_t7.get("url"):
+                        q_broad_r = q_t7_cand
+                        break
                 if best_v_t7 and best_v_t7.get("url"):
                     u_t7 = str(best_v_t7["url"])
                     used_refine_urls.add(u_t7)
@@ -618,48 +684,115 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         )
                         Path(raw_t7).unlink(missing_ok=True)
                         if Path(out_resc_v).exists() and Path(out_resc_v).stat().st_size > 12_000:
-                            item["media_path"] = out_resc_v
-                            item["media_type"] = "video"
-                            item["pose_images"] = []
-                            item["production_method"] = "REFINED_FRESH_STOCK_VIDEO_RESCUE"
-                            replaced = True
-                            logger.info(f"Scene {scene_id}: 🛡️ [Zero-Failed-Scene Guarantee] Đã tải nguồn Stock Video độc lập mới ('{q_broad_r}')")
-                if not replaced and not _refine_cancelled():
-                    if (
-                        scene_id == 1
-                        and not has_semantic_vision_defect
-                        and existing_mp
-                        and Path(existing_mp).exists()
-                        and existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
-                        and "CLIMAX_IMAGES_LIVE_FX" not in existing_pm
-                    ):
-                        item["media_path"] = existing_mp
-                        item["media_type"] = "hook_ready_video"
-                        replaced = True
-                        logger.info(
-                            f"Scene 1: 🛡️ [Hook Real-Video Lock] Giữ nguyên Video chuyển động thật '{Path(existing_mp).name}' — cấm ghi đè Cảnh 1 bằng ảnh tĩnh Google!"
-                        )
-                    else:
-                        out_resc_img = str(media_dir / f"scene_{scene_id:03d}_refined_gimg_rescue_r{retry_count}.jpg")
-                        g_res = await asyncio.to_thread(
-                            execute_google_cinematic_image_sync,
-                            smart_query=clean_kw_q or q_broad_r,
-                            output_path=out_resc_img,
-                            narration=narr,
-                            topic=state.get("topic", ""),
-                            is_hook_scene=(scene_id == 1),
-                            subject_entity=subj_refine or primary_entity,
+                            ok_t7_clean, _ = await asyncio.to_thread(
+                                _verify_and_sanitize_refined_media, out_resc_v, True, scene_id
+                            )
+                            if ok_t7_clean:
+                                item["media_path"] = out_resc_v
+                                item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
+                                item["pose_images"] = []
+                                item["production_method"] = "REFINED_FRESH_STOCK_VIDEO_RESCUE"
+                                replaced = True
+                                logger.info(f"Scene {scene_id}: 🛡️ [Zero-Failed-Scene Guarantee] Đã tải nguồn Stock Video độc lập mới ('{q_broad_r}')")
+                            else:
+                                Path(out_resc_v).unlink(missing_ok=True)
+                if not replaced and scene_id in (1, 2) and not _refine_cancelled():
+                    # Cứu hộ trực tiếp qua StockFetcher với từ khóa 2 từ cốt lõi cho 5-7s đầu (Scene 1 & 2) — CẤM dùng ảnh tĩnh!
+                    sf_t7 = StockFetcher()
+                    core_2w_qs = build_single_entity_stock_queries(
+                        primary_query=subj_refine or primary_entity or clean_kw_q,
+                        secondary_query=clean_kw_q,
+                        subject_entity=primary_entity or subj_refine or "",
+                        topic=state.get("topic", ""),
+                        narration=narr,
+                        max_words=2,
+                    )
+                    for q_2w in core_2w_qs[:4]:
+                        if replaced or _refine_cancelled() or not q_2w:
+                            break
+                        v_hits_2w = await asyncio.to_thread(
+                            sf_t7.search_videos,
+                            q_2w,
+                            per_page=8,
+                            min_duration=2,
+                            orientation="landscape" if is_lf_refine else "portrait",
                             used_urls=used_refine_urls,
-                            job_id=job_id_refine,
-                            scene_id=scene_id,
-                        )
-                        if g_res and g_res.get("media_path") and Path(g_res["media_path"]).exists():
-                            item["media_path"] = g_res["media_path"]
-                            item["media_type"] = "image"
-                            item["pose_images"] = g_res.get("pose_images") or [g_res["media_path"]]
-                            item["production_method"] = "REFINED_GOOGLE_IMAGE_RESCUE"
-                            replaced = True
-                            logger.info(f"Scene {scene_id}: 🛡️ [Zero-Failed-Scene Guarantee] Đã tải nguồn Ảnh Google độc lập mới ('{clean_kw_q}')")
+                            topic=state.get("topic", ""),
+                            narration=narr,
+                        ) or []
+                        if not v_hits_2w:
+                            v_hits_2w = await asyncio.to_thread(
+                                sf_t7.search_pixabay_videos,
+                                q_2w,
+                                per_page=8,
+                                min_duration=2,
+                                orientation="landscape" if is_lf_refine else "portrait",
+                                used_urls=used_refine_urls,
+                                topic=state.get("topic", ""),
+                                narration=narr,
+                            ) or []
+                        for vh_item in v_hits_2w[:4]:
+                            vh_u = str(vh_item.get("url") or "").strip()
+                            if not vh_u or vh_u in used_refine_urls:
+                                continue
+                            used_refine_urls.add(vh_u)
+                            raw_2w = str(media_dir / f"scene_{scene_id:03d}_t7_2w_raw_r{retry_count}.mp4")
+                            out_2w = str(media_dir / f"scene_{scene_id:03d}_refined_opening_video_r{retry_count}.mp4")
+                            await asyncio.to_thread(media_agent.download_file, vh_u, raw_2w)
+                            if Path(raw_2w).exists() and Path(raw_2w).stat().st_size > 15_000:
+                                await asyncio.to_thread(
+                                    trim_video,
+                                    input_path=raw_2w,
+                                    duration_seconds=sc_dur_sec,
+                                    output_path=out_2w,
+                                    width=w_ref,
+                                    height=h_ref,
+                                    fps=30,
+                                    is_scifi=is_scifi_val,
+                                    niche=current_niche,
+                                    apply_grading=True,
+                                    is_hook_scene=(scene_id == 1),
+                                    fair_use_transform=True,
+                                    start_offset_sec=0.0,
+                                    preserve_continuous_flow=True,
+                                )
+                                Path(raw_2w).unlink(missing_ok=True)
+                                if Path(out_2w).exists() and Path(out_2w).stat().st_size > 12_000:
+                                    ok_2w_clean, _ = await asyncio.to_thread(
+                                        _verify_and_sanitize_refined_media, out_2w, True, scene_id
+                                    )
+                                    if ok_2w_clean:
+                                        item["media_path"] = out_2w
+                                        item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
+                                        item["pose_images"] = []
+                                        item["production_method"] = "REFINED_OPENING_PURE_STOCK_VIDEO"
+                                        replaced = True
+                                        logger.info(f"Scene {scene_id}: 🎬 [Opening 5-7s Pure Video] Đã tải Video chuyển động thật ('{q_2w}')")
+                                        break
+                                    Path(out_2w).unlink(missing_ok=True)
+                            else:
+                                Path(raw_2w).unlink(missing_ok=True)
+                if not replaced and scene_id not in (1, 2) and not _refine_cancelled():
+                    out_resc_img = str(media_dir / f"scene_{scene_id:03d}_refined_gimg_rescue_r{retry_count}.jpg")
+                    g_res = await asyncio.to_thread(
+                        execute_google_cinematic_image_sync,
+                        smart_query=clean_kw_q or q_broad_r,
+                        output_path=out_resc_img,
+                        narration=narr,
+                        topic=state.get("topic", ""),
+                        is_hook_scene=False,
+                        subject_entity=subj_refine or primary_entity,
+                        used_urls=used_refine_urls,
+                        job_id=job_id_refine,
+                        scene_id=scene_id,
+                    )
+                    if g_res and g_res.get("media_path") and Path(g_res["media_path"]).exists():
+                        item["media_path"] = g_res["media_path"]
+                        item["media_type"] = "image"
+                        item["pose_images"] = g_res.get("pose_images") or [g_res["media_path"]]
+                        item["production_method"] = "REFINED_GOOGLE_IMAGE_RESCUE"
+                        replaced = True
+                        logger.info(f"Scene {scene_id}: 🛡️ [Zero-Failed-Scene Guarantee] Đã tải nguồn Ảnh Google độc lập mới ('{clean_kw_q}')")
             except Exception as ex_resc:
                 logger.debug(f"Scene {scene_id}: Clean motion rescue error: {ex_resc}")
 

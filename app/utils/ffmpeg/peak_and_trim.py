@@ -477,15 +477,21 @@ def trim_video(
             top_std = (sum((px - top_edge) ** 2 for px in top_slice) / len(top_slice)) ** 0.5
             bot_std = (sum((px - bot_edge) ** 2 for px in bot_slice) / len(bot_slice)) ** 0.5
             mid_band = sum(raw_g[90 * 50 : 90 * 110]) / (90 * 60)
-            # Chỉ kích hoạt cắt viền đen (Anti-Letterbox) khi nguồn là khung dọc có dải đen thuần (độ lệch chuẩn < 4.5, không phải cảnh rừng/đêm tối tự nhiên)
-            if (not is_landscape_source) and mid_band > 48.0:
-                if top_edge < 13.5 and bot_edge < 13.5 and top_std < 4.5 and bot_std < 4.5:
-                    zoom_mult = 1.32
+            # Kích hoạt cắt viền đen / viền mờ (Anti-Letterbox & Anti-Blurred-Padbar) khi nguồn dọc có 2 dải đen hoặc 2 dải mờ trên/dưới
+            if (not is_landscape_source) and mid_band > 42.0:
+                top_grad = sum(abs(top_slice[i + 1] - top_slice[i]) for i in range(len(top_slice) - 1)) / max(1, len(top_slice) - 1)
+                bot_grad = sum(abs(bot_slice[i + 1] - bot_slice[i]) for i in range(len(bot_slice) - 1)) / max(1, len(bot_slice) - 1)
+                mid_slice = raw_g[90 * 50 : 90 * 110]
+                mid_grad = sum(abs(mid_slice[i + 1] - mid_slice[i]) for i in range(len(mid_slice) - 1)) / max(1, len(mid_slice) - 1)
+                is_black_bar = top_edge < 13.5 and bot_edge < 13.5 and top_std < 4.5 and bot_std < 4.5
+                is_blurred_padbar = mid_grad >= 4.2 and top_grad < mid_grad * 0.24 and bot_grad < mid_grad * 0.24
+                if is_black_bar or is_blurred_padbar:
+                    zoom_mult = 1.36 if is_blurred_padbar else 1.32
                     has_letterbox = True
                     logger.info(
-                        f"  🔍 [Anti-Letterbox Crop] Phát hiện dải viền đen thuần trên/dưới "
-                        f"(top_edge={top_edge:.1f}, bot_edge={bot_edge:.1f}, std={top_std:.1f}/{bot_std:.1f}, mid={mid_band:.1f}) "
-                        f"-> Phóng nhẹ {zoom_mult}x vừa khít khung hình 9:16!"
+                        f"  🔍 [Anti-Letterbox Crop] Phát hiện dải viền {'mờ (blurred padbar)' if is_blurred_padbar else 'đen'} trên/dưới "
+                        f"(top_grad={top_grad:.1f}, bot_grad={bot_grad:.1f}, mid_grad={mid_grad:.1f}) "
+                        f"-> Phóng {zoom_mult}x lấp đầy khung hình 9:16!"
                     )
             if is_hook_scene and not is_already_rendered and mid_band < 60.0:
                 grading_parts.append("eq=brightness=0.04:contrast=1.06")
