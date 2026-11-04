@@ -720,8 +720,8 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
                 raw_text = self._call_api(
                     current_prompt,
                     json_mode=True,
-                    timeout=35 if is_long_form else 20,
-                    max_total_seconds=60 if is_long_form else 38,
+                    timeout=35 if is_long_form else 25,
+                    max_total_seconds=65 if is_long_form else 55,
                 )
                 script = self._parse_json_script(raw_text, channel_niche=channel_niche, topic=topic, video_format=vf)
                 last_script = script

@@ -552,9 +552,10 @@ async def run_post_gather_media_rescues(
 
             async def _guarded_rescue_single_scene_motion(r_pos: int, r_idx: int) -> None:
                 from app.agents.curation.scene_context_analyzer_mixin import bind_scene_cancellation
+                from app.utils.ffmpeg_helper import is_completed_clean_mp4 as _is_clean_mp4_pg
                 async with rescue_sem:
                     r_cancel_ev = threading.Event()
-                    r_deadline_ts = time.monotonic() + 34.0
+                    r_deadline_ts = time.monotonic() + 46.0
                     bind_scene_cancellation(r_cancel_ev, r_deadline_ts)
                     try:
                         await asyncio.wait_for(
@@ -564,11 +565,26 @@ async def run_post_gather_media_rescues(
                                 cancel_event=r_cancel_ev,
                                 deadline_ts=r_deadline_ts,
                             ),
-                            timeout=36.0,
+                            timeout=48.0,
                         )
                     except Exception as _e_r_to:
                         r_cancel_ev.set()
                         logger.debug(f"[Real-Motion Floor Rescue] Slot {r_idx} timeout/skip: {_e_r_to}")
+                        try:
+                            r_sc_to = scenes_media[r_idx]
+                            r_sid_to = int(r_sc_to.get("scene_id") or (r_idx + 1))
+                            r_out_to = media_dir / f"scene_{r_sid_to:03d}_motion_rescue.mp4"
+                            if r_out_to.exists() and _is_clean_mp4_pg(r_out_to, min_size_bytes=15_000, min_duration_ms=1000):
+                                r_sc_to["media_path"] = str(r_out_to)
+                                r_sc_to["media_type"] = "hook_ready_video" if r_sid_to == 1 else "video"
+                                r_sc_to["pose_images"] = []
+                                r_sc_to["production_method"] = "MOTION_FLOOR_RESCUE_TIMEOUT_RECOVERED"
+                                r_sc_to["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
+                                logger.info(
+                                    f"  🛡️ [Real-Motion Floor Rescue] Scene {r_sid_to}: Khôi phục file '{r_out_to.name}' vừa hoàn tất trên đĩa khi hết giờ!"
+                                )
+                        except Exception:
+                            pass
 
             await asyncio.gather(
                 *[

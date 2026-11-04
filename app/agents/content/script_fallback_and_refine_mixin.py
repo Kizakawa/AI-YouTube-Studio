@@ -131,49 +131,95 @@ class ScriptFallbackAndRefineMixin:
                     ],
                 }
         elif "history" in n_low or "what_if" in n_low:
-            raw_data = {
-                "title": "One Man Refused The Order To End The World ☢️🚢 #Shorts",
-                "topic": topic,
-                "primary_entity": "Vasili Arkhipov",
-                "hook": "One Soviet officer refused to launch World War Three!",
-                "hook_visual_mode": "video",
-                "hook_search_queries": ["submarine underwater ocean", "naval warship sea storm"],
-                "thumbnail_text": "1 VOTE SAVED EARTH! ☢️",
-                "pinned_comment": "If Vasili Arkhipov had said YES on submarine B-59 that day, would civilization still exist? 👇",
-                "tags": ["shorts", "alternatehistory", "whatif", "history", "coldwar"],
-                "scenes": [
-                    {"scene_id": 1, "narration": "One Soviet officer refused to launch World War Three!", "visual_keyword": "submarine underwater dark ocean", "stock_query": "submarine underwater", "visual_prompt": "Soviet diesel submarine submerged in dark Atlantic waters", "estimated_seconds": 4.3},
-                    {"scene_id": 2, "narration": "American destroyers had cornered Soviet submarine B-59 near Cuba and begun dropping signaling depth charges.", "visual_keyword": "navy destroyer warship ocean waves", "stock_query": "navy warship ocean", "visual_prompt": "US Navy destroyers cutting through rough ocean waves", "estimated_seconds": 4.8},
-                    {"scene_id": 3, "narration": "Cut off from Moscow for days in 120-degree heat, the exhausted crew believed World War Three had started.", "visual_keyword": "submarine control room gauges red light", "stock_query": "submarine interior red", "visual_prompt": "Tense submarine control room bathed in red emergency light", "estimated_seconds": 4.8},
-                    {"scene_id": 4, "narration": "Inside the hull sat a 10-kiloton nuclear torpedo capable of vaporizing the entire American carrier fleet.", "visual_keyword": "torpedo tube submarine weapon", "stock_query": "military torpedo", "visual_prompt": "Heavy torpedo loaded inside a submarine launch tube", "estimated_seconds": 4.6},
-                    {"scene_id": 5, "narration": "Captain Savitsky and the political officer both signed off to launch the nuclear strike immediately.", "visual_keyword": "military officer radar screen", "stock_query": "radar screen military", "visual_prompt": "Naval officers staring at sonar and radar consoles", "estimated_seconds": 4.5},
-                    {"scene_id": 6, "narration": "What if their order had been enough? Washington and Moscow would have been glassed within ninety minutes.", "visual_keyword": "nuclear explosion mushroom cloud", "stock_query": "explosion cloud", "visual_prompt": "Massive nuclear mushroom cloud rising over the horizon", "estimated_seconds": 4.8},
-                    {"scene_id": 7, "narration": "Instead, flotilla commander Vasili Arkhipov stood his ground in the stifling control room and vetoed the launch.", "visual_keyword": "naval commander portrait dramatic light", "stock_query": "navy captain", "visual_prompt": "Determined Soviet naval officer refusing the launch key", "estimated_seconds": 4.8},
-                    {"scene_id": 8, "narration": "That single stubborn refusal forced B-59 to surface and stopped the deadliest torpedo in history.", "visual_keyword": "submarine surfacing ocean sunset", "stock_query": "submarine ocean", "visual_prompt": "Submarine surfacing peacefully on the ocean waves", "estimated_seconds": 4.5},
-                ],
-            }
+            if "petrov" in t_low or "1983" in t_low or "satellite" in t_low or "false alarm" in t_low:
+                raw_data = {
+                    "title": "1983 Stanislav Petrov vs Soviet Nuclear False Alarm 🚨☢️ #Shorts",
+                    "topic": topic,
+                    "primary_entity": "Stanislav Petrov",
+                    "hook": "Five nuclear missiles appeared on screen and one man refused to fire back!",
+                    "hook_visual_mode": "video",
+                    "hook_search_queries": ["missile launch military radar", "radar screen control room dark"],
+                    "thumbnail_text": "15 MINS TO DOOMSDAY! 🚨",
+                    "pinned_comment": "If Stanislav Petrov had followed Soviet protocol that night in 1983, would any major city still be standing today? 👇",
+                    "tags": ["shorts", "alternatehistory", "whatif", "history", "coldwar"],
+                    "scenes": [
+                        {"scene_id": 1, "narration": "Five nuclear missiles appeared on screen and one man refused to fire back!", "visual_keyword": "military radar screen red alarm", "stock_query": "radar screen military", "visual_prompt": "Glowing Soviet early warning radar console flashing red alerts", "estimated_seconds": 4.4},
+                        {"scene_id": 2, "narration": "Just after midnight in September 1983, the Soviet Oko satellite bunker outside Moscow erupted with sirens.", "visual_keyword": "military bunker corridor red light", "stock_query": "dark corridor red light", "visual_prompt": "Underground command bunker illuminated by flashing emergency lights", "estimated_seconds": 4.8},
+                        {"scene_id": 3, "narration": "The computer reported with highest confidence that America had launched five intercontinental ballistic missiles.", "visual_keyword": "rocket missile launch night sky", "stock_query": "rocket launch night", "visual_prompt": "Ballistic missile streaking into the dark night sky", "estimated_seconds": 4.8},
+                        {"scene_id": 4, "narration": "Strict Soviet doctrine gave duty officer Stanislav Petrov less than fifteen minutes to trigger full retaliation.", "visual_keyword": "military officer staring computer screen", "stock_query": "man staring computer dark", "visual_prompt": "Tense officer sweating in front of glowing control room monitors", "estimated_seconds": 4.8},
+                        {"scene_id": 5, "narration": "In one hand he held the direct phone line to the Kremlin leadership waiting for his confirmation.", "visual_keyword": "vintage telephone desk dark room", "stock_query": "old telephone dark", "visual_prompt": "Heavy command telephone sitting on a steel control desk", "estimated_seconds": 4.5},
+                        {"scene_id": 6, "narration": "But Petrov noticed a crucial flaw: ground radar showed nothing, and nobody starts World War Three with only five missiles.", "visual_keyword": "satellite orbiting earth clouds sun", "stock_query": "satellite orbit earth", "visual_prompt": "Orbital satellite passing high above sunlit clouds in space", "estimated_seconds": 5.2},
+                        {"scene_id": 7, "narration": "Trusting his gut over a billion-dollar computer, he declared a false alarm caused by sunlight reflecting off high clouds.", "visual_keyword": "sunrise clouds aerial view sky", "stock_query": "sunlight clouds aerial", "visual_prompt": "Blinding sunlight reflecting off high altitude clouds above Earth", "estimated_seconds": 5.0},
+                        {"scene_id": 8, "narration": "Minutes later zero warheads hit, proving Petrov's fifteen-minute gamble saved humanity from total annihilation.", "visual_keyword": "city skyline night lights peaceful", "stock_query": "city skyline night", "visual_prompt": "Peaceful city skyline glowing at night under a clear sky", "estimated_seconds": 4.7},
+                    ],
+                }
+            else:
+                raw_data = {
+                    "title": "1962 Vasili Arkhipov vs B-59 Nuclear Torpedo ☢️🚢 #Shorts",
+                    "topic": topic,
+                    "primary_entity": "Vasili Arkhipov",
+                    "hook": "One Soviet officer refused to launch World War Three!",
+                    "hook_visual_mode": "video",
+                    "hook_search_queries": ["submarine underwater ocean", "naval warship sea storm"],
+                    "thumbnail_text": "1 VOTE SAVED EARTH! ☢️",
+                    "pinned_comment": "If Vasili Arkhipov had said YES on submarine B-59 that day, would civilization still exist? 👇",
+                    "tags": ["shorts", "alternatehistory", "whatif", "history", "coldwar"],
+                    "scenes": [
+                        {"scene_id": 1, "narration": "One Soviet officer refused to launch World War Three!", "visual_keyword": "submarine underwater dark ocean", "stock_query": "submarine underwater", "visual_prompt": "Soviet diesel submarine submerged in dark Atlantic waters", "estimated_seconds": 4.3},
+                        {"scene_id": 2, "narration": "American destroyers had cornered Soviet submarine B-59 near Cuba and begun dropping signaling depth charges.", "visual_keyword": "navy destroyer warship ocean waves", "stock_query": "navy warship ocean", "visual_prompt": "US Navy destroyers cutting through rough ocean waves", "estimated_seconds": 4.8},
+                        {"scene_id": 3, "narration": "Cut off from Moscow for days in 120-degree heat, the exhausted crew believed World War Three had started.", "visual_keyword": "submarine control room gauges red light", "stock_query": "submarine interior red", "visual_prompt": "Tense submarine control room bathed in red emergency light", "estimated_seconds": 4.8},
+                        {"scene_id": 4, "narration": "Inside the hull sat a 10-kiloton nuclear torpedo capable of vaporizing the entire American carrier fleet.", "visual_keyword": "torpedo tube submarine weapon", "stock_query": "military torpedo", "visual_prompt": "Heavy torpedo loaded inside a submarine launch tube", "estimated_seconds": 4.6},
+                        {"scene_id": 5, "narration": "Captain Savitsky and the political officer both signed off to launch the nuclear strike immediately.", "visual_keyword": "military officer radar screen", "stock_query": "radar screen military", "visual_prompt": "Naval officers staring at sonar and radar consoles", "estimated_seconds": 4.5},
+                        {"scene_id": 6, "narration": "What if their order had been enough? Washington and Moscow would have been glassed within ninety minutes.", "visual_keyword": "nuclear explosion mushroom cloud", "stock_query": "explosion cloud", "visual_prompt": "Massive nuclear mushroom cloud rising over the horizon", "estimated_seconds": 4.8},
+                        {"scene_id": 7, "narration": "Instead, flotilla commander Vasili Arkhipov stood his ground in the stifling control room and vetoed the launch.", "visual_keyword": "naval commander portrait dramatic light", "stock_query": "navy captain", "visual_prompt": "Determined Soviet naval officer refusing the launch key", "estimated_seconds": 4.8},
+                        {"scene_id": 8, "narration": "That single stubborn refusal forced B-59 to surface and stopped the deadliest torpedo in history.", "visual_keyword": "submarine surfacing ocean sunset", "stock_query": "submarine ocean", "visual_prompt": "Submarine surfacing peacefully on the ocean waves", "estimated_seconds": 4.5},
+                    ],
+                }
         elif "psychology" in n_low:
-            raw_data = {
-                "title": "Why Psychopaths Never Yawn When You Do 🥶🧠 #Shorts",
-                "topic": topic,
-                "primary_entity": "Mirror Neurons",
-                "hook": "Psychopaths fail this simple three-second yawn test every time!",
-                "hook_visual_mode": "video",
-                "hook_search_queries": ["man cold stare dark shadow", "detective interrogation room dark"],
-                "thumbnail_text": "3-SECOND YAWN TEST! 🥶",
-                "pinned_comment": "Have you ever tested the contagious yawn reflex on someone watching you in a room? 👇",
-                "tags": ["shorts", "psychology", "darkpsychology", "bodylanguage", "humanbehavior"],
-                "scenes": [
-                    {"scene_id": 1, "narration": "Psychopaths fail this simple three-second yawn test every time!", "visual_keyword": "man cold expression shadow portrait", "stock_query": "man dark shadow portrait", "visual_prompt": "Cold unblinking man staring across a dimly lit noir room", "estimated_seconds": 4.1},
-                    {"scene_id": 2, "narration": "When a normal person sees someone yawn, their brain automatically triggers a contagious yawn within seconds.", "visual_keyword": "two people conversation cafe dark", "stock_query": "people talking dark room", "visual_prompt": "Two people sitting across a table in a moody room", "estimated_seconds": 4.5},
-                    {"scene_id": 3, "narration": "Neuroscientists proved this reflex has nothing to do with being tired—it is wired directly to your mirror neurons.", "visual_keyword": "human brain neural network glowing", "stock_query": "brain neural network", "visual_prompt": "Glowing mirror neuron pathways firing inside the human brain", "estimated_seconds": 4.7},
-                    {"scene_id": 4, "narration": "Those exact mirror neurons force your brain to unconsciously feel what the person in front of you feels.", "visual_keyword": "extreme closeup human eye reflection", "stock_query": "closeup eye dark", "visual_prompt": "Sharp closeup of an intense human eye reflecting light", "estimated_seconds": 4.5},
-                    {"scene_id": 5, "narration": "In a Baylor University forensic study, people scoring highest on cold-hearted psychopathy were almost completely immune.", "visual_keyword": "detective reviewing forensic files dark", "stock_query": "detective case files", "visual_prompt": "Forensic psychologist examining behavioral test charts in shadow", "estimated_seconds": 4.8},
-                    {"scene_id": 6, "narration": "They can fake a charming smile on command, but they cannot fake an involuntary empathy reflex.", "visual_keyword": "man adjusting suit mirror shadow", "stock_query": "man mirror dark", "visual_prompt": "Man in a sharp suit looking into a dark mirror with a cold expression", "estimated_seconds": 4.5},
-                    {"scene_id": 7, "narration": "Next time you feel someone secretly staring at you, fake one slow yawn and watch their face for three seconds.", "visual_keyword": "person watching from shadow doorway", "stock_query": "silhouette doorway shadow", "visual_prompt": "Observer watching a suspect's face across a quiet room", "estimated_seconds": 4.7},
-                    {"scene_id": 8, "narration": "Normal people mirror your face without thinking, which is why psychopaths fail this simple three-second yawn test every time.", "visual_keyword": "man cold stare camera noir", "stock_query": "intense stare portrait", "visual_prompt": "Chilling chiaroscuro portrait of an unmoved face in darkness", "estimated_seconds": 4.6},
-                ],
-            }
+            if "franklin" in t_low or "favor" in t_low or "rival" in t_low or "enemy" in t_low:
+                raw_data = {
+                    "title": "Benjamin Franklin Effect vs Rivals: The 2-Minute Favor 🧠🤝 #Shorts",
+                    "topic": topic,
+                    "primary_entity": "Benjamin Franklin Effect",
+                    "hook": "Want a rival to secretly like you? Ask them for one tiny favor!",
+                    "hook_visual_mode": "video",
+                    "hook_search_queries": ["two businessmen talking office dark", "chess game move closeup"],
+                    "thumbnail_text": "2-MINUTE FAVOR TRICK! 🧠",
+                    "pinned_comment": "Have you ever asked someone who disliked you for a small favor and watched their attitude flip? 👇",
+                    "tags": ["shorts", "psychology", "darkpsychology", "benjaminfranklin", "humanbehavior"],
+                    "scenes": [
+                        {"scene_id": 1, "narration": "Want a rival to secretly like you? Ask them for one tiny favor!", "visual_keyword": "two businessmen handshake dark office", "stock_query": "businessmen talking dark", "visual_prompt": "Two sharp-suited rivals facing each other across a dimly lit office", "estimated_seconds": 4.3},
+                        {"scene_id": 2, "narration": "Most people try to win over enemies by doing favors for them, which actually makes rivals feel superior.", "visual_keyword": "man looking down arrogant suit", "stock_query": "businessman serious portrait", "visual_prompt": "Cold executive looking down with a skeptical expression", "estimated_seconds": 4.8},
+                        {"scene_id": 3, "narration": "Benjamin Franklin discovered the exact opposite trick when a powerful politician refused to speak to him.", "visual_keyword": "vintage library books candle light", "stock_query": "old library books", "visual_prompt": "Rare leather-bound book sitting on a dark mahogany desk", "estimated_seconds": 4.7},
+                        {"scene_id": 4, "narration": "Instead of flattering the man, Franklin wrote a polite note asking to borrow one rare book for two days.", "visual_keyword": "hand writing letter fountain pen", "stock_query": "writing letter pen", "visual_prompt": "Close shot of a hand writing a note with a classic pen", "estimated_seconds": 4.8},
+                        {"scene_id": 5, "narration": "The rival sent the book immediately, and the next time they met, he shook Franklin's hand like an old friend.", "visual_keyword": "men shaking hands office meeting", "stock_query": "business handshake", "visual_prompt": "Warm handshake between two executives in a dark boardroom", "estimated_seconds": 4.9},
+                        {"scene_id": 6, "narration": "Psychologists call this cognitive dissonance: your brain hates doing favors for someone it claims to despise.", "visual_keyword": "human brain neural pathways glowing", "stock_query": "brain neural network", "visual_prompt": "Glowing neural synapses rewiring inside the human brain", "estimated_seconds": 4.9},
+                        {"scene_id": 7, "narration": "To resolve that mental glitch, their subconscious forces them to decide you must actually be worth liking.", "visual_keyword": "closeup human eye pupil dilating", "stock_query": "closeup human eye", "visual_prompt": "Extreme macro shot of a human eye shifting focus in low light", "estimated_seconds": 4.8},
+                        {"scene_id": 8, "narration": "That is why asking a cold rival for a two-minute favor rewires their brain faster than any compliment.", "visual_keyword": "chess king piece checkmate dark", "stock_query": "chess game dark", "visual_prompt": "Hand moving a king piece across a dark chessboard", "estimated_seconds": 4.7},
+                    ],
+                }
+            else:
+                raw_data = {
+                    "title": "Mirror Neuron Yawn vs Psychopaths: The 3-Second Empathy Test 🧠👁️ #Shorts",
+                    "topic": topic,
+                    "primary_entity": "Mirror Neurons",
+                    "hook": "Psychopaths fail this simple three-second yawn test every time!",
+                    "hook_visual_mode": "video",
+                    "hook_search_queries": ["man cold stare dark shadow", "detective interrogation room dark"],
+                    "thumbnail_text": "3-SECOND YAWN TEST! 🥶",
+                    "pinned_comment": "Have you ever tested the contagious yawn reflex on someone watching you in a room? 👇",
+                    "tags": ["shorts", "psychology", "darkpsychology", "bodylanguage", "humanbehavior"],
+                    "scenes": [
+                        {"scene_id": 1, "narration": "Psychopaths fail this simple three-second yawn test every time!", "visual_keyword": "man cold expression shadow portrait", "stock_query": "man dark shadow portrait", "visual_prompt": "Cold unblinking man staring across a dimly lit noir room", "estimated_seconds": 4.1},
+                        {"scene_id": 2, "narration": "When a normal person sees someone yawn, their brain automatically triggers a contagious yawn within seconds.", "visual_keyword": "two people conversation cafe dark", "stock_query": "people talking dark room", "visual_prompt": "Two people sitting across a table in a moody room", "estimated_seconds": 4.5},
+                        {"scene_id": 3, "narration": "Neuroscientists proved this reflex has nothing to do with being tired—it is wired directly to your mirror neurons.", "visual_keyword": "human brain neural network glowing", "stock_query": "brain neural network", "visual_prompt": "Glowing mirror neuron pathways firing inside the human brain", "estimated_seconds": 4.7},
+                        {"scene_id": 4, "narration": "Those exact mirror neurons force your brain to unconsciously feel what the person in front of you feels.", "visual_keyword": "extreme closeup human eye reflection", "stock_query": "closeup eye dark", "visual_prompt": "Sharp closeup of an intense human eye reflecting light", "estimated_seconds": 4.5},
+                        {"scene_id": 5, "narration": "In a Baylor University forensic study, people scoring highest on cold-hearted psychopathy were almost completely immune.", "visual_keyword": "detective reviewing forensic files dark", "stock_query": "detective case files", "visual_prompt": "Forensic psychologist examining behavioral test charts in shadow", "estimated_seconds": 4.8},
+                        {"scene_id": 6, "narration": "They can fake a charming smile on command, but they cannot fake an involuntary empathy reflex.", "visual_keyword": "man adjusting suit mirror shadow", "stock_query": "man mirror dark", "visual_prompt": "Man in a sharp suit looking into a dark mirror with a cold expression", "estimated_seconds": 4.5},
+                        {"scene_id": 7, "narration": "Next time you feel someone secretly staring at you, fake one slow yawn and watch their face for three seconds.", "visual_keyword": "person watching from shadow doorway", "stock_query": "silhouette doorway shadow", "visual_prompt": "Observer watching a suspect's face across a quiet room", "estimated_seconds": 4.7},
+                        {"scene_id": 8, "narration": "Normal people mirror your face without thinking, which is why psychopaths fail this simple three-second yawn test every time.", "visual_keyword": "man cold stare camera noir", "stock_query": "intense stare portrait", "visual_prompt": "Chilling chiaroscuro portrait of an unmoved face in darkness", "estimated_seconds": 4.6},
+                    ],
+                }
         elif "deep_sea" in n_low or "mystery" in n_low:
             raw_data = {
                 "title": "The Secret Spacecraft Graveyard At The Bottom Of The Ocean 🌊🛰️ #Shorts",

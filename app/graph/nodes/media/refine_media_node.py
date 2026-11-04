@@ -756,8 +756,10 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     prev_mp_to = str(item.get("media_path") or "")
                     ref_cands_to = sorted(
                         [
-                            p for p in media_dir.glob(f"scene_{sid_to:03d}_refined_*.mp4")
-                            if str(p) != prev_mp_to and is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
+                            p for p in media_dir.glob(f"scene_{sid_to:03d}_*.mp4")
+                            if str(p) != prev_mp_to
+                            and not any(tok in p.name.lower() for tok in ("_raw", "_cand", "_tmp", ".tmp", "_fftmp"))
+                            and is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
                         ],
                         key=_safe_mtime,
                         reverse=True,

@@ -167,6 +167,63 @@ _PUBLISHED_VIDEOS_EXTRA_COLUMNS_SQLITE = {
 }
 
 
+def _sync_pg_recent_to_sqlite(driver_url: str) -> None:
+    """
+    Đồng bộ nhanh các bản ghi video_jobs & published_videos mới nhất từ PostgreSQL về SQLite
+    bằng câu lệnh SELECT * ngắn (<70B outbound) để không bị chặn bởi Path MTU Blackhole.
+    """
+    import sqlite3
+    from sqlalchemy.pool import NullPool
+
+    local_sqlite_path = Path(settings.BASE_DIR) / "storage" / "ai_youtube.db"
+    local_sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    pg_eng = create_engine(
+        driver_url,
+        echo=False,
+        connect_args={"connect_timeout": 4},
+        poolclass=NullPool,
+    )
+    with pg_eng.connect() as pg_conn:
+        vj_rows = pg_conn.execute(text("SELECT * FROM video_jobs WHERE id >= 680 ORDER BY id")).mappings().all()
+        pv_rows = pg_conn.execute(text("SELECT * FROM published_videos ORDER BY id DESC LIMIT 120")).mappings().all()
+
+    with sqlite3.connect(str(local_sqlite_path)) as s_conn:
+        cur = s_conn.cursor()
+        cur.execute("PRAGMA table_info(video_jobs)")
+        vj_cols = {r[1] for r in cur.fetchall()}
+        if vj_cols and vj_rows:
+            cur.execute("SELECT id, status, video_path FROM video_jobs WHERE id >= 680")
+            local_vj = {row[0]: (row[1], row[2]) for row in cur.fetchall()}
+            for r in vj_rows:
+                jid = r.get("id")
+                loc_info = local_vj.get(jid)
+                if loc_info and loc_info[0] in ("RENDERED", "PUBLISHED", "APPROVED") and loc_info[1]:
+                    continue
+                valid_items = {k: (str(v) if isinstance(v, datetime) else v) for k, v in r.items() if k in vj_cols}
+                if not valid_items:
+                    continue
+                cols_sql = ", ".join(valid_items.keys())
+                placeholders = ", ".join(["?"] * len(valid_items))
+                cur.execute(
+                    f"INSERT OR REPLACE INTO video_jobs ({cols_sql}) VALUES ({placeholders})",
+                    list(valid_items.values()),
+                )
+        cur.execute("PRAGMA table_info(published_videos)")
+        pv_cols = {r[1] for r in cur.fetchall()}
+        if pv_cols and pv_rows:
+            for r in pv_rows:
+                valid_items = {k: (str(v) if isinstance(v, datetime) else v) for k, v in r.items() if k in pv_cols}
+                if not valid_items:
+                    continue
+                cols_sql = ", ".join(valid_items.keys())
+                placeholders = ", ".join(["?"] * len(valid_items))
+                cur.execute(
+                    f"INSERT OR IGNORE INTO published_videos ({cols_sql}) VALUES ({placeholders})",
+                    list(valid_items.values()),
+                )
+        s_conn.commit()
+
+
 def create_configured_engine(raw_url: str):
     """
     Khởi tạo SQLAlchemy engine thông minh:
@@ -181,56 +238,69 @@ def create_configured_engine(raw_url: str):
     is_postgres = db_url.startswith("postgresql://") or db_url.startswith("postgresql+psycopg2://")
 
     if is_postgres:
+        import threading
         from sqlalchemy.pool import NullPool
         driver_url = db_url
         if driver_url.startswith("postgresql://"):
             driver_url = "postgresql+psycopg2://" + driver_url[len("postgresql://"):]
         is_pgbouncer_pooler = (":6543" in driver_url) or ("pooler." in driver_url)
-        last_pg_err = None
-        for pg_attempt in range(1, 4):
-            try:
-                pool_kwargs = (
-                    {"poolclass": NullPool, "pool_pre_ping": True}
-                    if is_pgbouncer_pooler
-                    else {
-                        "pool_size": 3,
-                        "max_overflow": 4,
-                        "pool_pre_ping": True,
-                        "pool_use_lifo": True,
-                        "pool_recycle": 20,
-                        "pool_timeout": 30,
-                    }
-                )
-                eng = create_engine(
-                    driver_url,
-                    echo=False,
-                    connect_args={
-                        "connect_timeout": 10,
-                        "keepalives": 1,
-                        "keepalives_idle": 15,
-                        "keepalives_interval": 5,
-                        "keepalives_count": 3,
-                    },
-                    **pool_kwargs,
-                )
-                # Test ping connection (chỉ dùng SELECT 1, tuyệt đối không gọi ALTER TABLE gây khóa bảng trên PgBouncer)
-                with eng.connect() as test_conn:
-                    test_conn.execute(text("SELECT 1"))
-                logger.info(
-                    f"✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud "
-                    f"({'NullPool/PgBouncer' if is_pgbouncer_pooler else 'QueuePool'})!"
-                )
-                return eng, db_url
-            except Exception as ex:
-                last_pg_err = ex
-                if pg_attempt < 3:
-                    import time as _time
-                    _time.sleep(0.8 * pg_attempt)
-        logger.warning(
-            f"⚠️ [Database] Không thể kết nối PostgreSQL sau 3 lần thử ({last_pg_err}). "
-            f"Tự động chuyển về SQLite cục bộ (storage/ai_youtube.db) an toàn..."
+        pool_kwargs = (
+            {"poolclass": NullPool, "pool_pre_ping": True}
+            if is_pgbouncer_pooler
+            else {
+                "pool_size": 3,
+                "max_overflow": 4,
+                "pool_pre_ping": True,
+                "pool_use_lifo": True,
+                "pool_recycle": 20,
+                "pool_timeout": 30,
+            }
         )
-        db_url = f"sqlite:///{settings.BASE_DIR}/storage/ai_youtube.db"
+        eng = create_engine(
+            driver_url,
+            echo=False,
+            connect_args={
+                "connect_timeout": 4,
+                "keepalives": 1,
+                "keepalives_idle": 15,
+                "keepalives_interval": 5,
+                "keepalives_count": 3,
+            },
+            **pool_kwargs,
+        )
+
+        probe_res = {"ok": False, "err": None}
+
+        def _probe_pg_mtu():
+            try:
+                with eng.connect() as test_conn:
+                    # Kiểm tra gói tin 16KB (tương đương UPDATE scenes_json) trong <0.8s để phát hiện sớm Path MTU Blackhole
+                    test_conn.execute(text("SELECT length(:p)"), {"p": "x" * 16384})
+                probe_res["ok"] = True
+            except Exception as exc:
+                probe_res["err"] = exc
+
+        probe_thread = threading.Thread(target=_probe_pg_mtu, daemon=True)
+        probe_thread.start()
+        probe_thread.join(timeout=0.8)
+        if probe_res["ok"]:
+            logger.info(
+                f"✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud "
+                f"({'NullPool/PgBouncer' if is_pgbouncer_pooler else 'QueuePool'})!"
+            )
+            return eng, db_url
+        else:
+            last_pg_err = probe_res["err"] or "Timeout >0.8s (Path MTU Blackhole)"
+            logger.warning(
+                f"⚠️ [Database] Kết nối PostgreSQL gói tin lớn 16KB bị nghẽn/chậm ({last_pg_err}). "
+                f"Tự động đồng bộ nhanh và chuyển về SQLite cục bộ (storage/ai_youtube.db) an toàn..."
+            )
+            # Đồng bộ nhanh các job gần nhất từ PostgreSQL về SQLite bằng truy vấn ngắn (<80B, không dính MTU blackhole)
+            try:
+                _sync_pg_recent_to_sqlite(driver_url)
+            except Exception as sync_err:
+                logger.debug(f"[Database] Bỏ qua đồng bộ nhanh PG->SQLite: {sync_err}")
+            db_url = f"sqlite:///{settings.BASE_DIR}/storage/ai_youtube.db"
 
     # SQLite Configuration
     db_clean_path = db_url.split("sqlite:///")[-1]

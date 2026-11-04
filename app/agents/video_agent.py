@@ -269,47 +269,62 @@ class VideoAgent:
                         recovered_type = "image"
                         break
                 if not recovered_path:
-                    # Chỉ cắt lát từ các file Master dài (`*_master.mp4` >= 14s) ở mốc thời gian không chồng lấn;
-                    # TUYỆT ĐỐI KHÔNG lấy trực tiếp file `scene_YYY_*.mp4` của cảnh khác làm donor gây lặp cảnh liên tiếp!
+                    # Chỉ cắt lát từ các file Master dài (`*_master.mp4`) hoặc `hook_candidates/*.mp4` ở mốc thời gian không chồng lấn;
+                    # TUYỆT ĐỐI KHÔNG lấy trực tiếp nguyên file `scene_YYY_*.mp4` của cảnh khác làm donor gây lặp cảnh liên tiếp!
+                    job_root_dir = Path(work_dir).parent
+                    extra_donor_cands: List[Path] = []
                     for m_dir in media_search_dirs:
                         ch_pool_d = m_dir / "chapter_pool"
-                        if not ch_pool_d.exists():
-                            continue
-                        master_donors = sorted(
-                            [
-                                p for p in ch_pool_d.glob("*_master.mp4")
-                                if is_completed_clean_mp4(p, min_size_bytes=50_000, min_duration_ms=14000)
-                            ],
-                            key=lambda p: p.stat().st_size,
-                            reverse=True,
+                        if ch_pool_d.exists():
+                            extra_donor_cands.extend(ch_pool_d.glob("*_master.mp4"))
+                    hk_cand_d = job_root_dir / "hook_candidates"
+                    if hk_cand_d.exists():
+                        extra_donor_cands.extend(
+                            p for p in hk_cand_d.glob("*.mp4")
+                            if not any(t in p.name.lower() for t in ("_raw", "_tmp", ".tmp"))
                         )
-                        if master_donors:
-                            donor_pick = master_donors[(scene.scene_id - 1) % len(master_donors)]
-                            from app.utils.ffmpeg_helper import get_duration_ms as _get_m_dur
-                            m_tot_s = _get_m_dur(str(donor_pick)) / 1000.0
-                            m_off = round((((scene.scene_id * 37 + 13) % 89) / 89.0) * max(0.0, m_tot_s - duration - 0.5), 2)
-                            sliced_rec = str(Path(work_dir) / f"recovered_master_s{scene.scene_id:03d}.mp4")
-                            try:
-                                trim_video(
-                                    input_path=str(donor_pick),
-                                    duration_seconds=duration,
-                                    output_path=sliced_rec,
-                                    width=job.resolution_w,
-                                    height=job.resolution_h,
-                                    fps=job.fps,
-                                    start_offset_sec=m_off,
-                                    is_scifi=False,
-                                    apply_grading=True,
-                                    is_hook_scene=(scene.scene_id == 1),
-                                    fair_use_transform=True,
-                                    preserve_continuous_flow=True,
-                                )
-                                if Path(sliced_rec).exists() and Path(sliced_rec).stat().st_size > 20_000:
-                                    recovered_path = sliced_rec
-                                    recovered_type = "video"
-                                    break
-                            except Exception:
-                                pass
+                    if (job_root_dir / "hook_motion_001_fullpeak.mp4").exists():
+                        extra_donor_cands.append(job_root_dir / "hook_motion_001_fullpeak.mp4")
+                    for m_dir in media_search_dirs:
+                        if m_dir.exists():
+                            extra_donor_cands.extend(
+                                p for p in m_dir.glob("*.mp4")
+                                if not any(t in p.name.lower() for t in ("_raw", "_tmp", ".tmp", "_cand"))
+                            )
+                    master_donors = sorted(
+                        [
+                            p for p in dict.fromkeys(extra_donor_cands)
+                            if is_completed_clean_mp4(p, min_size_bytes=25_000, min_duration_ms=3000)
+                        ],
+                        key=lambda p: p.stat().st_size,
+                        reverse=True,
+                    )
+                    for d_idx, donor_pick in enumerate(master_donors[:4]):
+                        from app.utils.ffmpeg_helper import get_duration_ms as _get_m_dur
+                        m_tot_s = _get_m_dur(str(donor_pick)) / 1000.0
+                        m_off = round((((scene.scene_id * 37 + d_idx * 19 + 13) % 89) / 89.0) * max(0.0, m_tot_s - duration - 0.3), 2)
+                        sliced_rec = str(Path(work_dir) / f"recovered_master_s{scene.scene_id:03d}.mp4")
+                        try:
+                            trim_video(
+                                input_path=str(donor_pick),
+                                duration_seconds=duration,
+                                output_path=sliced_rec,
+                                width=job.resolution_w,
+                                height=job.resolution_h,
+                                fps=job.fps,
+                                start_offset_sec=m_off,
+                                is_scifi=False,
+                                apply_grading=True,
+                                is_hook_scene=(scene.scene_id == 1),
+                                fair_use_transform=True,
+                                preserve_continuous_flow=True,
+                            )
+                            if Path(sliced_rec).exists() and Path(sliced_rec).stat().st_size > 20_000:
+                                recovered_path = sliced_rec
+                                recovered_type = "video"
+                                break
+                        except Exception:
+                            pass
                 if recovered_path and Path(recovered_path).exists():
                     logger.info(
                         f"  Scene {scene.scene_id}: 🛡️ Đã tự động khôi phục media thật '{Path(recovered_path).name}' "

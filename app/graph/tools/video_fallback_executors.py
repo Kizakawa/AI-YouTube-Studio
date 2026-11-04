@@ -92,22 +92,25 @@ def _try_bilibili_broll_fallback(
             with _yt_url_lock:
                 used.update(extract_media_identity(b_url))
 
+            cand_bili_stage = str(
+                Path(output_path).with_name(f"{Path(output_path).stem}_bili_cand_{probed_bili + 1}.mp4")
+            )
             b_info = download_and_crop_bilibili_broll_clip(
                 url_or_id=bvid,
-                output_path=output_path,
+                output_path=cand_bili_stage,
                 target_duration_sec=max(3.5, target_duration_sec),
                 aspect_ratio=aspect_ratio,
             )
-            if not b_info or not Path(output_path).exists() or Path(output_path).stat().st_size < 30_000:
+            if not b_info or not Path(cand_bili_stage).exists() or Path(cand_bili_stage).stat().st_size < 30_000:
                 rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
-                Path(output_path).unlink(missing_ok=True)
+                Path(cand_bili_stage).unlink(missing_ok=True)
                 continue
             probed_bili += 1
 
             ok_sig_b, _ = rag.verify_and_commit_in_job_clip(
                 job_id=job_id,
                 scene_id=eff_scene_id,
-                media_path=output_path,
+                media_path=cand_bili_stage,
                 vid_id=bvid,
                 url=b_url,
                 title=b_title,
@@ -115,11 +118,11 @@ def _try_bilibili_broll_fallback(
             )
             if not ok_sig_b:
                 rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
-                Path(output_path).unlink(missing_ok=True)
+                Path(cand_bili_stage).unlink(missing_ok=True)
                 continue
 
             passed_vis_b, vis_score_b, vis_reason_b = _verify_short_clip_with_gemini_vision(
-                video_path=output_path,
+                video_path=cand_bili_stage,
                 topic=topic,
                 narration=narration,
                 subject_entity=subject_entity or topic,
@@ -137,8 +140,12 @@ def _try_bilibili_broll_fallback(
                     f"(điểm={vis_score_b}/10: {vis_reason_b}) -> Thử ứng viên tiếp theo!"
                 )
                 rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
-                Path(output_path).unlink(missing_ok=True)
+                Path(cand_bili_stage).unlink(missing_ok=True)
                 continue
+
+            import shutil as _sh_bili
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            _sh_bili.move(cand_bili_stage, output_path)
 
             record_used_media(
                 url=b_url,
@@ -309,10 +316,13 @@ def _try_licensed_stock_video_fallback(
                             min_duration=min_st_dur,
                             max_duration=min(max_peak_duration_sec, max(min_st_dur, raw_st_dur)),
                         )
+                        cand_st_stage = str(
+                            Path(output_path).with_name(f"{Path(output_path).stem}_stock_cand_{int(time.monotonic() * 1000) % 100000}.mp4")
+                        )
                         trim_video(
                             input_path=raw_stock,
                             duration_seconds=min_st_dur,
-                            output_path=output_path,
+                            output_path=cand_st_stage,
                             width=1080,
                             height=1920,
                             fps=30,
@@ -322,18 +332,18 @@ def _try_licensed_stock_video_fallback(
                             start_offset_sec=st_start,
                             preserve_continuous_flow=True,
                         )
-                        if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
+                        if Path(cand_st_stage).exists() and Path(cand_st_stage).stat().st_size > 20000:
                             ok_st_sig, _ = rag.verify_and_commit_in_job_clip(
                                 job_id=job_id,
                                 scene_id=eff_scene_id,
-                                media_path=output_path,
+                                media_path=cand_st_stage,
                                 url=v_url,
                                 title=st_title,
                                 is_continuation_slice=False,
                             )
                             if not ok_st_sig:
                                 rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
-                                Path(output_path).unlink(missing_ok=True)
+                                Path(cand_st_stage).unlink(missing_ok=True)
                                 continue
 
                             # Chỉ miễn kiểm tra Vision lần 2 nếu clip ĐÃ ĐƯỢC Gemini Vision nhìn trực tiếp qua Thumbnail (`vision_curated == True`)
@@ -345,7 +355,7 @@ def _try_licensed_stock_video_fallback(
                                 st_vis_reason = "Approved by LLM Link & Thumbnail Vision Auditor"
                             else:
                                 passed_st_vis, st_vis_score, st_vis_reason = _verify_short_clip_with_gemini_vision(
-                                    video_path=output_path,
+                                    video_path=cand_st_stage,
                                     topic=topic,
                                     narration=narration,
                                     subject_entity=subject_entity or topic,
@@ -363,8 +373,11 @@ def _try_licensed_stock_video_fallback(
                                     f"({st_vis_score}/10: {st_vis_reason}) -> Thử ứng viên tiếp theo!"
                                 )
                                 rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
-                                Path(output_path).unlink(missing_ok=True)
+                                Path(cand_st_stage).unlink(missing_ok=True)
                                 continue
+
+                            import shutil as _sh_st
+                            _sh_st.move(cand_st_stage, output_path)
 
                             full_peak_path_st = None
                             if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:

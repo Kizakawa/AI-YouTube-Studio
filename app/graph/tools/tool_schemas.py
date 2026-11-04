@@ -475,8 +475,6 @@ def _clean_yt_search_phrase(
             and w.lower() not in extra_skip
             and len(w) >= 2
         ]
-    if strip_distractor_props and max_words in (1, 2) and len(core) > max_words:
-        return " ".join(core[-max_words:]).strip()
     return " ".join(core[:max_words]).strip()
 
 
@@ -583,10 +581,8 @@ def build_single_entity_stock_queries(
         ]
         if len(w_list) >= 3:
             p_head = f"{w_list[0]} {w_list[1]}"
-            p_tail = f"{w_list[-2]} {w_list[-1]}"
-            for p2 in (p_head, p_tail):
-                if p2.lower() not in seen_low and p2.lower() not in {x.lower() for x in two_word_pairs}:
-                    two_word_pairs.append(p2)
+            if p_head.lower() not in seen_low and p_head.lower() not in {x.lower() for x in two_word_pairs}:
+                two_word_pairs.append(p_head)
     for p2 in two_word_pairs[:4]:
         _add_clean(p2)
 
