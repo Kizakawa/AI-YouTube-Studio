@@ -175,19 +175,24 @@ class WebImageFetcher:
         except Exception:
             pass
 
+        if out and not cls._looks_relevant(out, query):
+            out = []
+
         if not out:
             try:
-                url_async = f"https://www.bing.com/images/async?q={q_enc}&first=0&count={min(limit, 35)}&mmasync=1&qft=+filterui:imagesize-large"
+                url_async = f"https://www.bing.com/images/async?q={q_enc}&first=0&count={min(limit, 35)}&mmasync=1&qft=+filterui:imagesize-large&mkt=en-US&setlang=en-US"
                 res = requests.get(url_async, headers=req_headers, timeout=(2.5, 4.5))
                 if res.status_code == 200:
-                    out = _parse_bing_html(res.text)
+                    cand_async = _parse_bing_html(res.text)
+                    if cand_async and cls._looks_relevant(cand_async, query):
+                        out = cand_async
             except Exception:
                 cls._engine_fail("bing", minutes=15.0)
         return out[:limit]
 
     @classmethod
     def _raw_ddgs_images(cls, query: str, limit: int = 20) -> List[Dict]:
-        if os.getenv("ENABLE_DDGS_SEARCH", "false").strip().lower() not in ("1", "true", "yes", "on"):
+        if os.getenv("ENABLE_DDGS_SEARCH", "true").strip().lower() in ("0", "false", "no", "off"):
             return cls._raw_bing_images(f"{query} photography", limit=limit)
         try:
             from ddgs import DDGS
@@ -195,10 +200,10 @@ class WebImageFetcher:
             from duckduckgo_search import DDGS
         safe_mode = "off" if bypass_copyright_enabled() else "moderate"
         try:
-            raw = list(DDGS(timeout=3).images(query, region="us-en", safesearch=safe_mode, max_results=limit))
+            raw = list(DDGS(timeout=4).images(query, region="us-en", safesearch=safe_mode, max_results=limit))
         except Exception:
             import time as _t
-            cls._engine_block_until["ddgs"] = _t.time() + 1800
+            cls._engine_block_until["ddgs"] = _t.time() + 180
             return cls._raw_bing_images(query, limit=limit)
         for r in raw:
             turl = r.get("thumbnail") or ""
@@ -430,8 +435,8 @@ class WebImageFetcher:
             params["tbs"] = tbs
         target_url = f"https://www.google.com/search?{urlencode(params)}"
 
-        # Ưu tiên số 1: Nếu không bật Headless Chrome (do Google tbm=isch luôn trả JS challenge với HTTP thường), trả rỗng ngay để chuyển sang Bing HD trong 0ms
-        if os.getenv("ENABLE_HEADLESS_GOOGLE_DOM", "false").strip().lower() not in ("1", "true", "yes", "on"):
+        # Ưu tiên số 1: Bật mặc định Headless Chrome lấy Top Google Images; nếu hết slot Chrome rảnh thì nhường ngay sang DDGS siêu tốc
+        if os.getenv("ENABLE_HEADLESS_GOOGLE_DOM", "true").strip().lower() in ("0", "false", "no", "off"):
             return ""
 
         browser_exe = cls._find_headless_browser()
@@ -445,6 +450,8 @@ class WebImageFetcher:
                 slot_idx = idx
                 acquired_lock = lk
                 break
+        if slot_idx < 0:
+            return ""
 
         try:
             cmd = [
@@ -544,14 +551,12 @@ class WebImageFetcher:
             except Exception as e:
                 logger.debug(f"[WebImage] Google CSE fallback: {e}")
 
-        # 2. Truy vấn trực tiếp Top Search Google Images (chỉ gọi khi bật ENABLE_HEADLESS_GOOGLE_DOM=true)
+        # 2. Truy vấn trực tiếp Top Search Google Images (hoặc chuyển sang DDGS siêu tốc nếu hết slot Chrome)
         raw_html = cls._fetch_google_isch_dom_headless(query, safe_mode=safe_mode, tbs="isz:l")
         if not raw_html:
             if out:
                 return out
-            import time as _t
-            cls._engine_block_until["google"] = _t.time() + 1800
-            return cls._raw_bing_images(query, limit=limit)
+            return cls._raw_ddgs_images(query, limit=limit)
 
         text = (
             raw_html
@@ -580,7 +585,7 @@ class WebImageFetcher:
             if not orig_url or orig_url in seen_urls:
                 continue
             low_u = orig_url.lower()
-            if any(bad in low_u for bad in ("gstatic.com", "google.com/images", "googleapis.com", "favicon", ".svg", ".gif", ".ico")):
+            if any(bad in low_u for bad in ("gstatic.com", "google.com/images", "googleapis.com", "lookaside.instagram.com", "lookaside.fbsbx.com", "favicon", ".svg", ".gif", ".ico")):
                 continue
             seen_urls.add(orig_url)
 
@@ -677,7 +682,7 @@ class WebImageFetcher:
             elif eng == "wallhaven":
                 raw_results = self._raw_wallhaven_images(query, limit=max(per_page * 2, 12))
 
-            if raw_results and eng != "google" and not self._looks_relevant(raw_results, query):
+            if raw_results and not self._looks_relevant(raw_results, query):
                 logger.info(f"[WebImage] {eng} trả kết quả ít liên quan cho '{query}' → bỏ qua")
                 return []
 
