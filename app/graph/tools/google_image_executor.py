@@ -38,10 +38,13 @@ def execute_google_cinematic_image_sync(
     job_id: int = 0,
     scene_id: int = 0,
     target_image_count: int = 2,
+    storyline_queries: Optional[List[str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Thực thi công cụ tìm ảnh Top Search Google Images theo cơ chế kép (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`)
-    kết hợp Multi-Image Harvest (tải 2-3 ảnh thật độc lập/phân cảnh để đạt mật độ 15-17 ảnh/video ~40s):
+    kết hợp các chunk nội dung đã được LLM phân rã (`storyline_queries`) và Multi-Image Harvest
+    (tải 2-3 ảnh thật độc lập/phân cảnh để đạt mật độ 15-17 ảnh/video ~40s):
+    - Ưu tiên các chunk tìm kiếm hợp lý do LLM chia nhỏ từ kịch bản (`storyline_queries`).
     - Nếu câu nhỏ có nghĩa độc lập (`SCENE_SPECIFIC`): Tìm trực tiếp theo ý câu nhỏ (`smart_query`), dự phòng bằng `overall_script_query`.
     - Nếu câu nhỏ khi tách lẻ bị vô nghĩa / cụt ngủn / vướng đạo cụ phụ (`SCRIPT_OVERALL`):
       Tìm trực tiếp các hình ảnh xoay quanh TỔNG THỂ KỊCH BẢN (`overall_script_query`) và lọc trùng lặp (`used_urls` + Mini-RAG 64-bit dHash)
@@ -53,7 +56,7 @@ def execute_google_cinematic_image_sync(
 
     rag = get_video_memory_rag()
     used = used_urls if used_urls is not None else set()
-    effective_scope, search_qs = _resolve_adaptive_search_queries(
+    effective_scope, base_search_qs = _resolve_adaptive_search_queries(
         search_scope=search_scope,
         scene_query=smart_query,
         overall_script_query=overall_script_query,
@@ -64,22 +67,31 @@ def execute_google_cinematic_image_sync(
         max_words=6,
     )
 
+    llm_chunk_qs = [
+        _clean_yt_search_phrase(str(q_c), subject_entity=subject_entity, max_words=6) or str(q_c).strip()
+        for q_c in (storyline_queries or [])
+        if str(q_c or "").strip()
+    ]
+    merged_raw_qs = list(dict.fromkeys([*llm_chunk_qs, *base_search_qs]))
+
     subj = (subject_entity or "").strip()
-    search_qs = build_single_entity_stock_queries(search_qs, subject_entity=subject_entity, topic=topic, max_words=5) or search_qs
+    search_qs = build_single_entity_stock_queries(merged_raw_qs, subject_entity=subject_entity, topic=topic, max_words=6) or merged_raw_qs
     if not subj:
         subj = _clean_yt_search_phrase(overall_script_query or topic, max_words=3) or (search_qs[0] if search_qs else smart_query)
 
     primary_q = search_qs[0] if search_qs else smart_query
     logger.info(
         f"🖼️ [GoogleImageTool] Scene #{scene_id or '?'} | Scope={effective_scope} | Primary='{primary_q}' | "
-        f"TargetImages={target_image_count} | Pool={search_qs[:3]}"
+        f"TargetImages={target_image_count} | LLMChunks={search_qs[:4]}"
     )
 
     va_photo = {
         "subject": subj,
         "literal_subject": (overall_script_query or subj) if effective_scope == "SCRIPT_OVERALL" else subj,
-        "search_queries": search_qs[:3],
-        "google_image_queries": search_qs[:3],
+        "search_queries": search_qs[:4],
+        "google_image_queries": search_qs[:4],
+        "prefer_google_web": True,
+        "preferred_engines": ["google", "bing"],
         "is_hook_scene": is_hook_scene,
     }
 
@@ -105,16 +117,31 @@ def execute_google_cinematic_image_sync(
         if u_cand and u_cand not in all_candidate_urls:
             all_candidate_urls.append(u_cand)
 
-    # Khi cần >= 2 ảnh/cảnh mà kho ứng viên từ best_photo chưa đủ, mới bồi thêm ứng viên từ Pexels/Pixabay
+    # Khi cần >= 2 ảnh/cảnh theo các chunk nội dung của LLM, ưu tiên bồi thêm ứng viên từ Google Images (WebImageFetcher) cho chunk thứ 2-3 trước, sau đó mới tới Pexels/Pixabay
     if target_image_count >= 2 and len(all_candidate_urls) < target_image_count + 1:
-        sec_q = search_qs[1] if len(search_qs) > 1 else f"{subj} wildlife photography"
+        extra_chunk_qs = search_qs[1:3] if len(search_qs) > 1 else [f"{subj} close up"]
         try:
-            for px_it in (media_agent.search_photos(sec_q, per_page=4, orientation="portrait", topic=overall_script_query or topic, narration=narration, used_urls=used) or []):
-                u_px = px_it.get("url")
-                if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
-                    all_candidate_urls.append(u_px)
+            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+            if web_image_search_enabled():
+                wf_extra = WebImageFetcher()
+                for ch_q in extra_chunk_qs:
+                    for w_it in (wf_extra.search_all(ch_q, per_source=5, subject=subj, preferred_engines=["google", "bing"]) or []):
+                        u_w = w_it.get("url")
+                        if u_w and u_w not in all_candidate_urls and not is_media_already_used(u_w, used):
+                            all_candidate_urls.append(u_w)
+                    if len(all_candidate_urls) >= target_image_count + 2:
+                        break
         except Exception:
             pass
+        if len(all_candidate_urls) < target_image_count + 1:
+            sec_q = extra_chunk_qs[0]
+            try:
+                for px_it in (media_agent.search_photos(sec_q, per_page=4, orientation="portrait", topic=overall_script_query or topic, narration=narration, used_urls=used) or []):
+                    u_px = px_it.get("url")
+                    if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
+                        all_candidate_urls.append(u_px)
+            except Exception:
+                pass
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     primary_selected_url = ""

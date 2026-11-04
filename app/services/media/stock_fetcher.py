@@ -625,45 +625,54 @@ class StockFetcher:
                     _add(self.search_photos(q, per_page=6, orientation="portrait", topic=f"{congruence_topic} {q}".strip(), narration=narration, used_urls=used))
                     _add(self.search_pixabay_photos(q, per_page=6))
 
-        if not clean_stock_only and (not bypass_copyright and not creature_mode):
+        prefer_google_web = bool(va.get("prefer_google_web")) or (
+            "google" in [str(e).lower() for e in (va.get("preferred_engines") or [])]
+        )
+        if not clean_stock_only and (not bypass_copyright and not creature_mode and not prefer_google_web):
             _fetch_licensed_stock_photos()
 
         web_fetcher = None
-        try:
-            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
-            if web_image_search_enabled() and not clean_stock_only and (bypass_copyright or creature_mode or len(candidates) < 6):
-                web_fetcher = WebImageFetcher()
-                google_qs = [q for q in (va.get("google_image_queries") or []) if q]
-                pref_engines = va.get("preferred_engines")
-                if creature_mode and creature_qs:
-                    web_items = web_fetcher.search_all(
-                        creature_qs[0], per_source=8, subject=subject,
-                        extra_queries=creature_qs[1:], creature_mode=True,
-                        preferred_engines=pref_engines,
+
+        def _fetch_open_web_google_photos() -> None:
+            nonlocal web_fetcher
+            try:
+                from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+                if web_image_search_enabled() and not clean_stock_only:
+                    web_fetcher = WebImageFetcher()
+                    google_qs = [q for q in (va.get("google_image_queries") or []) if q]
+                    pref_engines = va.get("preferred_engines") or ["google", "bing"]
+                    if creature_mode and creature_qs:
+                        web_items = web_fetcher.search_all(
+                            creature_qs[0], per_source=8, subject=subject,
+                            extra_queries=creature_qs[1:], creature_mode=True,
+                            preferred_engines=pref_engines,
+                        )
+                    else:
+                        primary_web_q = google_qs[0] if google_qs else queries[0]
+                        extra_web_qs = (google_qs[1:] + queries[:2]) if google_qs else queries[1:3]
+                        web_items = web_fetcher.search_all(
+                            primary_web_q, per_source=8, subject=subject,
+                            extra_queries=extra_web_qs, preferred_engines=pref_engines,
+                        )
+                    _add(web_items)
+                    logger.info(
+                        f"[StockFetcher] 🔎 Gemini Google Search '{queries[0]}' (subject='{subject}'): "
+                        f"{len(candidates)} ảnh ứng viên (paradigm={va.get('visual_paradigm', 'auto')}, creature={creature_mode})"
                     )
-                else:
-                    primary_web_q = google_qs[0] if google_qs else queries[0]
-                    extra_web_qs = (google_qs[1:] + queries[:2]) if google_qs else queries[1:3]
-                    web_items = web_fetcher.search_all(
-                        primary_web_q, per_source=8, subject=subject,
-                        extra_queries=extra_web_qs, preferred_engines=pref_engines,
-                    )
-                _add(web_items)
-                logger.info(
-                    f"[StockFetcher] 🔎 Gemini Google Search '{queries[0]}' (subject='{subject}'): "
-                    f"{len(candidates)} ảnh ứng viên (paradigm={va.get('visual_paradigm', 'auto')}, creature={creature_mode})"
-                )
-        except Exception as e:
-            logger.debug(f"[StockFetcher] Lỗi nguồn ảnh web: {e}")
+            except Exception as e:
+                logger.debug(f"[StockFetcher] Lỗi nguồn ảnh web: {e}")
+
+        if not clean_stock_only and (bypass_copyright or creature_mode or prefer_google_web or len(candidates) < 6):
+            _fetch_open_web_google_photos()
 
         # 3. Gọi Pexels / Pixabay / Openverse bổ sung nếu chưa chạy ở bước 2 và tổng ứng viên < 6
-        if not clean_stock_only and (bypass_copyright or creature_mode) and len(candidates) < 6:
+        if not clean_stock_only and (bypass_copyright or creature_mode or prefer_google_web) and len(candidates) < 6:
             _fetch_licensed_stock_photos()
 
         # Lọc watermark/ảnh nhỏ + xếp hạng theo độ bắt mắt, chủ thể, bố cục dọc, độ phân giải
         candidates = prefilter_candidates(
             candidates, subject=subject or queries[0], limit=16,
-            creature_mode=creature_mode, max_per_source=14 if (creature_mode or bypass_copyright) else 8,
+            creature_mode=creature_mode, max_per_source=14 if (creature_mode or bypass_copyright or prefer_google_web) else 8,
         )
 
         if not candidates:
@@ -698,6 +707,29 @@ class StockFetcher:
                     visual_keyword=query,
                     used_urls=used,
                 )
+            # Nếu kho Pexels/Pixabay trả về >= 6 ảnh chung chung nhưng bị Vision từ chối hết (winner is None)
+            # và chưa quét Google Images (web_fetcher is None), tự động mở khóa quét Google Images theo các chunk của LLM!
+            if winner is None and web_fetcher is None and not clean_stock_only and not is_scene_cancelled_ctx():
+                prev_urls = {c.get("url") for c in candidates if c.get("url")}
+                _fetch_open_web_google_photos()
+                new_web_cands = prefilter_candidates(
+                    [c for c in candidates if c.get("url") not in prev_urls],
+                    subject=subject or queries[0],
+                    limit=12,
+                    creature_mode=creature_mode,
+                    max_per_source=12,
+                )
+                if new_web_cands:
+                    winner, score, rationale, should_ai = VisualCurationAgent().curate_candidate_photos(
+                        candidates=new_web_cands,
+                        visual_analysis=va or None,
+                        narration=narration or query,
+                        topic=topic,
+                        visual_keyword=query,
+                        used_urls=used,
+                    )
+                    if winner is not None:
+                        candidates = new_web_cands + candidates
             if winner is not None:
                 winner["vision_score"] = float(score or 0.0)
         except Exception as e:

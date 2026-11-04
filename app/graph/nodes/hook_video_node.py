@@ -290,14 +290,39 @@ def _produce_and_score_hook_video_sync(
     pre_climax_id = script_data.get("climax_scene_id")
     pre_queries = script_data.get("hook_search_queries")
 
+    # Kế thừa các chunk nội dung đã được LLM phân rã hợp lý tại `visual_director_node` (`visual_plan.scenes_strategy`)
+    v_plan_raw = state.get("visual_plan") or {}
+    strat_scenes_list = list(v_plan_raw.get("scenes_strategy") or [])
+    s1_strat_plan = next((s for s in strat_scenes_list if isinstance(s, dict) and int(s.get("scene_id") or 0) == 1), {})
+    s2_strat_plan = next((s for s in strat_scenes_list if isinstance(s, dict) and int(s.get("scene_id") or 0) == 2), {})
+    llm_s1_storyline_chunks: List[str] = [
+        str(q).strip()
+        for q in dict.fromkeys([
+            *(s1_strat_plan.get("storyline_search_queries") or []),
+            s1_strat_plan.get("youtube_search_query") or s1_strat_plan.get("action_or_concept_query") or s1_strat_plan.get("human_action_query") or s1_strat_plan.get("smart_image_query") or "",
+            s1_strat_plan.get("secondary_storyline_query") or "",
+            s1_strat_plan.get("fallback_broad_query") or s1_strat_plan.get("secondary_stock_query") or "",
+            *(s2_strat_plan.get("storyline_search_queries") or [])[:1],
+        ])
+        if str(q or "").strip()
+    ]
+    s1_plan_subject = str(s1_strat_plan.get("subject_entity") or s1_strat_plan.get("creature_name") or "").strip()
+    s1_plan_overall_q = str(s1_strat_plan.get("overall_script_query") or "").strip()
+    s1_plan_scope = str(s1_strat_plan.get("search_scope") or "SCENE_SPECIFIC").strip()
+
     hook_visual_mode: str = "video"
     is_abstract_keyword: bool = bool(pre_abstract) if isinstance(pre_abstract, bool) else (pre_mode == "scene")
     climax_scene_id: int = int(pre_climax_id) if isinstance(pre_climax_id, int) and 1 < pre_climax_id <= len(base_scenes) else default_climax_scene_id
-    queries: List[str] = (
-        [str(q).strip() for q in pre_queries if str(q).strip()][:5]
-        if isinstance(pre_queries, list) and pre_queries
-        else fallback_queries
-    )
+    seeded_hook_qs = [
+        str(q).strip()
+        for q in dict.fromkeys([
+            *llm_s1_storyline_chunks,
+            *(pre_queries if isinstance(pre_queries, list) else []),
+            *fallback_queries,
+        ])
+        if str(q or "").strip()
+    ]
+    queries: List[str] = seeded_hook_qs[:5] if seeded_hook_qs else fallback_queries
     climax_desc: str = f"{primary_entity or topic} — {visual_keyword}"
     visual_hook_blueprint: str = climax_desc
     hot_topic_essence: str = script_title or topic
@@ -305,9 +330,17 @@ def _produce_and_score_hook_video_sync(
     hook_production_strategy: str = "VIRAL_SHORT_ACTION_PEAK"
     beat_1_query: str = queries[0] if queries else visual_keyword
     beat_2_query: str = queries[1] if len(queries) > 1 else beat_1_query
-    beat_1_subject: str = primary_entity or topic
-    beat_2_subject: str = primary_entity or topic
-    stock_broll_queries: List[str] = []
+    beat_1_subject: str = s1_plan_subject or primary_entity or topic
+    beat_2_subject: str = str(s2_strat_plan.get("subject_entity") or "").strip() or beat_1_subject
+    stock_broll_queries: List[str] = [
+        str(q).strip()
+        for q in dict.fromkeys([
+            s1_strat_plan.get("fallback_broad_query") or "",
+            s1_strat_plan.get("secondary_storyline_query") or "",
+            *llm_s1_storyline_chunks[:2],
+        ])
+        if str(q or "").strip()
+    ][:3]
     atmosphere_fx: str = "action"
     is_3d_cgi_subject: bool = False
 
@@ -1931,10 +1964,10 @@ Return ONLY valid JSON:
         if not stock_hook_ok and not _hook_cancelled(2.0):
             try:
                 from app.agents.media_agent import MediaAgent, clean_scene_search_query
-                from app.services.media.stock_fetcher import StockFetcher
                 ma_s1 = MediaAgent()
                 base_s1_qs = [
                     q for q in dict.fromkeys([
+                        *llm_s1_storyline_chunks,
                         *(stock_broll_queries or []),
                         *(queries or []),
                         canonical_subject or primary_entity or visual_keyword or topic,
@@ -1942,25 +1975,21 @@ Return ONLY valid JSON:
                 ]
                 s1_q_cands: List[str] = []
                 for bq in base_s1_qs:
-                    bq_clean = clean_scene_search_query(str(bq), max_words=4)
+                    bq_clean = clean_scene_search_query(str(bq), max_words=5)
                     if bq_clean and bq_clean not in s1_q_cands:
                         s1_q_cands.append(bq_clean)
-                    toks_bq = [w for w in bq_clean.split() if len(w) >= 3]
-                    if len(toks_bq) >= 3:
-                        for pair_q in (" ".join(toks_bq[:2]), " ".join(toks_bq[-2:])):
-                            if pair_q and pair_q not in s1_q_cands:
-                                s1_q_cands.append(pair_q)
-                s1_q_cands = s1_q_cands[:6]
+                s1_q_cands = s1_q_cands[:5]
                 if s1_q_cands:
                     s1_primary_q = s1_q_cands[0]
                     s1_va = {
                         "analysis_source": "ai",
-                        "subject": canonical_subject or primary_entity or topic,
-                        "core_visual_entity": canonical_subject or primary_entity or topic,
+                        "subject": s1_plan_subject or canonical_subject or primary_entity or topic,
+                        "core_visual_entity": s1_plan_subject or canonical_subject or primary_entity or topic,
                         "topic": topic,
                         "is_hook_scene": True,
                         "skip_establishing_pass": True,
                         "search_queries": s1_q_cands,
+                        "google_image_queries": s1_q_cands,
                     }
                     s1_broll_deadline = min(
                         (hook_deadline_ts - 2.0) if hook_deadline_ts is not None else (time.monotonic() + 18.0),
@@ -1981,28 +2010,6 @@ Return ONLY valid JSON:
                         for alt_u in (best_s1_vid.get("_vision_alternates") or [])[:2]:
                             if alt_u and str(alt_u) not in s1_cand_urls:
                                 s1_cand_urls.append(str(alt_u))
-                    if not s1_cand_urls:
-                        sf_direct = StockFetcher()
-                        for q_broad_s1 in s1_q_cands[:4]:
-                            if _hook_cancelled(2.0):
-                                break
-                            v_hits_s1 = sf_direct.search_videos(
-                                q_broad_s1,
-                                per_page=6,
-                                orientation="portrait",
-                                min_duration=3,
-                                topic=topic,
-                                narration=hook_narration,
-                            ) or []
-                            for vh_s1 in v_hits_s1[:2]:
-                                u_vh = str(vh_s1.get("url") or "").strip()
-                                if u_vh and u_vh not in s1_cand_urls:
-                                    s1_cand_urls.append(u_vh)
-                                    if not best_s1_vid:
-                                        best_s1_vid = vh_s1
-                            if s1_cand_urls:
-                                s1_primary_q = q_broad_s1
-                                break
                     for s1_raw_url in s1_cand_urls:
                         if _hook_cancelled(3.5):
                             break
@@ -2177,15 +2184,99 @@ Return ONLY valid JSON:
             except Exception as e_t2_lc:
                 logger.debug(f"[HookVideoNode] Tier-2 local candidate motion rescue skip: {e_t2_lc}")
 
+        # CỨU HỘ TẦNG 3 (GOOGLE IMAGES THEO CÁC CHUNK NỘI DUNG HỢP LÝ CỦA LLM):
+        # Khi chủ thể/địa danh cụ thể (như 'giant crystal cave mexico') không có video trên kho Pexels/YouTube,
+        # dùng trực tiếp các chunk nội dung đã được LLM phân rã (`llm_s1_storyline_chunks` / `queries`) để tìm bộ 2-3 ảnh chuẩn xác trên Google Images
+        # và dựng thành clip Multi-Cut Hook động (`render_opening_hook_multi_cut`), tuyệt đối không cắt vụn từ khóa 2 từ ép lấy video Pexels lệch chủ đề!
+        if not stock_hook_ok and not _hook_cancelled(3.0):
+            try:
+                from app.graph.tools.google_image_executor import execute_google_cinematic_image_sync
+                from app.utils.ffmpeg_helper import render_opening_hook_multi_cut
+                g_chunk_qs = [
+                    q for q in dict.fromkeys([
+                        *llm_s1_storyline_chunks,
+                        *(queries or []),
+                        *(stock_broll_queries or []),
+                        visual_keyword or topic,
+                    ]) if q
+                ][:4]
+                if g_chunk_qs:
+                    g_hook_img_out = str(work_dir / "media" / "scene_001_hook_gchunk.jpg")
+                    g_res = execute_google_cinematic_image_sync(
+                        smart_query=g_chunk_qs[0],
+                        output_path=g_hook_img_out,
+                        narration=hook_narration,
+                        topic=topic,
+                        is_hook_scene=True,
+                        subject_entity=s1_plan_subject or canonical_subject or primary_entity or topic,
+                        search_scope=s1_plan_scope or "SCENE_SPECIFIC",
+                        overall_script_query=s1_plan_overall_q or topic,
+                        job_id=job_id,
+                        scene_id=1,
+                        target_image_count=3,
+                        storyline_queries=g_chunk_qs,
+                    )
+                    if g_res and g_res.get("media_path"):
+                        pose_imgs_g = [
+                            p for p in (g_res.get("pose_images") or [g_res["media_path"]])
+                            if p and Path(str(p)).exists()
+                        ]
+                        if pose_imgs_g:
+                            render_opening_hook_multi_cut(
+                                image_paths=pose_imgs_g,
+                                duration_seconds=target_hook_duration_sec,
+                                output_path=hook_output_clip,
+                                width=1080,
+                                height=1920,
+                                fps=30,
+                                is_scifi=is_scifi,
+                                niche=atmosphere_fx,
+                                apply_grading=True,
+                            )
+                            if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 15_000:
+                                ok_g_sh, g_sh_val = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.0)
+                                stock_hook_ok = True
+                                final_hook_visual_mode = "video"
+                                hook_mode = "GOOGLE_MULTI_CHUNK_HOOK_VIDEO"
+                                g_ov_score = float(g_res.get("curation_score") or 8.6)
+                                g_sh_round = round(float(g_sh_val), 2)
+                                pre_resolved_hook_media[1] = {
+                                    "media_path": hook_output_clip,
+                                    "media_type": "hook_ready_video",
+                                    "production_method": hook_mode,
+                                    "visual_strategy": "GEMINI_SEARCH_3D",
+                                    "pose_images": pose_imgs_g,
+                                    "source_url": str(g_res.get("source_url") or ""),
+                                    "hook_verified": True,
+                                    "hook_overall_score": g_ov_score,
+                                    "hook_clean_score": 8.5,
+                                    "hook_sharpness": g_sh_round,
+                                    "strategy_rationale": f"Google Multi-Chunk Hook x{len(pose_imgs_g)} ({g_chunk_qs[0][:40]})",
+                                }
+                                scene_1["media_path"] = hook_output_clip
+                                scene_1["media_type"] = "hook_ready_video"
+                                scene_1["production_method"] = hook_mode
+                                scene_1["pose_images"] = pose_imgs_g
+                                scene_1["source_url"] = str(g_res.get("source_url") or "")
+                                scene_1["hook_verified"] = True
+                                scene_1["hook_overall_score"] = g_ov_score
+                                scene_1["hook_clean_score"] = 8.5
+                                scene_1["hook_sharpness"] = g_sh_round
+                                if scenes_media:
+                                    scenes_media[0] = scene_1
+                                logger.info(
+                                    f"🖼️ [HookVideoNode Google Multi-Chunk] Đã dựng Hook động từ {len(pose_imgs_g)} ảnh Google Images "
+                                    f"theo các chunk LLM {g_chunk_qs[:3]} -> {Path(hook_output_clip).name}"
+                                )
+            except Exception as e_g_hk:
+                logger.debug(f"[HookVideoNode] Google multi-chunk hook fallback skip: {e_g_hk}")
+
         if not stock_hook_ok:
-            # CẤM KHÓA SLIDE ẢNH (`CLIMAX_IMAGES_LIVE_FX`) VÀO `pre_resolved_hook_media[1]`!
-            # Nếu HookVideoNode hết ngân sách thời gian trước khi tải xong Video chuyển động thật,
-            # để trống `pre_resolved_hook_media` để `node_fetch_media` chạy trọn vẹn 65s săn Video 3 tầng (YouTube Peak + Stock HD + Bilibili) cho Cảnh 1!
             final_hook_visual_mode = "video"
             hook_mode = "DELEGATED_TO_FETCH_MEDIA_VIDEO_FIRST"
             logger.warning(
-                "⚡ [HookVideoNode] Chưa chốt được Video chuyển động thật trong ngân sách HookNode -> "
-                "Ủy quyền Cảnh 1 sang node_fetch_media (ngân sách 65s Video-First, cấm khóa slide ảnh sớm)."
+                "⚡ [HookVideoNode] Chưa chốt được Hook trong ngân sách HookNode -> "
+                "Ủy quyền Cảnh 1 sang node_fetch_media."
             )
 
     # Dọn dẹp triệt để thư mục `hook_candidates/*.mp4` sau khi Cảnh 1 đã xong để KHÔNG BAO GIỜ có node phía sau cắt lại ứng viên của Cảnh 1!

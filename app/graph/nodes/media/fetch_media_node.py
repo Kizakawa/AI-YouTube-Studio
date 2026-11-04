@@ -844,7 +844,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             )
                 if not media_path:
                     _check_fetch_deadline()
-                    logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts & Stock Vision không có clip đạt chuẩn cho '{yt_q}' -> Chuyển sang tìm bộ {scene_target_imgs} ảnh Top Google Images!")
+                    g_target_cnt = 3 if scene.scene_id == 1 else scene_target_imgs
+                    logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts & Stock Vision không có clip đạt chuẩn cho '{yt_q}' -> Chuyển sang tìm bộ {g_target_cnt} ảnh Top Google Images theo các chunk LLM!")
                     out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
                     img_res = await asyncio.to_thread(
                         execute_google_cinematic_image_sync,
@@ -859,7 +860,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         overall_script_query=overall_q,
                         job_id=job_id,
                         scene_id=scene.scene_id,
-                        target_image_count=scene_target_imgs,
+                        target_image_count=g_target_cnt,
+                        storyline_queries=story_yt_qs,
                     )
                     if img_res and img_res.get("media_path"):
                         media_path = img_res["media_path"]
@@ -961,7 +963,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         overall_script_query=overall_q,
                         job_id=job_id,
                         scene_id=scene.scene_id,
-                        target_image_count=scene_target_imgs,
+                        target_image_count=3 if scene.scene_id == 1 else scene_target_imgs,
+                        storyline_queries=list(sc_strat.get("storyline_search_queries") or []),
                     )
                     if img_res and img_res.get("media_path"):
                         media_path = img_res["media_path"]
@@ -1847,7 +1850,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     rag.release_in_job_video_claim(
                                         job_id=job_id, vid_id=cand_u, url=cand_u, title=cand_fresh_title, scene_id=scene.scene_id
                                     )
-                        if not res and scene.scene_id != 1:
+                        if not res:
                             from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                             out_fresh_img = str(media_dir / f"scene_{scene.scene_id:03d}_fresh_gsearch.jpg")
                             img_f_res = await asyncio.wait_for(
@@ -1864,7 +1867,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     overall_script_query=primary_entity or state.get("topic", ""),
                                     job_id=job_id,
                                     scene_id=scene.scene_id,
-                                    target_image_count=1,
+                                    target_image_count=2 if scene.scene_id == 1 else 1,
+                                    storyline_queries=list(sc_strat_f.get("storyline_search_queries") or []),
                                 ),
                                 timeout=18.0,
                             )
@@ -1927,8 +1931,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         "tool": "recovered_disk_video",
                         "strategy_rationale": "Recovered completed video from disk on timeout",
                     }
-                elif existing_disk_imgs and scene.scene_id != 1:
-                    img_list_disk = [str(p) for p in existing_disk_imgs[:2]]
+                elif existing_disk_imgs:
+                    img_list_disk = [str(p) for p in existing_disk_imgs[: (3 if scene.scene_id == 1 else 2)]]
                     res = {
                         "scene_id": scene.scene_id,
                         "media_path": img_list_disk[0],

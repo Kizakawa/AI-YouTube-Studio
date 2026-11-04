@@ -892,7 +892,7 @@ async def run_post_gather_media_rescues(
                                 sc_g["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
                                 replaced_g = True
                                 break
-                    if not replaced_g and sid_g != 1:
+                    if not replaced_g:
                         disk_g_jpgs = sorted(
                             [
                                 p for p in media_dir.glob(f"scene_{sid_g:03d}_*.jpg")
@@ -904,7 +904,7 @@ async def run_post_gather_media_rescues(
                         if disk_g_jpgs:
                             sc_g["media_path"] = str(disk_g_jpgs[0])
                             sc_g["media_type"] = "image"
-                            sc_g["pose_images"] = [str(p) for p in disk_g_jpgs[:2]]
+                            sc_g["pose_images"] = [str(p) for p in disk_g_jpgs[: (3 if sid_g == 1 else 2)]]
                             sc_g["production_method"] = "ZERO_GRAPHIC_RECOVERED_PHOTO"
                             sc_g["visual_strategy"] = "GEMINI_SEARCH_3D"
                             replaced_g = True
