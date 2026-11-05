@@ -451,8 +451,14 @@ YOUR EXECUTIVE VIRAL VOICE & RETENTION PUNCH-UP MANDATE (UPGRADE EVERY STIFF OR 
    - Ensure Scene 4 (`climax_scene_id`) delivers a sharp reversal twist in conversational spoken prose with an uppercase HUD `overlay_badge` in {target_lang_display}.
 5. DISTILL 5 DUAL-TRACK YOUTUBE PEAK SEARCH QUERIES (`hook_search_queries`):
    - Provide 5 distinct, concrete English search queries (3–5 words each): at most 1–2 real-camera encounter queries (`"[Entity A] attacking [Entity B]"`) ONLY if the script is a 2-entity duel, and 3–5 **100% CLEAN SINGLE-ENTITY REAL-ACTION QUERIES** (`"[Single Entity] + [Real Physical Action / Environment]"`, ZERO `"vs"`).
-6. SELF-CONTAINED, CANONICAL-ENTITY-LOCKED BODY VISUAL QUERIES (`visual_keyword`, `stock_query`, `visual_prompt`):
-   - Every scene's `visual_keyword` (3–5 everyday English words) and `stock_query` (2–4 everyday English words, ZERO `"vs"`) MUST be 100% self-contained and include the **COMPLETE CANONICAL SPECIFIC NAME** of the entity acting in that scene (e.g., write `"harpy eagle talons closeup"`, `"harpy eagle flying jungle"`, `"three toed sloth hanging"` in BOTH `visual_keyword` and `stock_query`).
+6. SELF-CONTAINED, CANONICAL-ENTITY-LOCKED BODY VISUAL QUERIES (`subject_entity`, `visual_keyword`, `stock_query`, `search_queries`, `visual_prompt`):
+   - As the Script Showrunner LLM, YOU are directly responsible for preventing off-topic visuals on every single scene! For each scene in `scenes`, explicitly output:
+     * `subject_entity`: The exact canonical English name of the entity/subject acting in THAT scene (e.g., `"Komodo Dragon"` on dragon scenes, `"Water Buffalo"` on buffalo scenes — NEVER leave blank or write generic `"predator"`/`"prey"`).
+     * `visual_keyword` (3–5 everyday English words) and `stock_query` (2–4 everyday English words, ZERO `"vs"`): 100% self-contained and including the **COMPLETE CANONICAL SPECIFIC NAME** of `subject_entity` (e.g., `"harpy eagle talons closeup"`, `"three toed sloth hanging"`).
+     * `search_queries`: A list of 3–4 progressive, anti-off-topic English search queries for THAT scene:
+       1. Primary action query (`"[Scene Subject] + [Scene Action]"`, 3–4 words)
+       2. Natural documentary B-Roll query (`"[Scene Subject] + [Natural Pose/Habitat]"`, 2–4 words)
+       3. Stock-friendly visual synonym / broader taxonomic query so Pexels/Pixabay never returns unrelated animals if the exact species is rare on stock libraries (e.g., `"monitor lizard walking wild"` for Komodo dragon, `"crocodile swimming river"` for Black caiman, `"water buffalo mud"` for Water buffalo).
    - 🚨 ZERO GENERIC HYPERNYM DOWNGRADE IN `stock_query` OR `visual_keyword`: NEVER shorten or simplify a specific multi-word species/entity into a generic category noun like bare `"eagle"`, `"bird"`, `"bird of prey"`, `"raptor"`, `"predator"`, `"hunter"`, `"prey"`, `"animal"`, or `"creature"`, and NEVER use literal metaphor objects (`"steel clamps"`), side-props, academic/Latin jargon, pronouns, or `@tool` names!
 7. COUNTERFACTUAL 50/50 DEBATE COMMENT (`pinned_comment`):
    - Ensure `pinned_comment` is a 12–22 word Counterfactual Escalation / Next-Opponent 50/50 Debate Question ending with `(1) ... or (2) ... 👇` (never asking what the video already answered, ZERO Subscribe spam).
@@ -690,11 +696,17 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "scenes": [
     {{
       "scene_id": 1,
+      "subject_entity": "Exact canonical English name of the entity/subject acting in THIS scene (e.g. 'Komodo Dragon' or 'Water Buffalo')",
       "visual_reasoning": "Narrative and visual intent of this scene",
       "narration": "Complete, natural spoken sentence for this scene ({'Scene 1: 12-18 words; Body scenes: 48-58 words flowing naturally, 30 to 36 scenes total (~10 minutes)' if is_long_form else 'Scene 1: 6-12 words opening with a declarative physical clash, lethal mechanism strike, or sharp 2-entity paradox naming explicit entities without repeating title question; Body scenes: 11-16 words flowing naturally, 7 to 8 scenes total'})",
       "visual_keyword": "full canonical entity name + physical action/habitat (3-5 English words, never generic bird/eagle/predator)",
       "visual_prompt": "Cinematic {'16:9 widescreen ' if is_long_form else ''}visual description fitting the overall story mood",
       "stock_query": "full canonical entity name + simple action/setting for stock video (2-4 English words, zero vs, never generic bird/eagle/predator)",
+      "search_queries": [
+        "1st query: [Scene Subject] + [Exact Scene Action] (3-4 English words)",
+        "2nd query: [Scene Subject] + [Natural Habitat / B-Roll Pose] (2-4 English words)",
+        "3rd query: [Stock-Friendly Synonym / Broader Species Name] + [Habitat/Action] (2-3 English words)"
+      ],
       "media_type": "video | ai_image | photo | documentary",
       "camera_motion": "zoom_in_fast | ken_burns_zoom_out | pan_right | ken_burns_zoom_in | pan_left",
       "sfx_cue": "impact_boom | whoosh_heavy | riser_tension | heartbeat_thump | glitch | reveal",

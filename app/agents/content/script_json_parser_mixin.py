@@ -307,8 +307,30 @@ class ScriptJsonParserMixin:
                 if _animal_metaphor_re.search(sq):
                     sq = "confident man intense gaze"
             else:
-                # Khôi phục tên thực thể đầy đủ cho `stock_query` / `visual_keyword` nếu LLM rút gọn thành danh từ chung ('eagle', 'bird of prey', 'predator')
-                raw_pe = str(raw_data.get("primary_entity") or getattr(self, "_last_primary_entity", "") or "").strip()
+                # Tôn trọng `subject_entity` và `search_queries` do chính LLM viết kịch bản chỉ định cho từng phân cảnh (chống lạc đề từ gốc kịch bản)
+                raw_pe = str(
+                    sc.get("subject_entity")
+                    or raw_data.get("primary_entity")
+                    or getattr(self, "_last_primary_entity", "")
+                    or ""
+                ).strip()
+                if raw_pe and not sc.get("subject_entity"):
+                    try:
+                        from app.graph.tools.tool_schemas import resolve_scene_active_entity
+                        sc_active_pe = resolve_scene_active_entity(
+                            scene_query=f"{vk} {sq}".strip(),
+                            narration=str(sc.get("narration") or ""),
+                            subject_entity=raw_pe,
+                            topic=str(raw_data.get("topic") or topic or ""),
+                        )
+                        if sc_active_pe:
+                            raw_pe = sc_active_pe
+                            sc["subject_entity"] = sc_active_pe
+                    except Exception:
+                        pass
+                elif sc.get("subject_entity"):
+                    sc["subject_entity"] = str(sc["subject_entity"]).strip()
+
                 if raw_pe and len(raw_pe.split()) >= 2:
                     try:
                         from app.graph.tools.llm_media_director import _restore_full_canonical_entity_in_query
@@ -326,6 +348,15 @@ class ScriptJsonParserMixin:
                         pass
 
             sc["stock_query"] = sq
+            raw_sc_sqs = sc.get("search_queries") if isinstance(sc.get("search_queries"), list) else []
+            clean_sc_sqs: List[str] = []
+            for _q_cand in [*raw_sc_sqs, vk, sq]:
+                _qs_str = camera_jargon_re.sub(" ", str(_q_cand or "").strip())
+                _qs_str = re.sub(r"\s+", " ", _qs_str).strip(" ,.-:")
+                if _qs_str and _qs_str.lower() not in {x.lower() for x in clean_sc_sqs}:
+                    clean_sc_sqs.append(_qs_str)
+            if clean_sc_sqs:
+                sc["search_queries"] = clean_sc_sqs[:4]
 
             # Chống trùng lặp visual_keyword giữa các phân cảnh trong cùng 1 kịch bản
             vk_norm = vk.lower()

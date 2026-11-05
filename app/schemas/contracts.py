@@ -59,6 +59,14 @@ class SceneContract(BaseModel):
         )
     )
     estimated_seconds: float = Field(default=3.0, gt=0, le=300, description="Ước lượng thô từ Gemini hoặc thời lượng clip (tham khảo)")
+    subject_entity: Optional[str] = Field(
+        default=None,
+        description="Chủ thể chính xuất hiện trong phân cảnh này bằng tiếng Anh chuẩn (do LLM viết kịch bản chỉ định trực tiếp để chống lạc đề).",
+    )
+    search_queries: Optional[List[str]] = Field(
+        default=None,
+        description="Danh sách 3-4 câu truy vấn tìm kiếm video/ảnh tiếng Anh chống lạc đề cho riêng phân cảnh này (do LLM viết kịch bản sinh trực tiếp).",
+    )
 
     # --- Populated bởi VoiceAgent (Step B) ---
     audio_path: Optional[str] = Field(default=None, description="Đường dẫn file MP3 của riêng scene này")

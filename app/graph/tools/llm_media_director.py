@@ -44,8 +44,11 @@ def plan_media_tools_with_llm_sync(
     scenes_brief = [
         {
             "scene_id": s.get("scene_id"),
+            "subject_entity": s.get("subject_entity", ""),
             "narration": s.get("narration", ""),
             "visual_keyword": s.get("visual_keyword", ""),
+            "stock_query": s.get("stock_query", ""),
+            "search_queries": s.get("search_queries") or [],
             "visual_strategy": s.get("visual_strategy", ""),
             "estimated_seconds": s.get("estimated_seconds", 4.0),
         }
@@ -359,13 +362,17 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
             init_story_qs = [
                 q_item for q_item in dict.fromkeys([
+                    *(str(q_sc).strip() for q_sc in (s.get("search_queries") or []) if str(q_sc).strip()),
                     str(d.get("youtube_search_query") or d.get("human_action_query") or d.get("action_or_concept_query") or d.get("primary_stock_query") or "").strip(),
                     str(d.get("fallback_broad_query") or d.get("secondary_stock_query") or "").strip(),
                     str(s.get("visual_keyword") or "").strip(),
+                    str(s.get("stock_query") or "").strip(),
                 ]) if q_item
             ]
+            if s.get("subject_entity") and (not d.get("subject_entity") or d.get("subject_entity") == default_subj):
+                d["subject_entity"] = str(s.get("subject_entity")).strip()
             if init_story_qs:
-                d["storyline_search_queries"] = init_story_qs[:3]
+                d["storyline_search_queries"] = init_story_qs[:4]
 
             d["llm_storyline_decomposed"] = True
             d["scope_audited"] = False

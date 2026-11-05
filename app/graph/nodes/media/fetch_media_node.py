@@ -539,16 +539,26 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             ai_prompt = vp or search_query
             from app.graph.tools.media_tools import _sanitize_tool_arg
             from app.graph.tools.tool_schemas import resolve_scene_active_entity
+            script_llm_subj = str(getattr(scene, "subject_entity", "") or "").strip()
+            script_llm_sqs = [
+                str(q_x).strip()
+                for q_x in (getattr(scene, "search_queries", None) or [])
+                if str(q_x).strip()
+            ]
             raw_subj_ent = _sanitize_tool_arg(
-                sc_strat.get("creature_name") or sc_strat.get("subject_entity"),
+                script_llm_subj or sc_strat.get("creature_name") or sc_strat.get("subject_entity"),
                 fallback=primary_entity or state.get("topic", ""),
             )
-            subj_ent = resolve_scene_active_entity(
-                scene_query=search_query or kw or sq or "",
-                narration=scene.narration,
-                subject_entity=raw_subj_ent,
-                topic=state.get("topic", ""),
-            ) or raw_subj_ent
+            subj_ent = (
+                script_llm_subj
+                or resolve_scene_active_entity(
+                    scene_query=search_query or kw or sq or "",
+                    narration=scene.narration,
+                    subject_entity=raw_subj_ent,
+                    topic=state.get("topic", ""),
+                )
+                or raw_subj_ent
+            )
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
             v_analysis = dict(batch_analyses.get(scene.scene_id) or {})
@@ -563,8 +573,16 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 v_analysis["holistic_script_summary"] = str(sc_strat.get("holistic_script_summary") or "")
             if sc_strat.get("canonical_protagonists") and not v_analysis.get("canonical_protagonists"):
                 v_analysis["canonical_protagonists"] = list(sc_strat.get("canonical_protagonists") or [])
-            if sc_strat.get("storyline_search_queries") and not v_analysis.get("search_queries"):
-                v_analysis["search_queries"] = list(sc_strat.get("storyline_search_queries") or [])
+            merged_sc_sqs = list(
+                dict.fromkeys([
+                    *script_llm_sqs,
+                    *(sc_strat.get("storyline_search_queries") or []),
+                    *(v_analysis.get("search_queries") or []),
+                ])
+            )
+            if merged_sc_sqs:
+                v_analysis["search_queries"] = merged_sc_sqs[:4]
+                sc_strat["storyline_search_queries"] = merged_sc_sqs[:4]
             tier0_searched = True
             channel_visual_mode = state.get("visual_mode") or "auto"
             scene_media_pref = getattr(scene, 'media_type', None)
@@ -1504,11 +1522,24 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     "tool": "ffmpeg_placeholder",
                     "strategy_rationale": "Fallback safety guard",
                 }
-            if isinstance(res, dict) and not res.get("storyline_search_queries"):
+            if isinstance(res, dict):
                 _sc_st = strategy_map.get(scene.scene_id) or {}
-                _st_qs = list(_sc_st.get("storyline_search_queries") or getattr(scene, "storyline_search_queries", None) or [])
+                _sc_llm_subj = str(getattr(scene, "subject_entity", "") or _sc_st.get("subject_entity") or "").strip()
+                if _sc_llm_subj and not res.get("subject_entity"):
+                    res["subject_entity"] = _sc_llm_subj
+                if getattr(scene, "stock_query", None) and not res.get("stock_query"):
+                    res["stock_query"] = str(getattr(scene, "stock_query") or "").strip()
+                _st_qs = list(
+                    dict.fromkeys([
+                        *(getattr(scene, "search_queries", None) or []),
+                        *(_sc_st.get("storyline_search_queries") or []),
+                        *(getattr(scene, "storyline_search_queries", None) or []),
+                    ])
+                )
                 if _st_qs:
-                    res["storyline_search_queries"] = _st_qs
+                    res["search_queries"] = _st_qs[:4]
+                    if not res.get("storyline_search_queries"):
+                        res["storyline_search_queries"] = _st_qs[:4]
             nonlocal completed_count
             async with completed_lock:
                 completed_count += 1

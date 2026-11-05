@@ -526,11 +526,17 @@ HARD RETENTION & AUTHENTIC VIRAL CREATOR SPOKEN VOICE RULES:
   "scenes": [
     {{
       "scene_id": 1,
+      "subject_entity": "Exact canonical English name of the entity/subject acting in THIS scene",
       "visual_reasoning": "Narrative and visual intent of this scene",
       "narration": "Complete, natural sentence spoken in this scene ({'18-26 words per body scene, 16-22 scenes total' if is_long_form else 'Scene 1: 6-12 words declarative physical action or sharp 2-entity paradox (NEVER repeat a Why/Por que title question, NO weak Yes/No questions); Body scenes 2 through 7/8: 12-16 words each, STRICTLY 7 OR 8 SCENES TOTAL'})",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic visual description fitting the overall story mood",
       "stock_query": "simple subject/mood query for stock video (2-4 English words)",
+      "search_queries": [
+        "1st query: [Scene Subject] + [Exact Scene Action] (3-4 English words)",
+        "2nd query: [Scene Subject] + [Natural Habitat / B-Roll Pose] (2-4 English words)",
+        "3rd query: [Stock-Friendly Synonym / Broader Species Name] + [Habitat/Action] (2-3 English words)"
+      ],
       "media_type": "video",
       "camera_motion": "zoom_in_fast | ken_burns_zoom_out | pan_right | ken_burns_zoom_in | pan_left",
       "sfx_cue": "impact_boom | whoosh_heavy | riser_tension | heartbeat_thump | glitch | reveal",
