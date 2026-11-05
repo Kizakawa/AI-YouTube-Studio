@@ -87,7 +87,54 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         cam_motion = m.get("camera_motion") or ("hyper_zoom" if sc_id == 1 else _motion_cycle[idx_m % len(_motion_cycle)])
         cur_media_path = str(m.get("media_path") or "")
         cur_media_type = str(m.get("media_type") or "image")
-        if not cur_media_path or not Path(cur_media_path).exists() or cur_media_path.lower().endswith("_graphic.png"):
+
+        # Tính tỷ lệ thời lượng video hiện tại của các cảnh khác để quyết định bắt buộc nâng cấp lên Video (> 85% thời lượng)
+        _other_vid_dur_ms = 0
+        _total_all_dur_ms = 0
+        _other_vid_cnt = 0
+        for _mx in scenes_media:
+            if not isinstance(_mx, dict) or not _mx.get("scene_id"):
+                continue
+            _sid_x = int(_mx["scene_id"])
+            _ainf_x = audio_map.get(_sid_x, {})
+            _dms_x = int(_ainf_x.get("audio_duration_ms") or _ainf_x.get("duration_ms") or max(float(_mx.get("estimated_seconds") or 3.5), 1.0) * 1000)
+            _total_all_dur_ms += _dms_x
+            if _sid_x != int(sc_id):
+                _mp_x = str(_mx.get("media_path") or "").lower()
+                _mt_x = str(_mx.get("media_type") or "").lower()
+                if _mt_x in ("video", "hook_ready_video") and _mp_x.endswith((".mp4", ".mov", ".webm")) and Path(str(_mx.get("media_path") or "")).exists():
+                    _other_vid_dur_ms += _dms_x
+                    _other_vid_cnt += 1
+        _min_req_vids_pre = max(5, int((len(scenes_media) * 0.85) + 0.999))
+        _needs_video_for_85pct_floor = (
+            not is_lf_pre
+            and (
+                _other_vid_cnt < _min_req_vids_pre
+                or (_other_vid_dur_ms / max(1, _total_all_dur_ms)) <= 0.85
+            )
+        )
+
+        _eval_failed_sids = {
+            int(fid) for fid in ((state.get("media_eval") or {}).get("failed_scene_ids") or [])
+            if str(fid).isdigit()
+        }
+        _is_eval_failed_scene = int(sc_id) in _eval_failed_sids
+        if _is_eval_failed_scene and cur_media_path and Path(cur_media_path).exists():
+            try:
+                Path(cur_media_path).unlink(missing_ok=True)
+                if int(sc_id) == 1:
+                    (work_dir / "hook_motion_001_fullpeak.mp4").unlink(missing_ok=True)
+            except Exception:
+                pass
+            cur_media_path = ""
+
+        if (
+            _is_eval_failed_scene
+            or not cur_media_path
+            or not Path(cur_media_path).exists()
+            or cur_media_path.lower().endswith("_graphic.png")
+            or (_needs_video_for_85pct_floor and not cur_media_path.lower().endswith((".mp4", ".mov", ".webm")))
+        ):
             try:
                 from app.utils.ffmpeg_helper import get_duration_ms, is_completed_clean_mp4, trim_video
                 req_sc_dur = max(dur_ms / 1000.0, 2.5) + 0.25
@@ -110,36 +157,25 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                 if not rescued_pre:
                     m_dir_pre = work_dir / "media"
                     ch_dir_pre = m_dir_pre / "chapter_pool"
-                    # 1. Ưu tiên khôi phục file media của CHÍNH phân cảnh sc_id trên đĩa (nếu có)
-                    same_scene_vids = sorted(
-                        [
-                            p for p in (list(m_dir_pre.glob(f"scene_{int(sc_id):03d}_*.mp4")) if m_dir_pre.exists() else [])
-                            if is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
-                        ],
-                        key=lambda p: p.stat().st_mtime,
-                        reverse=True,
+                    # 1. Ưu tiên khôi phục file VIDEO (.mp4) của CHÍNH phân cảnh sc_id trên đĩa (CHỈ khi cảnh không bị VisualCritic đánh trượt ngữ nghĩa/khuôn mặt rác)
+                    same_scene_vids = (
+                        sorted(
+                            [
+                                p for p in (list(m_dir_pre.glob(f"scene_{int(sc_id):03d}_*.mp4")) if m_dir_pre.exists() else [])
+                                if not any(tok in p.name.lower() for tok in ("_raw", "_cand", "_tmp", ".tmp", "_fftmp"))
+                                and is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
+                            ],
+                            key=lambda p: p.stat().st_mtime,
+                            reverse=True,
+                        )
+                        if not _is_eval_failed_scene
+                        else []
                     )
                     if same_scene_vids:
                         cur_media_path = str(same_scene_vids[0])
                         cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
                         rescued_pre = True
-                    elif int(sc_id) not in (1, 2):
-                        same_scene_imgs = sorted(
-                            [
-                                p for p in (list(m_dir_pre.glob(f"scene_{int(sc_id):03d}_*.jpg")) if m_dir_pre.exists() else [])
-                                if p.exists() and p.stat().st_size > 3_000 and "_cand" not in p.name
-                            ],
-                            key=lambda p: (0 if "_cut" not in p.name else 1, -p.stat().st_mtime),
-                        )
-                        if same_scene_imgs:
-                            rec_sc_poses = [str(p) for p in same_scene_imgs[:2]]
-                            cur_media_path = rec_sc_poses[0]
-                            cur_media_type = "image"
-                            m["pose_images"] = rec_sc_poses
-                            rescued_pre = True
-                            logger.info(
-                                f"🛡️ [PreRenderRescue] Đã khôi phục ảnh thật '{same_scene_imgs[0].name}' trên đĩa cho Cảnh #{sc_id} (thay thế _graphic.png)!"
-                            )
+                    # 2. Luôn ưu tiên tìm Video Clip kiểm định Gemini Vision trước để giữ chuẩn > 85% thời lượng video chạy thật!
                     if not rescued_pre:
                         try:
                             from app.agents.media_agent import MediaAgent
@@ -154,10 +190,15 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                 max_words=3,
                             )
                             q_gr_first = qs_g_resc[0] if qs_g_resc else str(state.get("primary_entity") or state.get("topic") or "")
+                            _used_pre_urls = {
+                                str(_mx.get("source_url") or "")
+                                for _mx in scenes_media
+                                if isinstance(_mx, dict) and _mx.get("source_url")
+                            }
                             if q_gr_first:
                                 best_v_pre = ma_g_resc.search_best_video_clip(
                                     query=q_gr_first,
-                                    used_urls=set(),
+                                    used_urls=_used_pre_urls,
                                     visual_analysis={
                                         "subject": str(state.get("primary_entity") or ""),
                                         "search_queries": qs_g_resc[:3],
@@ -188,12 +229,54 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                         if Path(out_pre_resc).exists() and Path(out_pre_resc).stat().st_size > 15_000:
                                             cur_media_path = out_pre_resc
                                             cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                            m["source_url"] = u_gr
                                             rescued_pre = True
                                     else:
                                         Path(raw_gr).unlink(missing_ok=True)
+                                if not rescued_pre and not is_lf_pre:
+                                    from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                                    yt_pre_res = execute_youtube_short_peak_clone_sync(
+                                        search_query=str(m.get("visual_keyword") or q_gr_first),
+                                        output_path=out_pre_resc,
+                                        target_duration_sec=req_sc_dur,
+                                        clip_role="HOOK" if sc_id == 1 else "PEAK",
+                                        used_urls=_used_pre_urls,
+                                        fallback_query=q_gr_first,
+                                        subject_entity=str(state.get("primary_entity") or q_gr_first),
+                                        narration=str(m.get("narration") or state.get("topic") or ""),
+                                        topic=str(state.get("topic") or ""),
+                                        search_scope="SCRIPT_OVERALL",
+                                        overall_script_query=q_gr_first,
+                                        max_peak_duration_sec=14.0,
+                                        job_id=job_id,
+                                        scene_id=int(sc_id),
+                                        skip_stock_fallback=True,
+                                    )
+                                    if yt_pre_res and yt_pre_res.get("media_path") and Path(yt_pre_res["media_path"]).exists():
+                                        cur_media_path = yt_pre_res["media_path"]
+                                        cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                        m["source_url"] = str(yt_pre_res.get("source_url") or cur_media_path)
+                                        rescued_pre = True
                         except Exception:
                             pass
-                    if not rescued_pre:
+                    if not rescued_pre and int(sc_id) not in (1, 2) and not _needs_video_for_85pct_floor:
+                        same_scene_imgs = sorted(
+                            [
+                                p for p in (list(m_dir_pre.glob(f"scene_{int(sc_id):03d}_*.jpg")) if m_dir_pre.exists() else [])
+                                if p.exists() and p.stat().st_size > 3_000 and "_cand" not in p.name
+                            ],
+                            key=lambda p: (0 if "_cut" not in p.name else 1, -p.stat().st_mtime),
+                        )
+                        if same_scene_imgs:
+                            rec_sc_poses = [str(p) for p in same_scene_imgs[:2]]
+                            cur_media_path = rec_sc_poses[0]
+                            cur_media_type = "image"
+                            m["pose_images"] = rec_sc_poses
+                            rescued_pre = True
+                            logger.info(
+                                f"🛡️ [PreRenderRescue] Đã khôi phục ảnh thật '{same_scene_imgs[0].name}' trên đĩa cho Cảnh #{sc_id} (thay thế _graphic.png)!"
+                            )
+                    if not rescued_pre and (not cur_media_path or not Path(cur_media_path).exists() or cur_media_path.lower().endswith("_graphic.png")):
                         from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                         out_pre_gimg = str(m_dir_pre / f"scene_{int(sc_id):03d}_prerender_gimg.jpg")
                         q_pre_gimg = str(m.get("visual_keyword") or m.get("stock_query") or state.get("primary_entity") or state.get("topic") or "")
@@ -217,7 +300,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                     m["media_type"] = cur_media_type
                     if cur_media_type != "image":
                         m["pose_images"] = []
-                    logger.info(f"[RenderNode] 🛡️ Đã thay thế _graphic.png/missing ở Cảnh #{sc_id} trước khi render -> {Path(cur_media_path).name}")
+                    logger.info(f"[RenderNode] 🛡️ Đã nâng cấp/cứu hộ Cảnh #{sc_id} trước khi render -> {Path(cur_media_path).name} (type={cur_media_type})")
             except Exception as _e_pre_g:
                 logger.debug(f"[RenderNode] Pre-render graphic rescue skip for Scene #{sc_id}: {_e_pre_g}")
         if sc_id in (1, 2):

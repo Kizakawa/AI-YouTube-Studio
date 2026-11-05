@@ -1758,23 +1758,25 @@ Return ONLY valid JSON:
                 logger.warning(f"⚠️ [HookVideoGrader] Không thể xác thực Gemini Vision cho '{Path(v_path).name}' -> Bỏ qua để tránh lọt video chưa kiểm duyệt!")
                 return None
 
-        if not score_res.get("passed") and (
-            float(score_res.get("overall_score", 0.0)) < 5.8
-            or float(score_res.get("motion_action_score", 0.0)) < 5.5
-            or float(score_res.get("entity_match_score", 0.0)) < 5.5
-            or float(score_res.get("clean_frame_score", 0.0)) < 6.8
-        ):
+        if not score_res.get("passed"):
             m_rej_yt = re.search(r"([A-Za-z0-9_-]{11})", Path(v_path).stem)
             with _early_stop_lock:
                 rejected_cand_tokens.add(Path(v_path).stem)
                 if m_rej_yt:
                     rejected_cand_tokens.add(m_rej_yt.group(1))
-            for _rej_p in (v_path, clean_peak_path, inspect_target):
-                if _rej_p:
-                    try:
-                        Path(str(_rej_p)).unlink(missing_ok=True)
-                    except Exception:
-                        pass
+            if (
+                str(score_res.get("recommended_hook_mode") or "").lower() != "video"
+                or float(score_res.get("overall_score", 0.0)) < 5.8
+                or float(score_res.get("motion_action_score", 0.0)) < 5.5
+                or float(score_res.get("entity_match_score", 0.0)) < 5.5
+                or float(score_res.get("clean_frame_score", 0.0)) < 7.0
+            ):
+                for _rej_p in (v_path, clean_peak_path, inspect_target):
+                    if _rej_p:
+                        try:
+                            Path(str(_rej_p)).unlink(missing_ok=True)
+                        except Exception:
+                            pass
 
         logger.info(
             f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name} @Peak {peak_offset_sec:.1f}s, len={peak_duration_sec:.1f}s): "
@@ -1845,10 +1847,11 @@ Return ONLY valid JSON:
             c for c in scored_candidates
             if c.get("video_path")
             and Path(c["video_path"]).exists()
-            and float(c.get("clean_frame_score", 0.0)) >= 6.8
-            and float(c.get("entity_match_score", 0.0)) >= 5.5
+            and str(c.get("recommended_hook_mode") or "").lower() == "video"
+            and float(c.get("clean_frame_score", 0.0)) >= 7.2
+            and float(c.get("entity_match_score", 0.0)) >= 6.0
             and float(c.get("motion_action_score", 0.0)) >= 5.5
-            and float(c.get("overall_score", 0.0)) >= 5.8
+            and float(c.get("overall_score", 0.0)) >= 6.0
         ]
         if viable_scored:
             viable_scored.sort(
@@ -1868,36 +1871,28 @@ Return ONLY valid JSON:
             )
 
     # Dọn dẹp ngay toàn bộ các file ứng viên `.mp4` đã bị Gemini Vision hoặc VisualCritic đánh trượt khỏi `hook_candidates/`
-    # (bao gồm cả các file trả về None ở _grade_single_hook_candidate) để tuyệt đối không cho `node_refine_media`,
-    # `LOCAL_PEAK_RESCUE` hoặc `ENDING_UNUSED_CANDIDATE_VIDEO` nhặt nhầm clip chứa phụ đề/watermark cứng!
+    # (bao gồm cả khi `passing_candidates` rỗng) để tuyệt đối không cho `node_refine_media` hoặc `Tier-2 Rescue`
+    # nhặt nhầm clip chứa khuôn mặt reaction, phụ đề hay watermark cứng!
     approved_cand_paths: set = set()
     for _pc in passing_candidates:
         if _pc.get("video_path"):
             approved_cand_paths.add(str(Path(str(_pc["video_path"])).resolve()))
         if _pc.get("clean_peak_path"):
             approved_cand_paths.add(str(Path(str(_pc["clean_peak_path"])).resolve()))
-    if passing_candidates:
-        for _sc in scored_candidates:
-            for _k_p in ("video_path", "clean_peak_path"):
-                _vp = _sc.get(_k_p)
-                if _vp and str(Path(str(_vp)).resolve()) not in approved_cand_paths:
-                    try:
-                        Path(str(_vp)).unlink(missing_ok=True)
-                    except Exception:
-                        pass
-        for _raw_vp in list(candidate_videos) + [str(p) for p in hook_cand_dir.glob("*.mp4")]:
-            if _raw_vp and str(Path(str(_raw_vp)).resolve()) not in approved_cand_paths:
+    for _sc in scored_candidates:
+        for _k_p in ("video_path", "clean_peak_path"):
+            _vp = _sc.get(_k_p)
+            if _vp and str(Path(str(_vp)).resolve()) not in approved_cand_paths:
                 try:
-                    Path(str(_raw_vp)).unlink(missing_ok=True)
+                    Path(str(_vp)).unlink(missing_ok=True)
                 except Exception:
                     pass
-    elif rejected_cand_tokens:
-        for _raw_vp in [str(p) for p in hook_cand_dir.glob("*.mp4")]:
-            if any(tok and tok in Path(_raw_vp).stem for tok in rejected_cand_tokens):
-                try:
-                    Path(_raw_vp).unlink(missing_ok=True)
-                except Exception:
-                    pass
+    for _raw_vp in list(candidate_videos) + [str(p) for p in hook_cand_dir.glob("*.mp4")]:
+        if _raw_vp and str(Path(str(_raw_vp)).resolve()) not in approved_cand_paths:
+            try:
+                Path(str(_raw_vp)).unlink(missing_ok=True)
+            except Exception:
+                pass
 
     # ──────────────────────────────────────────────────────────────────────────
     # BƯỚC 4: CẮT ĐOẠN PEAK GHÉP VÀO ĐẦU VIDEO (ƯU TIÊN DUAL-BEAT FAST-CUT TRONG CẢNH 1 + MỞ RỘNG CẢNH 2 LIỀN MẠCH)

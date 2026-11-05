@@ -86,7 +86,7 @@ def execute_youtube_short_peak_clone_sync(
     total_avail_sec = max(8.0, deadline_ts - t_fn_start)
     yt_tier1_budget_sec = 48.0 if (clip_role or "").upper() == "HOOK" else 44.0
     if skip_stock_fallback:
-        reserve_for_tier2_sec = 0.0
+        reserve_for_tier2_sec = 12.0 if total_avail_sec >= 28.0 else 0.0
     elif total_avail_sec >= 42.0:
         reserve_for_tier2_sec = 14.0
     else:

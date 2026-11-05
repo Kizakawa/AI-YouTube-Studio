@@ -435,7 +435,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             max_words=3,
                         )
                         custom_pexels_qs: List[str] = []
-                        for cq in (clean_kw_q, critic_broll_q, *(ref_single_qs or [])):
+                        for cq in (*(ref_single_qs or []), critic_broll_q, clean_kw_q):
                             cq_s = str(cq or "").strip()
                             if cq_s and cq_s not in custom_pexels_qs:
                                 custom_pexels_qs.append(cq_s)
