@@ -70,12 +70,9 @@ def execute_youtube_short_peak_clone_sync(
     """
     Thực thi tìm kiếm & cắt đoạn Peak từ YouTube Shorts tích hợp hệ thống Mini-RAG (`VideoMemoryRAG`):
     - Chống lặp lại 100% các cảnh cắt BÊN TRONG CÙNG 1 VIDEO (`job_id`) qua khóa nguyên tử ID/URL,
-      so khớp ngữ nghĩa tiêu đề chống bản re-upload, và đối chiếu chữ ký thị giác 3-frame `dHash`
-      (không cần lưu khóa cứng giữa các bài đăng khác nhau).
+      so khớp ngữ nghĩa tiêu đề chống bản re-upload, và đối chiếu chữ ký thị giác 3-frame `dHash`.
     - Xếp hạng ứng viên bằng Hybrid BM25/Cosine của Mini-RAG kết hợp trọng số giữ chân lịch sử (`stayed_to_watch_pct`).
-    - Nếu đoạn Peak thực tế trong video nguồn kéo dài (ví dụ 6s - 14s), tự động trích xuất TRỌN VẸN cả đoạn Peak dài
-      (`full_peak_path` & `full_peak_duration_sec`) để bộ lắp ghép Timeline (`node_fetch_media`) ưu tiên phủ liền mạch
-      đoạn video Peak dài đó qua nhiều phân cảnh liên tiếp trước khi dùng đến ảnh tĩnh!
+    - Mỗi phân cảnh bắt buộc sử dụng một nguồn video độc lập, tuyệt đối không cắt/tái sử dụng một clip cho nhiều phân cảnh trong cùng 1 video.
     """
     t_fn_start = time.monotonic()
     default_budget_sec = 72.0 if (clip_role or "").upper() == "HOOK" else 68.0
