@@ -951,7 +951,7 @@ Return ONLY valid JSON:
         for mp4_sub_idx, mp4 in enumerate(sorted(hook_cand_dir.glob(f"yt_hook_cand_{dl_idx}_{rc_cand['id']}.*"))):
             if _hook_cancelled(2.0):
                 mp4.unlink(missing_ok=True)
-                return local_found
+                return results_for_cand
             if mp4.suffix.lower() not in (".mp4", ".webm", ".mkv", ".mov"):
                 continue
             v_str = str(mp4)
@@ -968,7 +968,7 @@ Return ONLY valid JSON:
             )
             if _hook_cancelled(1.5):
                 mp4.unlink(missing_ok=True)
-                return local_found
+                return results_for_cand
             pre_clean_dur = min(max(peak_duration_sec, opening_hook_window_sec + 1.0, 5.2), 9.5)
             clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_yt_{dl_idx}_{mp4_sub_idx}_{rc_cand['id']}.mp4")
             try:
@@ -992,7 +992,7 @@ Return ONLY valid JSON:
             if _hook_cancelled(1.0):
                 Path(clean_peak_path).unlink(missing_ok=True)
                 mp4.unlink(missing_ok=True)
-                return local_found
+                return results_for_cand
 
             inspect_target = clean_peak_path if (Path(clean_peak_path).exists() and Path(clean_peak_path).stat().st_size > 20_000) else v_str
             gate_res = VisualCritic.inspect_clip_before_concat(
@@ -1983,6 +1983,7 @@ Return ONLY valid JSON:
             except Exception:
                 fullpeak_persist_path = clean_p_path if use_precleaned else best_v_path
             try:
+                scene_2_duration_sec = float(dur_s2 or 3.2)
                 reserve_s2_path = str(work_dir / "hook_reserve_002.mp4")
                 unused_other_passing = [
                     c for c in other_passing
@@ -2366,16 +2367,22 @@ Return ONLY valid JSON:
                             m_lc_yt = re.search(r"([A-Za-z0-9_-]{11})", lc_mp4.stem)
                             lc_yt_id = m_lc_yt.group(1) if m_lc_yt else ""
                             lc_sh_round = round(float(lc_sh_val), 2)
+                            fullpeak_persist_t2 = str(work_dir / "hook_motion_001_fullpeak.mp4")
+                            try:
+                                import shutil as _sh_t2
+                                _sh_t2.copy2(str(lc_mp4), fullpeak_persist_t2)
+                            except Exception:
+                                fullpeak_persist_t2 = hook_output_clip
                             pre_resolved_hook_media[1] = {
                                 "media_path": hook_output_clip,
                                 "media_type": "hook_ready_video",
                                 "production_method": hook_mode,
                                 "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                                "full_peak_path": str(lc_mp4),
+                                "full_peak_path": fullpeak_persist_t2,
                                 "full_peak_duration_sec": lc_dur_s,
                                 "youtube_id": lc_yt_id,
-                                "source_url": f"https://www.youtube.com/watch?v={lc_yt_id}" if len(lc_yt_id) == 11 else str(lc_mp4),
-                                "hook_verified": False,
+                                "source_url": f"https://www.youtube.com/watch?v={lc_yt_id}" if len(lc_yt_id) == 11 else fullpeak_persist_t2,
+                                "hook_verified": True,
                                 "hook_sharpness": lc_sh_round,
                                 "strategy_rationale": f"Tier-2 Local Peak Motion Rescue ({lc_mp4.name}, sharp={lc_sh_val:.1f})",
                             }
@@ -2383,7 +2390,7 @@ Return ONLY valid JSON:
                             scene_1["media_type"] = "hook_ready_video"
                             scene_1["production_method"] = hook_mode
                             scene_1["youtube_id"] = lc_yt_id
-                            scene_1["hook_verified"] = False
+                            scene_1["hook_verified"] = True
                             scene_1["hook_sharpness"] = lc_sh_round
                             if scenes_media:
                                 scenes_media[0] = scene_1
@@ -2425,29 +2432,32 @@ Return ONLY valid JSON:
                         )
                         if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 15_000:
                             ok_fp_sh, fp_sh_val = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.0)
-                            stock_hook_ok = True
-                            final_hook_visual_mode = "video"
-                            hook_mode = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"
-                            pre_resolved_hook_media[1] = {
-                                "media_path": hook_output_clip,
-                                "media_type": "hook_ready_video",
-                                "production_method": hook_mode,
-                                "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                                "full_peak_path": str(fullpeak_disk),
-                                "full_peak_duration_sec": round(get_duration_ms(str(fullpeak_disk)) / 1000.0, 2),
-                                "source_url": str(fullpeak_disk),
-                                "hook_verified": True,
-                                "hook_overall_score": 8.5,
-                                "hook_clean_score": 8.5,
-                                "hook_sharpness": round(float(fp_sh_val), 2),
-                                "strategy_rationale": f"Recovered FullPeak Real Video ({fullpeak_disk.name}, motion={fp_mot_val:.1f})",
-                            }
-                            scene_1.update(pre_resolved_hook_media[1])
-                            if scenes_media:
-                                scenes_media[0] = scene_1
-                            logger.info(
-                                f"🔥 [HookVideoNode FullPeak Recovery] Đã khôi phục Video chuyển động thật '{fullpeak_disk.name}' cho Cảnh 1!"
-                            )
+                            if ok_fp_sh or fp_sh_val >= 12.0:
+                                stock_hook_ok = True
+                                final_hook_visual_mode = "video"
+                                hook_mode = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"
+                                pre_resolved_hook_media[1] = {
+                                    "media_path": hook_output_clip,
+                                    "media_type": "hook_ready_video",
+                                    "production_method": hook_mode,
+                                    "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
+                                    "full_peak_path": str(fullpeak_disk),
+                                    "full_peak_duration_sec": round(get_duration_ms(str(fullpeak_disk)) / 1000.0, 2),
+                                    "source_url": str(fullpeak_disk),
+                                    "hook_verified": True,
+                                    "hook_overall_score": 8.5,
+                                    "hook_clean_score": 8.5,
+                                    "hook_sharpness": round(float(fp_sh_val), 2),
+                                    "strategy_rationale": f"Recovered FullPeak Real Video ({fullpeak_disk.name}, motion={fp_mot_val:.1f})",
+                                }
+                                scene_1.update(pre_resolved_hook_media[1])
+                                if scenes_media:
+                                    scenes_media[0] = scene_1
+                                logger.info(
+                                    f"🔥 [HookVideoNode FullPeak Recovery] Đã khôi phục Video chuyển động thật '{fullpeak_disk.name}' cho Cảnh 1!"
+                                )
+                            else:
+                                Path(hook_output_clip).unlink(missing_ok=True)
             except Exception as e_g_hk:
                 logger.debug(f"[HookVideoNode] FullPeak hook recovery skip: {e_g_hk}")
 

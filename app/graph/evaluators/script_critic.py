@@ -469,9 +469,13 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
                         raw = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", raw)
                         parsed = json.loads(raw)
                         return self._build_report(parsed, script_data=script_data, calibration=calibration, channel_style=channel_style)
+            except (json.JSONDecodeError, ValueError, KeyError) as e_parse:
+                logger.warning(f"ScriptCritic ({model}) JSON/schema parse error (không phạt model): {e_parse}")
+                continue
             except Exception as e:
                 logger.warning(f"ScriptCritic ({model}) error: {e}")
-                self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=str(e))
+                if "Read timed out" not in str(e):
+                    self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=str(e))
                 continue
 
         return self._heuristic_evaluate(script_data, primary_entity, calibration=calibration, channel_style=channel_style)
@@ -490,17 +494,18 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
         v = parsed.get("visual_direction", {})
         l = parsed.get("viral_loop", {})
 
-        raw_hook_s = float(h.get("score", 7.5))
+        raw_hook_s = max(1.0, min(10.0, float(h.get("score", 7.5) or 7.5)))
         hook_s, hook_extra_critiques = self._calibrate_hook_score_with_real_data(
             raw_hook_score=raw_hook_s,
             script_data=script_data or {},
             calibration=cal,
             channel_style=channel_style,
         )
-        pace_s = float(p.get("score", 7.5))
-        ent_s = float(e.get("score", 7.5))
-        vis_s = float(v.get("score", 7.5))
-        loop_s = float(l.get("score", 7.5))
+        hook_s = max(1.0, min(10.0, float(hook_s)))
+        pace_s = max(1.0, min(10.0, float(p.get("score", 7.5) or 7.5)))
+        ent_s = max(1.0, min(10.0, float(e.get("score", 7.5) or 7.5)))
+        vis_s = max(1.0, min(10.0, float(v.get("score", 7.5) or 7.5)))
+        loop_s = max(1.0, min(10.0, float(l.get("score", 7.5) or 7.5)))
 
         flawed_vqs = [
             str(x).strip()
@@ -520,14 +525,10 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
             x for x in raw_ai_smells
             if x.lower().strip(".'\"!?,;") in full_script_lower
         ]
-        # Nếu LLM Critic nhìn nhầm ví dụ trong prompt (raw_ai_smells > 0 nhưng 0 cụm từ nào thực sự tồn tại trong kịch bản),
-        # khôi phục điểm Pacing & Hook bị trừ oan do ảo giác của Critic.
-        if raw_ai_smells and not ai_smells:
-            pace_s = max(pace_s, 8.8)
-            if not hook_extra_critiques:
-                hook_s = max(hook_s, 8.6)
+        # Lưu ý: Nếu raw_ai_smells không khớp nguyên văn trong kịch bản, chỉ lọc bỏ các cụm ảo giác (ai_smells = []),
+        # TUYỆT ĐỐI KHÔNG tự ý nâng điểm hook_s / pace_s vượt quá điểm thực tế mà LLM đã chấm.
         raw_sounds_human = bool(parsed.get("sounds_like_real_youtuber", True))
-        sounds_human = (raw_sounds_human or not raw_ai_smells) and (len(ai_smells) == 0)
+        sounds_human = (raw_sounds_human or (bool(raw_ai_smells) and not ai_smells)) and (len(ai_smells) == 0)
         voice_critique = ""
         if not sounds_human:
             pace_s = min(pace_s, 6.8)

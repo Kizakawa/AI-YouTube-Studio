@@ -41,45 +41,27 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", "generate_audio"]:
-    """Điều hướng: Bắt buộc kịch bản đạt chuẩn (Overall >= 8.0 và Hook >= 8.0). Nếu hết lượt thử, khôi phục phiên bản đạt điểm cao nhất (Best Candidate) trong LangGraph!"""
+    """Điều hướng: Bắt buộc kịch bản đạt chuẩn (passed=True, Overall >= 8.0 và Hook >= 8.0). Việc khôi phục Best Candidate đã được thực hiện trực tiếp tại node_evaluate_script."""
     script_eval = state.get("script_eval", {})
     passed = bool(script_eval.get("passed", False))
     hook_s = float((script_eval.get("hook_strength") or {}).get("score", 0.0) or 0.0)
     overall_s = float(script_eval.get("overall_score", 0.0) or 0.0)
-    retry_count = state.get("script_retry_count", 0)
+    retry_count = int(state.get("script_retry_count", 0) or 0)
     evaluated_by = script_eval.get("evaluated_by", "ai")
     max_script_retries = max(0, int(os.getenv("MAX_SCRIPT_RETRIES", "2")))
-    # Nếu kịch bản đã được duyệt sẵn từ AutoPilot/ContentAgent, chỉ tinh chỉnh lại nếu dưới 8.0
-    is_strictly_passing = passed and overall_s >= 8.1 and hook_s >= 8.1
+    is_strictly_passing = passed and overall_s >= 8.0 and hook_s >= 8.0 and evaluated_by != "heuristic"
 
     if not is_strictly_passing and retry_count < max_script_retries:
         logger.info(
-            f"🔄 [ConditionalEdge] Kịch bản chưa đạt chuẩn 8.4+ (Overall={overall_s}/10, Hook={hook_s}/10 | "
+            f"🔄 [ConditionalEdge] Kịch bản chưa đạt chuẩn 8.0+ (Overall={overall_s}/10, Hook={hook_s}/10, eval={evaluated_by} | "
             f"Lần {retry_count + 1}/{max_script_retries}). Quay lại node_refine_script!"
         )
         return "refine_script"
 
-    if is_strictly_passing and evaluated_by == "heuristic" and retry_count == 0 and max_script_retries > 0:
-        logger.warning("⚠️ [ConditionalEdge] Script PASS nhưng qua heuristic fallback. Buộc retry với AI thật!")
-        return "refine_script"
-
     if not is_strictly_passing:
-        best_data = state.get("best_script_data")
-        best_eval = state.get("best_script_eval")
-        if best_data and best_eval:
-            b_ov = float(best_eval.get("overall_score", 0.0) or 0.0)
-            b_hk = float((best_eval.get("hook_strength") or {}).get("score", 0.0) or 0.0)
-            if (b_ov + b_hk) > (overall_s + hook_s):
-                logger.info(
-                    f"🛡️ [BestCandidateRestore] Khôi phục phiên bản kịch bản tốt nhất từ các vòng trước "
-                    f"(Overall={b_ov}/10, Hook={b_hk}/10 thay cho vòng cuối {overall_s}/10)!"
-                )
-                state["script_data"] = best_data
-                state["script_eval"] = best_eval
-                overall_s, hook_s = b_ov, b_hk
         logger.warning(
             f"⚡ [ScriptGate] Hoàn tất {retry_count}/{max_script_retries} vòng tối ưu với bản tốt nhất "
-            f"(Overall={overall_s}/10, Hook={hook_s}/10) -> Giữ nguyên trong LangGraph để đảm bảo Hook Video & Audio Cap!"
+            f"(Overall={overall_s}/10, Hook={hook_s}/10) -> Chuyển sang node_generate_audio!"
         )
         return "generate_audio"
 

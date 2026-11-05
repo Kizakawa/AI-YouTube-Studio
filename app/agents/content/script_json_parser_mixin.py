@@ -62,9 +62,11 @@ class ScriptJsonParserMixin:
 
             try:
                 attempts += 1
-                rem_budget = max(8.0, float(max_total_seconds) - elapsed)
-                req_timeout = min(timeout, 12 if model.startswith("gemma-") else 14, max(8, int(rem_budget * 0.55)))
-                r = self.session.post(url, json=payload, timeout=(3.5, req_timeout))
+                rem_budget = max(10.0, float(max_total_seconds) - elapsed)
+                caller_timeout = max(12.0, float(timeout or 25.0))
+                model_cap = 18.0 if model.startswith("gemma-") else 35.0
+                req_timeout = min(caller_timeout, model_cap, max(10.0, rem_budget * 0.70))
+                r = self.session.post(url, json=payload, timeout=(4.0, req_timeout))
                 if r.status_code == 200:
                     data = r.json()
                     candidates = data.get("candidates", [])
@@ -91,11 +93,14 @@ class ScriptJsonParserMixin:
                     except Exception:
                         err_msg = r.text[:80]
                     logger.warning(f"Gemini API ({model}) trả lỗi {r.status_code} với key {key[:8]}...: {err_msg}")
-                    self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=err_msg)
+                    if r.status_code >= 500 or r.status_code in (403, 429):
+                        self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=err_msg)
                     continue
             except Exception as e:
-                logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {e}")
-                self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=str(e))
+                err_s = str(e)
+                logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {err_s}")
+                if "Read timed out" not in err_s:
+                    self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=err_s)
                 time.sleep(0.3)
                 continue
 

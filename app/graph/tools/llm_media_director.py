@@ -480,8 +480,7 @@ _GENERIC_ROLE_OR_CLASS_HYPERNYMS = {
     "bird", "birds", "raptor", "raptors", "mammal", "mammals",
     "reptile", "reptiles", "insect", "insects", "monster", "monsters",
     "giant", "giants", "victim", "victims", "target", "opponent",
-    "contender", "attacker", "defender", "steel", "clamp", "clamps",
-    "hydraulic", "press", "machine", "trap",
+    "contender", "attacker", "defender",
 }
 
 
@@ -552,11 +551,12 @@ def _restore_full_canonical_entity_in_query(
         merged = f"{lead_clean} {' '.join(filtered_action_words)}".strip()
         return _clean_yt_search_phrase(merged, subject_entity=lead_clean, max_words=max_words) or lead_clean
 
-    # Trường hợp 3: Có chứa token thực thể nhưng vẫn dính từ ẩn dụ/vai trò chung ('steel clamps', 'predator', 'hunter')
-    if q_toks_low & {"steel", "clamp", "clamps", "hydraulic", "predator", "hunter"}:
+    # Trường hợp 3: Có chứa token thực thể nhưng vẫn dính danh từ vai trò chung ('predator', 'hunter') không nằm trong lead_ent
+    _role_only = {"predator", "hunter"} - set(lead_toks)
+    if q_toks_low & _role_only:
         cleaned_words = [
             w for w in q_words
-            if w.lower() not in {"steel", "clamp", "clamps", "hydraulic", "predator", "hunter"}
+            if w.lower() not in _role_only
         ]
         return _clean_yt_search_phrase(" ".join(cleaned_words), subject_entity=lead_clean, max_words=max_words) or q_clean
 

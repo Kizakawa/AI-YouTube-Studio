@@ -291,6 +291,9 @@ def _splice_dual_beat_hook_clip(
                 pass
 
 
+_MOTION_GATE_CACHE: Dict[tuple, tuple[bool, float, str]] = {}
+
+
 def verify_hook_clip_genuine_motion(
     clip_path: str,
     min_raw_diff: float = 3.2,
@@ -315,6 +318,15 @@ def verify_hook_clip_genuine_motion(
     p_clip = Path(clip_path)
     if not p_clip.exists() or p_clip.stat().st_size < 10_000:
         return False, 0.0, "File video không tồn tại hoặc kích thước quá nhỏ"
+
+    cache_key = None
+    try:
+        st_c = p_clip.stat()
+        cache_key = (str(p_clip.resolve()), st_c.st_mtime_ns, st_c.st_size, min_raw_diff, min_comp_diff, max_frozen_ratio)
+        if cache_key in _MOTION_GATE_CACHE:
+            return _MOTION_GATE_CACHE[cache_key]
+    except Exception:
+        cache_key = None
 
     def _eval_single_window(start_s: float, dur_s: float, check_padbars: bool) -> tuple[bool, float, str]:
         with tempfile.TemporaryDirectory() as td:
@@ -438,16 +450,23 @@ def verify_hook_clip_genuine_motion(
         is_full_rendered_short = fname_low.startswith(("final_shorts_", "video_")) and get_duration_ms(str(p_clip)) >= 5500
         ok_w1, sc_w1, rsn_w1 = _eval_single_window(0.25, 2.20, check_padbars=not is_full_rendered_short)
         if not ok_w1:
-            return False, sc_w1, f"[0-2.5s] {rsn_w1}"
-        if is_full_rendered_short:
+            res_tuple = (False, sc_w1, f"[0-2.5s] {rsn_w1}")
+        elif is_full_rendered_short:
             ok_w2, sc_w2, rsn_w2 = _eval_single_window(2.85, 2.40, check_padbars=False)
             if not ok_w2:
-                return False, sc_w2, f"[2.8-5.3s] {rsn_w2}"
-            return True, round(min(sc_w1, sc_w2), 2), "OK"
-        return True, sc_w1, "OK"
+                res_tuple = (False, sc_w2, f"[2.8-5.3s] {rsn_w2}")
+            else:
+                res_tuple = (True, round(min(sc_w1, sc_w2), 2), "OK")
+        else:
+            res_tuple = (True, sc_w1, "OK")
+        if cache_key is not None:
+            if len(_MOTION_GATE_CACHE) > 512:
+                _MOTION_GATE_CACHE.clear()
+            _MOTION_GATE_CACHE[cache_key] = res_tuple
+        return res_tuple
     except Exception as e_mot:
-        logger.debug(f"[HookMotionGate] Bỏ qua lỗi kiểm tra chuyển động '{clip_path}': {e_mot}")
-        return True, 8.0, "OK"
+        logger.debug(f"[HookMotionGate] Lỗi kiểm tra chuyển động '{clip_path}': {e_mot}")
+        return False, 0.0, f"motion_check_error:{e_mot}"
 
 
 def _ensure_hook_clip_sharpness_and_luma(
@@ -508,12 +527,10 @@ def _ensure_hook_clip_sharpness_and_luma(
             return True, sharp_init
 
         cur_best_sharp = sharp_init
-        # Chỉ áp dụng làm nét vi mô chuẩn Cinema Mastering nếu clip hơi mềm (< min_sharpness).
+        # Chỉ áp dụng tối đa 1 lượt làm nét vi mô chuẩn Cinema Mastering (tránh re-encode lặp 3 lần gây bệt hạt và tốn thời gian).
         for pass_idx, vf_enhance in enumerate(
             [
-                "eq=brightness=0.02:contrast=1.06:saturation=1.04,unsharp=5:5:0.65:3:3:0.25",
-                "eq=brightness=0.02:contrast=1.08:saturation=1.05,unsharp=5:5:0.95:3:3:0.45",
-                "eq=brightness=0.04:contrast=1.18:saturation=1.10,unsharp=5:5:1.50:3:3:0.85,cas=0.45",
+                "eq=brightness=0.02:contrast=1.08:saturation=1.05,unsharp=5:5:0.85:3:3:0.35",
             ],
             start=1,
         ):

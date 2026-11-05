@@ -29,9 +29,14 @@ class AudioQA:
         Trả về True nếu phát hiện silence > min_silence_sec trong file audio.
         """
         try:
+            from app.utils.ffmpeg_helper import get_ffmpeg_path
+            ffmpeg_bin = get_ffmpeg_path() or "ffmpeg"
+        except Exception:
+            ffmpeg_bin = "ffmpeg"
+        try:
             result = subprocess.run(
                 [
-                    "ffmpeg", "-i", audio_path,
+                    ffmpeg_bin, "-i", audio_path,
                     "-af", f"silencedetect=noise=-40dB:d={min_silence_sec}",
                     "-f", "null", "-"
                 ],
@@ -85,6 +90,7 @@ class AudioQA:
             if ap and not Path(ap).exists():
                 missing_scenes.append(str(sa.get("scene_id", "?")))
         if missing_scenes:
+            pacing_rating = "MISSING_SCENE_AUDIO"
             passed = False
             feedback_items.append(f"Audio bị thiếu cho cảnh: {', '.join(missing_scenes)}")
 
@@ -106,17 +112,19 @@ class AudioQA:
                 feedback_items.append(f"Vượt quá giới hạn YouTube Shorts ({duration_sec:.1f}s > 60s)")
 
         if wpm < 115:
-            pacing_rating = "TOO_SLOW"
+            if passed:
+                pacing_rating = "TOO_SLOW"
             feedback_items.append(f"Tốc độ đọc hơi chậm ({wpm:.0f} WPM), chuẩn tự nhiên là 130-165 WPM")
         elif wpm > 195:
             pacing_rating = "TOO_FAST"
             passed = False
             feedback_items.append(f"Tốc độ đọc quá nhanh ({wpm:.0f} WPM > 195 WPM), người xem không kịp nghe -> dễ vuốt bỏ")
 
-        # [FIXED P1-FIX-2] Phát hiện khoảng im lặng thật bằng ffmpeg (thay vì hardcode False)
+        # Phát hiện khoảng im lặng thật bằng ffmpeg (không ghi đè nhãn TOO_FAST / TOO_LONG nếu đã vi phạm tốc độ)
         has_silence = AudioQA._detect_silence(full_audio_path)
         if has_silence:
-            pacing_rating = "HAS_SILENCE"
+            if pacing_rating == "PERFECT":
+                pacing_rating = "HAS_SILENCE"
             passed = False
             feedback_items.append("Phát hiện khoảng im lặng bất thường > 1.5s trong audio — có thể do TTS bỏ sót cảnh")
 
@@ -133,5 +141,5 @@ class AudioQA:
             pacing_rating=pacing_rating,
             has_clipping_or_silence=has_silence,
             passed=passed,
-            feedback="; ".join(feedback_items) if feedback_items else f"Tốc độ chuẩn ({wpm:.0f} WPM, {duration_sec:.1f}s), âm thanh sắc nét."
+            feedback=" | ".join(feedback_items) if feedback_items else "Nhịp điệu giọng đọc đạt chuẩn Viral Shorts"
         )

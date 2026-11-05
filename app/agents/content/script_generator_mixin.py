@@ -687,7 +687,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
     {{
       "scene_id": 1,
       "visual_reasoning": "Narrative and visual intent of this scene",
-      "narration": "Complete, natural spoken sentence for this scene ({'Scene 1: 12-18 words; Body scenes: 48-58 words flowing naturally, 30 to 36 scenes total (~10 minutes)' if is_long_form else 'Scene 1: 6-12 words opening with a Why / Por que...? curiosity paradox or sharp spoken clash without repeating title verbatim; Body scenes: 11-16 words flowing naturally, 7 to 8 scenes total'})",
+      "narration": "Complete, natural spoken sentence for this scene ({'Scene 1: 12-18 words; Body scenes: 48-58 words flowing naturally, 30 to 36 scenes total (~10 minutes)' if is_long_form else 'Scene 1: 6-12 words opening with a declarative physical clash, lethal mechanism strike, or sharp 2-entity paradox naming explicit entities without repeating title question; Body scenes: 11-16 words flowing naturally, 7 to 8 scenes total'})",
       "visual_keyword": "full canonical entity name + physical action/habitat (3-5 English words, never generic bird/eagle/predator)",
       "visual_prompt": "Cinematic {'16:9 widescreen ' if is_long_form else ''}visual description fitting the overall story mood",
       "stock_query": "full canonical entity name + simple action/setting for stock video (2-4 English words, zero vs, never generic bird/eagle/predator)",

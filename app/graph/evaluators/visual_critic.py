@@ -828,31 +828,47 @@ class VisualCritic:
                     return (sid, im_obj, label_desc)
                 return None
 
-            with ThreadPoolExecutor(max_workers=min(max(len(scenes_media), 1), 8)) as cs_thumb_pool:
-                for t_res in cs_thumb_pool.map(_extract_cs_thumb, scenes_media):
+            if not hasattr(cls, "_cs_scene_pass_cache"):
+                cls._cs_scene_pass_cache = {}
+            scene_file_cache_keys: Dict[int, Tuple[str, int, int, str]] = {}
+            all_scene_evals: Dict[int, Dict[str, Any]] = {}
+            scenes_to_extract: List[Dict[str, Any]] = []
+            cached_ref_candidates: List[Dict[str, Any]] = []
+            for it_m in scenes_media:
+                if isinstance(it_m, dict) and it_m.get("scene_id") and it_m.get("media_path"):
+                    try:
+                        sid_m = int(it_m["scene_id"])
+                        p_m = Path(str(it_m["media_path"]))
+                        if p_m.exists():
+                            st_m = p_m.stat()
+                            ck_m = (str(p_m.resolve()), st_m.st_mtime_ns, st_m.st_size, anchor_topic)
+                            scene_file_cache_keys[sid_m] = ck_m
+                            if ck_m in cls._cs_scene_pass_cache:
+                                all_scene_evals[sid_m] = dict(cls._cs_scene_pass_cache[ck_m])
+                                cached_ref_candidates.append(it_m)
+                                continue
+                    except Exception:
+                        pass
+                scenes_to_extract.append(it_m)
+
+            if not scenes_to_extract:
+                return all_scene_evals
+
+            if cached_ref_candidates and len(scenes_to_extract) < len(scenes_media):
+                scenes_for_sheet = cached_ref_candidates[:2] + scenes_to_extract
+            else:
+                scenes_for_sheet = scenes_media
+
+            with ThreadPoolExecutor(max_workers=min(max(len(scenes_for_sheet), 1), 8)) as cs_thumb_pool:
+                for t_res in cs_thumb_pool.map(_extract_cs_thumb, scenes_for_sheet):
                     if t_res is not None:
                         thumbs.append(t_res)
 
         if not thumbs:
-            return {}
-
-        if not hasattr(cls, "_cs_scene_pass_cache"):
-            cls._cs_scene_pass_cache = {}
-        scene_file_cache_keys: Dict[int, Tuple[str, int, int, str]] = {}
-        for it_m in scenes_media:
-            if isinstance(it_m, dict) and it_m.get("scene_id") and it_m.get("media_path"):
-                try:
-                    sid_m = int(it_m["scene_id"])
-                    p_m = Path(str(it_m["media_path"]))
-                    if p_m.exists():
-                        st_m = p_m.stat()
-                        scene_file_cache_keys[sid_m] = (str(p_m.resolve()), st_m.st_mtime_ns, st_m.st_size, anchor_topic)
-                except Exception:
-                    pass
+            return all_scene_evals
 
         rotator = KeyRotator(settings.get_gemini_keys_pool())
         vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
-        all_scene_evals: Dict[int, Dict[str, Any]] = {}
         batch_chunk_size = 20
         for b_start in range(0, len(thumbs), batch_chunk_size):
             chunk_thumbs = thumbs[b_start : b_start + batch_chunk_size]
@@ -953,7 +969,7 @@ Return ONLY valid JSON in this exact format:
                                             "fallback_broll_query": str(item_ev.get("fallback_broll_query") or "").strip(),
                                         }
                                         all_scene_evals[sid_e] = ev_entry
-                                        if is_p and ck_e and min(ent_s, rel_s, cln_s) >= 8.0:
+                                        if is_p and ck_e and min(ent_s, rel_s, cln_s) >= 7.5:
                                             cls._cs_scene_pass_cache[ck_e] = dict(ev_entry)
                                 for item_f in (data.get("failed_scenes") or []):
                                     if isinstance(item_f, dict) and item_f.get("scene_id"):
@@ -969,8 +985,12 @@ Return ONLY valid JSON in this exact format:
                                 break
                     elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                         rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
+                except (json.JSONDecodeError, ValueError) as e_vp:
+                    logger.debug(f"[VisualCritic] ContactSheet JSON parse skip ({model_name}): {e_vp}")
+                    continue
                 except Exception as e_v:
-                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_v))
+                    if "Read timed out" not in str(e_v):
+                        rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_v))
                     continue
         return all_scene_evals
 
@@ -1214,7 +1234,8 @@ Return ONLY valid JSON in this exact format:
 
         max_workers = min(max(len(scenes_media), 1), 12)
         vision_scene_evals: Dict[int, Dict[str, Any]] = {}
-        with ThreadPoolExecutor(max_workers=max_workers + 1) as pool:
+        pool = ThreadPoolExecutor(max_workers=max_workers + 1)
+        try:
             cs_future = pool.submit(
                 self._gemini_vision_audit_contact_sheet,
                 scenes_media,
@@ -1234,7 +1255,9 @@ Return ONLY valid JSON in this exact format:
                         f"{failed_cs_map}"
                     )
             except Exception as e_cs:
-                logger.debug(f"[VisualCritic ContactSheet Vision] skip: {e_cs}")
+                logger.warning(f"⚠️ [VisualCritic ContactSheet Vision] Quá hạn hoặc gián đoạn API ({e_cs}) — sử dụng bộ kiểm định CV kỹ thuật.")
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
 
         scene_media_by_id: Dict[int, Dict[str, Any]] = {
             int(m.get("scene_id") or 0): m for m in scenes_media if isinstance(m, dict) and m.get("scene_id")

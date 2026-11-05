@@ -1272,7 +1272,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 early_vids = sorted(
                     [
                         p for p in _cand_early_vids
-                        if is_completed_clean_mp4(p, min_size_bytes=15_000, min_duration_ms=1200)
+                        if "_raw" not in p.name.lower()
+                        and is_completed_clean_mp4(p, min_size_bytes=15_000, min_duration_ms=1200)
                     ],
                     key=_safe_mtime,
                     reverse=True,

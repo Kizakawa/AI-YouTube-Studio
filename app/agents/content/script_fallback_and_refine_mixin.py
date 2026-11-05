@@ -502,9 +502,9 @@ HARD RETENTION & AUTHENTIC VIRAL CREATOR SPOKEN VOICE RULES:
      * STRICTLY FORBIDDEN AI TELLS: Front-loaded participial openers (`"Equipped with..."`, `"Armed with..."`, `"Boasting..."`, `"Ostentando..."`, `"Reaching down into..."`), generic encyclopedia setups (`"Most predators go for..."`, `"Enquanto outros..."`, `"Most people assume..."`, `"Muita gente acha que..."`, `"No fim das contas"`, `"Studies show..."`), hardware/medical/sports-gear clichés on animals (`"built-in shin guards"`, `"built-in armor"`, `"like a riot shield"`, `"body armor"`, `"pile-driver"`, `"surgical strike"`, `"golpe cirúrgico"`, `"movimento cirúrgico"`, `"almoço rápido"`, `"hydraulic pliers / press"`, `"alicate hidráulico"`, `"It's a high-stakes game of..."`, `"It's a brutal, silent..."`), clinical/biochemistry hand-waving (`"tiny cells"`, `"special flexible fats"`, `"air bladders"`, `"molecules"`, `"proteins"`, `"chemical buffers"`, `"elapid"`, `"permeates"` — say `"trapped air pockets"` instead of `"air bladders"`!), Wikipedia calendar date-stamp Scene-1 openers (`"In October 1962, ..."`, `"In 1961, ..."`), unnamed pronoun Scene-1/Title openers (`"He wouldn't leave..."`, `"He Guarded..."` — ALWAYS name `"this stray dog"` / `"this puppy"` explicitly!), bureaucratic rulebook transitions & `$10` history words (`"Under ... rules"`, `"required unanimous agreement"`, `"required agreement"`, `"kiloton"`, `"megaton"`, `"leaving ... as the final roadblock"`, `"held absolute veto power"`, `"dissent"`, `"unanimous"`, `"vessel"`, `"full-scale atomic retaliation"`, `"nuclear apocalypse"`, `"nuclear holocaust"`, `"vigil"`, `"didn't budge"`, `"exact same"` — tell rules through active human keys/votes with 5+ contractions starting in Scenes 1–3!), forced `"acting like..."` similes, and essay/proverb endings (`"It's the ultimate survival trick"`, `"Real social power belongs to..."`, `"That is how a..."`, `"That's why X belongs to..."`, `"domina o terreno porque..."`, `"They never fight the crushing abyss"`, `"the hunter becomes the meal"`, `"O Pantanal pune quem falha"`).
      * SAVE THE SHARPEST IRONIC TWIST OR CONCRETE PHYSICAL AFTERMATH FOR THE VERY LAST SCENE! Never bury the surface-pressure/ironic twist in Scene 5 and end Scene 8 on generic description!
 1. SCENE 1 PATTERN INTERRUPT HOOK (CRITICAL TO PREVENT SWIPING):
-   - Scene 1 spoken text must establish immediate high curiosity with an open-loop `"Why / Por que / How..."` question or a sharp 2-entity clash/contrast ({'8-14 words' if is_long_form else '6-12 words, ZERO weak Yes/No questions'}).
+   - Scene 1 spoken text must establish immediate high curiosity with a declarative physical clash, lethal mechanism strike, or upside-down 2-entity survival paradox ({'8-14 words' if is_long_form else '6-12 words, ZERO weak Yes/No questions and ZERO Title Question Echo'}).
 2. SMOOTH, COMPLETE CONVERSATIONAL NARRATIVE ({'360-560 words total across 16-22 scenes (5 Chapters), 18-26 words per body scene' if is_long_form else '92-116 words total across STRICTLY 7 OR 8 SCENES (NEVER 6 SCENES), dynamic 12-16 words per body scene'} — NEVER write choppy or truncated sentences!):
-   - Act 1 (Scene 1): Counter-intuitive `"Why / Por que..."` curiosity hook OR sharp declarative spoken 0.0s Hook ({'8-14 words' if is_long_form else '6-12 words'}).
+   - Act 1 (Scene 1): Declarative spoken 0.0s action/paradox Hook naming explicit entities ({'8-14 words' if is_long_form else '6-12 words'}) without repeating the title question.
    - Act 2 (Scenes 2-3): Direct action, sharp contrast, or exact real-life spoken quote + plain `$1` mechanism.
    - Act 3 (Scenes 4-5): 15-Second Plot Twist (or `"What If"` counterfactual domino chain if topic asks `"What If"`) + natural assumption-flip.
    - Act 4 (Scenes 6-7): Concrete physical payoff or exact spoken Comeback in quotation marks (`"..."`).
@@ -516,7 +516,7 @@ HARD RETENTION & AUTHENTIC VIRAL CREATOR SPOKEN VOICE RULES:
   "video_format": "{vf}",
   "title": "Viral YouTube {'Documentary' if is_long_form else 'Shorts'} Title with Emojis",
   "primary_entity": "Full official name of main person/figure/species",
-  "hook": "The opening hook sentence ({'8-14 words' if is_long_form else '6-12 words — prioritize an open-loop Why / Por que...? curiosity hook or sharp paradox, naming both entities if A vs B'})",
+  "hook": "The opening hook sentence ({'8-14 words' if is_long_form else '6-12 words — declarative physical action, lethal mechanism strike, or sharp paradox naming explicit entities, NEVER repeating a Why/Por que title question'})",
   "hook_visual_mode": "video",
   "is_abstract_keyword": false,
   "climax_scene_id": {8 if is_long_form else 4},
@@ -527,7 +527,7 @@ HARD RETENTION & AUTHENTIC VIRAL CREATOR SPOKEN VOICE RULES:
     {{
       "scene_id": 1,
       "visual_reasoning": "Narrative and visual intent of this scene",
-      "narration": "Complete, natural sentence spoken in this scene ({'18-26 words per body scene, 16-22 scenes total' if is_long_form else 'Scene 1: 6-12 words open-loop Why/Por que...? curiosity hook or sharp paradox (NO weak Yes/No questions); Body scenes 2 through 7/8: 12-16 words each, STRICTLY 7 OR 8 SCENES TOTAL'})",
+      "narration": "Complete, natural sentence spoken in this scene ({'18-26 words per body scene, 16-22 scenes total' if is_long_form else 'Scene 1: 6-12 words declarative physical action or sharp 2-entity paradox (NEVER repeat a Why/Por que title question, NO weak Yes/No questions); Body scenes 2 through 7/8: 12-16 words each, STRICTLY 7 OR 8 SCENES TOTAL'})",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic visual description fitting the overall story mood",
       "stock_query": "simple subject/mood query for stock video (2-4 English words)",

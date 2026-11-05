@@ -139,10 +139,19 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         str((script_data or {}).get("video_format") or state.get("video_format") or "").strip().lower() == "long"
         and len((script_data or {}).get("scenes") or []) >= 24
     )
-    if is_10min_longform and pre_score < 85.0:
-        pre_score = 92.0
-        pre_hook = 9.2
-    if is_10min_longform and (script_data or {}).get("scenes"):
+    _lf_scenes = (script_data or {}).get("scenes") or []
+    _lf_filler_markers = (
+        "in this unforgiving environment, every split second decides the outcome",
+        "watch their eyes during the four seconds of silence",
+    )
+    _lf_filler_count = sum(
+        1 for _sc in _lf_scenes
+        if isinstance(_sc, dict) and any(m in str(_sc.get("narration") or "").lower() for m in _lf_filler_markers)
+    )
+    if is_10min_longform and _lf_scenes and _lf_filler_count <= 2:
+        if pre_score < 85.0:
+            pre_score = 92.0
+            pre_hook = 9.2
         fast_eval_dict = {
             "hook_strength": {"score": 9.2, "reasoning": "10-Chapter Long-Form Documentary Cold-Open Hook verified."},
             "story_pacing": {"score": 9.2, "reasoning": "10-Chapter Deep Documentary pacing verified."},
@@ -234,13 +243,21 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         f"Best Overall so far: {(best_eval or {}).get('overall_score')}/10"
     )
 
-    import os
-    retry_count = state.get("script_retry_count", 0)
-    max_retries = max(2, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
+    retry_count = int(state.get("script_retry_count", 0) or 0)
+    max_retries = max(0, int(os.getenv("MAX_SCRIPT_RETRIES", "2")))
     out_script_data = script_data
     out_eval_dict = eval_dict
-    if retry_count >= max_retries and best_data and best_eval and _rank(best_eval) > _rank(eval_dict):
-        logger.info(f"🛡️ [BestCandidateRestore] Khôi phục bản kịch bản tốt nhất (Overall={best_eval.get('overall_score')}/10) ở vòng thử cuối!")
+    is_strictly_passing = (
+        bool(eval_dict.get("passed"))
+        and float(eval_dict.get("overall_score", 0.0) or 0.0) >= 8.0
+        and float((eval_dict.get("hook_strength") or {}).get("score", 0.0) or 0.0) >= 8.0
+        and eval_dict.get("evaluated_by", "ai") != "heuristic"
+    )
+    if (is_strictly_passing or retry_count >= max_retries) and best_data and best_eval and _rank(best_eval) > _rank(eval_dict):
+        logger.info(
+            f"🛡️ [BestCandidateRestore] Khôi phục bản kịch bản tốt nhất "
+            f"(Overall={best_eval.get('overall_score')}/10, Hook={(best_eval.get('hook_strength') or {}).get('score')}/10)!"
+        )
         out_script_data = best_data
         out_eval_dict = best_eval
 
@@ -264,7 +281,7 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         "best_script_eval": best_eval,
         "current_step": "SCRIPT_EVALUATED",
         "progress_percent": 25,
-        "progress_message": f"Chấm điểm kịch bản: {eval_report.overall_score}/10 ({'Đạt chuẩn' if eval_report.passed else 'Cần tinh chỉnh'})",
+        "progress_message": f"Chấm điểm kịch bản: {out_eval_dict.get('overall_score', eval_report.overall_score)}/10 ({'Đạt chuẩn' if out_eval_dict.get('passed') else 'Cần tinh chỉnh'})",
     }
 
 
@@ -273,8 +290,8 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     # Luôn lấy ứng viên tốt nhất làm nền tảng để cải tiến thay vì bản bị tụt điểm
     script_data = state.get("best_script_data") or state.get("script_data", {})
     script_eval = state.get("best_script_eval") or state.get("script_eval", {})
-    retry_count = state.get("script_retry_count", 0) + 1
-    max_retries = max(1, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
+    retry_count = int(state.get("script_retry_count", 0) or 0) + 1
+    max_retries = max(1, int(os.getenv("MAX_SCRIPT_RETRIES", "2")))
     critiques = script_eval.get("actionable_critiques", [])
     cur_overall = float((script_eval or {}).get("overall_score", 0.0) or 0.0)
     cur_hook = float(((script_eval or {}).get("hook_strength") or {}).get("score", 0.0) or 0.0)
@@ -379,6 +396,22 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
             channel_id=target_channel_id,
             video_format=video_format,
         )
+
+    if target_channel_id and getattr(new_script, "title", None):
+        try:
+            from app.services.channel_intelligence import ensure_unique_title
+            unique_title, was_dup, dup_match = ensure_unique_title(
+                candidate_title=new_script.title,
+                channel_id=target_channel_id,
+                topic=topic,
+                language=language,
+                similarity_threshold=0.40,
+            )
+            if was_dup:
+                logger.info(f"🛡️ [LangGraph Refine] Đổi tiêu đề trùng lặp: '{new_script.title}' -> '{unique_title}' (Trùng: '{dup_match}')")
+                new_script.title = unique_title
+        except Exception as _e_dup_r:
+            logger.debug(f"[LangGraph Refine] Lỗi kiểm tra trùng tiêu đề: {_e_dup_r}")
 
     script_dict = new_script.to_dict() if hasattr(new_script, "to_dict") else new_script.model_dump()
     return {

@@ -275,8 +275,6 @@ class GraphRunner:
                                     "video_format": str((cp_nodes.get("generate_audio") or {}).get("video_format") or "short"),
                                 }
                         if isinstance(cp_script, dict) and cp_script.get("scenes"):
-                            cp_script.setdefault("_pre_evaluated_score", 89.0)
-                            cp_script.setdefault("_pre_evaluated_hook", 9.1)
                             existing_script = cp_script
                             logger.info(
                                 f"⚡ [StepCheckpoint Resume] Job #{self.job_id}: Khôi phục script_data từ step_checkpoint.json "

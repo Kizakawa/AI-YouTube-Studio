@@ -49,6 +49,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     from app.services.media.media_history import get_recent_media_urls
     from app.services.media.image_quality import clean_search_query_from_prompt
     used_refine_urls = get_recent_media_urls(limit=150)
+    for _prev_rej in (state.get("rejected_media_urls") or []):
+        if _prev_rej:
+            used_refine_urls.add(str(_prev_rej))
     for _m in scenes_media:
         if isinstance(_m, dict) and _m.get("source_url"):
             used_refine_urls.add(_m["source_url"])
@@ -101,7 +104,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     return False, f"hook_sharpness={hk_sh_val:.2f}<12.0"
             gate = VisualCritic().inspect_clip_before_concat(
                 str(p_cand),
-                min_short_edge=540,
+                min_short_edge=720,
                 min_sharpness=12.0 if scene_id == 1 else 5.8,
                 check_watermark=True,
                 auto_sanitize=True,
@@ -699,7 +702,22 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                         )
                                     else:
                                         Path(out_res_ref).unlink(missing_ok=True)
-                if not replaced and scene_id not in (1, 2):
+                # Chỉ cho phép hạ cấp xuống Ảnh tĩnh Google (Tier 3) nếu cảnh hiện tại vốn chưa phải là Video thật,
+                # HOẶC tổng số cảnh Video thật còn lại vẫn giữ vững sàn >= 80% của toàn bài!
+                cur_vid_scenes_cnt = sum(
+                    1 for _sx in scenes_media
+                    if isinstance(_sx, dict)
+                    and int(_sx.get("scene_id") or 0) != scene_id
+                    and str(_sx.get("media_type") or "").lower() in ("video", "hook_ready_video")
+                    and str(_sx.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm"))
+                )
+                min_req_vids_floor = max(5, int((len(scenes_media) * 0.80) + 0.999))
+                can_downgrade_to_image = (
+                    not existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
+                    or not Path(existing_mp).exists()
+                    or cur_vid_scenes_cnt >= min_req_vids_floor
+                )
+                if not replaced and scene_id not in (1, 2) and can_downgrade_to_image:
                     out_resc_img = str(media_dir / f"scene_{scene_id:03d}_refined_gimg_rescue_r{retry_count}.jpg")
                     g_res = await asyncio.to_thread(
                         execute_google_cinematic_image_sync,
@@ -825,6 +843,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     return {
         "scenes_media": scenes_media,
         "media_retry_count": retry_count,
+        "rejected_media_urls": list(used_refine_urls)[-500:],
         "current_step": "MEDIA_REFINED",
         "progress_message": f"Đã tự động sửa lại song song {len(failed_ids)} cảnh media kỹ thuật chưa đạt",
     }

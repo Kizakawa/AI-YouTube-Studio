@@ -46,13 +46,15 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         elif pacing_rating in ("TOO_SLOW", "TOO_LONG"):
             explicit_rate = "+14%" if audio_retry_count == 1 else "+20%"
         else:
-            # Lỗi HAS_SILENCE hoặc thiếu file audio cảnh -> Xóa cache metadata để buộc tổng hợp lại
+            # Lỗi HAS_SILENCE hoặc thiếu file audio cảnh -> Chỉ xóa cache của các cảnh bị thiếu hoặc rỗng, không tự ý tăng tốc
             for meta_file in audio_dir.glob("*.meta.json"):
-                try:
-                    meta_file.unlink(missing_ok=True)
-                except Exception:
-                    pass
-            explicit_rate = "+6%"
+                mp3_buddy = meta_file.with_suffix("").with_suffix(".mp3")
+                if not mp3_buddy.exists() or mp3_buddy.stat().st_size < 1024:
+                    try:
+                        meta_file.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            explicit_rate = None
         logger.info(
             f"🔄 [AudioNode] Tái tạo giọng đọc (Lần thử lại #{audio_retry_count}) "
             f"với rate={explicit_rate} để khắc phục lỗi AudioQA: {feedback_reason}"

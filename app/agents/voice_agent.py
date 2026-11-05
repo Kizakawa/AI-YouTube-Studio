@@ -607,11 +607,20 @@ class VoiceAgent:
                 used_http_fallback = False
                 scene_engine_used = self.last_used_engine
                 last_err = None
-                kokoro_scene_speed = (
+                rate_delta_factor = 1.0
+                if rate:
+                    try:
+                        _m_rt = re.search(r"([+-]?\d+(?:\.\d+)?)%", str(rate))
+                        if _m_rt:
+                            rate_delta_factor = max(0.82, min(1.25, 1.0 + float(_m_rt.group(1)) / 100.0))
+                    except Exception:
+                        rate_delta_factor = 1.0
+                base_kokoro_speed = (
                     (1.06 if is_hook_scene else (1.02 if is_second_scene else 1.00))
                     if is_long_form
                     else (1.22 if is_hook_scene else (1.14 if is_second_scene else 1.04))
                 )
+                kokoro_scene_speed = round(max(0.85, min(1.38, base_kokoro_speed * rate_delta_factor)), 2)
 
                 # ── TIER 1A-KOKORO: Nếu bật ENABLE_KOKORO_TTS=true và có model local -> Ưu tiên Kokoro-82M Neural ──
                 if not success and not global_safe_voice.startswith("vi-"):
@@ -839,6 +848,7 @@ class VoiceAgent:
                     is_second_scene,
                     is_gemini_engine,
                     is_long_form,
+                    rate_delta_factor,
                 )
 
                 # Đo duration thực bằng ffprobe (non-blocking) sau khi đã cắt khoảng lặng đuôi
@@ -1159,6 +1169,7 @@ class VoiceAgent:
         is_second_scene: bool = False,
         is_gemini_engine: bool = False,
         is_long_form: bool = False,
+        rate_delta_factor: float = 1.0,
     ) -> None:
         """
         Broadcast Voice Mastering & High-Retention Hook Pacing cho từng phân cảnh:
@@ -1172,34 +1183,39 @@ class VoiceAgent:
         if not p.exists() or p.stat().st_size <= 1024:
             return
         tmp_out = str(p.with_suffix(".mastered.mp3"))
+        # Đối với Gemini TTS hoặc HTTP fallback (không có tham số rate ở API), áp dụng trực tiếp rate_delta_factor qua bộ lọc atempo
+        engine_rate_mult = float(rate_delta_factor or 1.0) if (is_gemini_engine or is_http_fallback) else 1.0
         if is_long_form:
             if is_hook_scene:
-                hook_tempo = 1.06 if (is_http_fallback or is_gemini_engine) else 1.02
+                hook_tempo = max(0.80, min(1.40, (1.06 if (is_http_fallback or is_gemini_engine) else 1.02) * engine_rate_mult))
                 tempo_prefix = f"atempo={hook_tempo:.2f},silenceremove=start_periods=1:start_duration=0.01:start_threshold=-42dB,"
                 tail_pad = "0.18"
             elif is_second_scene:
-                sec2_tempo = 1.03 if (is_http_fallback or is_gemini_engine) else 1.00
-                tempo_prefix = f"atempo={sec2_tempo:.2f}," if sec2_tempo > 1.005 else ""
+                sec2_tempo = max(0.80, min(1.40, (1.03 if (is_http_fallback or is_gemini_engine) else 1.00) * engine_rate_mult))
+                tempo_prefix = f"atempo={sec2_tempo:.2f}," if abs(sec2_tempo - 1.0) > 0.005 else ""
                 tail_pad = "0.22"
-            elif is_http_fallback:
-                tempo_prefix = "atempo=1.02,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-40dB,"
+            elif is_http_fallback or abs(engine_rate_mult - 1.0) > 0.01:
+                body_lf_tempo = max(0.80, min(1.40, (1.02 if is_http_fallback else 1.00) * engine_rate_mult))
+                tempo_prefix = f"atempo={body_lf_tempo:.2f},silenceremove=start_periods=1:start_duration=0.02:start_threshold=-40dB,"
                 tail_pad = "0.26"
             else:
                 tempo_prefix = ""
                 tail_pad = "0.26"
         elif is_hook_scene:
-            hook_tempo = 1.18 if (is_http_fallback or is_gemini_engine) else 1.06
+            hook_tempo = max(0.80, min(1.45, (1.18 if (is_http_fallback or is_gemini_engine) else 1.06) * engine_rate_mult))
             tempo_prefix = f"atempo={hook_tempo:.2f},silenceremove=start_periods=1:start_duration=0.01:start_threshold=-42dB,"
             tail_pad = "0.01"
         elif is_second_scene:
-            sec2_tempo = 1.10 if (is_http_fallback or is_gemini_engine) else 1.03
+            sec2_tempo = max(0.80, min(1.40, (1.10 if (is_http_fallback or is_gemini_engine) else 1.03) * engine_rate_mult))
             tempo_prefix = f"atempo={sec2_tempo:.2f},"
             tail_pad = "0.015"
         elif is_http_fallback:
-            tempo_prefix = "atempo=1.05,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-40dB,"
+            body_http_tempo = max(0.80, min(1.40, 1.05 * engine_rate_mult))
+            tempo_prefix = f"atempo={body_http_tempo:.2f},silenceremove=start_periods=1:start_duration=0.02:start_threshold=-40dB,"
             tail_pad = "0.02"
         else:
-            tempo_prefix = "atempo=1.02,"
+            body_tempo = max(0.80, min(1.40, 1.02 * engine_rate_mult))
+            tempo_prefix = f"atempo={body_tempo:.2f},"
             tail_pad = "0.02"
 
         af_chain = (

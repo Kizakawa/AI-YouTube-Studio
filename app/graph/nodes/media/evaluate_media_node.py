@@ -76,12 +76,12 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 eval_report.failed_scene_ids.append(sid_chk)
             eval_report.passed = False
 
-    # Cổng kiểm toán tỷ lệ Video chuyển động thật (>= 80% trên Shorts) và 100% 5-7s đầu (Scene 1 & Scene 2) ở vòng đánh giá đầu tiên:
+    # Cổng kiểm toán tỷ lệ Video chuyển động thật (>= 80% trên Shorts) và 100% 5-7s đầu (Scene 1 & Scene 2) ở mọi vòng đánh giá:
     is_lf_check = (
         str(state.get("video_format") or (state.get("script_data") or {}).get("video_format") or "short").strip().lower() == "long"
         or len(scenes_media) >= 14
     )
-    if not is_lf_check and len(scenes_media) >= 5 and retry_count < max_media_retries_gate:
+    if not is_lf_check and len(scenes_media) >= 5 and retry_count <= max_media_retries_gate:
         from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
 
         def _is_eval_real_video(sc_d: Dict[str, Any]) -> bool:

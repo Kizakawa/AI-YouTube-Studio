@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import hashlib
 import inspect
 import json
 import logging
@@ -86,14 +87,32 @@ def _file_valid(path_str: Any, min_bytes: int = 2048) -> bool:
         return False
 
 
+def _compute_script_fingerprint(state: Dict[str, Any]) -> str:
+    """Tính chữ ký SHA-1 của kịch bản + giọng đọc + định dạng để tránh dùng nhầm checkpoint cũ khi kịch bản thay đổi."""
+    script_d = state.get("script_data") if isinstance(state.get("script_data"), dict) else {}
+    scenes = script_d.get("scenes") if isinstance(script_d.get("scenes"), list) else []
+    narr_joined = "|".join(
+        str(s.get("narration") or "").strip()
+        for s in scenes
+        if isinstance(s, dict)
+    )
+    raw_str = f"{state.get('topic', '')}||{state.get('video_format', '')}||{state.get('preferred_voice', '')}||{narr_joined}"
+    return hashlib.sha1(raw_str.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
 def _can_reuse_cached_node(node_name: str, state: Dict[str, Any], cached_out: Dict[str, Any]) -> bool:
     """
-    Xác minh nghiêm ngặt rằng dữ liệu checkpoint của `node_name` vẫn còn đầy đủ file vật lý trên đĩa
-    và không nằm trong vòng lặp retry.
+    Xác minh nghiêm ngặt rằng dữ liệu checkpoint của `node_name` vẫn còn đầy đủ file vật lý trên đĩa,
+    khớp chữ ký kịch bản hiện tại và không nằm trong vòng lặp retry.
     """
     if not isinstance(cached_out, dict) or not cached_out:
         return False
     if state.get("edit_request"):
+        return False
+
+    saved_fp = str(cached_out.get("_node_script_fp") or "").strip()
+    cur_fp = _compute_script_fingerprint(state)
+    if saved_fp and cur_fp and saved_fp != cur_fp:
         return False
 
     if node_name == "generate_audio":
@@ -126,11 +145,13 @@ def _can_reuse_cached_node(node_name: str, state: Dict[str, Any], cached_out: Di
         s1_mp = str(s1.get("media_path") or "")
         if not _file_valid(s1_mp, min_bytes=10_000) or not s1_mp.lower().endswith((".mp4", ".mov", ".webm")):
             return False
+        if float(s1.get("hook_sharpness") or 12.0) < 12.0:
+            return False
         try:
             from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
             return bool(verify_hook_clip_genuine_motion(s1_mp)[0])
         except Exception:
-            return True
+            return False
 
     if node_name == "fetch_media":
         if int(state.get("media_retry_count") or 0) > 0:
@@ -139,7 +160,13 @@ def _can_reuse_cached_node(node_name: str, state: Dict[str, Any], cached_out: Di
         expected_n = len(((state.get("script_data") or {}).get("scenes")) or [])
         if not scenes_media or (expected_n > 0 and len(scenes_media) < expected_n):
             return False
-        if not all(_file_valid(sm.get("media_path"), min_bytes=4000) and "_graphic.png" not in str(sm.get("media_path") or "").lower() and str(sm.get("media_type") or "").lower() != "graphic" for sm in scenes_media if isinstance(sm, dict)):
+        if not all(
+            _file_valid(sm.get("media_path"), min_bytes=4000)
+            and "_graphic.png" not in str(sm.get("media_path") or "").lower()
+            and str(sm.get("media_type") or "").lower() != "graphic"
+            for sm in scenes_media
+            if isinstance(sm, dict)
+        ):
             return False
         is_lf_cp = (
             str(state.get("video_format") or (state.get("script_data") or {}).get("video_format") or "short").strip().lower() == "long"
@@ -155,7 +182,7 @@ def _can_reuse_cached_node(node_name: str, state: Dict[str, Any], cached_out: Di
                     if not mp_open.lower().endswith((".mp4", ".mov", ".webm")) or not verify_hook_clip_genuine_motion(mp_open)[0]:
                         return False
             except Exception:
-                pass
+                return False
         return True
 
     return False
@@ -170,6 +197,10 @@ def _load_node_checkpoint(node_name: str, state: Dict[str, Any]) -> Dict[str, An
     try:
         with _file_lock:
             data = json.loads(cp_path.read_text(encoding="utf-8"))
+        saved_topic = str(data.get("topic") or "").strip().lower()
+        cur_topic = str(state.get("topic") or "").strip().lower()
+        if saved_topic and cur_topic and saved_topic != cur_topic:
+            return None
         nodes_map = data.get("nodes") or {}
         cached_out = nodes_map.get(node_name)
         if node_name == "produce_hook_video" and isinstance(cached_out, dict):
@@ -195,6 +226,9 @@ def _save_node_checkpoint(node_name: str, state: Dict[str, Any], output: Dict[st
         return
     try:
         cp_path.parent.mkdir(parents=True, exist_ok=True)
+        cur_fp = _compute_script_fingerprint(state)
+        out_to_save = dict(output)
+        out_to_save["_node_script_fp"] = cur_fp
         with _file_lock:
             if cp_path.exists():
                 try:
@@ -203,10 +237,15 @@ def _save_node_checkpoint(node_name: str, state: Dict[str, Any], output: Dict[st
                     payload = {}
             else:
                 payload = {}
-            payload.setdefault("job_id", state.get("job_id"))
+            payload["job_id"] = state.get("job_id")
+            if state.get("topic"):
+                payload["topic"] = str(state.get("topic"))
+            payload["script_fp"] = cur_fp
             payload["updated_at"] = time.time()
             nodes_map = payload.setdefault("nodes", {})
-            nodes_map[node_name] = output
+            if node_name == "generate_audio":
+                nodes_map.pop("evaluate_audio", None)
+            nodes_map[node_name] = out_to_save
             cp_path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
     except Exception as e:
         logger.debug(f"[CheckpointStore] Không thể ghi checkpoint node {node_name}: {e}")
@@ -261,4 +300,3 @@ def wrap_node_with_checkpoint(node_name: str, node_fn: Callable):
         return out
 
     return _sync_wrapper
-

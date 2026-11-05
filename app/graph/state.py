@@ -115,19 +115,19 @@ class VideoWorkflowState(TypedDict, total=False):
     video_format: Optional[str]  # 'short' (9:16 Shorts) | 'long' (16:9 Long-form Documentary)
     director_notes: Optional[str]
     work_dir: str
-    
+
     # Nhận diện thực thể
     primary_entity: Optional[str]
     entity_type: str
     entity_media_pool: List[Dict[str, Any]]
-    
+
     # Bước 1: Kịch bản (Script)
     script_data: Optional[Dict[str, Any]]  # ScriptContract dict
     script_eval: Optional[Dict[str, Any]]  # ScriptEvaluationReport dict
     script_retry_count: int
     best_script_data: Optional[Dict[str, Any]]
     best_script_eval: Optional[Dict[str, Any]]
-    
+
     # Bước 2: Giọng đọc (Audio)
     scenes_audio: List[Dict[str, Any]]
     full_audio_path: Optional[str]
@@ -138,23 +138,24 @@ class VideoWorkflowState(TypedDict, total=False):
 
     # Bước 2.5: Đạo diễn Thị giác (Visual Director Agent)
     visual_plan: Optional[Dict[str, Any]]  # VisualPlanReport dict
-    
+
     # Bước 3: Hình ảnh / Video (Media) & Node chuyên biệt Cảnh 1 Hook Video
     pre_resolved_hook_media: Optional[Dict[int, Dict[str, Any]]]  # Các cảnh (Cảnh 1 / Cảnh Cao Trào) đã được HookVideoNode cắt từ Short trên mạng
     scenes_media: List[Dict[str, Any]]
     parallel_search_results: Annotated[List[Dict[str, Any]], operator.add]  # Gom kết quả tìm kiếm song song 5 luồng qua LangGraph Send API + operator.add
     media_eval: Optional[Dict[str, Any]]  # VisualEvaluationReport (kiểm tra độ sắc nét & độ phân giải)
     media_retry_count: int
+    rejected_media_urls: Optional[List[str]]  # Lưu các URL ứng viên đã thử/bị loại qua các vòng refine_media để không tải lặp
     hook_video_eval: Optional[Dict[str, Any]]  # Báo cáo chấm điểm & dựng riêng Cảnh 1 Hook Video
-    
+
     # Bước 4: Video thành phẩm (Render & QA)
     rendered_video_path: Optional[str]
     video_eval: Optional[Dict[str, Any]]
     render_retry_count: int
-    
+
     # Chỉnh sửa vi mô (Granular Edit)
     edit_request: Optional[Dict[str, Any]]
-    
+
     # Tiến độ & Điều phối
     status: str
     current_step: str
