@@ -706,6 +706,219 @@ Return ONLY valid JSON:
                 logger.debug(f"[BilibiliDirectDub] Audio translation warning: {e_aud}")
         return []
 
+    @classmethod
+    def select_best_hero_timestamp(
+        cls,
+        mp4_path: str,
+        duration_sec: float = 0.0,
+        avoid_windows: Optional[List[Tuple[float, float]]] = None,
+        num_samples: int = 12,
+    ) -> float:
+        """
+        Quét các mốc thời gian ứng viên trong video bằng Toán học Thị giác (CV Saliency):
+        - Đo độ sắc nét chi tiết trung tâm (Laplacian P90 vùng chủ thể y=12%..72%, x=18%..82%),
+        - Đo độ tương phản chủ thể (Contrast STD) & tỷ lệ nổi bật chủ thể so với biên,
+        - Loại bỏ hoàn toàn các cảnh nước đục phẳng, cảnh tối mù, hoặc cảnh lá cây/bầu trời trống rỗng.
+        Trả về mốc thời gian (giây) có khung hình cận cảnh chủ thể sắc nét và kịch tính nhất cho Thumbnail.
+        """
+        import io
+        import numpy as np
+        from PIL import Image
+
+        dur_s = float(duration_sec) if duration_sec > 10.0 else cls._measure_playable_pts_duration_sec(mp4_path, fallback_sec=90.0)
+        safe_start = min(14.0, dur_s * 0.12)
+        safe_end = max(safe_start + 8.0, dur_s - 14.0)
+        avoid = avoid_windows or []
+
+        best_ts = round((safe_start + safe_end) * 0.5, 2)
+        best_score = -1e9
+
+        for i in range(max(4, num_samples)):
+            cand_ts = safe_start + (i / float(max(1, num_samples - 1))) * (safe_end - safe_start)
+            if any((w_st - 4.5) <= cand_ts <= (w_et + 4.5) for w_st, w_et in avoid):
+                continue
+            try:
+                raw = subprocess.run(
+                    [
+                        get_ffmpeg_exe(), "-v", "error",
+                        "-ss", f"{cand_ts:.2f}",
+                        "-i", str(mp4_path),
+                        "-frames:v", "1",
+                        "-vf", "scale=480:270",
+                        "-f", "image2pipe", "-vcodec", "png", "-",
+                    ],
+                    capture_output=True,
+                    timeout=6,
+                    check=False,
+                ).stdout
+                if not raw:
+                    continue
+                im = Image.open(io.BytesIO(raw)).convert("RGB")
+                rgb = np.array(im, dtype=np.float32)
+                # Vùng chủ thể trung tâm phía trên thanh phụ đề dưới (y: 10%..74%, x: 18%..82%)
+                roi = rgb[27:200, 86:394, :]
+                luma = 0.299 * roi[:, :, 0] + 0.587 * roi[:, :, 1] + 0.114 * roi[:, :, 2]
+                mean_luma = float(np.mean(luma))
+                std_luma = float(np.std(luma))
+                if mean_luma < 42.0 or mean_luma > 215.0 or std_luma < 24.0:
+                    continue
+
+                lap_c = np.abs(
+                    4.0 * luma[1:-1, 1:-1]
+                    - luma[:-2, 1:-1]
+                    - luma[2:, 1:-1]
+                    - luma[1:-1, :-2]
+                    - luma[1:-1, 2:]
+                )
+                lap_p90 = float(np.percentile(lap_c, 90))
+                lap_p98 = float(np.percentile(lap_c, 98))
+
+                # Phạt nặng cảnh nước bùn đục hoặc nền đơn sắc phẳng (khi R>G>B đồng nhất và độ tương phản cục bộ thấp)
+                r_m, g_m, b_m = float(np.mean(roi[:, :, 0])), float(np.mean(roi[:, :, 1])), float(np.mean(roi[:, :, 2]))
+                is_muddy_flat = (r_m > g_m + 15.0 and g_m > b_m + 15.0 and std_luma < 44.0 and lap_p90 < 28.0)
+                if is_muddy_flat:
+                    continue
+
+                # Điểm hội tụ chủ thể (Hero Saliency Score)
+                score = (lap_p90 * 1.8) + (lap_p98 * 0.6) + (std_luma * 1.1) - abs(mean_luma - 118.0) * 0.25
+                if score > best_score:
+                    best_score = score
+                    best_ts = round(cand_ts, 2)
+            except Exception:
+                continue
+
+        return best_ts
+
+    @classmethod
+    def stamp_hero_auto_thumbnails_on_mp4(
+        cls,
+        mp4_path: str,
+        title_text: str,
+        work_tag: str = "job",
+        hero_timestamps: Optional[List[float]] = None,
+    ) -> str:
+        """
+        Giải pháp Tăng CTR Tự Động 100% Cho Video Dài (16:9) Không Cần Xác Thực SĐT:
+        - Vì YouTube LUÔN lấy mốc 50% (`2.jpg` = `hqdefault.jpg`) làm ảnh bìa mặc định (cùng 25% `1.jpg` và 75% `3.jpg`),
+          hàm này tự động trích xuất Cảnh Cận Cảnh Sát Thủ Đẹp Nhất (Hero Clip) trong chính video
+          và đặt vào đúng 3 cửa sổ 25%, 50%, 75% (mỗi cửa sổ 6.4s, giữ nguyên 100% âm thanh gốc).
+        - Phủ dải băng đen mờ Điện ảnh ở đáy (`y=860..1080`) để xóa sạch phụ đề nhỏ bên dưới,
+          sau đó đốt Bảng Tiêu Đề 2 Tầng Cực Đại (`88px` Trắng + Vàng Gold `#FFE500`) ở vùng dưới,
+          giúp 80% khung hình phía trên hiển thị trọn vẹn khuôn mặt/ánh mắt sát thủ không bị chữ đè!
+        """
+        from app.utils.subtitle_helper import SubtitleHelper
+
+        dur_ms = get_duration_ms(mp4_path)
+        if dur_ms < 45000:
+            return mp4_path
+        dur_s = dur_ms / 1000.0
+        banner_ass_txt = SubtitleHelper.format_auto_thumb_banner_text(title_text)
+        if not banner_ass_txt:
+            return mp4_path
+
+        pct_list = (0.25, 0.50, 0.75)
+        half_w = 3.2
+        anchor_windows = [( dur_s * p - half_w, dur_s * p + half_w ) for p in pct_list]
+
+        if not hero_timestamps:
+            h1 = cls.select_best_hero_timestamp(mp4_path, duration_sec=dur_s, avoid_windows=anchor_windows, num_samples=16)
+            h2 = cls.select_best_hero_timestamp(
+                mp4_path,
+                duration_sec=dur_s,
+                avoid_windows=[*anchor_windows, (h1 - 25.0, h1 + 25.0)],
+                num_samples=16,
+            )
+            hero_timestamps = [h2, h1, h1]  # Ưu tiên h1 (đẹp nhất) cho đúng mốc 50% (hqdefault.jpg) và 75%!
+
+        eff_font = SubtitleHelper._resolve_effective_font("Montserrat ExtraBold")
+        ass_dir = Path("storage/temp")
+        ass_dir.mkdir(parents=True, exist_ok=True)
+        ass_file = ass_dir / f"hero_thumb_{work_tag}.ass"
+        ass_lines = [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            "PlayResX: 1920",
+            "PlayResY: 1080",
+            "ScaledBorderAndShadow: yes",
+            "WrapStyle: 2",
+            "YCbCr Matrix: TV.709",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            f"Style: AutoThumbBanner,{eff_font},88,&H0000E5FF,&H00FFFFFF,&H00000000,&HC8000000,-1,0,0,0,104,100,1.8,0,1,6.8,3.2,2,70,70,42,1",
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+            f"Dialogue: 3,0:00:00.00,0:00:10.00,AutoThumbBanner,,0,0,0,,{banner_ass_txt}",
+        ]
+        ass_file.write_text("\n".join(ass_lines) + "\n", encoding="utf-8")
+        rel_ass = ass_file.as_posix()
+
+        # Dựng 3 đoạn Hero Clip 6.4s có dải nền tối đáy (xóa phụ đề nhỏ cũ) + Bảng Tiêu Đề Cực Đại 88px ở đáy
+        win_dur = round(half_w * 2.0, 2)
+        hero_clips: List[str] = []
+        for idx_p, h_ts in enumerate(hero_timestamps[:3]):
+            h_clip = str(ass_dir / f"hero_win_{work_tag}_{idx_p}.mp4")
+            # Cắt sạch vùng đỉnh (tránh dính banner cũ nếu có) và phủ băng đen đáy y=835..1080 làm nền cho chữ 88px
+            vf_hero = (
+                "crop=iw*0.94:ih*0.78:iw*0.03:ih*0.10,"
+                "scale=1920:900:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:900,setsar=1,"
+                "unsharp=5:5:0.9:3:3:0.4,eq=contrast=1.08:saturation=1.12,"
+                "pad=1920:1080:0:0:black,"
+                "drawbox=x=0:y=835:w=1920:h=245:color=black@0.88:t=fill,"
+                "drawbox=x=0:y=832:w=1920:h=4:color=0xFFE500@0.95:t=fill,"
+                f"ass={rel_ass},fps=30,format=yuv420p"
+            )
+            subprocess.run(
+                [
+                    get_ffmpeg_exe(), "-y", "-v", "error",
+                    "-ss", f"{max(5.0, float(h_ts) - 1.5):.2f}",
+                    "-t", f"{win_dur:.2f}",
+                    "-i", str(mp4_path),
+                    "-vf", vf_hero,
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
+                    "-r", "30", "-pix_fmt", "yuv420p", "-an",
+                    h_clip,
+                ],
+                timeout=60,
+                check=False,
+            )
+            hero_clips.append(h_clip)
+
+        # Ghép mượt mà các đoạn video gốc + 3 cửa sổ Hero Thumbnail tại đúng 25%, 50%, 75% và giữ nguyên 100% âm thanh gốc
+        out_mp4 = str(Path(mp4_path).with_name(f"{Path(mp4_path).stem}_herothumb.mp4"))
+        w0_st, w0_et = anchor_windows[0]
+        w1_st, w1_et = anchor_windows[1]
+        w2_st, w2_et = anchor_windows[2]
+
+        fc_splice = (
+            f"[0:v]trim=0:{w0_st:.2f},setpts=PTS-STARTPTS,fps=30,format=yuv420p[v_a];"
+            f"[1:v]trim=0:{win_dur:.2f},setpts=PTS-STARTPTS,fps=30,format=yuv420p[v_h0];"
+            f"[0:v]trim={w0_et:.2f}:{w1_st:.2f},setpts=PTS-STARTPTS,fps=30,format=yuv420p[v_b];"
+            f"[2:v]trim=0:{win_dur:.2f},setpts=PTS-STARTPTS,fps=30,format=yuv420p[v_h1];"
+            f"[0:v]trim={w1_et:.2f}:{w2_st:.2f},setpts=PTS-STARTPTS,fps=30,format=yuv420p[v_c];"
+            f"[3:v]trim=0:{win_dur:.2f},setpts=PTS-STARTPTS,fps=30,format=yuv420p[v_h2];"
+            f"[0:v]trim={w2_et:.2f}:{dur_s:.2f},setpts=PTS-STARTPTS,fps=30,format=yuv420p[v_d];"
+            "[v_a][v_h0][v_b][v_h1][v_c][v_h2][v_d]concat=n=7:v=1:a=0[vout]"
+        )
+        cmd_final = [
+            get_ffmpeg_exe(), "-y", "-v", "error",
+            "-i", str(mp4_path),
+            "-i", hero_clips[0],
+            "-i", hero_clips[1],
+            "-i", hero_clips[2],
+            "-filter_complex", fc_splice,
+            "-map", "[vout]", "-map", "0:a:0",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            out_mp4,
+        ]
+        res = subprocess.run(cmd_final, timeout=240, check=False)
+        if res.returncode == 0 and Path(out_mp4).exists() and Path(out_mp4).stat().st_size > 10_000_000:
+            Path(out_mp4).replace(Path(mp4_path))
+        return mp4_path
+
     @staticmethod
     def _extract_shifted_scene_ass(
         master_ass_path: str,
@@ -736,6 +949,16 @@ Return ONLY valid JSON:
             return f"{h}:{m:02d}:{s:05.2f}"
 
         try:
+            max_d = float(scene_clip_dur_sec or (end_sec - start_sec) or 15.0)
+            st_b: Optional[float] = None
+            et_b: Optional[float] = None
+            if auto_thumb_banner and auto_thumb_local_sec is not None:
+                st_b = max(0.15, float(auto_thumb_local_sec) - 3.6)
+                et_b = min(max_d - 0.15, float(auto_thumb_local_sec) + 3.6)
+                if et_b <= st_b + 1.0:
+                    st_b = 0.20
+                    et_b = max(4.5, max_d - 0.20)
+
             lines = Path(master_ass_path).read_text(encoding="utf-8", errors="ignore").splitlines()
             out_lines: List[str] = []
             for ln in lines:
@@ -748,8 +971,14 @@ Return ONLY valid JSON:
                         st = _parse_ts(parts[1])
                         et = _parse_ts(parts[2])
                         if et > start_sec + 0.03 and st < end_sec - 0.03:
-                            parts[1] = _fmt_ts(max(0.0, st - start_sec))
-                            parts[2] = _fmt_ts(min(end_sec - start_sec, et - start_sec))
+                            loc_st = max(0.0, st - start_sec)
+                            loc_et = min(end_sec - start_sec, et - start_sec)
+                            # Ngăn phụ đề nhỏ Karaoke đè lên Bảng Tiêu Đề Cực Đại AutoThumbBanner ở đáy
+                            if st_b is not None and et_b is not None:
+                                if loc_et > (st_b - 0.10) and loc_st < (et_b + 0.10):
+                                    continue
+                            parts[1] = _fmt_ts(loc_st)
+                            parts[2] = _fmt_ts(loc_et)
                             out_lines.append(",".join(parts))
                 else:
                     out_lines.append(ln)
@@ -757,13 +986,7 @@ Return ONLY valid JSON:
                 out_lines.append(
                     f"Dialogue: 1,0:00:00.20,0:00:04.20,PatternInterruptBadge,,0,0,0,,{{\\fad(200,250)}}{overlay_badge}"
                 )
-            if auto_thumb_banner and auto_thumb_local_sec is not None:
-                max_d = float(scene_clip_dur_sec or (end_sec - start_sec) or 15.0)
-                st_b = max(0.15, float(auto_thumb_local_sec) - 3.6)
-                et_b = min(max_d - 0.15, float(auto_thumb_local_sec) + 3.6)
-                if et_b <= st_b + 1.0:
-                    st_b = 0.20
-                    et_b = max(4.5, max_d - 0.20)
+            if auto_thumb_banner and st_b is not None and et_b is not None:
                 out_lines.append(
                     f"Dialogue: 3,{_fmt_ts(st_b)},{_fmt_ts(et_b)},AutoThumbBanner,,0,0,0,,{{\\fad(150,150)}}{auto_thumb_banner}"
                 )
@@ -1091,6 +1314,16 @@ Return ONLY valid JSON:
                 s0_off = round(safe_head + ((slot_i / n_slots) * usable_span), 2)
                 s1_off = round(safe_head + ((((slot_i + 0.35) / n_slots) % 1.0) * usable_span), 2)
                 s2_off = round(safe_head + ((((slot_i + 0.70) / n_slots) % 1.0) * usable_span), 2)
+                if scene_auto_local_sec is not None:
+                    hero_off = await asyncio.to_thread(
+                        self.select_best_hero_timestamp,
+                        m_path,
+                        m_dur,
+                    )
+                    hero_off = round(min(max(safe_head, hero_off - 2.0), max(safe_head, m_dur - 11.5)), 2)
+                    s0_off = hero_off
+                    s1_off = hero_off
+                    s2_off = hero_off
                 slot_span = max(8.5, min(11.2, m_dur - max(s0_off, s1_off, s2_off) - 0.6))
 
                 out_clip = str(media_dir / f"scene_{sc.scene_id:03d}_16x9.mp4")

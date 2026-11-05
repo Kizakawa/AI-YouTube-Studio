@@ -655,13 +655,59 @@ class SubtitleHelper:
             return f"{line1}\\N{line2}"
         return " ".join(parts)
 
+    _THUMB_FILLER_STOPWORDS = frozenset({
+        "THE", "INSIDE", "INTO", "OVER", "UNDER", "WITH", "FROM", "ABOUT", "THROUGH",
+        "A", "AN", "OF", "IN", "ON", "AT", "BY", "FOR", "TO", "AND",
+        "O", "A", "OS", "AS", "UM", "UMA", "DE", "DO", "DA", "DOS", "DAS",
+        "NO", "NA", "NOS", "NAS", "EM", "COM", "POR", "PARA", "MAIS",
+    })
+
+    @classmethod
+    def _compress_thumb_clause(cls, text_clause: str, max_words: int = 4, max_chars: int = 22) -> str:
+        """
+        Rút gọn mệnh đề tiêu đề thành cụm 3–4 từ cô đọng nhất (<= 22 ký tự) cho Thumbnail:
+        - Nếu có 'VS', giữ trọn vẹn [Thực thể A] VS [Thực thể B].
+        - Tự động lược bỏ mạo từ/giới từ thừa ('THE', 'INSIDE', 'OS', 'DO'...) nhưng giữ nguyên 100% con số & đơn vị ('530 PSI', '70 MPH').
+        """
+        tokens = [t.strip(" ,.-:;!?") for t in str(text_clause or "").split() if t.strip(" ,.-:;!?")]
+        if not tokens:
+            return ""
+        if "VS" in tokens:
+            vs_idx = tokens.index("VS")
+            left_t = [w for w in tokens[:vs_idx] if w not in cls._THUMB_FILLER_STOPWORDS] or tokens[:vs_idx]
+            right_t = [w for w in tokens[vs_idx + 1 :] if w not in cls._THUMB_FILLER_STOPWORDS] or tokens[vs_idx + 1 :]
+            l_pick = left_t[:2]
+            r_pick = right_t[:2]
+            cand = " ".join([*l_pick, "VS", *r_pick])
+            if len(cand) > max_chars and len(r_pick) > 1:
+                cand = " ".join([*l_pick, "VS", r_pick[-1]])
+            if len(cand) > max_chars and len(l_pick) > 1:
+                cand = " ".join([l_pick[0], "VS", r_pick[0] if r_pick else ""])
+            return cand.strip()
+
+        if len(tokens) <= max_words and len(" ".join(tokens)) <= max_chars:
+            return " ".join(tokens)
+
+        filtered = [w for w in tokens if w not in cls._THUMB_FILLER_STOPWORDS or any(ch.isdigit() for ch in w)]
+        if not filtered:
+            filtered = tokens
+        picked: List[str] = []
+        for w in filtered:
+            if len(picked) >= max_words:
+                break
+            nxt = " ".join([*picked, w])
+            if len(nxt) > max_chars and len(picked) >= 2:
+                break
+            picked.append(w)
+        return " ".join(picked if picked else filtered[:max_words])
+
     @classmethod
     def format_auto_thumb_banner_text(cls, raw_title: Optional[str]) -> Optional[str]:
         """
-        Chuyển tiêu đề hoặc hook_title thành dòng chữ Two-Tone (Trắng + Vàng Gold #FFE500)
-        ngắn gọn, sắc nét để hiển thị trên nền video đang chuyển động tại mốc 50% & 75%
-        (và 25% cho video dài), giúp YouTube Auto-Thumbnail chụp trúng khung hình có tiêu đề
-        nổi bật khi kênh chưa xác thực SĐT (không bao giờ chèn ở 0.0s đầu).
+        Chuyển tiêu đề hoặc hook_title thành dòng chữ Two-Tone Click-Magnet (Trắng + Vàng Gold #FFE500)
+        cực đại, cô đọng (tối đa 3–4 từ/dòng, <= 22 ký tự/dòng) để hiển thị tại đúng mốc 50% (mặc định của YouTube)
+        và 75% (cùng 25% cho video dài), giúp YouTube Auto-Thumbnail chụp trúng khung hình có tiêu đề
+        rõ nét ngay cả trên màn hình điện thoại nhỏ (không bao giờ chèn ở 0.0s đầu).
         """
         if not raw_title:
             return None
@@ -674,22 +720,21 @@ class SubtitleHelper:
 
         if ":" in clean:
             left_p, right_p = [p.strip() for p in clean.split(":", 1)]
-            w_left = left_p.split()[:5]
-            w_right = right_p.split()[:5]
-            if w_left and w_right:
-                return f"{{\\1c{ASS_WHITE}&}}{' '.join(w_left)}\\N{{\\1c{ASS_YELLOW}&}}{' '.join(w_right)}!"
+            line1 = cls._compress_thumb_clause(left_p, max_words=4, max_chars=22)
+            line2 = cls._compress_thumb_clause(right_p, max_words=4, max_chars=22)
+            if line1 and line2:
+                return f"{{\\1c{ASS_WHITE}&}}{line1}\\N{{\\1c{ASS_YELLOW}&\\fscx106\\fscy106}}{line2}!"
 
         words = clean.split()
         if len(words) <= 4:
             if len(words) >= 2:
-                return f"{{\\1c{ASS_WHITE}&}}{' '.join(words[:-1])} {{\\1c{ASS_YELLOW}&}}{words[-1]}!"
+                return f"{{\\1c{ASS_WHITE}&}}{' '.join(words[:-1])} {{\\1c{ASS_YELLOW}&\\fscx106\\fscy106}}{words[-1]}!"
             return f"{{\\1c{ASS_YELLOW}&}}{clean}!"
 
-        words = words[:8]
-        mid = max(2, len(words) // 2)
-        line1 = " ".join(words[:mid])
-        line2 = " ".join(words[mid:])
-        return f"{{\\1c{ASS_WHITE}&}}{line1}\\N{{\\1c{ASS_YELLOW}&}}{line2}"
+        mid = max(2, min(4, len(words) // 2))
+        line1 = cls._compress_thumb_clause(" ".join(words[:mid]), max_words=4, max_chars=22)
+        line2 = cls._compress_thumb_clause(" ".join(words[mid:]), max_words=4, max_chars=22)
+        return f"{{\\1c{ASS_WHITE}&}}{line1}\\N{{\\1c{ASS_YELLOW}&\\fscx106\\fscy106}}{line2}!"
 
     @classmethod
     def build_ass_content(
@@ -752,6 +797,10 @@ class SubtitleHelper:
         if is_long_form:
             header = header.replace("PlayResX: 1080\nPlayResY: 1920", "PlayResX: 1920\nPlayResY: 1080")
             header = header.replace(",2,115,115,", ",2,140,140,")
+            header = header.replace(
+                f"Style: AutoThumbBanner,{eff_font},64,&H0000E5FF,&H00FFFFFF,&H00000000,&HB4000000,-1,0,0,0,100,100,1.5,0,1,4.8,2.4,8,90,90,44,1",
+                f"Style: AutoThumbBanner,{eff_font},88,&H0000E5FF,&H00FFFFFF,&H00000000,&HC8000000,-1,0,0,0,104,100,1.8,0,1,6.8,3.2,2,70,70,48,1",
+            )
 
         dialogue_lines = []
         current_offset_ms = 0
