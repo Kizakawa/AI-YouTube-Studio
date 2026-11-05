@@ -1982,54 +1982,6 @@ Return ONLY valid JSON:
                     _sh_fp.copy2(_src_fp, fullpeak_persist_path)
             except Exception:
                 fullpeak_persist_path = clean_p_path if use_precleaned else best_v_path
-            try:
-                scene_2_duration_sec = float(dur_s2 or 3.2)
-                reserve_s2_path = str(work_dir / "hook_reserve_002.mp4")
-                unused_other_passing = [
-                    c for c in other_passing
-                    if c.get("video_path") not in used_second_paths and Path(str(c.get("clean_peak_path") or c.get("video_path") or "")).exists()
-                ]
-                if unused_other_passing:
-                    s2_cand = unused_other_passing[0]
-                    s2_src = str(s2_cand.get("clean_peak_path") or s2_cand["video_path"])
-                    s2_use_pre = bool(s2_cand.get("clean_peak_path") and Path(str(s2_cand["clean_peak_path"])).exists())
-                    s2_off = 0.0 if s2_use_pre else float(s2_cand.get("peak_offset_sec", 0.0))
-                    trim_video(
-                        input_path=s2_src,
-                        duration_seconds=max(3.8, scene_2_duration_sec + 0.25),
-                        output_path=reserve_s2_path,
-                        width=1080,
-                        height=1920,
-                        fps=30,
-                        is_scifi=is_scifi,
-                        niche=atmosphere_fx,
-                        apply_grading=True,
-                        is_hook_scene=False,
-                        fair_use_transform=not s2_use_pre,
-                        start_offset_sec=s2_off,
-                        preserve_continuous_flow=True,
-                    )
-                elif Path(fullpeak_persist_path).exists():
-                    fp_dur_s = get_duration_ms(fullpeak_persist_path) / 1000.0
-                    s2_cont_off = round(target_hook_duration_sec + 0.25, 2)
-                    if fp_dur_s >= s2_cont_off + max(2.8, scene_2_duration_sec * 0.8):
-                        trim_video(
-                            input_path=fullpeak_persist_path,
-                            duration_seconds=max(3.6, scene_2_duration_sec + 0.25),
-                            output_path=reserve_s2_path,
-                            width=1080,
-                            height=1920,
-                            fps=30,
-                            is_scifi=is_scifi,
-                            niche=atmosphere_fx,
-                            apply_grading=True,
-                            is_hook_scene=False,
-                            fair_use_transform=True,
-                            start_offset_sec=s2_cont_off,
-                            preserve_continuous_flow=True,
-                        )
-            except Exception as _e_res_s2:
-                logger.debug(f"[HookVideoNode] Scene 2 reserve clip preparation skip: {_e_res_s2}")
             pre_resolved_hook_media[1] = {
                 "media_path": hook_output_clip,
                 "media_type": "hook_ready_video",

@@ -659,18 +659,11 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         item["source_url"] = str(bili_open_res.get("source_url") or bili_open_res["media_path"])
                         replaced = True
                         logger.info(f"Scene {scene_id}: 🎬 [Mandatory Video Bilibili Documentary] Đã nạp Video tư liệu kiểm định Vision cho '{clean_kw_q}'")
-                    if not replaced and scene_id in (1, 2):
-                        reserve_cand_ref = (
-                            work_dir / "hook_motion_001_fullpeak.mp4"
-                            if scene_id == 1
-                            else work_dir / "hook_reserve_002.mp4"
-                        )
-                        if not reserve_cand_ref.exists() and scene_id == 2:
-                            reserve_cand_ref = work_dir / "hook_motion_001_fullpeak.mp4"
+                    if not replaced and scene_id == 1:
+                        reserve_cand_ref = work_dir / "hook_motion_001_fullpeak.mp4"
                         if reserve_cand_ref.exists() and reserve_cand_ref.stat().st_size > 20_000:
                             res_dur_ref = get_duration_ms(str(reserve_cand_ref)) / 1000.0
-                            start_off_ref = 0.0 if reserve_cand_ref.name == "hook_reserve_002.mp4" or scene_id == 1 else 3.35
-                            if res_dur_ref >= start_off_ref + max(2.4, sc_dur_sec * 0.75):
+                            if res_dur_ref >= max(2.4, sc_dur_sec * 0.75):
                                 out_res_ref = str(media_dir / f"scene_{scene_id:03d}_refined_hook_reserve_r{retry_count}.mp4")
                                 await asyncio.to_thread(
                                     trim_video,
@@ -683,85 +676,25 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     is_scifi=is_scifi_val,
                                     niche=current_niche,
                                     apply_grading=True,
-                                    is_hook_scene=(scene_id == 1),
-                                    fair_use_transform=(start_off_ref > 0.0),
-                                    start_offset_sec=start_off_ref,
+                                    is_hook_scene=True,
+                                    fair_use_transform=False,
+                                    start_offset_sec=0.0,
                                     preserve_continuous_flow=True,
                                 )
                                 if Path(out_res_ref).exists() and Path(out_res_ref).stat().st_size > 15_000:
                                     ok_ref_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, out_res_ref)
                                     if ok_ref_mot:
                                         item["media_path"] = out_res_ref
-                                        item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
+                                        item["media_type"] = "hook_ready_video"
                                         item["pose_images"] = []
                                         item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
                                         item["source_url"] = str(reserve_cand_ref)
                                         replaced = True
                                         logger.info(
-                                            f"Scene {scene_id}: 🔥 [Opening 5-7s Hook Reserve] Đã nạp Video chuyển động thật đã duyệt Vision ('{reserve_cand_ref.name}') -> {Path(out_res_ref).name}"
+                                            f"Scene {scene_id}: 🔥 [Scene 1 Hook Recovery] Đã khôi phục Video Hook Cảnh 1 ('{reserve_cand_ref.name}') -> {Path(out_res_ref).name}"
                                         )
                                     else:
                                         Path(out_res_ref).unlink(missing_ok=True)
-                # Nếu cảnh chưa tìm được video thay thế từ YouTube/Pexels nhưng kho dự trữ Hook (`hook_reserve_002.mp4`
-                # hoặc phần đuôi chưa dùng của `hook_motion_001_fullpeak.mp4`) vẫn chưa được phân cảnh nào khác sử dụng,
-                # ưu tiên cắt đoạn video chuyển động thật đã duyệt Vision đó để cứu cảnh hiện tại!
-                if not replaced and not is_lf_refine:
-                    try:
-                        from app.utils.ffmpeg_helper import get_duration_ms
-                        from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion
-                        already_used_paths = {
-                            str(_sx.get("media_path") or "")
-                            for _sx in scenes_media
-                            if isinstance(_sx, dict) and int(_sx.get("scene_id") or 0) != scene_id
-                        } | {
-                            str(_sx.get("source_url") or "")
-                            for _sx in scenes_media
-                            if isinstance(_sx, dict) and int(_sx.get("scene_id") or 0) != scene_id
-                        }
-                        for cand_res_p, cand_off_s in (
-                            (work_dir / "hook_reserve_002.mp4", 0.0),
-                            (work_dir / "hook_motion_001_fullpeak.mp4", 4.15),
-                        ):
-                            if not cand_res_p.exists() or cand_res_p.stat().st_size <= 20_000:
-                                continue
-                            if str(cand_res_p) in already_used_paths or cand_res_p.name in {Path(p).name for p in already_used_paths if p}:
-                                continue
-                            res_dur_body = get_duration_ms(str(cand_res_p)) / 1000.0
-                            if res_dur_body >= cand_off_s + max(2.2, min(sc_dur_sec * 0.65, 3.8)):
-                                out_res_body = str(media_dir / f"scene_{scene_id:03d}_refined_hook_reserve_r{retry_count}.mp4")
-                                await asyncio.to_thread(
-                                    trim_video,
-                                    input_path=str(cand_res_p),
-                                    duration_seconds=sc_dur_sec,
-                                    output_path=out_res_body,
-                                    width=w_ref,
-                                    height=h_ref,
-                                    fps=30,
-                                    is_scifi=is_scifi_val,
-                                    niche=current_niche,
-                                    apply_grading=True,
-                                    is_hook_scene=(scene_id == 1),
-                                    fair_use_transform=(cand_off_s > 0.0),
-                                    start_offset_sec=cand_off_s,
-                                    preserve_continuous_flow=True,
-                                )
-                                if Path(out_res_body).exists() and Path(out_res_body).stat().st_size > 15_000:
-                                    ok_b_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, out_res_body)
-                                    if ok_b_mot:
-                                        item["media_path"] = out_res_body
-                                        item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
-                                        item["pose_images"] = []
-                                        item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
-                                        item["source_url"] = str(cand_res_p)
-                                        replaced = True
-                                        logger.info(
-                                            f"Scene {scene_id}: 🔥 [Hook Reserve Video Rescue] Đã nạp Video chuyển động thật đã duyệt Vision ('{cand_res_p.name}') -> {Path(out_res_body).name}"
-                                        )
-                                        break
-                                    else:
-                                        Path(out_res_body).unlink(missing_ok=True)
-                    except Exception as _e_hr_b:
-                        logger.debug(f"Scene {scene_id}: Hook reserve body rescue skip: {_e_hr_b}")
 
                 # Chỉ cho phép hạ cấp xuống Ảnh tĩnh Google (Tier 3) nếu cảnh hiện tại vốn chưa phải là Video thật,
                 # HOẶC cảnh hiện tại bị lỗi thực thể/ngữ nghĩa nghiêm trọng (has_semantic_vision_defect=True),

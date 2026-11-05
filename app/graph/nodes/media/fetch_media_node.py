@@ -902,23 +902,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             logger.info(
                                 f"Scene {scene.scene_id}: 🔥 [Opening 5-7s Bilibili Documentary] Đã nạp Video chuyển động thật kiểm định Vision -> {Path(media_path).name}"
                             )
-                        if not media_path:
-                            reserve_cand = (
-                                work_dir / "hook_motion_001_fullpeak.mp4"
-                                if scene.scene_id == 1
-                                else work_dir / "hook_reserve_002.mp4"
-                            )
-                            if not reserve_cand.exists() and scene.scene_id == 2:
-                                reserve_cand = work_dir / "hook_motion_001_fullpeak.mp4"
+                        if not media_path and scene.scene_id == 1:
+                            reserve_cand = work_dir / "hook_motion_001_fullpeak.mp4"
                             if reserve_cand.exists() and reserve_cand.stat().st_size > 20_000:
                                 res_dur_s = get_duration_ms(str(reserve_cand)) / 1000.0
-                                start_off_r = 0.0 if reserve_cand.name == "hook_reserve_002.mp4" or scene.scene_id == 1 else 3.35
-                                if res_dur_s >= start_off_r + max(2.4, dur * 0.75):
-                                    out_res_s = str(
-                                        work_dir / "hook_motion_001.mp4"
-                                        if scene.scene_id == 1
-                                        else media_dir / f"scene_{scene.scene_id:03d}_hook_reserve.mp4"
-                                    )
+                                if res_dur_s >= max(2.4, dur * 0.75):
+                                    out_res_s = str(work_dir / "hook_motion_001.mp4")
                                     await asyncio.to_thread(
                                         trim_video,
                                         input_path=str(reserve_cand),
@@ -930,23 +919,23 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                         is_scifi=is_scifi_val,
                                         niche=current_niche,
                                         apply_grading=True,
-                                        is_hook_scene=(scene.scene_id == 1),
-                                        fair_use_transform=(start_off_r > 0.0),
-                                        start_offset_sec=start_off_r,
+                                        is_hook_scene=True,
+                                        fair_use_transform=False,
+                                        start_offset_sec=0.0,
                                         preserve_continuous_flow=True,
                                     )
                                     if Path(out_res_s).exists() and Path(out_res_s).stat().st_size > 15_000:
                                         ok_r_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, out_res_s)
                                         if ok_r_mot:
                                             media_path = out_res_s
-                                            media_type = "hook_ready_video" if scene.scene_id == 1 else "video"
+                                            media_type = "hook_ready_video"
                                             vision_curated = True
                                             prod_method = "CLIMAX_PEAK_SHORT_SPLICE"
                                             chosen_strategy = "YOUTUBE_SHORT_PEAK_CLONE"
                                             source_url_used = str(reserve_cand)
-                                            rationale = f"Vision-Verified Hook Reserve Video ({reserve_cand.name})"
+                                            rationale = f"Vision-Verified Hook Video ({reserve_cand.name})"
                                             logger.info(
-                                                f"Scene {scene.scene_id}: 🔥 [Opening 5-7s Hook Reserve] Đã nạp Video chuyển động thật đã duyệt Vision ('{reserve_cand.name}') -> {Path(out_res_s).name}"
+                                                f"Scene 1: 🔥 [Scene 1 Hook Recovery] Đã nạp Video chuyển động thật đã duyệt Vision ('{reserve_cand.name}') -> {Path(out_res_s).name}"
                                             )
                                         else:
                                             Path(out_res_s).unlink(missing_ok=True)
