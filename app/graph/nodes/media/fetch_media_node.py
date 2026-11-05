@@ -704,48 +704,68 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     if scene.scene_id == 1
                     else media_dir / f"scene_{scene.scene_id:03d}_yt_peak.mp4"
                 )
-                # Với các cảnh thân bài (Scene >= 2), ưu tiên gọi API Pexels/Pixabay HD (phản hồi 2–4s) trước
-                # để tránh 6 luồng yt-dlp cạo YouTube cùng lúc gây nghẽn băng thông 65s!
-                if scene.scene_id >= 2 and not media_path:
+                # Chạy SONG SONG đồng thời cả 2 nhánh Pexels/Pixabay HD và YouTube Shorts Peak ngay từ t=0.0s:
+                # Nhánh nào tìm được Video đạt chuẩn Vision trước sẽ lập tức hủy nhánh còn lại để giải phóng tài nguyên;
+                # nếu 1 nhánh trả về None (không có clip khớp kịch bản), nhánh kia đã chạy sẵn từ đầu không bị trễ 15–30s!
+                if not media_path:
                     _check_fetch_deadline()
-                    try:
-                        from app.services.video_memory_rag import get_video_memory_rag
-                        from app.utils.ffmpeg_helper import trim_video
-                        rag_vf = get_video_memory_rag()
-                        vf_q = (
-                            yt_q
-                            or (story_yt_qs[0] if story_yt_qs else "")
-                            or fb_q
-                            or str(getattr(scene, "stock_query", "") or "").strip()
-                        )
-                        va_vf = dict(v_analysis or {})
-                        va_vf["search_queries"] = [
-                            q_x for q_x in dict.fromkeys([vf_q, *story_yt_qs, yt_q, fb_q, overall_q]) if q_x
-                        ][:4]
-                        va_vf["skip_establishing_pass"] = True
-                        vf_deadline = (
-                            min(deadline_ts - 32.0, time.monotonic() + 16.0)
-                            if deadline_ts is not None
-                            else (time.monotonic() + 16.0)
-                        )
-                        best_hk_vid = await asyncio.to_thread(
-                            media_agent.search_best_video_clip,
-                            vf_q,
-                            used_pool_urls,
-                            va_vf,
-                            scene.narration,
-                            state.get("topic", ""),
-                            cancel_event=cancel_event,
-                            deadline_ts=vf_deadline,
-                        )
-                        if best_hk_vid and best_hk_vid.get("url"):
+                    from app.services.video_memory_rag import get_video_memory_rag
+                    from app.utils.ffmpeg_helper import trim_video
+
+                    class _BranchCancelEvent:
+                        def __init__(self, parent_ev: Optional[threading.Event]) -> None:
+                            self._parent = parent_ev
+                            self._local = threading.Event()
+
+                        def is_set(self) -> bool:
+                            return self._local.is_set() or (self._parent is not None and self._parent.is_set())
+
+                        def set(self) -> None:
+                            self._local.set()
+
+                    px_cancel_ev = _BranchCancelEvent(cancel_event)
+                    yt_cancel_ev = _BranchCancelEvent(cancel_event)
+
+                    async def _run_pexels_parallel_branch() -> Optional[Dict[str, Any]]:
+                        if scene.scene_id == 1:
+                            return None
+                        try:
+                            rag_vf = get_video_memory_rag()
+                            vf_q = (
+                                yt_q
+                                or (story_yt_qs[0] if story_yt_qs else "")
+                                or fb_q
+                                or str(getattr(scene, "stock_query", "") or "").strip()
+                            )
+                            va_vf = dict(v_analysis or {})
+                            va_vf["search_queries"] = [
+                                q_x for q_x in dict.fromkeys([vf_q, *story_yt_qs, yt_q, fb_q, overall_q]) if q_x
+                            ][:4]
+                            va_vf["skip_establishing_pass"] = True
+                            vf_deadline = (
+                                min(deadline_ts - 10.0, time.monotonic() + 22.0)
+                                if deadline_ts is not None
+                                else (time.monotonic() + 22.0)
+                            )
+                            best_hk_vid = await asyncio.to_thread(
+                                media_agent.search_best_video_clip,
+                                vf_q,
+                                used_pool_urls,
+                                va_vf,
+                                scene.narration,
+                                state.get("topic", ""),
+                                cancel_event=px_cancel_ev,
+                                deadline_ts=vf_deadline,
+                            )
+                            if px_cancel_ev.is_set() or not (best_hk_vid and best_hk_vid.get("url")):
+                                return None
                             vf_cand_urls = [
                                 best_hk_vid["url"],
                                 *(best_hk_vid.get("_vision_alternates") or []),
                             ]
                             vf_title = str(best_hk_vid.get("title") or vf_q)
                             for cand_hk_url in vf_cand_urls[:4]:
-                                if not cand_hk_url:
+                                if px_cancel_ev.is_set() or not cand_hk_url:
                                     continue
                                 if not rag_vf.try_claim_in_job_video(
                                     job_id=job_id,
@@ -759,6 +779,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 raw_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst_raw.mp4")
                                 vid_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst.mp4")
                                 await asyncio.to_thread(media_agent.download_file, str(cand_hk_url), raw_hk_out)
+                                if px_cancel_ev.is_set():
+                                    Path(raw_hk_out).unlink(missing_ok=True)
+                                    rag_vf.release_in_job_video_claim(
+                                        job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
+                                    )
+                                    return None
                                 if Path(raw_hk_out).exists() and Path(raw_hk_out).stat().st_size > 15_000:
                                     await asyncio.to_thread(
                                         trim_video,
@@ -786,18 +812,21 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                         )
                                         used_pool_urls.add(str(cand_hk_url))
                                         if ok_vf_sig:
-                                            media_path = vid_hk_out
-                                            media_type = "video"
-                                            vision_curated = True
-                                            prod_method = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
-                                            chosen_strategy = "STOCK_VIDEO"
-                                            source_url_used = str(cand_hk_url)
-                                            rationale = f"Video-First Stock Video ({vf_title[:45]})"
                                             logger.info(
-                                                f"Scene {scene.scene_id}: 🎬 [Video-First Real-Motion] "
-                                                f"Đã nạp Video B-Roll chuyển động thật cho '{vf_q}'"
+                                                f"Scene {scene.scene_id}: 🎬 [Parallel Pexels+YT -> Pexels Won] "
+                                                f"Đã nạp Video B-Roll Pexels chuyển động thật cho '{vf_q}'"
                                             )
-                                            break
+                                            return {
+                                                "branch": "pexels",
+                                                "media_path": vid_hk_out,
+                                                "media_type": "video",
+                                                "prod_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
+                                                "chosen_strategy": "STOCK_VIDEO",
+                                                "source_url": str(cand_hk_url),
+                                                "vid_id": str(cand_hk_url),
+                                                "title": vf_title,
+                                                "rationale": f"Video-First Stock Video ({vf_title[:45]})",
+                                            }
                                         else:
                                             Path(vid_hk_out).unlink(missing_ok=True)
                                 else:
@@ -805,61 +834,124 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     rag_vf.release_in_job_video_claim(
                                         job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
                                     )
-                    except Exception as hk_vf_err:
-                        logger.debug(f"Scene {scene.scene_id}: Video-first lookup fallback: {hk_vf_err}")
+                        except Exception as hk_vf_err:
+                            logger.debug(f"Scene {scene.scene_id}: Parallel Pexels lookup fallback: {hk_vf_err}")
+                        return None
 
-                if not media_path and (scene.scene_id == 1 or tool_name == "clone_youtube_short_peak_clip"):
-                    _check_fetch_deadline()
-                    # Riêng Cảnh 1 (Opening Hook) được cấp ngân sách ưu tiên 52s để chạy đủ 3 tầng Video (YouTube Peak + Stock HD + Bilibili Documentary);
-                    # các cảnh thân bài (đã quét Pexels ở trên) được cấp 32s chạy thẳng Tầng 1 YouTube + Tầng 3 Bilibili (skip_stock_fallback=True).
-                    _prefer_non_yt_node = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
-                    _yt_budget_sec = (
-                        52.0
-                        if scene.scene_id == 1
-                        else (26.0 if _prefer_non_yt_node else 32.0)
-                    )
-                    _reserve_tail_sec = 4.0 if scene.scene_id == 1 else 15.0
-                    yt_sub_deadline = (
-                        min(deadline_ts - _reserve_tail_sec, time.monotonic() + _yt_budget_sec)
-                        if deadline_ts is not None
-                        else (time.monotonic() + _yt_budget_sec)
-                    )
-                    if yt_sub_deadline > time.monotonic() + 4.0:
-                        yt_res = await asyncio.to_thread(
-                            execute_youtube_short_peak_clone_sync,
-                            search_query=yt_q,
-                            output_path=out_vid,
-                            target_duration_sec=dur,
-                            clip_role=clip_role,
-                            used_urls=used_pool_urls,
-                            fallback_query=fb_q,
-                            subject_entity=subj_ent,
-                            narration=scene.narration,
-                            topic=state.get("topic", ""),
-                            search_scope=sc_scope,
-                            overall_script_query=overall_q,
-                            max_peak_duration_sec=14.0,
-                            job_id=job_id,
-                            scene_id=scene.scene_id,
-                            channel_id=channel_id_val,
-                            skip_youtube_search=(tool_name == "search_pexels_pixabay_stock_video"),
-                            skip_stock_fallback=(scene.scene_id >= 2),
-                            storyline_queries=story_yt_qs,
-                            cancel_event=cancel_event,
-                            deadline_ts=yt_sub_deadline,
-                        )
-                        if yt_res and yt_res.get("media_path"):
-                            media_path = yt_res["media_path"]
-                            media_type = yt_res.get("media_type", "video")
-                            vision_curated = True
-                            full_peak_path = yt_res.get("full_peak_path")
-                            full_peak_duration_sec = float(yt_res.get("full_peak_duration_sec") or dur)
-                            source_url_used = str(yt_res.get("source_url") or "")
-                            prod_method = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK" if scene.scene_id == 1 else "CLIMAX_PEAK_SHORT_SPLICE"
-                            rationale = (
-                                f"YouTube Shorts Peak [{yt_res.get('search_scope', sc_scope)}] "
-                                f"({yt_res.get('window')}, full_peak={full_peak_duration_sec:.1f}s): {yt_res.get('title', '')[:45]}"
+                    async def _run_youtube_parallel_branch() -> Optional[Dict[str, Any]]:
+                        if tool_name == "search_pexels_pixabay_stock_video" and scene.scene_id != 1:
+                            return None
+                        try:
+                            _prefer_non_yt_node = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
+                            _yt_budget_sec = (
+                                52.0
+                                if scene.scene_id == 1
+                                else (32.0 if _prefer_non_yt_node else 44.0)
                             )
+                            _reserve_tail_sec = 4.0 if scene.scene_id == 1 else 10.0
+                            yt_sub_deadline = (
+                                min(deadline_ts - _reserve_tail_sec, time.monotonic() + _yt_budget_sec)
+                                if deadline_ts is not None
+                                else (time.monotonic() + _yt_budget_sec)
+                            )
+                            if yt_sub_deadline <= time.monotonic() + 4.0:
+                                return None
+                            yt_res = await asyncio.to_thread(
+                                execute_youtube_short_peak_clone_sync,
+                                search_query=yt_q,
+                                output_path=out_vid,
+                                target_duration_sec=dur,
+                                clip_role=clip_role,
+                                used_urls=used_pool_urls,
+                                fallback_query=fb_q,
+                                subject_entity=subj_ent,
+                                narration=scene.narration,
+                                topic=state.get("topic", ""),
+                                search_scope=sc_scope,
+                                overall_script_query=overall_q,
+                                max_peak_duration_sec=14.0,
+                                job_id=job_id,
+                                scene_id=scene.scene_id,
+                                channel_id=channel_id_val,
+                                skip_youtube_search=False,
+                                skip_stock_fallback=(scene.scene_id >= 2),
+                                storyline_queries=story_yt_qs,
+                                cancel_event=yt_cancel_ev,
+                                deadline_ts=yt_sub_deadline,
+                            )
+                            if yt_res and yt_res.get("media_path") and Path(yt_res["media_path"]).exists():
+                                fp_dur = float(yt_res.get("full_peak_duration_sec") or dur)
+                                return {
+                                    "branch": "youtube",
+                                    "media_path": yt_res["media_path"],
+                                    "media_type": yt_res.get("media_type", "video"),
+                                    "full_peak_path": yt_res.get("full_peak_path"),
+                                    "full_peak_duration_sec": fp_dur,
+                                    "source_url": str(yt_res.get("source_url") or ""),
+                                    "vid_id": str(yt_res.get("youtube_id") or yt_res.get("source_url") or ""),
+                                    "title": str(yt_res.get("title") or yt_q),
+                                    "prod_method": "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK" if scene.scene_id == 1 else "CLIMAX_PEAK_SHORT_SPLICE",
+                                    "chosen_strategy": "YOUTUBE_SHORT_PEAK_CLONE",
+                                    "rationale": (
+                                        f"YouTube Shorts Peak [{yt_res.get('search_scope', sc_scope)}] "
+                                        f"({yt_res.get('window')}, full_peak={fp_dur:.1f}s): {yt_res.get('title', '')[:45]}"
+                                    ),
+                                }
+                        except Exception as yt_p_err:
+                            logger.debug(f"Scene {scene.scene_id}: Parallel YouTube lookup fallback: {yt_p_err}")
+                        return None
+
+                    t_px = asyncio.create_task(_run_pexels_parallel_branch())
+                    t_yt = asyncio.create_task(_run_youtube_parallel_branch())
+                    pending_tasks = {t_px, t_yt}
+                    win_res: Optional[Dict[str, Any]] = None
+                    extra_results: List[Dict[str, Any]] = []
+
+                    while pending_tasks and win_res is None:
+                        done_tasks, pending_tasks = await asyncio.wait(
+                            pending_tasks, return_when=asyncio.FIRST_COMPLETED
+                        )
+                        for d_t in done_tasks:
+                            try:
+                                r_val = d_t.result()
+                            except Exception:
+                                r_val = None
+                            if r_val and r_val.get("media_path") and Path(r_val["media_path"]).exists():
+                                if win_res is None:
+                                    win_res = r_val
+                                else:
+                                    extra_results.append(r_val)
+
+                    px_cancel_ev.set()
+                    yt_cancel_ev.set()
+                    for p_t in pending_tasks:
+                        p_t.cancel()
+
+                    if extra_results:
+                        rag_cleanup = get_video_memory_rag()
+                        for ex_r in extra_results:
+                            try:
+                                Path(ex_r["media_path"]).unlink(missing_ok=True)
+                                rag_cleanup.release_in_job_video_claim(
+                                    job_id=job_id,
+                                    vid_id=str(ex_r.get("vid_id") or ex_r.get("source_url") or ""),
+                                    url=str(ex_r.get("source_url") or ""),
+                                    title=str(ex_r.get("title") or ""),
+                                    scene_id=scene.scene_id,
+                                )
+                            except Exception:
+                                pass
+
+                    if win_res is not None:
+                        media_path = win_res["media_path"]
+                        media_type = win_res.get("media_type", "video")
+                        vision_curated = True
+                        full_peak_path = win_res.get("full_peak_path")
+                        full_peak_duration_sec = float(win_res.get("full_peak_duration_sec") or dur)
+                        source_url_used = str(win_res.get("source_url") or "")
+                        prod_method = win_res["prod_method"]
+                        chosen_strategy = win_res["chosen_strategy"]
+                        rationale = win_res["rationale"]
                 if not media_path and scene.scene_id in (1, 2):
                     # 100% Vision-Verified Pure Video Guarantee cho 5-7s đầu (Cảnh 1 & Cảnh 2):
                     # Tuyệt đối KHÔNG tải bừa clip Pexels chưa qua kiểm định Vision!

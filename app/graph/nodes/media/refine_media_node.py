@@ -377,110 +377,70 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex_lf_r:
                     logger.debug(f"Scene {scene_id}: Long-form 16:9 refine error: {ex_lf_r}")
 
-            # Khi cảnh bị VisualCritic bắt lỗi sai thực thể/ngữ nghĩa (has_semantic_vision_defect=True),
-            # ưu tiên săn YouTube Shorts chuyên sâu TRƯỚC (vì kho Pexels miễn phí đã trượt ở vòng đầu),
-            # sau đó mới quét Pexels với truy vấn B-Roll bối cảnh/thực thể phụ (`critic_broll_q`) do VisualCritic đề xuất!
-            if has_semantic_vision_defect and not replaced and not is_lf_refine and not _refine_cancelled():
-                try:
-                    from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
-                    from app.services.video_memory_rag import get_video_memory_rag
-                    rag_yt_first = get_video_memory_rag()
-                    yt_first_dl = (
-                        min(deadline_ts - 18.0, time.monotonic() + 34.0)
-                        if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 24.0)
-                        else (deadline_ts or (time.monotonic() + 34.0))
-                    )
-                    out_yt_first = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
-                    yt_first_res = await asyncio.to_thread(
-                        execute_youtube_short_peak_clone_sync,
-                        search_query=clean_kw_q or overall_refine_q,
-                        output_path=out_yt_first,
-                        target_duration_sec=sc_dur_sec,
-                        clip_role="HOOK" if scene_id == 1 else "PEAK",
-                        used_urls=used_refine_urls,
-                        fallback_query=critic_broll_q or overall_refine_q,
-                        subject_entity=subj_refine,
-                        narration=narr or state.get("topic", ""),
-                        topic=state.get("topic", ""),
-                        search_scope="SCENE_SPECIFIC" if critic_sug_q else "SCRIPT_OVERALL",
-                        overall_script_query=overall_refine_q,
-                        max_peak_duration_sec=14.0,
-                        job_id=job_id_refine,
-                        scene_id=scene_id,
-                        channel_id=channel_id_refine,
-                        skip_stock_fallback=True,
-                        cancel_event=cancel_event,
-                        deadline_ts=yt_first_dl,
-                    )
-                    if yt_first_res and yt_first_res.get("media_path") and Path(yt_first_res["media_path"]).exists():
-                        ok_yt1_clean, _ = await asyncio.to_thread(
-                            _verify_and_sanitize_refined_media, yt_first_res["media_path"], True, scene_id
-                        )
-                        ok_yt1_sig, _ = (
-                            rag_yt_first.verify_and_commit_in_job_clip(
-                                job_id=job_id_refine,
-                                scene_id=scene_id,
-                                media_path=yt_first_res["media_path"],
-                                vid_id=str(yt_first_res.get("source_url") or yt_first_res["media_path"]),
-                                url=str(yt_first_res.get("source_url") or yt_first_res["media_path"]),
-                                title=str(yt_first_res.get("title") or clean_kw_q),
-                            )
-                            if ok_yt1_clean
-                            else (False, "failed_refine_gate")
-                        )
-                        if ok_yt1_clean and ok_yt1_sig:
-                            if yt_first_res.get("source_url"):
-                                used_refine_urls.add(str(yt_first_res["source_url"]))
-                            item["media_path"] = yt_first_res["media_path"]
-                            item["media_type"] = "video"
-                            item["pose_images"] = []
-                            item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
-                            item["source_url"] = str(yt_first_res.get("source_url") or yt_first_res["media_path"])
-                            replaced = True
-                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi thực thể/ngữ nghĩa bằng YouTube Short Peak 9:16 mới: '{Path(yt_first_res['media_path']).name}'")
-                        else:
-                            Path(yt_first_res["media_path"]).unlink(missing_ok=True)
-                except Exception as ex_yt1:
-                    logger.debug(f"Scene {scene_id}: YouTube Short priority refine error: {ex_yt1}")
+            # Chạy SONG SONG đồng thời cả 2 nhánh Pexels/Pixabay HD và YouTube Shorts Peak ngay từ t=0.0s:
+            # Nhánh nào tìm được Video đạt chuẩn Vision + CV Gate trước sẽ lập tức hủy nhánh còn lại!
+            if not replaced and not is_lf_refine and not _refine_cancelled():
+                from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                from app.services.video_memory_rag import get_video_memory_rag
+                from app.utils.ffmpeg_helper import trim_video
+                from app.graph.tools.tool_schemas import build_single_entity_stock_queries
 
-            # 1. Tầng 1: Tìm kiếm Video Clip Pexels/Pixabay HD mới (sử dụng critic_broll_q nếu có để lấy B-Roll bối cảnh/thực thể phụ sạch chuẩn Tầng 2)
-            if not replaced and not _refine_cancelled():
-                try:
-                    from app.services.video_memory_rag import get_video_memory_rag
-                    from app.utils.ffmpeg_helper import trim_video
-                    from app.graph.tools.tool_schemas import build_single_entity_stock_queries
-                    rag_ref = get_video_memory_rag()
-                    primary_pexels_q = clean_kw_q or critic_broll_q
-                    ref_single_qs = build_single_entity_stock_queries(
-                        primary_query=primary_pexels_q,
-                        secondary_query=critic_broll_q if primary_pexels_q != critic_broll_q else (audited_fb_q or overall_refine_q),
-                        subject_entity=subj_refine or primary_entity or "",
-                        topic=state.get("topic", ""),
-                        narration=narr,
-                        max_words=3,
-                    )
-                    custom_pexels_qs: List[str] = []
-                    for cq in (clean_kw_q, critic_broll_q, *(ref_single_qs or [])):
-                        cq_s = str(cq or "").strip()
-                        if cq_s and cq_s not in custom_pexels_qs:
-                            custom_pexels_qs.append(cq_s)
-                    va_ref_v = {
-                        "video_format": "long" if is_lf_refine else "short",
-                        "search_queries": custom_pexels_qs[:4] if custom_pexels_qs else [clean_kw_q],
-                        "subject": subj_refine or primary_entity or clean_kw_q,
-                        "core_visual_entity": subj_refine or primary_entity or clean_kw_q,
-                        "negative_cues": [critic_fb] if critic_fb else [],
-                        "skip_establishing_pass": True,
-                    }
-                    best_v = await asyncio.to_thread(
-                        media_agent.search_best_video_clip,
-                        custom_pexels_qs[0] if custom_pexels_qs else clean_kw_q,
-                        used_refine_urls,
-                        va_ref_v,
-                        narr,
-                        state.get("topic", ""),
-                    )
-                    if best_v and best_v.get("url"):
+                class _RefineBranchCancelEvent:
+                    def __init__(self, parent_ev: Optional[threading.Event]) -> None:
+                        self._parent = parent_ev
+                        self._local = threading.Event()
+
+                    def is_set(self) -> bool:
+                        return self._local.is_set() or (self._parent is not None and self._parent.is_set())
+
+                    def set(self) -> None:
+                        self._local.set()
+
+                px_ref_ev = _RefineBranchCancelEvent(cancel_event)
+                yt_ref_ev = _RefineBranchCancelEvent(cancel_event)
+
+                async def _refine_pexels_branch() -> Optional[Dict[str, Any]]:
+                    try:
+                        rag_ref = get_video_memory_rag()
+                        primary_pexels_q = clean_kw_q or critic_broll_q
+                        ref_single_qs = build_single_entity_stock_queries(
+                            primary_query=primary_pexels_q,
+                            secondary_query=critic_broll_q if primary_pexels_q != critic_broll_q else (audited_fb_q or overall_refine_q),
+                            subject_entity=subj_refine or primary_entity or "",
+                            topic=state.get("topic", ""),
+                            narration=narr,
+                            max_words=3,
+                        )
+                        custom_pexels_qs: List[str] = []
+                        for cq in (clean_kw_q, critic_broll_q, *(ref_single_qs or [])):
+                            cq_s = str(cq or "").strip()
+                            if cq_s and cq_s not in custom_pexels_qs:
+                                custom_pexels_qs.append(cq_s)
+                        va_ref_v = {
+                            "video_format": "long" if is_lf_refine else "short",
+                            "search_queries": custom_pexels_qs[:4] if custom_pexels_qs else [clean_kw_q],
+                            "subject": subj_refine or primary_entity or clean_kw_q,
+                            "core_visual_entity": subj_refine or primary_entity or clean_kw_q,
+                            "negative_cues": [critic_fb] if critic_fb else [],
+                            "skip_establishing_pass": True,
+                        }
+                        px_dl = (
+                            min(deadline_ts - 8.0, time.monotonic() + 24.0)
+                            if deadline_ts is not None
+                            else (time.monotonic() + 24.0)
+                        )
+                        best_v = await asyncio.to_thread(
+                            media_agent.search_best_video_clip,
+                            custom_pexels_qs[0] if custom_pexels_qs else clean_kw_q,
+                            used_refine_urls,
+                            va_ref_v,
+                            narr,
+                            state.get("topic", ""),
+                            cancel_event=px_ref_ev,
+                            deadline_ts=px_dl,
+                        )
+                        if px_ref_ev.is_set() or not (best_v and best_v.get("url")):
+                            return None
                         ref_cand_urls = [
                             best_v["url"],
                             *(best_v.get("_vision_alternates") or []),
@@ -488,6 +448,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         ]
                         cand_title = str(best_v.get("title") or clean_kw_q)
                         for cand_u_raw in ref_cand_urls[:4]:
+                            if px_ref_ev.is_set():
+                                break
                             cand_url = str(cand_u_raw or "").strip()
                             if not cand_url:
                                 continue
@@ -499,6 +461,12 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             raw_v = str(media_dir / f"scene_{scene_id:03d}_refined_raw_r{retry_count}.mp4")
                             out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video_r{retry_count}.mp4")
                             await asyncio.to_thread(media_agent.download_file, cand_url, raw_v)
+                            if px_ref_ev.is_set():
+                                Path(raw_v).unlink(missing_ok=True)
+                                rag_ref.release_in_job_video_claim(
+                                    job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
+                                )
+                                return None
                             if Path(raw_v).exists() and Path(raw_v).stat().st_size > 15_000:
                                 await asyncio.to_thread(
                                     trim_video,
@@ -535,14 +503,15 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                         else (False, "failed_refine_gate")
                                     )
                                     if ok_v_clean and ok_v_sig:
-                                        item["media_path"] = out_v
-                                        item["media_type"] = "video"
-                                        item["pose_images"] = []
-                                        item["production_method"] = "REFINED_STOCK_VIDEO"
-                                        item["source_url"] = cand_url
-                                        replaced = True
-                                        logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video Clip Pexels mới độc lập: '{clean_kw_q}'")
-                                        break
+                                        logger.info(f"Scene {scene_id}: ✅ [Parallel Pexels+YT] Sửa lỗi kỹ thuật bằng Video Clip Pexels mới độc lập: '{clean_kw_q}'")
+                                        return {
+                                            "media_path": out_v,
+                                            "media_type": "video",
+                                            "production_method": "REFINED_STOCK_VIDEO",
+                                            "source_url": cand_url,
+                                            "vid_id": cand_url,
+                                            "title": cand_title,
+                                        }
                                     else:
                                         Path(out_v).unlink(missing_ok=True)
                                         rag_ref.release_in_job_video_claim(
@@ -553,72 +522,122 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 rag_ref.release_in_job_video_claim(
                                     job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
                                 )
-                except Exception as ex_v:
-                    logger.debug(f"Scene {scene_id}: Video refine error: {ex_v}")
+                    except Exception as ex_v:
+                        logger.debug(f"Scene {scene_id}: Parallel Pexels refine error: {ex_v}")
+                    return None
 
-            # 2. Tầng 2: Săn YouTube Shorts dọc 9:16 mới (chỉ chạy nếu chưa chạy ở nhánh ưu tiên has_semantic_vision_defect phía trên)
-            if not replaced and not has_semantic_vision_defect and not is_lf_refine and not _refine_cancelled():
-                try:
-                    from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
-                    from app.services.video_memory_rag import get_video_memory_rag
-                    rag_yt_ref = get_video_memory_rag()
-                    yt_ref_dl = (
-                        min(deadline_ts, time.monotonic() + 30.0)
-                        if deadline_ts is not None
-                        else (time.monotonic() + 30.0)
-                    )
-                    out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
-                    yt_ref_res = await asyncio.to_thread(
-                        execute_youtube_short_peak_clone_sync,
-                        search_query=clean_kw_q or overall_refine_q,
-                        output_path=out_yt_ref,
-                        target_duration_sec=sc_dur_sec,
-                        clip_role="HOOK" if scene_id == 1 else "PEAK",
-                        used_urls=used_refine_urls,
-                        fallback_query=overall_refine_q,
-                        subject_entity=subj_refine,
-                        narration=narr or state.get("topic", ""),
-                        topic=state.get("topic", ""),
-                        search_scope="SCRIPT_OVERALL" if (is_mandatory_vid or has_semantic_vision_defect) else "SCENE_SPECIFIC",
-                        overall_script_query=overall_refine_q,
-                        max_peak_duration_sec=14.0,
-                        job_id=job_id_refine,
-                        scene_id=scene_id,
-                        channel_id=channel_id_refine,
-                        skip_stock_fallback=True,
-                        cancel_event=cancel_event,
-                        deadline_ts=yt_ref_dl,
-                    )
-                    if yt_ref_res and yt_ref_res.get("media_path") and Path(yt_ref_res["media_path"]).exists():
-                        ok_yt_clean, _ = await asyncio.to_thread(
-                            _verify_and_sanitize_refined_media, yt_ref_res["media_path"], True, scene_id
+                async def _refine_youtube_branch() -> Optional[Dict[str, Any]]:
+                    try:
+                        rag_yt_ref = get_video_memory_rag()
+                        yt_ref_dl = (
+                            min(deadline_ts - 8.0, time.monotonic() + 44.0)
+                            if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 16.0)
+                            else (deadline_ts or (time.monotonic() + 44.0))
                         )
-                        ok_yt_sig, _ = (
-                            rag_yt_ref.verify_and_commit_in_job_clip(
-                                job_id=job_id_refine,
-                                scene_id=scene_id,
-                                media_path=yt_ref_res["media_path"],
-                                vid_id=str(yt_ref_res.get("source_url") or yt_ref_res["media_path"]),
-                                url=str(yt_ref_res.get("source_url") or yt_ref_res["media_path"]),
-                                title=str(yt_ref_res.get("title") or clean_kw_q),
+                        out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
+                        yt_ref_res = await asyncio.to_thread(
+                            execute_youtube_short_peak_clone_sync,
+                            search_query=clean_kw_q or overall_refine_q,
+                            output_path=out_yt_ref,
+                            target_duration_sec=sc_dur_sec,
+                            clip_role="HOOK" if scene_id == 1 else "PEAK",
+                            used_urls=used_refine_urls,
+                            fallback_query=critic_broll_q or overall_refine_q,
+                            subject_entity=subj_refine,
+                            narration=narr or state.get("topic", ""),
+                            topic=state.get("topic", ""),
+                            search_scope="SCENE_SPECIFIC" if critic_sug_q else ("SCRIPT_OVERALL" if is_mandatory_vid else "SCENE_SPECIFIC"),
+                            overall_script_query=overall_refine_q,
+                            max_peak_duration_sec=14.0,
+                            job_id=job_id_refine,
+                            scene_id=scene_id,
+                            channel_id=channel_id_refine,
+                            skip_stock_fallback=True,
+                            cancel_event=yt_ref_ev,
+                            deadline_ts=yt_ref_dl,
+                        )
+                        if yt_ref_res and yt_ref_res.get("media_path") and Path(yt_ref_res["media_path"]).exists():
+                            ok_yt_clean, _ = await asyncio.to_thread(
+                                _verify_and_sanitize_refined_media, yt_ref_res["media_path"], True, scene_id
                             )
-                            if ok_yt_clean
-                            else (False, "failed_refine_gate")
-                        )
-                        if ok_yt_clean and ok_yt_sig:
-                            if yt_ref_res.get("source_url"):
-                                used_refine_urls.add(str(yt_ref_res["source_url"]))
-                            item["media_path"] = yt_ref_res["media_path"]
-                            item["media_type"] = "video"
-                            item["pose_images"] = []
-                            item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
-                            item["source_url"] = str(yt_ref_res.get("source_url") or yt_ref_res["media_path"])
-                            replaced = True
-                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng YouTube Short Peak 9:16 mới: '{Path(yt_ref_res['media_path']).name}'")
-                        else:
-                            Path(yt_ref_res["media_path"]).unlink(missing_ok=True)
-                except Exception as ex_yt_r:
-                    logger.debug(f"Scene {scene_id}: YouTube Short refine error: {ex_yt_r}")
+                            vid_id_yt = str(yt_ref_res.get("source_url") or yt_ref_res["media_path"])
+                            title_yt = str(yt_ref_res.get("title") or clean_kw_q)
+                            ok_yt_sig, _ = (
+                                rag_yt_ref.verify_and_commit_in_job_clip(
+                                    job_id=job_id_refine,
+                                    scene_id=scene_id,
+                                    media_path=yt_ref_res["media_path"],
+                                    vid_id=vid_id_yt,
+                                    url=vid_id_yt,
+                                    title=title_yt,
+                                )
+                                if ok_yt_clean
+                                else (False, "failed_refine_gate")
+                            )
+                            if ok_yt_clean and ok_yt_sig:
+                                if yt_ref_res.get("source_url"):
+                                    used_refine_urls.add(str(yt_ref_res["source_url"]))
+                                logger.info(f"Scene {scene_id}: ✅ [Parallel Pexels+YT] Sửa lỗi bằng YouTube Short Peak 9:16 mới: '{Path(yt_ref_res['media_path']).name}'")
+                                return {
+                                    "media_path": yt_ref_res["media_path"],
+                                    "media_type": "video",
+                                    "production_method": "REFINED_YOUTUBE_SHORT_PEAK",
+                                    "source_url": vid_id_yt,
+                                    "vid_id": vid_id_yt,
+                                    "title": title_yt,
+                                }
+                            else:
+                                Path(yt_ref_res["media_path"]).unlink(missing_ok=True)
+                    except Exception as ex_yt_r:
+                        logger.debug(f"Scene {scene_id}: Parallel YouTube Short refine error: {ex_yt_r}")
+                    return None
+
+                t_px_r = asyncio.create_task(_refine_pexels_branch())
+                t_yt_r = asyncio.create_task(_refine_youtube_branch())
+                pending_r = {t_px_r, t_yt_r}
+                win_r: Optional[Dict[str, Any]] = None
+                extra_r: List[Dict[str, Any]] = []
+
+                while pending_r and win_r is None:
+                    done_r, pending_r = await asyncio.wait(pending_r, return_when=asyncio.FIRST_COMPLETED)
+                    for d_tr in done_r:
+                        try:
+                            rv = d_tr.result()
+                        except Exception:
+                            rv = None
+                        if rv and rv.get("media_path") and Path(rv["media_path"]).exists():
+                            if win_r is None:
+                                win_r = rv
+                            else:
+                                extra_r.append(rv)
+
+                px_ref_ev.set()
+                yt_ref_ev.set()
+                for p_tr in pending_r:
+                    p_tr.cancel()
+
+                if extra_r:
+                    rag_cl_r = get_video_memory_rag()
+                    for ex_item in extra_r:
+                        try:
+                            Path(ex_item["media_path"]).unlink(missing_ok=True)
+                            rag_cl_r.release_in_job_video_claim(
+                                job_id=job_id_refine,
+                                vid_id=str(ex_item.get("vid_id") or ""),
+                                url=str(ex_item.get("source_url") or ""),
+                                title=str(ex_item.get("title") or ""),
+                                scene_id=scene_id,
+                            )
+                        except Exception:
+                            pass
+
+                if win_r is not None:
+                    item["media_path"] = win_r["media_path"]
+                    item["media_type"] = win_r["media_type"]
+                    item["pose_images"] = []
+                    item["production_method"] = win_r["production_method"]
+                    item["source_url"] = win_r["source_url"]
+                    replaced = True
 
         # 3. Tầng 3: Riêng 5-7s đầu (Scene 1 & 2) quét trực tiếp StockFetcher 2 từ cốt lõi; các cảnh >= 3 lấy 1 ảnh Google HD nếu chưa tìm được video
         if not replaced and not _refine_cancelled():

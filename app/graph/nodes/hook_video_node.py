@@ -23,7 +23,7 @@ import logging
 import subprocess
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait as futures_wait
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -769,6 +769,131 @@ Return ONLY valid JSON:
             logger.debug(f"[HookVideoNode] yt_dlp flat pre-filter skip ({q}): {e_flat}")
         return q_idx, q, raw_flat_cands
 
+    # ── KHỞI CHẠY SONG SONG (PARALLEL t=0.0s): TÌM KIẾM PEXELS/PIXABAY HD CÙNG LÚC VỚI YOUTUBE SHORTS ──
+    class _HookStockCancelEvent:
+        def __init__(self, parent_ev):
+            self._parent = parent_ev
+            self._local = False
+
+        def set(self):
+            self._local = True
+
+        def is_set(self) -> bool:
+            if self._local:
+                return True
+            if self._parent is not None and hasattr(self._parent, "is_set"):
+                return bool(self._parent.is_set())
+            return False
+
+    _bg_stock_cancel_ev = _HookStockCancelEvent(cancel_event)
+    _bg_stock_futures: List[Any] = []
+    _bg_stock_pool: Optional[ThreadPoolExecutor] = None
+
+    if not is_3d_cgi_subject and not _hook_cancelled(8.0):
+        try:
+            from app.agents.media_agent import MediaAgent
+            multi_beat_queries = build_single_entity_stock_queries(
+                raw_queries=[*stock_broll_queries, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query],
+                subject_entity=canonical_subject or primary_entity,
+                topic=topic,
+                max_words=4,
+            )
+            if not multi_beat_queries:
+                multi_beat_queries = [canonical_subject or visual_keyword or topic]
+
+            combined_hook_subjects = (
+                f"{beat_1_subject} / {beat_2_subject}"
+                if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
+                else (canonical_subject or primary_entity or topic)
+            )
+            broll_queries_to_run = list(enumerate(multi_beat_queries[:2]))
+
+            def _fetch_single_multisrc_beat(mb_pair: tuple[int, str]) -> Optional[tuple[int, str, str, Dict[str, Any], Dict[str, Any]]]:
+                mb_idx, st_q_hook = mb_pair
+                if _bg_stock_cancel_ev.is_set() or _hook_cancelled(8.0):
+                    return None
+                try:
+                    m_agent = MediaAgent()
+                    va_multi_src = {
+                        "analysis_source": "ai",
+                        "subject": combined_hook_subjects,
+                        "core_visual_entity": combined_hook_subjects,
+                        "topic": topic,
+                        "search_queries": [st_q_hook] + [q for q in multi_beat_queries[:4] if q != st_q_hook],
+                        "is_hook_scene": True,
+                        "skip_establishing_pass": True,
+                    }
+                    ms_deadline = min(
+                        hook_deadline_ts if hook_deadline_ts is not None else (time.monotonic() + 20.0),
+                        time.monotonic() + 20.0,
+                    )
+                    best_multi_v = m_agent.search_best_video_clip(
+                        query=st_q_hook,
+                        visual_analysis=va_multi_src,
+                        narration=hook_narration,
+                        topic=topic,
+                        cancel_event=_bg_stock_cancel_ev,
+                        deadline_ts=ms_deadline,
+                    )
+                    if _bg_stock_cancel_ev.is_set():
+                        return None
+                    v_url_ms = (best_multi_v or {}).get("url")
+                    if not v_url_ms:
+                        return None
+                    seq_id = 20 + mb_idx
+                    multi_v_path = str(hook_cand_dir / f"multisrc_hook_cand_{seq_id}.mp4")
+                    m_agent.download_file(v_url_ms, multi_v_path)
+                    if _bg_stock_cancel_ev.is_set():
+                        Path(multi_v_path).unlink(missing_ok=True)
+                        return None
+                    if Path(multi_v_path).exists() and Path(multi_v_path).stat().st_size > 40_000:
+                        p_off, p_dur = find_hook_peak_window(
+                            multi_v_path,
+                            min_duration=max(target_hook_duration_sec, 3.0),
+                            max_duration=15.0,
+                        )
+                        clean_ms_path = str(hook_cand_dir / f"hook_peak_clean_ms_{seq_id}.mp4")
+                        trim_video(
+                            input_path=multi_v_path,
+                            duration_seconds=min(max(p_dur, opening_hook_window_sec, 3.5), 8.5),
+                            output_path=clean_ms_path,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            is_scifi=is_scifi_pre,
+                            niche=atmosphere_fx,
+                            apply_grading=False,
+                            is_hook_scene=True,
+                            fair_use_transform=False,
+                            start_offset_sec=p_off,
+                            preserve_continuous_flow=True,
+                        )
+                        insp_ms = clean_ms_path if (Path(clean_ms_path).exists() and Path(clean_ms_path).stat().st_size > 20_000) else multi_v_path
+                        ms_gate = VisualCritic.inspect_clip_before_concat(
+                            insp_ms, min_short_edge=720, min_sharpness=7.2, check_watermark=True, allow_snow=True, auto_sanitize=True
+                        )
+                        ok_ms_mot, _, _ = verify_hook_clip_genuine_motion(insp_ms)
+                        if ms_gate.get("passed", False) and ok_ms_mot:
+                            peak_meta_ms = {
+                                "passed": True,
+                                "peak_offset_sec": p_off,
+                                "peak_duration_sec": p_dur,
+                                "clean_peak_path": clean_ms_path,
+                                "inspect_target": insp_ms,
+                                "pre_curated_stock": True,
+                                "vision_score": float(best_multi_v.get("vision_score") or 8.2),
+                            }
+                            return mb_idx, st_q_hook, multi_v_path, best_multi_v, peak_meta_ms
+                except Exception as e_b_worker:
+                    logger.debug(f"[HookVideoNode] Parallel multi-source beat worker skip ({st_q_hook}): {e_b_worker}")
+                return None
+
+            if broll_queries_to_run:
+                _bg_stock_pool = ThreadPoolExecutor(max_workers=min(2, len(broll_queries_to_run)))
+                _bg_stock_futures = [_bg_stock_pool.submit(_fetch_single_multisrc_beat, pair) for pair in broll_queries_to_run]
+        except Exception as e_ms_init:
+            logger.debug(f"[HookVideoNode] Parallel multi-source init skip: {e_ms_init}")
+
     allow_yt_hook = (
         os.getenv("ALLOW_LOW_RISK_YOUTUBE_CLIPS", "true").strip().lower() not in ("0", "false", "no", "off")
         and os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() not in ("1", "true", "yes", "on")
@@ -1158,132 +1283,57 @@ Return ONLY valid JSON:
                         candidate_videos.append(v_str)
         cand_seq_idx = min(8, len(top_curated_yt_cands)) + 10
 
-    # ── TẦNG DỰ PHÒNG SỐ 2 (CHỈ KHI 100% YOUTUBE TẦNG 1 KHÔNG TÌM ĐƯỢC CLIP NÀO): PEXELS HD + PIXABAY HD + WIKIMEDIA ──
-    need_multi_source_broll = (
-        not is_3d_cgi_subject
-        and len(candidate_videos) == 0
-    )
-    if need_multi_source_broll:
+    # ── THU HOẠCH LUỒNG PEXELS/PIXABAY CHẠY SONG SONG VỚI YOUTUBE ──
+    if _bg_stock_futures:
         try:
-            from app.agents.media_agent import MediaAgent
-            # Fast-Drop 'A vs B' tuyệt đối khi xuống kho Pexels/Pixabay: chỉ giữ truy vấn ĐƠN CHỦ THỂ!
-            multi_beat_queries = build_single_entity_stock_queries(
-                raw_queries=[*stock_broll_queries, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query],
-                subject_entity=canonical_subject or primary_entity,
-                topic=topic,
-                max_words=4,
-            )
-            if not multi_beat_queries:
-                multi_beat_queries = [canonical_subject or visual_keyword or topic]
+            # Nếu YouTube đã có >= 2 clip đạt chuẩn, hủy ngay các luồng Pexels chưa chạy xong để không chờ thêm;
+            # chỉ thu nhận các kết quả Pexels đã hoàn tất sẵn trong lúc chờ YouTube!
+            if len(candidate_videos) >= 2:
+                _bg_stock_cancel_ev.set()
+                wait_stock_sec = 0.05
+            elif len(candidate_videos) == 1:
+                wait_stock_sec = 2.0
+            else:
+                wait_stock_sec = 12.0
 
-            combined_hook_subjects = (
-                f"{beat_1_subject} / {beat_2_subject}"
-                if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
-                else (canonical_subject or primary_entity or topic)
-            )
-            max_broll_q = 2
-            broll_queries_to_run = list(enumerate(multi_beat_queries[:max_broll_q]))
+            done_st, not_done_st = futures_wait(_bg_stock_futures, timeout=wait_stock_sec)
+            if not_done_st:
+                _bg_stock_cancel_ev.set()
+                for f_nd in not_done_st:
+                    f_nd.cancel()
 
-            def _fetch_single_multisrc_beat(mb_pair: tuple[int, str]) -> Optional[tuple[int, str, str, Dict[str, Any], Dict[str, Any]]]:
-                mb_idx, st_q_hook = mb_pair
-                if _hook_cancelled(8.0):
-                    return None
+            seen_multi_urls: set = set()
+            for f_st in done_st:
                 try:
-                    m_agent = MediaAgent()
-                    va_multi_src = {
-                        "analysis_source": "ai",
-                        "subject": combined_hook_subjects,
-                        "core_visual_entity": combined_hook_subjects,
-                        "topic": topic,
-                        "search_queries": [st_q_hook] + [q for q in multi_beat_queries[:4] if q != st_q_hook],
-                        "is_hook_scene": True,
-                        "skip_establishing_pass": True,
-                    }
-                    ms_deadline = min(
-                        hook_deadline_ts if hook_deadline_ts is not None else (time.monotonic() + 18.0),
-                        time.monotonic() + 18.0,
-                    )
-                    best_multi_v = m_agent.search_best_video_clip(
-                        query=st_q_hook,
-                        visual_analysis=va_multi_src,
-                        narration=hook_narration,
-                        topic=topic,
-                        cancel_event=cancel_event,
-                        deadline_ts=ms_deadline,
-                    )
-                    v_url_ms = (best_multi_v or {}).get("url")
-                    if not v_url_ms:
-                        return None
-                    seq_id = cand_seq_idx + mb_idx
-                    multi_v_path = str(hook_cand_dir / f"multisrc_hook_cand_{seq_id}.mp4")
-                    m_agent.download_file(v_url_ms, multi_v_path)
-                    if Path(multi_v_path).exists() and Path(multi_v_path).stat().st_size > 40_000:
-                        p_off, p_dur = find_hook_peak_window(
-                            multi_v_path,
-                            min_duration=max(target_hook_duration_sec, 3.0),
-                            max_duration=15.0,
-                        )
-                        clean_ms_path = str(hook_cand_dir / f"hook_peak_clean_ms_{seq_id}.mp4")
-                        trim_video(
-                            input_path=multi_v_path,
-                            duration_seconds=min(max(p_dur, opening_hook_window_sec, 3.5), 8.5),
-                            output_path=clean_ms_path,
-                            width=1080,
-                            height=1920,
-                            fps=30,
-                            is_scifi=is_scifi_pre,
-                            niche=atmosphere_fx,
-                            apply_grading=False,
-                            is_hook_scene=True,
-                            fair_use_transform=False,
-                            start_offset_sec=p_off,
-                            preserve_continuous_flow=True,
-                        )
-                        insp_ms = clean_ms_path if (Path(clean_ms_path).exists() and Path(clean_ms_path).stat().st_size > 20_000) else multi_v_path
-                        ms_gate = VisualCritic.inspect_clip_before_concat(
-                            insp_ms, min_short_edge=720, min_sharpness=7.2, check_watermark=True, allow_snow=True, auto_sanitize=True
-                        )
-                        ok_ms_mot, _, _ = verify_hook_clip_genuine_motion(insp_ms)
-                        if ms_gate.get("passed", False) and ok_ms_mot:
-                            peak_meta_ms = {
-                                "passed": True,
-                                "peak_offset_sec": p_off,
-                                "peak_duration_sec": p_dur,
-                                "clean_peak_path": clean_ms_path,
-                                "inspect_target": insp_ms,
-                                "pre_curated_stock": True,
-                                "vision_score": float(best_multi_v.get("vision_score") or 8.2),
-                            }
-                            return mb_idx, st_q_hook, multi_v_path, best_multi_v, peak_meta_ms
-                except Exception as e_b_worker:
-                    logger.debug(f"[HookVideoNode] Multi-source beat worker skip ({st_q_hook}): {e_b_worker}")
-                return None
-
-            if broll_queries_to_run and not _hook_cancelled(8.0):
-                ms_results = _run_pool_map_nonblocking(
-                    _fetch_single_multisrc_beat,
-                    broll_queries_to_run,
-                    max_workers=min(2, len(broll_queries_to_run)),
-                    stage_timeout=16.0,
-                )
-                seen_multi_urls: set = set()
-                for ms_item in ms_results:
-                    if not ms_item:
-                        continue
-                    mb_idx, st_q_hook, multi_v_path, best_multi_v, peak_meta_ms = ms_item
-                    v_url_ms = str(best_multi_v.get("url") or "")
-                    if v_url_ms in seen_multi_urls:
-                        continue
-                    seen_multi_urls.add(v_url_ms)
-                    validated_peaks[multi_v_path] = peak_meta_ms
+                    ms_item = f_st.result(timeout=0.1)
+                except Exception:
+                    ms_item = None
+                if not ms_item:
+                    continue
+                mb_idx, st_q_hook, multi_v_path, best_multi_v, peak_meta_ms = ms_item
+                v_url_ms = str(best_multi_v.get("url") or "")
+                if v_url_ms in seen_multi_urls:
+                    continue
+                seen_multi_urls.add(v_url_ms)
+                validated_peaks[multi_v_path] = peak_meta_ms
+                if len(candidate_videos) == 0:
                     candidate_videos.insert(0, multi_v_path)
-                    candidate_titles[Path(multi_v_path).stem] = str(best_multi_v.get("title") or f"Multi-Source Beat #{mb_idx + 1}")
-                    logger.info(
-                        f"🌐 [HookVideoNode Multi-Source Beat #{mb_idx + 1}] Đã bổ sung video sạch từ '{best_multi_v.get('source', 'stock')}' "
-                        f"cho query '{st_q_hook}': '{best_multi_v.get('title', '')[:50]}'"
-                    )
+                else:
+                    candidate_videos.append(multi_v_path)
+                candidate_titles[Path(multi_v_path).stem] = str(best_multi_v.get("title") or f"Multi-Source Beat #{mb_idx + 1}")
+                logger.info(
+                    f"🌐 [HookVideoNode Parallel Stock Beat #{mb_idx + 1}] Đã sẵn sàng video sạch từ '{best_multi_v.get('source', 'stock')}' "
+                    f"cho query '{st_q_hook}': '{best_multi_v.get('title', '')[:50]}'"
+                )
         except Exception as e_ms:
-            logger.debug(f"[HookVideoNode] Multi-source video expansion skip: {e_ms}")
+            logger.debug(f"[HookVideoNode] Parallel multi-source harvest skip: {e_ms}")
+        finally:
+            _bg_stock_cancel_ev.set()
+            if _bg_stock_pool is not None:
+                try:
+                    _bg_stock_pool.shutdown(wait=False, cancel_futures=True)
+                except Exception:
+                    pass
 
     # ──────────────────────────────────────────────────────────────────────────
     # BƯỚC 3: QUÉT ĐOẠN PEAK TỰ NHIÊN (`peak_offset_sec`, `peak_duration_sec`), LỌC SẠCH WATERMARK 3 BƯỚC & CHẤM ĐIỂM VISION
