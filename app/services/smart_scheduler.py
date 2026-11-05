@@ -29,7 +29,7 @@ BR_TZ = ZoneInfo("America/Sao_Paulo")  # Giờ chuẩn Brazil (BRT = UTC-3)
 MAX_VIDEOS_PER_DAY = 2
 
 # Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (3 giờ = 10,800 giây) để xếp trọn 2 khung giờ Đỉnh Trưa & Chiều Mỹ trong cùng 1 ngày
-MIN_SPACING_SECONDS = 21600
+MIN_SPACING_SECONDS = 10800
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US DAYTIME PEAK & VIETNAM DEAD-SLEEP WINDOW)
@@ -41,9 +41,9 @@ MIN_SPACING_SECONDS = 21600
 # ──────────────────────────────────────────────────────────────────────────────
 GOLDEN_SLOTS_UTC = [
     {
-        "hour": 15,
+        "hour": 18,
         "minute": 0,
-        "label_vn": "22:00 Đêm",
+        "label_vn": "01:00 Sáng",
         "label_us": "14:00 PM EDT / 11:00 AM PDT (KHUNG GIỜ KIM CƯƠNG #1 — ĐỈNH TRƯA BỜ TÂY & CHIỀU BỜ ĐÔNG MỸ — 100% VN NGỦ SAY)",
         "description": "Đăng lúc 00:30-01:30 rạng sáng VN (17:30-18:30 UTC): 100% người dùng VN đã ngủ say, đón trọn giờ nghỉ trưa Bờ Tây (11:00 AM PDT) và buổi chiều Bờ Đông Mỹ (2:00 PM EDT).",
         "tag": "US_WEST_LUNCH_AFTERNOON_PEAK",
@@ -106,9 +106,9 @@ MYSTERIES_DIAMOND_SLOTS_UTC = [
         "rank": 1
     },
     {
-        "hour": 15,
+        "hour": 18,
         "minute": 0,
-        "label_vn": "22:00 Đêm",
+        "label_vn": "01:00 Sáng",
         "label_us": "14:00 PM EDT / 11:00 AM PDT (KHUNG GIỜ KIM CƯƠNG #2 — ĐỈNH TRƯA BỜ TÂY & CHIỀU MỸ)",
         "description": "Khung giờ Kim Cương #2 (22:00 Đêm VN / 18:00 UTC): Cách khung chính 3 tiếng, 100% người dùng VN ngủ say, đón trọn tệp khán giả Mỹ buổi chiều.",
         "tag": "US_MYSTERIES_AFTERNOON_PEAK",
@@ -335,7 +335,7 @@ def sync_scheduled_jobs_status(force: bool = False) -> int:
                     VideoJob.youtube_video_id.isnot(None),
                 )
                 .order_by(VideoJob.id.desc())
-                .limit(12)
+                .limit(25)
                 .all()
             )
             for r_job in recent_pub_jobs:
@@ -350,13 +350,13 @@ def sync_scheduled_jobs_status(force: bool = False) -> int:
                     "title": r_job.title or "",
                     "is_just_published": False,
                 })
-                if len(unverified_published_jobs) >= 4:
+                if len(unverified_published_jobs) >= 10:
                     break
     except Exception as e:
         logger.warning(f"Lỗi khi đồng bộ trạng thái SCHEDULED jobs: {e}")
 
     # Tự động kiểm tra & khóa chuẩn Category ID ('22'/'15', chặn tuyệt đối '27'), US/BR Geo-Lock và ghim bình luận mồi
-    comment_check_jobs = just_published_jobs + unverified_published_jobs[:4]
+    comment_check_jobs = just_published_jobs + unverified_published_jobs[:10]
     if comment_check_jobs:
         try:
             import json

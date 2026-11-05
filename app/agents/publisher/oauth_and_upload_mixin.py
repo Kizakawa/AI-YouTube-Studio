@@ -881,6 +881,10 @@ class OAuthAndUploadMixin:
                         f"⏳ [PublisherAgent] Video {video_id} đang ở chế độ hẹn giờ/riêng tư. "
                         f"Câu hỏi Poll đã hiển thị ở Dòng 1 Description và sẽ tự động đăng vào mục Bình luận ngay khi video công chiếu."
                     )
+                    try:
+                        self.sync_channel_pinned_comments(limit=4)
+                    except Exception:
+                        pass
                 else:
                     comment_res = self.add_pinned_comment(video_id, effective_comment, retry_delay_sec=5)
                     if comment_res:

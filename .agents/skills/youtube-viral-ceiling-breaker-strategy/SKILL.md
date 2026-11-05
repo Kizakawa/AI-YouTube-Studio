@@ -86,10 +86,36 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ---
 
-### Quy Tắc 4: Bình Luận Đầu Luồng Của Chủ Kênh (`pinned_comment`) — Giả Thuyết Nâng Độ Khó 50/50 & CẤM Đuôi Quảng Cáo "Subscribe / Inscreva-se"
+### Quy Tắc 4: Bình Luận Đầu Luồng Của Chủ Kênh (`pinned_comment`) — Giả Thuyết Nâng Độ Khó 50/50, CẤM Đuôi Quảng Cáo & Tự Động Đăng Bù Khi Công Chiếu (`Backfill Law`)
 1. **Không bao giờ hỏi lại kết quả đã giải quyết xong trong video**: Nếu video đã cho thấy Cầy Mangut thắng Rắn Mamba Đen, tuyệt đối không hỏi *"Ai thắng: (1) Cầy Mangut hay (2) Mamba Đen?"* vì khán giả đã biết kết quả nên không cần tranh luận.
 2. **Không bao giờ gắn đuôi quảng cáo công nghiệp (`"🔔 INSCREVA-SE no canal..."`, `"🔔 SUBSCRIBE..."`)**: Làm lộ mùi bot tự động khiến người xem bỏ qua.
 3. **Đặt Câu Hỏi Giả Định Mở Nâng Độ Khó (`Counterfactual 50/50 Debate`, 12–22 từ)**: Đặt giả thuyết *2 đánh 1*, *đổi địa hình/bóng tối*, *kèo đấu tiếp theo*, hoặc *thử thách 1 triệu USD* kết thúc bằng `(1) ... hay (2) ... 👇` để chia đôi phe bình luận.
+4. **Bắt buộc Tự Động Đăng Bù Bình Luận (`Comment Backfill`) Sau Khi Video Hẹn Giờ Chuyển Sang `Public`**: Do YouTube Data API v3 chặn `commentThreads().insert` khi video đang ở trạng thái `private` (`scheduled`), hệ thống (`sync_scheduled_jobs_status` và `sync_channel_pinned_comments`) **BẮT BUỘC** phải tự động quét và đăng bù bình luận tranh luận ngay khi video chuyển sang `public` (tuyệt đối không để video `public` bị trống `0` bình luận).
+
+---
+
+### Quy Tắc 5: Luật Khung Giờ Vàng Định Tuyến Địa Lý (`US Geo-Routing Schedule Law`) — TUYỆT ĐỐI CẤM Đăng Kênh Tiếng Anh (`US`) Vào Khung `13:00–16:30 UTC` (`20:00–23:30` Đêm VN)
+1. **Bằng chứng thực nghiệm từ YouTube Analytics API v2 (`dimensions="country"`)**:
+   - Khi đăng các kênh tiếng Anh (`US`) vào khung `14:30–15:30 UTC` (`21:30–22:30` Đêm VN), thời điểm xuất bản rơi đúng vào **giờ cao điểm lướt Shorts trước khi ngủ tại Việt Nam**, khiến thuật toán phân phối `52%–68%` lượt xem hạt giống ban đầu cho khán giả Việt Nam (`VN` chỉ đạt `APV = 42.9%–55.2%`) thay vì Mỹ (`US` đạt `APV = 80.9%–148.3%`), làm kéo tụt chỉ số trung bình và đóng phễu sớm.
+2. **Luật Bất Khả Xâm Phạm trong `app/services/smart_scheduler.py`**:
+   - **5 Kênh Tiếng Anh (`Wild Odyssey`, `The mysteries of the world`, `Alternate History`, `Psychology of the world`, `Paws & Hearts Rescue`)**: **CHỈ ĐƯỢC PHÉP** lên lịch xuất bản trong cửa sổ **`17:30 – 21:45 UTC` (`00:30 – 04:45` Rạng Sáng VN)** — tức Khung #1 = **`18:00 UTC` (`01:00 Sáng VN` / `14:00 PM EDT`)** và Khung #2 = **`21:00 UTC` (`04:00 Sáng VN` / `17:00 PM EDT`)**, khi **100% người dùng Việt Nam đã ngủ say** và thị trường Mỹ đang ở Đỉnh Trưa–Chiều–Tối!
+   - **2 Kênh Tiếng Bồ Đào Nha (`Odisseia Selvagem`, `Mistérios do Mundo`)**: Giữ nguyên 2 khung giờ vàng Brazil (`13:30–14:15 UTC` = `10:30–11:15 AM BRT` Đón Đỉnh Trưa Brazil và `21:00–21:45 UTC` = `18:00–18:45 PM BRT` Đón Đỉnh Tối Brazil) vì ngôn ngữ `pt-BR` miễn nhiễm 100% với tệp VN (`0% VN traffic`).
+
+---
+
+### Quy Tắc 6: Luật Chống Đụng Lịch Giữa Video Dài (`16:9`) và Video Shorts (`9:16`) Cùng Kênh (`Anti-Collision Law`)
+- **TUYỆT ĐỐI CẤM** hẹn lịch xuất bản một Video Dài (`16:9`) và một Video Shorts (`9:16`) trùng giờ/phút trên cùng một kênh (gây tự nuốt hiển thị / *self-cannibalization* trong 2 giờ đầu).
+- Mọi video xuất bản trong cùng một ngày trên cùng một kênh phải cách nhau tối thiểu **`3.0 giờ` (`MIN_SPACING_SECONDS = 10800`)** (ví dụ trên `Wild Odyssey`: Shorts đăng lúc `18:30 UTC` / `01:30 Sáng VN`, Long-Form đăng lúc `21:45 UTC` / `04:45 Sáng VN`).
+- Khóa cứng `categoryId = "15"` (*Pets & Animals*) cho kênh Động vật (`Odisseia Selvagem`, `Wild Odyssey`, `Paws & Hearts Rescue`) và `categoryId = "22"` (*People & Blogs*) cho các kênh Bí ẩn/Lịch sử/Tâm lý; **TUYỆT ĐỐI CẤM** dùng `categoryId = "27"` (*Education*) vì gây bóp hiển thị Shorts Feed.
+
+---
+
+### Quy Tắc 7: Luật Auto-Thumbnail Mốc `50%` Cho Kênh Chưa Xác Thực (`50% Midpoint Hero-Frame Law`)
+1. **Quy luật máy chủ YouTube (`i.ytimg.com`)**: Với kênh chưa xác thực SĐT để đẩy `customThumbnail` (`403 Forbidden`), YouTube **100% LUÔN LẤY `2.jpg` (khung hình tại đúng mốc `50.0%` thời lượng video)** làm ảnh bìa mặc định (`hqdefault.jpg` / `maxresdefault.jpg`), và lấy `1.jpg` (`25%`), `3.jpg` (`75%`) làm 2 lựa chọn phụ.
+2. **TUYỆT ĐỐI CẤM** đóng chữ thumbnail vào giây `0.0s–0.5s` đầu video (làm người xem tưởng video là ảnh tĩnh và vuốt bỏ, gây sập `Stayed to watch %`).
+3. **Chuẩn kỹ thuật bắt buộc cho Video Dài `16:9` (`bilibili_longform_compiler.py` & `subtitle_helper.py`)**:
+   - Tự động chọn clip cận cảnh sắc nét nhất toàn bài (`select_best_hero_timestamp`) và đóng dấu khung hình Hero + dải nền tối đáy màn hình + **Banner Chữ Khổng Lồ `88px` 2 Màu Vàng–Trắng (2–4 từ)** ở sát đáy (`Alignment=2`, `MarginV=48`, giữ 80% diện tích phía trên trong trẻo 100%) tại đúng 3 mốc **`25%`, `50%`, và `75%`** (`stamp_hero_auto_thumbnails_on_mp4`).
+   - Tiêu đề Video Dài `16:9` phải gọn dưới **`55–60 ký tự`**: `[Thực thể A] vs [Thực thể B]: [Cơ chế sốc] ([Thông số])` để hiển thị trọn vẹn 100% trên màn hình điện thoại mà không bị cắt bằng dấu `...`.
 
 ---
 
