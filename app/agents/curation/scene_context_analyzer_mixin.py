@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
-_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "8") or 8)))
+_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "14") or 14)))
 
 _SCENE_CANCEL_CTX: _contextvars.ContextVar[Optional[_threading.Event]] = _contextvars.ContextVar(
     "_SCENE_CANCEL_CTX", default=None

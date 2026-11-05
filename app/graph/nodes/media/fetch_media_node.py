@@ -727,8 +727,6 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     yt_cancel_ev = _BranchCancelEvent(cancel_event)
 
                     async def _run_pexels_parallel_branch() -> Optional[Dict[str, Any]]:
-                        if scene.scene_id == 1:
-                            return None
                         try:
                             rag_vf = get_video_memory_rag()
                             vf_q = (
@@ -743,9 +741,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             ][:4]
                             va_vf["skip_establishing_pass"] = True
                             vf_deadline = (
-                                min(deadline_ts - 10.0, time.monotonic() + 22.0)
+                                min(deadline_ts - 8.0, time.monotonic() + 26.0)
                                 if deadline_ts is not None
-                                else (time.monotonic() + 22.0)
+                                else (time.monotonic() + 26.0)
                             )
                             best_hk_vid = await asyncio.to_thread(
                                 media_agent.search_best_video_clip,
@@ -844,11 +842,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         try:
                             _prefer_non_yt_node = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
                             _yt_budget_sec = (
-                                52.0
+                                44.0
                                 if scene.scene_id == 1
-                                else (32.0 if _prefer_non_yt_node else 44.0)
+                                else (32.0 if _prefer_non_yt_node else 38.0)
                             )
-                            _reserve_tail_sec = 4.0 if scene.scene_id == 1 else 10.0
+                            _reserve_tail_sec = 8.0 if scene.scene_id == 1 else 12.0
                             yt_sub_deadline = (
                                 min(deadline_ts - _reserve_tail_sec, time.monotonic() + _yt_budget_sec)
                                 if deadline_ts is not None
@@ -874,7 +872,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 scene_id=scene.scene_id,
                                 channel_id=channel_id_val,
                                 skip_youtube_search=False,
-                                skip_stock_fallback=(scene.scene_id >= 2),
+                                skip_stock_fallback=True,
                                 storyline_queries=story_yt_qs,
                                 cancel_event=yt_cancel_ev,
                                 deadline_ts=yt_sub_deadline,
@@ -906,11 +904,24 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     pending_tasks = {t_px, t_yt}
                     win_res: Optional[Dict[str, Any]] = None
                     extra_results: List[Dict[str, Any]] = []
+                    race_max_sec = 44.0 if scene.scene_id == 1 else 40.0
+                    race_deadline_ts = (
+                        min(deadline_ts - 12.0, time.monotonic() + race_max_sec)
+                        if deadline_ts is not None
+                        else (time.monotonic() + race_max_sec)
+                    )
 
                     while pending_tasks and win_res is None:
+                        wait_rem = race_deadline_ts - time.monotonic()
+                        if wait_rem <= 0.15:
+                            break
                         done_tasks, pending_tasks = await asyncio.wait(
-                            pending_tasks, return_when=asyncio.FIRST_COMPLETED
+                            pending_tasks,
+                            return_when=asyncio.FIRST_COMPLETED,
+                            timeout=wait_rem,
                         )
+                        if not done_tasks:
+                            break
                         for d_t in done_tasks:
                             try:
                                 r_val = d_t.result()

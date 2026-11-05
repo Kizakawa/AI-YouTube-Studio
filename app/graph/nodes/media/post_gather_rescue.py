@@ -562,9 +562,23 @@ async def run_post_gather_media_rescues(
                     yt_r_task = asyncio.create_task(_rescue_youtube_branch())
                     pending_r = {px_r_task, yt_r_task}
                     winner_r = None
+                    rescue_race_dl = (
+                        min(deadline_ts - 8.0, time.monotonic() + 30.0)
+                        if deadline_ts is not None
+                        else (time.monotonic() + 30.0)
+                    )
 
-                    while pending_r:
-                        done_r, pending_r = await asyncio.wait(pending_r, return_when=asyncio.FIRST_COMPLETED)
+                    while pending_r and winner_r is None:
+                        wait_rem_resc = rescue_race_dl - time.monotonic()
+                        if wait_rem_resc <= 0.15:
+                            break
+                        done_r, pending_r = await asyncio.wait(
+                            pending_r,
+                            return_when=asyncio.FIRST_COMPLETED,
+                            timeout=wait_rem_resc,
+                        )
+                        if not done_r:
+                            break
                         for d_r in done_r:
                             try:
                                 res_r = d_r.result()
@@ -591,6 +605,10 @@ async def run_post_gather_media_rescues(
                                         Path(res_r["media_path"]).unlink(missing_ok=True)
                                     except Exception:
                                         pass
+                    px_rescue_cancel_ev.set()
+                    yt_rescue_cancel_ev.set()
+                    for p_r in pending_r:
+                        p_r.cancel()
                         if winner_r is not None:
                             break
 

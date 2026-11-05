@@ -18,8 +18,8 @@ from app.services.media import license_policy
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
-# Điều tiết tối đa 3 luồng tải yt-dlp vật lý cùng lúc để tránh YouTube CDN bóp băng thông (throttling xuống 20 KB/s)
-_yt_download_sem = threading.BoundedSemaphore(3)
+# Điều tiết tối đa 4 luồng tải yt-dlp vật lý cùng lúc để tránh YouTube CDN bóp băng thông mà không gây nghẽn hàng đợi
+_yt_download_sem = threading.BoundedSemaphore(4)
 from app.graph.tools.tool_schemas import (
     _yt_url_lock,
     _YT_QUERY_FILLER_WORDS,
@@ -85,9 +85,8 @@ def execute_youtube_short_peak_clone_sync(
     # Ngay cả khi caller đã quét Pexels trước đó (skip_stock_fallback=True), vẫn giữ lại 8–12s cho Tầng 3 Bilibili Documentary Safe-Crop!
     total_avail_sec = max(8.0, deadline_ts - t_fn_start)
     yt_tier1_budget_sec = 48.0 if (clip_role or "").upper() == "HOOK" else 44.0
-    _bili_enabled = os.getenv("ALLOW_BILIBILI_BROLL_FALLBACK", "true").strip().lower() not in ("0", "false", "no", "off")
     if skip_stock_fallback:
-        reserve_for_tier2_sec = min(11.0, max(8.0, total_avail_sec * 0.26)) if (_bili_enabled and total_avail_sec >= 24.0) else 0.0
+        reserve_for_tier2_sec = 0.0
     elif total_avail_sec >= 42.0:
         reserve_for_tier2_sec = 14.0
     else:
@@ -235,7 +234,7 @@ def execute_youtube_short_peak_clone_sync(
                 rem_budget = _yt_remaining_sec()
                 min_tail_sec = max(3.0, reserve_for_tier2_sec)
                 if (
-                    (rem_budget <= 4.0 and claimed_probes >= 1)
+                    rem_budget <= 3.5
                     or (_remaining_sec() <= min_tail_sec and claimed_probes >= 1)
                     or _remaining_sec() <= max(4.5, min_tail_sec - 1.5)
                 ):
@@ -350,9 +349,9 @@ def execute_youtube_short_peak_clone_sync(
                             if pct_done >= 0.50 and dl_speed >= 150 * 1024:
                                 return
                             eff_hook_rem = _yt_remaining_sec()
-                            if eff_hook_rem <= 1.0 and pct_done < 0.40:
+                            if eff_hook_rem <= 0.5 and dl_bytes < 32768:
                                 raise TimeoutError(
-                                    f"Tier-1 deadline reached while downloading {vid_url}"
+                                    f"Tier-1 deadline reached before transfer started for {vid_url}"
                                 )
                             if t_transfer_start[0] is not None:
                                 elapsed_xfer = time.monotonic() - t_transfer_start[0]
@@ -511,12 +510,12 @@ def execute_youtube_short_peak_clone_sync(
                             allow_3d_cgi_monster=allow_3d_cgi_monster,
                             strict_no_fallback=True,
                             cancel_event=cancel_event,
-                            deadline_ts=max(yt_tier1_deadline, time.monotonic() + 14.0),
+                            deadline_ts=time.monotonic() + 10.5,
                             target_visual_query=target_vq,
                         )
                         # Chạy Subtitle-Safe Reframe Rescue ngay khi ứng viên đã tải xong trên đĩa, đúng chủ thể thật nhưng bị từ chối chỉ vì dòng phụ đề sát mép dưới/trên
                         # (tuyệt đối không cứu video sở thú, sai loài, AI/CGI hoặc talking head).
-                        if not passed_vis and claimed_probes >= 1 and not _is_cancelled():
+                        if not passed_vis and claimed_probes >= 1 and not _is_cancelled() and _remaining_sec() > 7.5:
                             reason_low = (vis_reason or "").lower()
                             hard_reject_tokens = (
                                 "zoo", "captive", "enclosure", "fence", "cage", "wrong",
@@ -565,7 +564,11 @@ def execute_youtube_short_peak_clone_sync(
                                         allow_3d_cgi_monster=allow_3d_cgi_monster,
                                         strict_no_fallback=True,
                                         cancel_event=cancel_event,
-                                        deadline_ts=max(yt_tier1_deadline, time.monotonic() + 14.0),
+                                        deadline_ts=(
+                                            min(deadline_ts, max(yt_tier1_deadline, time.monotonic() + 9.0))
+                                            if deadline_ts is not None
+                                            else max(yt_tier1_deadline, time.monotonic() + 9.0)
+                                        ),
                                         target_visual_query=target_vq,
                                     )
                                     if passed_sc:
@@ -724,7 +727,7 @@ def execute_youtube_short_peak_clone_sync(
         return None
 
     # ── TẦNG 3 (DỰ PHÒNG NON-YOUTUBE / CGI / CỨU HỘ ĐA NỀN TẢNG): SĂN B-ROLL TRÊN BILIBILI (SAFE-CROP & DUYỆT VISION) ──
-    if allow_bili_fallback and not prefer_non_yt:
+    if allow_bili_fallback and not prefer_non_yt and not skip_stock_fallback and _remaining_sec() >= 14.0:
         bili_res = _try_bilibili_broll_fallback(
             search_phrases=search_phrases,
             search_query=search_query,

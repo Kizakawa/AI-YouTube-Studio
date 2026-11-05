@@ -197,7 +197,7 @@ class StockFetcher:
                         continue
 
                     # Lọc ảnh lạc quẻ (văn phòng, cafe, tiệc tùng lọt vào chủ đề khác)
-                    if is_incongruent_stock_image(alt_text, topic=topic or query, narration=narration):
+                    if is_incongruent_stock_image(alt_text, topic=f"{topic} {query}".strip(), narration=narration):
                         continue
 
                     # Lọc trùng lặp qua used_urls (bao gồm cả cùng 1 nhiếp ảnh gia/buổi chụp)

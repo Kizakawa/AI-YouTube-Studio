@@ -141,86 +141,9 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                 f"🛡️ [PreRenderRescue] Đã khôi phục ảnh thật '{same_scene_imgs[0].name}' trên đĩa cho Cảnh #{sc_id} (thay thế _graphic.png)!"
                             )
                     if not rescued_pre:
-                        # 2. Chỉ cắt lát không chồng lấn từ các file Master dài (*_master.mp4 >= 14s) hoặc hook_candidates,
-                        # TUYỆT ĐỐI KHÔNG copy các clip ngắn (scene_YYY_*.mp4) của phân cảnh khác gây lặp cảnh!
-                        from app.services.media.longform_chapter_pool import (
-                            _commit_master_used_range,
-                            _find_non_overlapping_master_offset,
-                            is_clip_visually_unique_in_job,
-                        )
-                        hk_cands_pre = (
-                            [
-                                p for p in (work_dir / "hook_candidates").glob("*.mp4")
-                                if not any(tok in p.name.lower() for tok in ("_raw", "_tmp", ".tmp"))
-                            ]
-                            if (work_dir / "hook_candidates").exists()
-                            else []
-                        )
-                        if (work_dir / "hook_motion_001_fullpeak.mp4").exists():
-                            hk_cands_pre.append(work_dir / "hook_motion_001_fullpeak.mp4")
-                        active_used_vids = {
-                            str(Path(str(sm.get("media_path") or "")).resolve())
-                            for sm in scenes_media
-                            if sm.get("media_path") and Path(str(sm.get("media_path"))).exists()
-                        }
-                        unused_media_vids = [
-                            p for p in (list(m_dir_pre.glob("*.mp4")) if m_dir_pre.exists() else [])
-                            if str(p.resolve()) not in active_used_vids
-                            and not any(tok in p.name.lower() for tok in ("_tmp", ".tmp", "_cand"))
-                        ]
-                        cand_masters = sorted(
-                            [
-                                p for p in (
-                                    (list(ch_dir_pre.glob("*_master.mp4")) if ch_dir_pre.exists() else [])
-                                    + unused_media_vids
-                                    + hk_cands_pre
-                                )
-                                if is_completed_clean_mp4(p, min_size_bytes=25_000, min_duration_ms=3500)
-                            ],
-                            key=lambda p: p.stat().st_size,
-                            reverse=True,
-                        )
-                        for d_pick in cand_masters:
-                            d_tot_s = get_duration_ms(str(d_pick)) / 1000.0
-                            d_span = max(0.0, d_tot_s - req_sc_dur - 0.5)
-                            pref_off = round((((int(sc_id) * 43 + 17) % 89) / 89.0) * d_span, 2) if d_span > 0.5 else 0.0
-                            d_off = _find_non_overlapping_master_offset(
-                                job_id=job_id,
-                                master_key=str(d_pick),
-                                scene_id=int(sc_id),
-                                preferred_offset=pref_off,
-                                req_dur=req_sc_dur,
-                                master_dur=d_tot_s,
-                            )
-                            if d_off is None:
-                                continue
-                            trim_video(
-                                input_path=str(d_pick),
-                                duration_seconds=req_sc_dur,
-                                output_path=out_pre_resc,
-                                width=target_w,
-                                height=target_h,
-                                fps=30,
-                                start_offset_sec=d_off,
-                                apply_grading=True,
-                                is_hook_scene=(sc_id == 1),
-                                fair_use_transform=True,
-                                preserve_continuous_flow=True,
-                            )
-                            if Path(out_pre_resc).exists() and Path(out_pre_resc).stat().st_size > 15_000:
-                                if is_clip_visually_unique_in_job(out_pre_resc, job_id, scene_id=int(sc_id), master_key=str(d_pick)):
-                                    _commit_master_used_range(job_id, str(d_pick), int(sc_id), d_off, min(d_tot_s, d_off + req_sc_dur))
-                                    cur_media_path = out_pre_resc
-                                    cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
-                                    rescued_pre = True
-                                    break
-                                Path(out_pre_resc).unlink(missing_ok=True)
-                    if not rescued_pre:
                         try:
-                            from app.services.media.stock_fetcher import StockFetcher
                             from app.agents.media_agent import MediaAgent
                             from app.graph.tools.tool_schemas import build_single_entity_stock_queries
-                            sf_g_resc = StockFetcher()
                             ma_g_resc = MediaAgent()
                             qs_g_resc = build_single_entity_stock_queries(
                                 primary_query=str(m.get("visual_keyword") or m.get("stock_query") or ""),
@@ -228,27 +151,23 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                 subject_entity=str(state.get("primary_entity") or ""),
                                 topic=str(state.get("topic") or ""),
                                 narration=str(m.get("narration") or ""),
-                                max_words=2,
+                                max_words=3,
                             )
-                            for q_gr in qs_g_resc[:3]:
-                                if rescued_pre or not q_gr:
-                                    break
-                                v_gr_hits = (
-                                    sf_g_resc.search_videos(q_gr, per_page=5, orientation="portrait" if not is_lf_pre else "landscape")
-                                    or sf_g_resc.search_pixabay_videos(q_gr, per_page=5, orientation="portrait" if not is_lf_pre else "landscape")
-                                    or []
+                            q_gr_first = qs_g_resc[0] if qs_g_resc else str(state.get("primary_entity") or state.get("topic") or "")
+                            if q_gr_first:
+                                best_v_pre = ma_g_resc.search_best_video_clip(
+                                    query=q_gr_first,
+                                    used_urls=set(),
+                                    visual_analysis={
+                                        "subject": str(state.get("primary_entity") or ""),
+                                        "search_queries": qs_g_resc[:3],
+                                        "skip_establishing_pass": True,
+                                    },
+                                    narration=str(m.get("narration") or ""),
+                                    topic=str(state.get("topic") or ""),
                                 )
-                                for vh_gr in v_gr_hits[:2]:
-                                    v_files_gr = vh_gr.get("video_files") or []
-                                    u_gr = str(
-                                        next((vf.get("link") for vf in v_files_gr if vf.get("width") in (720, 1080) and vf.get("link")), None)
-                                        or next((vf.get("link") for vf in v_files_gr if vf.get("link")), None)
-                                        or vh_gr.get("download_url")
-                                        or vh_gr.get("url")
-                                        or ""
-                                    ).strip()
-                                    if not u_gr:
-                                        continue
+                                u_gr = str((best_v_pre or {}).get("url") or "").strip()
+                                if u_gr:
                                     raw_gr = str(m_dir_pre / f"scene_{int(sc_id):03d}_prerender_stock_raw.mp4")
                                     ma_g_resc.download_file(u_gr, raw_gr)
                                     if Path(raw_gr).exists() and Path(raw_gr).stat().st_size > 15_000:
@@ -270,12 +189,11 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                             cur_media_path = out_pre_resc
                                             cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
                                             rescued_pre = True
-                                            break
                                     else:
                                         Path(raw_gr).unlink(missing_ok=True)
                         except Exception:
                             pass
-                    if not rescued_pre and int(sc_id) not in (1, 2):
+                    if not rescued_pre:
                         from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                         out_pre_gimg = str(m_dir_pre / f"scene_{int(sc_id):03d}_prerender_gimg.jpg")
                         q_pre_gimg = str(m.get("visual_keyword") or m.get("stock_query") or state.get("primary_entity") or state.get("topic") or "")

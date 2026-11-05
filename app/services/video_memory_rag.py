@@ -877,11 +877,20 @@ class VideoMemoryRAG:
         title: str = "",
         scene_id: int = 0,
     ) -> None:
-        """Giải phóng tiêu đề và chữ ký tạm của scene_id nếu ứng viên tải lỗi hoặc bị loại ở bước kiểm duyệt."""
+        """
+        Giải phóng tiêu đề của ứng viên tải lỗi hoặc bị loại ở bước kiểm duyệt,
+        nhưng BẢO TOÀN chữ ký thị giác (`committed_signatures[scene_id]`) của clip hiện hành của phân cảnh
+        (hoặc khôi phục từ `previous_signatures[scene_id]` nếu ứng viên vừa ghi đè tạm thời)
+        để không cảnh nào khác trong cùng Job tải nhầm bản re-upload trùng với clip hiện có của cảnh này!
+        """
         with _RAG_LOCK:
             sess = self._get_or_create_job_session(job_id)
             if scene_id > 0:
-                sess.get("committed_signatures", {}).pop(scene_id, None)
+                prev_sigs_map = sess.get("previous_signatures", {})
+                if scene_id in prev_sigs_map:
+                    prev_sig = prev_sigs_map.pop(scene_id, None)
+                    if prev_sig:
+                        sess.setdefault("committed_signatures", {})[scene_id] = prev_sig
             if title:
                 t_clean = title.strip()
                 sess["claimed_titles"] = [
@@ -1038,6 +1047,8 @@ class VideoMemoryRAG:
                         )
                         return False, prev_sid
 
+                if scene_id in seen_sigs and seen_sigs[scene_id]:
+                    sess.setdefault("previous_signatures", {})[scene_id] = list(seen_sigs[scene_id])
                 seen_sigs[scene_id] = sig
 
             sess["claimed_video_ids"].update(keys)
@@ -1121,12 +1132,13 @@ class VideoMemoryRAG:
                 g_lo = min(g0, g1, g2)
                 if g_hi < 204 or g_lo > 68 or (g_hi - g_lo) < 126:
                     return False
-                # Điểm sáng của chữ phụ đề thường là trắng trung tính hoặc vàng/cam sáng (không phải ánh nước xanh lơ/xanh lục tự nhiên)
+                # Điểm sáng của chữ phụ đề thường là trắng trung tính, vàng/cam sáng, hoặc xanh cyan/lục sáng trên nền đen (poster/meme/infographic)
                 hi_idx = 0 if g0 == g_hi else (1 if g1 == g_hi else 2)
                 r_h, g_h, b_h = px_rgb[x_c + hi_idx, y_r]
-                is_neutral_white = min(r_h, g_h, b_h) >= 195 and (max(r_h, g_h, b_h) - min(r_h, g_h, b_h)) <= 24
-                is_warm_yellow_caption = r_h >= 210 and g_h >= 175 and b_h <= 95
-                return is_neutral_white or is_warm_yellow_caption
+                is_neutral_white = min(r_h, g_h, b_h) >= 190 and (max(r_h, g_h, b_h) - min(r_h, g_h, b_h)) <= 28
+                is_warm_yellow_caption = r_h >= 200 and g_h >= 165 and b_h <= 105
+                is_cyan_or_green_caption = (g_h >= 175 and b_h >= 195 and r_h <= 120) or (g_h >= 200 and r_h <= 110 and b_h <= 120)
+                return is_neutral_white or is_warm_yellow_caption or is_cyan_or_green_caption
 
             def _scan_caption_zone(y_start: int, y_end: int) -> Tuple[int, int, int, int]:
                 white_rows = 0
@@ -1218,8 +1230,22 @@ class VideoMemoryRAG:
                 return True, "collage_divider"
             if has_letterbox_blur_bars:
                 return True, f"letterbox_blur_bars(top={top_sh:.1f},bot={bot_sh:.1f},mid={mid_sh:.1f})"
-            if 28 <= text_rows <= 145 and zero_edge_rows >= 32 and (white_paper_ratio > 0.22 or flat_black_poster_ratio > 0.34):
-                return True, f"poster_text_rows={text_rows}"
+            if 22 <= text_rows <= 155 and (
+                (zero_edge_rows >= 28 and (white_paper_ratio > 0.20 or flat_black_poster_ratio > 0.28))
+                or flat_black_poster_ratio > 0.36
+            ):
+                return True, f"poster_text_rows={text_rows}(black={flat_black_poster_ratio:.2f})"
+            # Phát hiện hộp nền đen phẳng (poster caption box) ở 1/3 dưới hoặc 1/3 trên kèm nhiều hàng chữ
+            bot_flat_black = sum(
+                1 for y_b in range(156, 238) for x_b in range(8, 152)
+                if max(px_rgb[x_b, y_b]) <= 22 and (max(px_rgb[x_b, y_b]) - min(px_rgb[x_b, y_b])) <= 6
+            ) / float(82 * 144)
+            top_flat_black = sum(
+                1 for y_t in range(4, 84) for x_t in range(8, 152)
+                if max(px_rgb[x_t, y_t]) <= 22 and (max(px_rgb[x_t, y_t]) - min(px_rgb[x_t, y_t])) <= 6
+            ) / float(80 * 144)
+            if (bot_flat_black >= 0.42 and bot_white_text_rows >= 4) or (top_flat_black >= 0.42 and top_white_text_rows >= 4):
+                return True, f"black_caption_box(bot_blk={bot_flat_black:.2f},top_blk={top_flat_black:.2f})"
             is_fullframe_natural_sparkle = (mid_white_text_rows >= 14 and max(top_max_d_run, bot_max_d_run) < 6)
             has_bot_caption_band = (bot_max_d_run >= 4 or (bot_white_text_rows >= 10 and bot_max_w_run >= 4))
             has_top_caption_band = (top_max_d_run >= 4 or (top_white_text_rows >= 10 and top_max_w_run >= 4))

@@ -723,8 +723,9 @@ QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM 3 TRỤC (MULTI-AXIS SELF-SCORING RU
 3. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP (Thang điểm 0.0–10.0):
    - `entity_identity_score`: Chủ thể trong ảnh có đúng chính xác loài/thực thể đích danh của `{subject_req}` / `{topic_ctx}` (không chọn loài khác chỉ vì trùng nhóm chung, không chọn đồ chơi/thú nhồi bông/vật thể ẩn dụ nghĩa đen) hay không?
    - `narrative_action_score`: Hành động, trạng thái và môi trường sinh thái/thời đại trong ảnh có khớp với phân cảnh `{narration}` hay không?
-   - `visual_integrity_score`: Khung hình có nguyên bản, tự nhiên (không lẫn dây buộc chân/lồng chuồng nuôi nhốt khi kịch bản ở hoang dã, không bị chia đôi màn hình split-screen, không có chữ chèn đè/watermark/meme/biểu đồ) hay không?
+   - `visual_integrity_score`: Khung hình có nguyên bản, tự nhiên (không lẫn dây buộc chân/lồng chuồng nuôi nhốt khi kịch bản ở hoang dã, không bị chia đôi màn hình split-screen, KHÔNG có hộp chữ chú thích ở dưới/trên, KHÔNG phải ảnh infographic/sơ đồ có mũi tên hay chữ giải thích, không có watermark/meme/biểu đồ) hay không? CẢNH BÁO CỨNG: Bất kỳ bức ảnh nào có dải chữ chú thích (caption box/article text) ở cạnh dưới/trên hoặc chữ infographic trên nền ảnh BẮT BUỘC bị chấm `visual_integrity_score <= 2.0` và TUYỆT ĐỐI KHÔNG được chọn làm `winner_index` hay `approved_alternate_indices`!
 4. Nếu ứng viên tốt nhất có bất kỳ trục nào `< 7.0` (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score) < 7.0`), BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
+5. Trong `"approved_alternate_indices"`, hãy liệt kê thêm 1–2 index khác trong DANH SÁCH ỨNG VIÊN cũng đạt cả 3 trục `>= 7.0` (đúng chủ thể, sạch 100% chữ/infographic/collage) để ghép làm ảnh chuyển cảnh thứ 2 trong cùng phân cảnh mà không cần gọi tìm kiếm lần 2.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
@@ -735,7 +736,7 @@ TRẢ VỀ JSON DUY NHẤT:
   "narrative_action_score": 8.8,
   "visual_integrity_score": 8.8,
   "confidence_score": 8.8,
-  "approved_alternate_indices": [],
+  "approved_alternate_indices": [1],
   "rationale": "Giải thích điểm 3 trục vì sao bức ảnh INDEX X thể hiện sát nhất ý nghĩa kịch bản của người dùng",
   "should_fallback_to_ai": false
 }}"""

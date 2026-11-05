@@ -103,33 +103,42 @@ def execute_google_cinematic_image_sync(
         return None
 
     all_candidate_urls: List[str] = []
-    for u_cand in [best_photo.get("url"), *(best_photo.get("alternate_urls") or [])]:
+    for u_cand in [
+        best_photo.get("url"),
+        *(best_photo.get("_vision_alternates") or []),
+        *(best_photo.get("alternate_urls") or []),
+    ]:
         if u_cand and u_cand not in all_candidate_urls:
             all_candidate_urls.append(u_cand)
 
-    # Khi cần >= 2 ảnh/cảnh theo các chunk nội dung của LLM, ưu tiên bồi thêm ứng viên từ Google Images (WebImageFetcher) cho chunk thứ 2-3 trước, sau đó mới tới Pexels/Pixabay
-    if target_image_count >= 2 and len(all_candidate_urls) < target_image_count + 1:
+    # Khi cần >= 2 ảnh/cảnh theo các chunk nội dung của LLM, BẮT BUỘC đi qua `media_agent.search_best_photo` (có kiểm duyệt Gemini Vision + CV Gate),
+    # TUYỆT ĐỐI KHÔNG lấy thẳng URL thô chưa qua kiểm duyệt Vision từ `wf_extra.search_all`!
+    if target_image_count >= 2 and len(all_candidate_urls) < target_image_count:
         extra_chunk_qs = search_qs[1:3] if len(search_qs) > 1 else [f"{subj} close up"]
-        try:
-            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
-            if web_image_search_enabled():
-                wf_extra = WebImageFetcher()
-                for ch_q in extra_chunk_qs:
-                    for w_it in (wf_extra.search_all(ch_q, per_source=5, subject=subj, preferred_engines=["google", "bing"]) or []):
-                        u_w = w_it.get("url")
-                        if u_w and u_w not in all_candidate_urls and not is_media_already_used(u_w, used):
-                            all_candidate_urls.append(u_w)
-                    if len(all_candidate_urls) >= target_image_count + 2:
-                        break
-        except Exception:
-            pass
-        if len(all_candidate_urls) < target_image_count + 1:
-            sec_q = extra_chunk_qs[0]
+        temp_used_for_sec = set(used) | set(all_candidate_urls)
+        for ch_q in extra_chunk_qs:
+            if len(all_candidate_urls) >= target_image_count:
+                break
             try:
-                for px_it in (media_agent.search_photos(sec_q, per_page=4, orientation="portrait", topic=overall_script_query or topic, narration=narration, used_urls=used) or []):
-                    u_px = px_it.get("url")
-                    if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
-                        all_candidate_urls.append(u_px)
+                va_sec = dict(va_photo)
+                va_sec["search_queries"] = [ch_q, *search_qs[:2]]
+                va_sec["google_image_queries"] = [ch_q, *search_qs[:2]]
+                sec_photo = media_agent.search_best_photo(
+                    query=ch_q,
+                    used_urls=temp_used_for_sec,
+                    visual_analysis=va_sec,
+                    narration=effective_narration,
+                    topic=overall_script_query or topic,
+                )
+                if sec_photo and sec_photo.get("url"):
+                    for u_sec in [
+                        sec_photo.get("url"),
+                        *(sec_photo.get("_vision_alternates") or []),
+                        *(sec_photo.get("alternate_urls") or []),
+                    ]:
+                        if u_sec and u_sec not in all_candidate_urls and not is_media_already_used(u_sec, used):
+                            all_candidate_urls.append(u_sec)
+                            temp_used_for_sec.add(u_sec)
             except Exception:
                 pass
 
