@@ -18,10 +18,16 @@ description: >-
 
 1. **LUẬT THÉP #1 — KHÔNG ĐIỀU TRA GỐC RỄ, CẤM VIẾT CODE SỬA (`No Fixes Without Root-Cause Tracing First`)**:
    - Tuyệt đối không đoán mò, không sửa ngay tại dòng code cuối cùng nơi triệu chứng xuất hiện khi chưa truy vết ngược (`Backward Trace`) toàn bộ luồng dữ liệu.
-2. **LUẬT THÉP #2 — CẤM OVERFITTING VÀO BÀI TEST / CẤM VÁ TỪ KHÓA (`Zero Test-Case Overfitting & Zero Keyword-Patching`)**:
-   - **CẤM TUYỆT ĐỐI** viết điều kiện `if/else` hoặc danh sách từ khóa theo chủ đề, loài vật, thời tiết, địa danh cụ thể (ví dụ: `if "snow" in ...`, `if "tiger" in ...`, `if "honey badger" in ...`, `if "leviathan" in ...`) hay nối chuỗi tĩnh (`+ " snow"`, `+ " shorts"`) trong code Python để ép 1 bài test vượt qua.
+2. **LUẬT THÉP #2 — CẤM OVERFITTING VÀO BÀI TEST / CẤM VÁ TỪ KHÓA & REGEX TRÁ HÌNH (`Zero Test-Case Overfitting & Zero Disguised Regex/Tuple Keyword-Patching`)**:
+   - **CẤM TUYỆT ĐỐI** viết điều kiện `if/else` HOẶC **bất kỳ dạng danh sách từ khóa trá hình nào trong code Python** như:
+     * Biểu thức chính quy liệt kê từ/cụm từ cụ thể (`re.compile(r"\b(steel clamps|hydraulic press|special liquid|...)\b")`).
+     * Lệnh `re.sub(...)` thay thế câu chữ cụ thể trong lời thoại/truy vấn.
+     * Các `tuple` / `set` / `dict` liệt kê tên loài vật, đạo cụ, thời tiết, địa danh, hoặc nhóm từ đồng nghĩa (`_DISTINCT_SPECIES_GUARD = ("tiger", "lion", ...)`, `_syn_groups = ...`).
+   - **LUẬT THẨM QUYỀN SYSTEM PROMPT 100% CHO AI SEARCH & CHỐNG LẠC ĐỀ (`100% System Prompt Authority for AI Search & Script`)**:
+     * Mọi lỗi do AI tìm kiếm sai cảnh (lạc đề sang loài khác, tìm vật thể ẩn dụ nghĩa đen, mất tên thực thể khi dùng đại từ) hoặc lỗi văn phong kịch bản **BẢN CHẤT LÀ DO HƯỚNG DẪN TRONG SYSTEM PROMPT CHƯA ĐỦ RÕ**.
+     * **BẮT BUỘC sửa 100% ở Tầng LLM System Prompt & JSON Schema Contract**: Chính LLM viết kịch bản (`ContentAgent`) phải trực tiếp xuất `subject_entity` và `search_queries` (3–4 câu truy vấn tiếng Anh cụ thể) cho từng phân cảnh ngay trong `SceneContract`, kết hợp với System Prompt của `VisualDirector`, `VisualCurationAgent` (Gemini Vision) và `ScriptCritic`. Tuyệt đối không dùng code Python để đoán nghĩa hay vá từ khóa thay cho LLM!
    - **Bài Kiểm Tra Phản Thực Tế Bắt Buộc (The 4-Domain Counterfactual Test)**: Trước khi thêm bất kỳ dòng code nào vào Python, hãy tự hỏi:
-     > *"Nếu ngày mai hệ thống chạy 4 chủ đề hoàn toàn khác nhau: (1) Hổ Siberia mùa đông, (2) Ám sát Julius Caesar thời La Mã, (3) Thao túng tâm lý học Dark Noir, (4) Thủy quái đáy vực Mariana — dòng code này có tự động đúng cho cả 4 mà không cần thêm từ khóa mới không?"*
+     > *"Nếu ngày mai hệ thống chạy 4 chủ đề hoàn toàn khác nhau: (1) Hổ Siberia mùa đông, (2) Ám sát Julius Caesar thời La Mã, (3) Thao túng tâm lý học Dark Noir, (4) Thủy quái đáy vực Mariana — dòng code này có tự động đúng cho cả 4 mà không cần thêm từ khóa/regex mới không?"*
      - Nếu câu trả lời là **Không** $\rightarrow$ Đó là **Overfitting (Reward Hacking)**. Bắt buộc hủy bỏ cách sửa đó và đẩy tư duy lên tầng **LLM System Prompt / Multimodal Vision**!
 3. **LUẬT THÉP #3 — QUY TẮC 2 LẦN THỬ (`The 2-Strike Architectural Escalation Rule`)**:
    - Theo chuẩn `obra/superpowers`: Nếu sửa 1 lỗi mà phải thêm ngoại lệ lần thứ 2, hoặc sửa chỗ này lại phình lỗi ở chỗ khác $\rightarrow$ **DỪNG LẠI NGAY**. Vấn đề nằm ở thiết kế luồng dữ liệu hoặc System Prompt giữa các tầng, không phải ở ngưỡng lọc cục bộ.

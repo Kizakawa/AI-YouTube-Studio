@@ -309,22 +309,11 @@ class ScriptValidationLinter:
                         if w.lower() not in _vs_stop
                     ]
                     opening_two_low = " ".join((sc.narration or "") for sc in script.scenes[:2]).lower()
-                    _syn_groups = (
-                        {"navy", "warships", "destroyers", "fleet", "american"},
-                        {"submarine", "sub"},
-                        {"soviet", "russian"},
-                        {"creature", "creatures", "fish", "snailfish"},
-                    )
+
                     def _matches_side(toks: List[str], blob: str) -> bool:
                         if not toks:
                             return True
-                        for t in toks:
-                            if t[:4] in blob:
-                                return True
-                            for grp in _syn_groups:
-                                if t in grp and any(g in blob for g in grp):
-                                    return True
-                        return False
+                        return any(t[:4] in blob for t in toks)
 
                     has_a = _matches_side(toks_a, opening_two_low)
                     has_b = _matches_side(toks_b, opening_two_low)
@@ -343,19 +332,6 @@ class ScriptValidationLinter:
                             f"Title ('{raw_title}') hides one of the combatants ('{missing_title_side}') in a 2-entity matchup ('{side_a_raw} vs {side_b_raw}'). "
                             f"Rule 1: The Title MUST explicitly name BOTH '{side_a_raw}' AND '{side_b_raw}' for YT_SEARCH discovery!"
                         )
-
-            _baby_talk_re = re.compile(
-                r"\b(?:a\s+special\s+liquid|a\s+secret\s+liquid|magic\s+liquid|run\s+out\s+of\s+fuel|runs\s+out\s+of\s+fuel|jaws\s+are\s+incredibly\s+weak)\b",
-                re.IGNORECASE,
-            )
-            for sc in script.scenes:
-                sc_narr_chk = (sc.narration or "").strip()
-                m_bt = _baby_talk_re.search(sc_narr_chk)
-                if m_bt:
-                    issues.append(
-                        f"Scene {sc.scene_id} uses vague baby-talk filler ('{m_bt.group(0)}'). "
-                        f"Replace with concrete, visceral physical anatomy and mechanisms (e.g. '60 serrated shark-like teeth', 'blood-thinning venom glands', 'massive blood loss and shock')."
-                    )
 
             # CẤM đọc câu xin Subscribe / Comment ở BẤT KỲ cảnh nào (đặc biệt là cảnh cuối)
             cta_regex = re.compile(

@@ -648,7 +648,12 @@ def _ensure_subject_anchored_decisions(
                 continue
             item[fb_key] = _restore_full_canonical_entity_in_query(fb_val, lead_ent, max_words=4)
 
-        # Đảm bảo storyline_search_queries đồng bộ
+        # Đảm bảo storyline_search_queries đồng bộ và bảo toàn toàn bộ `search_queries` do LLM viết kịch bản tạo ra cho từng phân cảnh
+        existing_story_qs = [
+            _restore_full_canonical_entity_in_query(str(q_s).strip(), lead_ent, max_words=5)
+            for q_s in (item.get("storyline_search_queries") or item.get("search_queries") or [])
+            if str(q_s).strip()
+        ]
         prim_q = str(
             item.get("youtube_search_query")
             or item.get("primary_stock_query")
@@ -659,9 +664,9 @@ def _ensure_subject_anchored_decisions(
         ).strip()
         sec_q = str(item.get("secondary_storyline_query") or "").strip()
         fb_q = str(item.get("fallback_broad_query") or item.get("secondary_stock_query") or "").strip()
-        merged_story_qs = [q_x for q_x in dict.fromkeys([prim_q, sec_q, fb_q]) if q_x]
+        merged_story_qs = [q_x for q_x in dict.fromkeys([*existing_story_qs, prim_q, sec_q, fb_q]) if q_x]
         if merged_story_qs:
-            item["storyline_search_queries"] = merged_story_qs
+            item["storyline_search_queries"] = merged_story_qs[:5]
         item["scope_audited"] = True
         out_decisions.append(item)
 

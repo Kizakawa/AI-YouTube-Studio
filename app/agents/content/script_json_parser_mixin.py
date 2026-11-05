@@ -295,19 +295,8 @@ class ScriptJsonParserMixin:
                 if not sq:
                     sq = " ".join(vk.split()[:4])
 
-            # Nếu là ngách Tâm lý học con người (psychology), khử bẫy ẩn dụ động vật ('wolf teeth', 'forest predator', 'lion')
-            if str(channel_niche or "").strip().lower() == "psychology":
-                _animal_metaphor_re = re.compile(
-                    r"\b(?:wolf|wolves|lion|lions|tiger|tigers|shark|sharks|snake|snakes|caiman|crocodile|"
-                    r"baring\s+teeth|wolf\s+teeth|forest\s+predator|jungle\s+predator)\b",
-                    re.IGNORECASE,
-                )
-                if _animal_metaphor_re.search(vk):
-                    vk = "confident man cold gaze noir"
-                if _animal_metaphor_re.search(sq):
-                    sq = "confident man intense gaze"
-            else:
-                # Tôn trọng `subject_entity` và `search_queries` do chính LLM viết kịch bản chỉ định cho từng phân cảnh (chống lạc đề từ gốc kịch bản)
+            # Tôn trọng `subject_entity` và `search_queries` do chính LLM viết kịch bản chỉ định cho từng phân cảnh (chống lạc đề từ gốc kịch bản)
+            if str(channel_niche or "").strip().lower() != "psychology":
                 raw_pe = str(
                     sc.get("subject_entity")
                     or raw_data.get("primary_entity")
@@ -829,27 +818,6 @@ class ScriptJsonParserMixin:
                     s_narr = m_acad.group(1).strip()
                     if s_narr and s_narr[0].islower():
                         s_narr = s_narr[0].upper() + s_narr[1:]
-                # Khử các cụm mở đầu/kết câu kiểu văn mẫu AI ('Muita gente acha/pensa que', 'No fim das contas', 'Most people assume')
-                s_narr = re.sub(r"\bMuita\s+gente\s+(?:acha|pensa|acredita|imagina)\s+que\b", "Você pensaria que", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\bNo\s+fim\s+das\s+contas\s*,\s*", "Na prática, ", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\batravessa\s+o\s+osso(?:\s+como\s+papel)?\b", "fura o crânio direto", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\bdeixa\s+o\s+rio\s+em\s+(?:completo\s+)?silêncio\b", "arrasta a presa direto pro mato", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\bMost\s+people\s+(?:assume|think|believe)(?:\s+that)?\b", "You'd think", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\bWhat\s+most\s+people\s+miss\s+is(?:\s+that)?\b", "Turns out,", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\bIt's\s+a\s+high-stakes\s+game\s+of\s+[^.!?]+[.!?]\s*", "", s_narr, flags=re.IGNORECASE).strip()
-                s_narr = re.sub(r"\bIt's\s+a\s+brutal,\s+silent\s+end[.!?]*", "", s_narr, flags=re.IGNORECASE).strip()
-                s_narr = re.sub(r"\blocked\s+in\s+a\s+deadly\s+fight\b", "tearing into each other", s_narr, flags=re.IGNORECASE)
-                # Khử cụm 'act like / acts like / acting like' bị ScriptCritic gắn cờ AI simile
-                s_narr = re.sub(r"\bthat\s+acts?\s+like\b", "that cuts like", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\bacts?\s+like\b", "works as", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\bacting\s+like\b", "cutting like", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(r"\b(?:global\s+catastrophe)\b", "total disaster", s_narr, flags=re.IGNORECASE)
-                s_narr = re.sub(
-                    r"\b(?:global\s+nuclear\s+nightmare|nuclear\s+holocaust|nuclear\s+apocalypse|global\s+nuclear\s+exchange|full-scale\s+atomic\s+retaliation)\b",
-                    "all-out nuclear war",
-                    s_narr,
-                    flags=re.IGNORECASE,
-                )
                 # Chỉ khử các liên từ phụ thuộc / mạo từ / tính từ sở hữu thực sự bị bỏ lửng ở cuối câu
                 # (TUYỆT ĐỐI KHÔNG cắt các từ hợp lệ ở cuối câu tiếng Anh như 'no', 'do', 'in', 'on', 'to', 'is', 'are', 'why')
                 while _dangling_end_re.search(s_narr):
