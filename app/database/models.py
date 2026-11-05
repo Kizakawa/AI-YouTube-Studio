@@ -192,12 +192,15 @@ def _sync_pg_recent_to_sqlite(driver_url: str) -> None:
         cur.execute("PRAGMA table_info(video_jobs)")
         vj_cols = {r[1] for r in cur.fetchall()}
         if vj_cols and vj_rows:
-            cur.execute("SELECT id, status, video_path FROM video_jobs WHERE id >= 680")
-            local_vj = {row[0]: (row[1], row[2]) for row in cur.fetchall()}
+            cur.execute("SELECT id, status, video_path, scheduled_time FROM video_jobs WHERE id >= 680")
+            local_vj = {row[0]: (row[1], row[2], row[3]) for row in cur.fetchall()}
             for r in vj_rows:
                 jid = r.get("id")
                 loc_info = local_vj.get(jid)
-                if loc_info and loc_info[0] in ("RENDERED", "PUBLISHED", "APPROVED") and loc_info[1]:
+                if loc_info and (
+                    (loc_info[0] in ("RENDERED", "PUBLISHED", "APPROVED") and loc_info[1])
+                    or (loc_info[0] in ("SCHEDULED", "PUBLISHED") and loc_info[2])
+                ):
                     continue
                 valid_items = {k: (str(v) if isinstance(v, datetime) else v) for k, v in r.items() if k in vj_cols}
                 if not valid_items:
