@@ -286,14 +286,19 @@ Return ONLY valid JSON:
                 elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                     rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
             except Exception as req_ex:
-                rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(req_ex)[:160])
+                err_s_v = str(req_ex)
+                if "Read timed out" not in err_s_v and "timed out" not in err_s_v.lower():
+                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=err_s_v[:160])
                 continue
             finally:
                 _VISION_SEM.release()
     except Exception as ex:
         logger.debug(f"[YouTubePeakTool] Vision check fallback: {ex}")
 
-    # Chỉ chạy đến đây khi TẤT CẢ các model Gemini Vision đều bị lỗi mạng/429/503 (không có phản hồi JSON nào).
+    if strict_no_fallback:
+        return False, 0.0, "Strict vision gate: rejected unverified clip"
+
+    # Chỉ chạy đến đây khi strict_no_fallback=False và TẤT CẢ các model Gemini Vision đều bị lỗi mạng/429/503.
     # Khi đó, kiểm tra nghiêm ngặt bằng VisualCritic (bật check_watermark=True) + đối chiếu thực thể trong tiêu đề video
     # để không vứt bỏ oan clip YouTube thật đã tải về chỉ vì Google API tạm quá tải 503!
     try:

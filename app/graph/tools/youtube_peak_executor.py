@@ -532,14 +532,14 @@ def execute_youtube_short_peak_clone_sync(
                                 and not any(bad in reason_low for bad in hard_reject_tokens)
                             ):
                                 rescue_crop_path = str(Path(tmp_dir) / "rescue_safecrop.mp4")
-                                if "top" in reason_low and "bottom" not in reason_low:
-                                    y_crop_expr = "ih*0.18"
-                                elif "bottom" in reason_low and "top" not in reason_low:
+                                if any(k in reason_low for k in ("top", "banner", "header")):
+                                    y_crop_expr = "ih*0.20"
+                                elif "bottom" in reason_low:
                                     y_crop_expr = "ih*0.06"
                                 else:
-                                    y_crop_expr = "ih*0.12"
+                                    y_crop_expr = "ih*0.14"
                                 vf_safecrop = (
-                                    f"crop=iw*0.76:ih*0.76:iw*0.12:{y_crop_expr},"
+                                    f"crop=iw*0.74:ih*0.72:iw*0.13:{y_crop_expr},"
                                     "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
                                     "crop=1080:1920:(iw-1080)/2:(ih-1920)/2,"
                                     "eq=contrast=1.06:saturation=1.10:brightness=0.01,"

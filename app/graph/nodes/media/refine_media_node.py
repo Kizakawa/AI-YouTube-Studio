@@ -702,7 +702,69 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                         )
                                     else:
                                         Path(out_res_ref).unlink(missing_ok=True)
+                # Nếu cảnh chưa tìm được video thay thế từ YouTube/Pexels nhưng kho dự trữ Hook (`hook_reserve_002.mp4`
+                # hoặc phần đuôi chưa dùng của `hook_motion_001_fullpeak.mp4`) vẫn chưa được phân cảnh nào khác sử dụng,
+                # ưu tiên cắt đoạn video chuyển động thật đã duyệt Vision đó để cứu cảnh hiện tại!
+                if not replaced and not is_lf_refine:
+                    try:
+                        from app.utils.ffmpeg_helper import get_duration_ms
+                        from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion
+                        already_used_paths = {
+                            str(_sx.get("media_path") or "")
+                            for _sx in scenes_media
+                            if isinstance(_sx, dict) and int(_sx.get("scene_id") or 0) != scene_id
+                        } | {
+                            str(_sx.get("source_url") or "")
+                            for _sx in scenes_media
+                            if isinstance(_sx, dict) and int(_sx.get("scene_id") or 0) != scene_id
+                        }
+                        for cand_res_p, cand_off_s in (
+                            (work_dir / "hook_reserve_002.mp4", 0.0),
+                            (work_dir / "hook_motion_001_fullpeak.mp4", 4.15),
+                        ):
+                            if not cand_res_p.exists() or cand_res_p.stat().st_size <= 20_000:
+                                continue
+                            if str(cand_res_p) in already_used_paths or cand_res_p.name in {Path(p).name for p in already_used_paths if p}:
+                                continue
+                            res_dur_body = get_duration_ms(str(cand_res_p)) / 1000.0
+                            if res_dur_body >= cand_off_s + max(2.2, min(sc_dur_sec * 0.65, 3.8)):
+                                out_res_body = str(media_dir / f"scene_{scene_id:03d}_refined_hook_reserve_r{retry_count}.mp4")
+                                await asyncio.to_thread(
+                                    trim_video,
+                                    input_path=str(cand_res_p),
+                                    duration_seconds=sc_dur_sec,
+                                    output_path=out_res_body,
+                                    width=w_ref,
+                                    height=h_ref,
+                                    fps=30,
+                                    is_scifi=is_scifi_val,
+                                    niche=current_niche,
+                                    apply_grading=True,
+                                    is_hook_scene=(scene_id == 1),
+                                    fair_use_transform=(cand_off_s > 0.0),
+                                    start_offset_sec=cand_off_s,
+                                    preserve_continuous_flow=True,
+                                )
+                                if Path(out_res_body).exists() and Path(out_res_body).stat().st_size > 15_000:
+                                    ok_b_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, out_res_body)
+                                    if ok_b_mot:
+                                        item["media_path"] = out_res_body
+                                        item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
+                                        item["pose_images"] = []
+                                        item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
+                                        item["source_url"] = str(cand_res_p)
+                                        replaced = True
+                                        logger.info(
+                                            f"Scene {scene_id}: 🔥 [Hook Reserve Video Rescue] Đã nạp Video chuyển động thật đã duyệt Vision ('{cand_res_p.name}') -> {Path(out_res_body).name}"
+                                        )
+                                        break
+                                    else:
+                                        Path(out_res_body).unlink(missing_ok=True)
+                    except Exception as _e_hr_b:
+                        logger.debug(f"Scene {scene_id}: Hook reserve body rescue skip: {_e_hr_b}")
+
                 # Chỉ cho phép hạ cấp xuống Ảnh tĩnh Google (Tier 3) nếu cảnh hiện tại vốn chưa phải là Video thật,
+                # HOẶC cảnh hiện tại bị lỗi thực thể/ngữ nghĩa nghiêm trọng (has_semantic_vision_defect=True),
                 # HOẶC tổng số cảnh Video thật còn lại vẫn giữ vững sàn >= 80% của toàn bài!
                 cur_vid_scenes_cnt = sum(
                     1 for _sx in scenes_media
@@ -713,7 +775,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 )
                 min_req_vids_floor = max(5, int((len(scenes_media) * 0.80) + 0.999))
                 can_downgrade_to_image = (
-                    not existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
+                    has_semantic_vision_defect
+                    or not existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
                     or not Path(existing_mp).exists()
                     or cur_vid_scenes_cnt >= min_req_vids_floor
                 )
@@ -839,6 +902,12 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         pass
 
     await asyncio.gather(*[_guarded_refine_single_item(item) for item in scenes_media if isinstance(item, dict)])
+
+    try:
+        from app.graph.checkpoint_store import _save_node_checkpoint
+        _save_node_checkpoint("fetch_media", state, {"scenes_media": scenes_media, "current_step": "MEDIA_READY"})
+    except Exception:
+        pass
 
     return {
         "scenes_media": scenes_media,

@@ -9,6 +9,7 @@ Kiểm tra:
 5. Độ tương phản & màu sắc (Phát hiện ảnh đen kịt hoặc đơn sắc lỗi)
 """
 import logging
+import re
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
@@ -622,10 +623,7 @@ class VisualCritic:
                 default_zone = ("top_banner", (18, 6, 162, 50))
                 if detected_corner_zone is None and bad_art_reasons:
                     r0 = bad_art_reasons[0]
-                    m_bt = re.search(r"bot=(\d+),top=(\d+)", r0) if "re" in dir() else None
-                    if m_bt is None:
-                        import re as _re
-                        m_bt = _re.search(r"bot=(\d+),top=(\d+)", r0)
+                    m_bt = re.search(r"bot=(\d+),top=(\d+)", r0)
                     if m_bt and int(m_bt.group(1)) >= int(m_bt.group(2)):
                         default_zone = ("bottom_banner", (18, 252, 162, 312))
                 z_name, (bx1, by1, bx2, by2) = detected_corner_zone or default_zone
@@ -830,6 +828,8 @@ class VisualCritic:
 
             if not hasattr(cls, "_cs_scene_pass_cache"):
                 cls._cs_scene_pass_cache = {}
+            if not hasattr(cls, "_cs_scene_fail_cache"):
+                cls._cs_scene_fail_cache = {}
             scene_file_cache_keys: Dict[int, Tuple[str, int, int, str]] = {}
             all_scene_evals: Dict[int, Dict[str, Any]] = {}
             scenes_to_extract: List[Dict[str, Any]] = []
@@ -846,6 +846,9 @@ class VisualCritic:
                             if ck_m in cls._cs_scene_pass_cache:
                                 all_scene_evals[sid_m] = dict(cls._cs_scene_pass_cache[ck_m])
                                 cached_ref_candidates.append(it_m)
+                                continue
+                            if ck_m in cls._cs_scene_fail_cache:
+                                all_scene_evals[sid_m] = dict(cls._cs_scene_fail_cache[ck_m])
                                 continue
                     except Exception:
                         pass
@@ -971,10 +974,13 @@ Return ONLY valid JSON in this exact format:
                                         all_scene_evals[sid_e] = ev_entry
                                         if is_p and ck_e and min(ent_s, rel_s, cln_s) >= 7.5:
                                             cls._cs_scene_pass_cache[ck_e] = dict(ev_entry)
+                                            cls._cs_scene_fail_cache.pop(ck_e, None)
+                                        elif not is_p and ck_e:
+                                            cls._cs_scene_fail_cache[ck_e] = dict(ev_entry)
                                 for item_f in (data.get("failed_scenes") or []):
                                     if isinstance(item_f, dict) and item_f.get("scene_id"):
                                         sid_f = int(item_f["scene_id"])
-                                        all_scene_evals[sid_f] = {
+                                        fail_entry = {
                                             "passed": False,
                                             "entity_match_score": 4.0,
                                             "relevance_score": 4.0,
@@ -982,6 +988,10 @@ Return ONLY valid JSON in this exact format:
                                             "reason": str(item_f.get("reason") or "Lệch chủ đề/chứa chữ rác"),
                                             "suggested_search_query": str(item_f.get("suggested_search_query") or "").strip(),
                                         }
+                                        all_scene_evals[sid_f] = fail_entry
+                                        ck_f = scene_file_cache_keys.get(sid_f)
+                                        if ck_f and ck_f not in cls._cs_scene_pass_cache:
+                                            cls._cs_scene_fail_cache[ck_f] = dict(fail_entry)
                                 break
                     elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                         rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])

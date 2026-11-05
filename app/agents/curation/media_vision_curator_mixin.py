@@ -443,7 +443,11 @@ TRẢ VỀ JSON DUY NHẤT:
             }
             eff_subj_str = f"{subject_req} {expected_vis} {scene_queries_str} {topic_ctx}".strip()
             core_subj_tokens = {
-                w for w in _re_fb.findall(r"[a-zA-Z]{4,}", eff_subj_str.lower())
+                w for w in _re_fb.findall(r"[a-zA-Z]{3,}", eff_subj_str.lower())
+                if w not in _stop_fb and w not in _habitat_generic_fb
+            }
+            specific_subj_tokens = {
+                w for w in _re_fb.findall(r"[a-zA-Z]{3,}", f"{subject_req} {scene_queries_str}".lower())
                 if w not in _stop_fb and w not in _habitat_generic_fb
             }
             scene_intent_tokens = {
@@ -455,6 +459,7 @@ TRẢ VỀ JSON DUY NHẤT:
                 if w not in _stop_fb
             }
             min_req_anchors = 2 if len(core_subj_tokens | scene_intent_tokens) >= 2 else 1
+            min_spec_hits = 2 if len(specific_subj_tokens) >= 2 else 1
             best_det_cand = None
             best_det_score = 0.0
             for cand in eval_pool:
@@ -465,11 +470,15 @@ TRẢ VỀ JSON DUY NHẤT:
                 if neg_tokens and cand_tokens.intersection(neg_tokens - core_subj_tokens - scene_intent_tokens):
                     continue
                 subj_hits = len(cand_tokens.intersection(core_subj_tokens))
+                spec_hits = len(cand_tokens.intersection(specific_subj_tokens))
                 intent_hits = len(cand_tokens.intersection(scene_intent_tokens))
                 narr_hits = len(cand_tokens.intersection(narr_tokens))
                 distinct_anchor_hits = len(cand_tokens.intersection(core_subj_tokens | scene_intent_tokens))
-                # Bắt buộc khớp ít nhất 1 từ khóa chủ thể đặc trưng (subj_hits >= 1) hoặc >= 2 từ khóa ngữ cảnh phân cảnh (intent_hits >= 2)
-                if (subj_hits >= 1 and distinct_anchor_hits >= 1) or (intent_hits >= 2 and distinct_anchor_hits >= min_req_anchors):
+                # Bắt buộc khớp đủ từ khóa định danh chủ thể/hành động đặc thù của cảnh (spec_hits >= min_spec_hits)
+                if spec_hits >= min_spec_hits and (
+                    (subj_hits >= min_spec_hits and distinct_anchor_hits >= min_req_anchors)
+                    or (intent_hits >= 2 and distinct_anchor_hits >= min_req_anchors)
+                ):
                     is_vert = (cand.get("height") or 0) >= (cand.get("width") or 0)
                     det_sc = min(8.2, 7.2 + subj_hits * 0.35 + intent_hits * 0.25 + min(narr_hits, 2) * 0.1 + (0.2 if is_vert else 0.0))
                     if det_sc > best_det_score:

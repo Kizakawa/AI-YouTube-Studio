@@ -183,6 +183,44 @@ class ScriptJsonParserMixin:
             if cleaned_title:
                 raw_data["title"] = cleaned_title
 
+        # Đảm bảo tiêu đề bài đối đầu ('A vs B') luôn nêu đích danh cả 2 thực thể (Rule 1 youtube-viral-ceiling-breaker-strategy):
+        # Nếu LLM lỡ lược bớt 1 trong 2 thực thể ở `title` nhưng đã sinh câu tiêu đề đầy đủ cả 2 thực thể trong `title_variants`,
+        # tự động thăng hạng phương án `title_variant` chứa đủ cả 2 thực thể lên làm `title` chính!
+        if topic and isinstance(raw_data.get("title"), str) and isinstance(raw_data.get("title_variants"), list):
+            head_clause = re.split(r"[:\-\u2013\u2014|]", str(topic))[0].strip()
+            vs_parts = re.split(r"\b(?:vs\.?|versus|contra|contre|gegen)\b", head_clause, maxsplit=1, flags=re.IGNORECASE)
+            if len(vs_parts) == 2:
+                _vs_stop = {"the", "and", "with", "from", "into", "over", "under", "how", "why", "what", "when", "who"}
+                side_a_toks = {
+                    w.lower().rstrip("s")
+                    for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", vs_parts[0])
+                    if w.lower() not in _vs_stop
+                }
+                side_b_toks = {
+                    w.lower().rstrip("s")
+                    for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", vs_parts[1])
+                    if w.lower() not in _vs_stop
+                }
+                if side_a_toks and side_b_toks:
+                    def _matches_both_sides(cand_t: str) -> bool:
+                        c_low = cand_t.lower()
+                        has_a = any(tok in c_low for tok in side_a_toks)
+                        has_b = any(tok in c_low for tok in side_b_toks)
+                        return has_a and has_b
+
+                    cur_t = str(raw_data["title"]).strip()
+                    if not _matches_both_sides(cur_t):
+                        for idx_v, var_t in enumerate(raw_data["title_variants"]):
+                            if isinstance(var_t, str) and _matches_both_sides(var_t.strip()):
+                                promoted_t = var_t.strip()
+                                raw_data["title_variants"][idx_v] = cur_t
+                                raw_data["title"] = promoted_t
+                                logger.info(
+                                    f"🎯 [ViralTitle Rule-1] Thăng hạng title_variant nêu đủ 2 thực thể đối đầu: "
+                                    f"'{cur_t}' -> '{promoted_t}'"
+                                )
+                                break
+
         # Tự động bù đắp các trường bắt buộc của ScriptContract nếu LLM vô tình bỏ sót
         scenes = raw_data.get("scenes", [])
 
