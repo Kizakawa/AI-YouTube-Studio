@@ -67,6 +67,7 @@ Theo chuẩn `verification-before-completion`:
 1. **Quét Ngang Toàn Hệ Thống (Horizontal Sweep)**:
    - Sửa ở `analyze_scenes_batch` thì bắt buộc kiểm tra luôn `analyze_scene_context`.
    - Sửa ở `curate_candidate_videos` thì bắt buộc kiểm tra luôn `curate_candidate_photos` và `HookVideoNode`.
+   - Sửa luồng tải/cứu hộ video (`fetch_media_node`, `post_gather_rescue`, `evaluate_media_node`, `refine_media_node`, `render_nodes`) thì bắt buộc giữ vững **Luật `> 85%` Thời Lượng Video Chuyển Động Thật (`5–7` đoạn video `.mp4` tải về độc lập, tối đa 1 cảnh ảnh tĩnh `< 15%` thời lượng)**: Tuyệt đối không đặt `yt_cancel_ev.set()` khi chưa có nhánh nào trả về video thật (`win_res is None`), không hủy clip đã tải về khi đang chấm Gemini Vision vì `deadline_ts`, không tắt Tầng 3 Bilibili khi `skip_stock_fallback=True`, và khóa `can_downgrade_to_image = False` khi thời lượng video chạy `<= 85%`.
    - Kiểm tra `git diff` để chắc chắn **0% từ khóa chủ đề/loài vật/thời tiết cứng** bị lọt vào code Python.
 2. **Chứng Minh Bằng Lệnh Thực Thi Mới Nhất**:
    - Chạy `python -m py_compile` và smoke test import trên toàn bộ các file vừa sửa.

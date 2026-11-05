@@ -553,9 +553,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     try:
                         rag_yt_ref = get_video_memory_rag()
                         yt_ref_dl = (
-                            min(deadline_ts - 12.0, time.monotonic() + 38.0)
-                            if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 16.0)
-                            else (deadline_ts or (time.monotonic() + 38.0))
+                            min(deadline_ts - 6.0, time.monotonic() + 52.0)
+                            if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 12.0)
+                            else (deadline_ts or (time.monotonic() + 52.0))
                         )
                         out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
                         yt_ref_res = await asyncio.to_thread(
@@ -621,9 +621,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 win_r: Optional[Dict[str, Any]] = None
                 extra_r: List[Dict[str, Any]] = []
                 race_ref_deadline = (
-                    min(deadline_ts - 22.0, time.monotonic() + 36.0)
+                    min(deadline_ts - 8.0, time.monotonic() + 54.0)
                     if deadline_ts is not None
-                    else (time.monotonic() + 36.0)
+                    else (time.monotonic() + 54.0)
                 )
 
                 while pending_r and win_r is None:
@@ -676,12 +676,39 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     item["source_url"] = win_r["source_url"]
                     replaced = True
 
-        # 3. Tầng 3: Riêng 5-7s đầu (Scene 1 & 2) quét trực tiếp StockFetcher 2 từ cốt lõi; các cảnh >= 3 lấy 1 ảnh Google HD nếu chưa tìm được video
+        # 3. Tầng 3: Ưu tiên tuyệt đối đạt > 85% thời lượng là Video chuyển động thật (5-7 đoạn video tải về).
         if not replaced and not _refine_cancelled():
             try:
                 from app.graph.tools.media_tools import execute_google_cinematic_image_sync
-                if is_mandatory_vid:
-                    from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
+                from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
+
+                other_vid_scenes_cnt = sum(
+                    1 for _sx in scenes_media
+                    if isinstance(_sx, dict)
+                    and int(_sx.get("scene_id") or 0) != scene_id
+                    and str(_sx.get("media_type") or "").lower() in ("video", "hook_ready_video")
+                    and str(_sx.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm"))
+                )
+                total_refine_dur_s = sum(
+                    _scene_audio_duration(work_dir, int(_sx.get("scene_id") or (i_rx + 1)))
+                    for i_rx, _sx in enumerate(scenes_media)
+                    if isinstance(_sx, dict)
+                ) or 1.0
+                other_vid_dur_s = sum(
+                    _scene_audio_duration(work_dir, int(_sx.get("scene_id") or (i_rx + 1)))
+                    for i_rx, _sx in enumerate(scenes_media)
+                    if isinstance(_sx, dict)
+                    and int(_sx.get("scene_id") or 0) != scene_id
+                    and str(_sx.get("media_type") or "").lower() in ("video", "hook_ready_video")
+                    and str(_sx.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm"))
+                )
+                min_req_vids_floor = max(5, int((len(scenes_media) * 0.85) + 0.999))
+                video_floor_satisfied_without_scene = (
+                    other_vid_scenes_cnt >= min_req_vids_floor
+                    and (other_vid_dur_s / total_refine_dur_s) > 0.85
+                )
+
+                if is_mandatory_vid or not video_floor_satisfied_without_scene:
                     out_bili_open = str(media_dir / f"scene_{scene_id:03d}_refined_bili_open_r{retry_count}.mp4")
                     bili_open_res = await asyncio.to_thread(
                         _try_bilibili_broll_fallback,
@@ -709,24 +736,14 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         item["production_method"] = "REFINED_BILIBILI_DOCUMENTARY_VIDEO"
                         item["source_url"] = str(bili_open_res.get("source_url") or bili_open_res["media_path"])
                         replaced = True
-                        logger.info(f"Scene {scene_id}: 🎬 [Mandatory Video Bilibili Documentary] Đã nạp Video tư liệu kiểm định Vision cho '{clean_kw_q}'")
+                        logger.info(f"Scene {scene_id}: 🎬 [Mandatory >85% Video Bilibili Documentary] Đã nạp Video tư liệu kiểm định Vision cho '{clean_kw_q}'")
 
-                # Chỉ cho phép hạ cấp xuống Ảnh tĩnh Google (Tier 3) nếu cảnh hiện tại vốn chưa phải là Video thật,
-                # HOẶC cảnh hiện tại bị lỗi thực thể/ngữ nghĩa nghiêm trọng (has_semantic_vision_defect=True),
-                # HOẶC tổng số cảnh Video thật còn lại vẫn giữ vững sàn >= 80% của toàn bài!
-                cur_vid_scenes_cnt = sum(
-                    1 for _sx in scenes_media
-                    if isinstance(_sx, dict)
-                    and int(_sx.get("scene_id") or 0) != scene_id
-                    and str(_sx.get("media_type") or "").lower() in ("video", "hook_ready_video")
-                    and str(_sx.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm"))
-                )
-                min_req_vids_floor = max(5, int((len(scenes_media) * 0.80) + 0.999))
+                # LUẬT THÉP > 85% THỜI LƯỢNG VIDEO:
+                # Tuyệt đối CẤM hạ cấp xuống Ảnh tĩnh Google (Tier 3) nếu tổng thời lượng các cảnh Video thật còn lại <= 85.0%
+                # (tức phải có tối thiểu 6/7 cảnh là video thật)!
                 can_downgrade_to_image = (
-                    has_semantic_vision_defect
-                    or not existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
-                    or not Path(existing_mp).exists()
-                    or cur_vid_scenes_cnt >= min_req_vids_floor
+                    scene_id not in mandatory_video_refine_sids
+                    and video_floor_satisfied_without_scene
                 )
                 if not replaced and scene_id not in (1, 2) and can_downgrade_to_image:
                     out_resc_img = str(media_dir / f"scene_{scene_id:03d}_refined_gimg_rescue_r{retry_count}.jpg")

@@ -5,8 +5,8 @@ description: >-
   và duy trì tăng trưởng bền bỉ nhiều ngày (Multi-Day Evergreen Push): Bắt buộc nêu đích danh
   thực thể có lượng tìm kiếm YT_SEARCH cao trong Tiêu đề (cấm giấu tên kiểu Curiosity Gap mù),
   phân tách rạch ròi giữa Tiêu đề (ăn tìm kiếm) và Hook Cảnh 1 0.0s (4 Đòn Tâm Lý Thị Giác không lặp lại tiêu đề),
-  giữ chuẩn kịch bản sâu 34s–40s theo cấu trúc Song Đấu 2 Chiều (5-Act Dual-Peak) và đảm bảo
-  tối thiểu 80% cảnh Video chuyển động thật rải đều toàn bài.
+  giữ chuẩn kịch bản sâu 34s–40s theo cấu trúc Song Đấu 2 Chiều (5-Act Dual-Peak) và bắt buộc
+  > 85% thời lượng toàn video là Video chuyển động thật (tương đương tải về 5–7 đoạn video độc lập).
 ---
 
 # Chiến Lược Vượt Trần Phân Phối & Tăng Trưởng Bền Bỉ YouTube (`youtube-viral-ceiling-breaker-strategy`)
@@ -73,16 +73,22 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ---
 
-### Quy Tắc 3: Giữ Chuẩn Kịch Bản Sâu `34s – 40s` Theo Cấu Trúc "Song Đấu 2 Chiều" (`5-Act Dual-Peak`) + Tối Thiểu `80%` Cảnh Video Chuyển Động Thật
+### Quy Tắc 3: Giữ Chuẩn Kịch Bản Sâu `34s – 40s` Theo Cấu Trúc "Song Đấu 2 Chiều" (`5-Act Dual-Peak`) + Bắt Buộc `> 85%` Thời Lượng Là Video Chạy Thật (`5–7` Đoạn Video Tải Về Độc Lập)
 1. **Không cắt ngắn thời lượng cơ học làm nông kịch bản**:
-   - Khung thời lượng chuẩn cho Shorts là **`34s – 40s` (`7 – 8 phân cảnh`, `92 – 118 từ`)**.
+   - Khung thời lượng chuẩn cho Shorts là **`34s – 40s` (`7 phân cảnh`, `92 – 118 từ`)**.
 2. **Kịch bản phải đi theo cấu trúc "Ăn Miếng Trả Miếng / Song Đấu 2 Chiều" (`Ping-Pong Escalation`) để không bị sập `APV` ở Ngày 2**:
    - **Hồi 1 (Cảnh 1 — `0.0s–2.2s`, 6–10 từ)**: Mở màn bằng 1 trong 4 Đòn Tâm Lý Thị Giác (`hook_frame_sharpness >= 12.0`).
    - **Hồi 2 (Cảnh 2–3)**: Lộ diện Đối thủ A cùng thông số vật lý thứ nhất (VD: Mực khổng lồ 14m với giác hút gắn móc xoay 360 độ).
    - **Hồi 3 (Cảnh 4–5 — Đỉnh Cao Trào Thứ 2 / Cú Twist Lật Kèo ở giây 15)**: Đối thủ B tung đòn phản công bằng cơ chế sinh học/vật lý thứ hai (VD: Cá nhà táng 50 tấn phóng xung âm thanh Sonar `230 dB`).
    - **Hồi 4 (Cảnh 6–7)**: Kết cục sinh tử xác đáng giải quyết cú Twist.
-   - **Hồi 5 (Cảnh 7/8 — Vòng lặp hoàn chỉnh)**: Câu kết hoàn chỉnh 100% về ngữ pháp nối thẳng tư duy quay lại Cảnh 1.
-3. **Bắt buộc rải đều Cảnh Video Chuyển Động Thật (`>= 80% Video Clips`) xuyên suốt thân bài**.
+   - **Hồi 5 (Cảnh 7 — Vòng lặp hoàn chỉnh)**: Câu kết hoàn chỉnh 100% về ngữ pháp nối thẳng tư duy quay lại Cảnh 1.
+3. **Luật Bất Khả Xâm Phạm `> 85%` Thời Lượng Là Video Chuyển Động Thật (`5–7` Đoạn Video Tải Về Độc Lập)**:
+   - **Mỗi video Shorts (7 cảnh) BẮT BUỘC phải có `> 85.0%` tổng thời lượng (`duration_ms`) là video chuyển động thật (`media_type in ("video", "hook_ready_video")`)**, tương đương việc **tải về `6–7` đoạn video `.mp4` độc lập** (tối đa chỉ được phép có 0 hoặc 1 cảnh ảnh tĩnh `< 15%` thời lượng; tuyệt đối cấm để `>= 2` cảnh rơi về `BODY DYNAMIC MULTI-IMAGE`).
+   - **4 Chốt Chặn Kỹ Thuật Chống Hồi Quy (`Zero Image-Downgrade Guardrails`)**:
+     1. **Đua Song Song Pexels + YouTube + Bilibili Thực Thụ (`fetch_media_node`, `post_gather_rescue`, `refine_media_node`)**: Mọi phân cảnh đều chạy song song cả nhánh Pexels/Pixabay lẫn nhánh YouTube/Bilibili. **TUYỆT ĐỐI CẤM** phát tín hiệu hủy (`yt_cancel_ev.set()`) khi nhánh Pexels trả về `None` (`win_res is None`) chỉ để dành thời gian tải ảnh tĩnh Google! Chỉ hủy nhánh còn lại khi đã có 1 nhánh thắng và trả về video thật (`win_res is not None`).
+     2. **Bảo Vệ Clip Đã Tải Về Khi Chấm Gemini Vision (`_verify_short_clip_with_gemini_vision`)**: Khi file video `.mp4` đã tải và cắt xong trên ổ cứng (`Path(video_path).exists()`), **CẤM** hủy ngang bước kiểm định Vision vì `deadline_ts` (`Deadline exceeded before vision check` / `after CV pre-gate`).
+     3. **Luôn Mở Tầng 3 Bilibili Safe-Crop (`youtube_peak_executor.py`)**: Cờ `skip_stock_fallback=True` chỉ dùng để không lặp lại Tầng 2 Pexels/Pixabay (vì đã chạy song song), **tuyệt đối không được tắt Tầng 3 Bilibili (`_try_bilibili_broll_fallback`)**.
+     4. **Cấm Hạ Cấp Xuống Ảnh Tĩnh Khi Chưa Đạt `> 85%` Thời Lượng Video (`evaluate_media_node` + `refine_media_node` + `render_nodes`)**: Trong `evaluate_media_node` và `refine_media_node`, bắt buộc kiểm tra cả số lượng cảnh video (`>= ceil(0.85 * total_scenes)`) lẫn tỷ lệ thời lượng video (`video_duration_ms / total_duration_ms > 0.85`). Khi tỷ lệ thời lượng video `<= 85%`, khóa cứng `can_downgrade_to_image = False` để bắt buộc nâng cấp cảnh ảnh tĩnh thành video chuyển động thật trước khi render.
 
 ---
 

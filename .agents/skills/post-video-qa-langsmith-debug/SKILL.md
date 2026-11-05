@@ -22,7 +22,7 @@ Ngay sau khi một `VideoJob` hoàn thành:
    - Đọc trực tiếp từ DB (`quality_scores` & `scenes_json`):
      - `script_critic`: `overall_score >= 8.0/10`
      - `hook_video_grader`: `best_score >= 8.0/10`, thời lượng Hook mở màn chuẩn (`>= 4.0s` cho Shorts; Chapter 1 Hook cuốn hút cho Long-form).
-     - `visual_critic`: `overall_score >= 8.0/10`, tỷ lệ cảnh video chuyển động đạt chuẩn (`>= 80%`), không có cảnh bị lệch chủ đề.
+     - `visual_critic`: `overall_score >= 8.0/10`, **tỷ lệ thời lượng video chuyển động thật bắt buộc đạt `> 85.0%` (`video_duration_ms / total_duration_ms > 0.85`, tương đương `5–7` đoạn video `.mp4` độc lập tải về; với video 7 cảnh phải đạt `6–7/7` cảnh là video chạy thật, tối đa chỉ được phép có 0 hoặc 1 cảnh ảnh tĩnh `< 15%` thời lượng)**, không có cảnh bị lệch chủ đề. Nếu thời lượng video chạy `<= 85.0%` hoặc có từ 2 cảnh ảnh tĩnh trở lên -> Kết luận **FAIL** ngay lập tức và bắt buộc sửa tận gốc trước khi hoàn thành!
      - `audio_qa`: `passed == True`, tốc độ đọc tự nhiên (`145–185 WPM`), không bị cắt cụt đuôi câu.
      - `video_qa`: `score >= 95/100`, đúng độ phân giải mục tiêu (`1080x1920` cho Shorts `9:16` hoặc `1920x1080` cho Long-form `16:9`), `black_max_sec == 0`, `freeze_max_sec == 0`, `av_drift_ms < 150ms`, `hook_frame_sharpness >= 12.0`.
 2. **Trích xuất Contact Sheet Frames & Nhìn Trực Tiếp Bằng Mắt AI (`read_file`)**:

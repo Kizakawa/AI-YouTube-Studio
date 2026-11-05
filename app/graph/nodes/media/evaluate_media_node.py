@@ -113,8 +113,28 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
             return True
 
         n_sc_eval = len(scenes_media)
-        min_req_vid = max(5, int((n_sc_eval * 0.80) + 0.999))
+        min_req_vid = max(5, int((n_sc_eval * 0.85) + 0.999))
         real_vid_count = sum(1 for sc_x in scenes_media if _is_eval_real_video(sc_x))
+
+        scenes_audio_eval = state.get("scenes_audio") or []
+        audio_dur_map_eval: Dict[int, float] = {}
+        for a_it in scenes_audio_eval:
+            if isinstance(a_it, dict) and a_it.get("scene_id"):
+                audio_dur_map_eval[int(a_it["scene_id"])] = max(1.2, float(a_it.get("audio_duration_ms") or 4000.0) / 1000.0)
+
+        def _get_eval_scene_dur(sc_d: Dict[str, Any], idx_fallback: int) -> float:
+            sid_d = int(sc_d.get("scene_id") or (idx_fallback + 1))
+            if sid_d in audio_dur_map_eval:
+                return audio_dur_map_eval[sid_d]
+            return max(1.2, float(sc_d.get("duration_sec") or sc_d.get("estimated_seconds") or 4.5))
+
+        total_eval_dur_s = sum(_get_eval_scene_dur(sc_x, i_x) for i_x, sc_x in enumerate(scenes_media)) or 1.0
+        real_vid_dur_s = sum(
+            _get_eval_scene_dur(sc_x, i_x)
+            for i_x, sc_x in enumerate(scenes_media)
+            if _is_eval_real_video(sc_x)
+        )
+        real_vid_dur_ratio = real_vid_dur_s / total_eval_dur_s
 
         # Bắt buộc 100% 5-7s đầu tiên (Scene 1 & Scene 2) phải là Video chuyển động thật
         opening_failed_sids: List[int] = []
@@ -131,25 +151,32 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 f"-> Đưa bắt buộc vào luồng nâng cấp Video Hook tại refine_media!"
             )
 
-        if real_vid_count < min_req_vid:
-            deficit_v = min_req_vid - real_vid_count
-            static_priority_order = [0, 1, n_sc_eval - 1, n_sc_eval - 2] + [
-                i_m for i_m in range(2, max(2, n_sc_eval - 2))
-            ]
+        if real_vid_count < min_req_vid or real_vid_dur_ratio <= 0.85:
+            deficit_v = max(1, min_req_vid - real_vid_count)
+            # Ưu tiên nâng cấp các cảnh mở đầu, kết thúc và cảnh ảnh tĩnh có thời lượng dài nhất để vượt sàn > 85% thời lượng!
+            mid_indices = sorted(
+                range(2, max(2, n_sc_eval - 2)),
+                key=lambda i_m: _get_eval_scene_dur(scenes_media[i_m], i_m),
+                reverse=True,
+            )
+            static_priority_order = [0, 1, n_sc_eval - 1, n_sc_eval - 2] + mid_indices
             added_static_sids: List[int] = []
+            sim_vid_dur_s = real_vid_dur_s
             for st_idx in static_priority_order:
                 if 0 <= st_idx < n_sc_eval and not _is_eval_real_video(scenes_media[st_idx]):
                     st_sid = int(scenes_media[st_idx].get("scene_id") or (st_idx + 1))
                     if st_sid not in eval_report.failed_scene_ids:
                         eval_report.failed_scene_ids.append(st_sid)
                         added_static_sids.append(st_sid)
-                    if len(added_static_sids) >= deficit_v:
+                    sim_vid_dur_s += _get_eval_scene_dur(scenes_media[st_idx], st_idx)
+                    if len(added_static_sids) >= deficit_v and (sim_vid_dur_s / total_eval_dur_s) > 0.855:
                         break
             if eval_report.failed_scene_ids:
                 eval_report.passed = False
                 logger.warning(
-                    f"🎬 [MotionFloorGate] Chỉ có {real_vid_count}/{n_sc_eval} cảnh là video chuyển động thật (< {min_req_vid} cảnh chuẩn >=80%) "
-                    f"-> Đưa thêm các cảnh ảnh tĩnh {added_static_sids} vào refine_media!"
+                    f"🎬 [MotionFloorGate >85%] Hiện có {real_vid_count}/{n_sc_eval} cảnh video thật "
+                    f"({real_vid_dur_ratio * 100:.1f}% thời lượng <= 85.0% chuẩn tối thiểu {min_req_vid} cảnh) "
+                    f"-> Đưa các cảnh ảnh tĩnh {added_static_sids} vào refine_media bắt buộc nâng cấp lên Video!"
                 )
 
     logger.info(

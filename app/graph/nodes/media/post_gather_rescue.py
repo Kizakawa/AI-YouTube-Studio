@@ -141,9 +141,11 @@ async def run_post_gather_media_rescues(
             return True
 
         n_slots = len(scenes_media)
-        min_vid_ratio = 0.80 if is_long_form else 0.85
+        min_vid_ratio = 0.80 if is_long_form else 0.855
         min_video_slots = max(5, int((n_slots * min_vid_ratio) + 0.999)) if n_slots >= 5 else n_slots
         current_video_slots = sum(1 for s_it in scenes_media if _is_real_video_slot(s_it))
+        total_slots_dur = sum(_get_slot_dur(i_s) for i_s in range(n_slots)) or 1.0
+        current_video_dur = sum(_get_slot_dur(i_s) for i_s in range(n_slots) if _is_real_video_slot(scenes_media[i_s]))
 
         # Ưu tiên số 1: Mọi cảnh bị rỗng/_graphic.png + Cảnh 1 (0), Cảnh 2 (1), Cảnh cuối (n_slots - 1), Cảnh áp cuối (n_slots - 2)
         mandatory_slot_indices: List[int] = []
@@ -156,13 +158,26 @@ async def run_post_gather_media_rescues(
                     mandatory_slot_indices.append(m_idx)
 
         rescue_candidates_idx: List[int] = list(mandatory_slot_indices)
-        for idx_mid in range(n_slots - 1, -1, -1):
-            if idx_mid not in rescue_candidates_idx and not _is_real_video_slot(scenes_media[idx_mid]):
-                rescue_candidates_idx.append(idx_mid)
+        # Ưu tiên cứu các cảnh thân bài có thời lượng dài nhất trước để nhanh chóng vượt mốc > 85% thời lượng video
+        remaining_mid_idxs = sorted(
+            [idx_m for idx_m in range(n_slots) if idx_m not in rescue_candidates_idx and not _is_real_video_slot(scenes_media[idx_m])],
+            key=lambda i_m: _get_slot_dur(i_m),
+            reverse=True,
+        )
+        rescue_candidates_idx.extend(remaining_mid_idxs)
+
+        dur_deficit_slots = 0
+        sim_v_dur = current_video_dur
+        for rc_i in rescue_candidates_idx:
+            if (sim_v_dur / total_slots_dur) > min_vid_ratio:
+                break
+            sim_v_dur += _get_slot_dur(rc_i)
+            dur_deficit_slots += 1
 
         needed_rescues = max(
             len(mandatory_slot_indices),
             min_video_slots - current_video_slots,
+            dur_deficit_slots,
         )
         if needed_rescues > 0 and rescue_candidates_idx:
             from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync

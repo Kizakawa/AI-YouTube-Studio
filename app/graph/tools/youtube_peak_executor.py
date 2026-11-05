@@ -727,7 +727,9 @@ def execute_youtube_short_peak_clone_sync(
         return None
 
     # ── TẦNG 3 (DỰ PHÒNG NON-YOUTUBE / CGI / CỨU HỘ ĐA NỀN TẢNG): SĂN B-ROLL TRÊN BILIBILI (SAFE-CROP & DUYỆT VISION) ──
-    if allow_bili_fallback and not prefer_non_yt and not skip_stock_fallback and _remaining_sec() >= 14.0:
+    # Lưu ý: `skip_stock_fallback=True` chỉ dùng để bỏ qua Tầng 2 Pexels/Pixabay (do đã chạy song song),
+    # TUYỆT ĐỐI KHÔNG tắt Tầng 3 Bilibili để bảo đảm > 85% thời lượng video là clip chuyển động thật!
+    if allow_bili_fallback and not prefer_non_yt and _remaining_sec() >= 10.0:
         bili_res = _try_bilibili_broll_fallback(
             search_phrases=search_phrases,
             search_query=search_query,

@@ -842,11 +842,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         try:
                             _prefer_non_yt_node = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
                             _yt_budget_sec = (
-                                44.0
+                                50.0
                                 if scene.scene_id == 1
-                                else (32.0 if _prefer_non_yt_node else 38.0)
+                                else (38.0 if _prefer_non_yt_node else 46.0)
                             )
-                            _reserve_tail_sec = 8.0 if scene.scene_id == 1 else 12.0
+                            _reserve_tail_sec = 6.0 if scene.scene_id == 1 else 8.0
                             yt_sub_deadline = (
                                 min(deadline_ts - _reserve_tail_sec, time.monotonic() + _yt_budget_sec)
                                 if deadline_ts is not None
@@ -904,9 +904,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     pending_tasks = {t_px, t_yt}
                     win_res: Optional[Dict[str, Any]] = None
                     extra_results: List[Dict[str, Any]] = []
-                    race_max_sec = 44.0 if scene.scene_id == 1 else 40.0
+                    race_max_sec = 50.0 if scene.scene_id == 1 else 46.0
                     race_deadline_ts = (
-                        min(deadline_ts - 12.0, time.monotonic() + race_max_sec)
+                        min(deadline_ts - 8.0, time.monotonic() + race_max_sec)
                         if deadline_ts is not None
                         else (time.monotonic() + race_max_sec)
                     )
