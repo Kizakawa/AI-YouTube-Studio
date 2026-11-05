@@ -130,7 +130,7 @@ async def run_post_gather_media_rescues(
             if not (mt in ("video", "hook_ready_video") and mp.endswith((".mp4", ".mov", ".webm"))):
                 return False
             sid_slot = int(sc_dict.get("scene_id") or 0)
-            if sid_slot in (1, 2):
+            if sid_slot == 1:
                 try:
                     from app.graph.nodes.hook_video_node import verify_hook_clip_genuine_motion
                     ok_slot_mot, _, _ = verify_hook_clip_genuine_motion(str(sc_dict.get("media_path")))
@@ -234,8 +234,14 @@ async def run_post_gather_media_rescues(
                     r_sc.get("visual_keyword") or r_stock_q or primary_entity or state.get("topic", ""),
                     max_words=4,
                 ) or overall_rescue_q
+                from app.graph.tools.tool_schemas import resolve_scene_active_entity
                 r_out_mp4 = str(media_dir / f"scene_{r_sid:03d}_motion_rescue.mp4")
-                r_subj = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2) or r_kw
+                r_subj = resolve_scene_active_entity(
+                    scene_query=f"{r_kw} {r_stock_q}".strip(),
+                    narration=str(r_sc.get("narration") or ""),
+                    subject_entity=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3),
+                    topic=state.get("topic", ""),
+                ) or clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2) or r_kw
                 r_tool = str(r_sc.get("tool") or "")
                 is_portrait_tool = (r_tool == "fetch_clean_cinematic_portrait_or_broll") or is_psych_niche
                 already_tried_scene_kw = r_tool in (
@@ -345,6 +351,7 @@ async def run_post_gather_media_rescues(
                     [q_c for q_c in (r_stock_q, r_kw, overall_rescue_q) if q_c],
                     subject_entity=r_subj,
                     topic=state.get("topic", ""),
+                    narration=str(r_sc.get("narration") or ""),
                     max_words=3,
                 )
 
@@ -434,8 +441,8 @@ async def run_post_gather_media_rescues(
                                 va_resc = {
                                     "video_format": "long" if is_long_form else "short",
                                     "search_queries": stock_queries[:3],
-                                    "subject": (primary_entity or sq_try) if is_long_form else sq_try,
-                                    "core_visual_entity": (primary_entity or sq_try) if is_long_form else sq_try,
+                                    "subject": (primary_entity or sq_try) if is_long_form else (r_subj or sq_try),
+                                    "core_visual_entity": (primary_entity or sq_try) if is_long_form else (r_subj or sq_try),
                                     "topic": state.get("topic", ""),
                                     "skip_establishing_pass": (r_sid == 1),
                                 }

@@ -115,7 +115,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         if is_video_file:
             if p_cand.stat().st_size < 10_000:
                 return False, "video_too_small"
-            if scene_id in (1, 2):
+            if scene_id == 1:
                 from app.utils.ffmpeg_helper import verify_hook_clip_genuine_motion
                 ok_gen_m, _, gen_m_rsn = verify_hook_clip_genuine_motion(str(p_cand))
                 if not ok_gen_m:
@@ -444,7 +444,15 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             "search_queries": custom_pexels_qs[:4] if custom_pexels_qs else [clean_kw_q],
                             "subject": subj_refine or primary_entity or clean_kw_q,
                             "core_visual_entity": subj_refine or primary_entity or clean_kw_q,
-                            "negative_cues": [critic_fb] if critic_fb else [],
+                            "negative_cues": (
+                                [critic_fb]
+                                if (
+                                    critic_fb
+                                    and "placeholder" not in critic_fb.lower()
+                                    and "missing a valid preview" not in critic_fb.lower()
+                                )
+                                else []
+                            ),
                             "skip_establishing_pass": True,
                         }
                         px_dl = (

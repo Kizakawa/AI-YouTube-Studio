@@ -518,9 +518,20 @@ class StockFetcher:
 
         from app.services.media.image_quality import extract_subject, prefilter_candidates
         from app.services.media.query_broadener import is_vague_single_word
+        from app.graph.tools.tool_schemas import resolve_scene_active_entity
         va = visual_analysis or {}
         cq = clean_scene_search_query(query, max_words=6)
-        raw_subj = str(va.get("subject") or "").strip() or extract_subject(query) or extract_subject(narration)
+        raw_subj = (
+            resolve_scene_active_entity(
+                scene_query=query,
+                narration=narration,
+                subject_entity=str(va.get("subject") or "").strip(),
+                topic=topic,
+            )
+            or str(va.get("subject") or "").strip()
+            or extract_subject(query)
+            or extract_subject(narration)
+        )
         if raw_subj and len(raw_subj.split()) == 1 and (is_vague_single_word(raw_subj) or len(raw_subj) <= 5):
             subject = cq or extract_subject(topic) or raw_subj
         else:
@@ -1017,11 +1028,11 @@ class StockFetcher:
         _push(clean_q)
         if len(words) >= 2:
             _push(" ".join(words[:2]))
+        for b in ladder["broadened"]:
+            _push(b)
         if visual_analysis and visual_analysis.get("search_queries"):
             for sq in visual_analysis["search_queries"]:
                 _push(sq)
-        for b in ladder["broadened"]:
-            _push(b)
         if len(words) >= 2:
             _push(" ".join(words[-2:]))
         if not has_preplanned_queries and not ladder["broadened"] and not establishing and not _establishing_pass:
@@ -1082,10 +1093,14 @@ class StockFetcher:
             "buffalo", "bison", "camel", "dromedary", "lion", "tiger", "cheetah", "serval",
             "caracal", "hyena", "monkey", "gorilla", "chimpanzee", "baboon", "orangutan",
             "kangaroo", "koala", "panda", "sloth", "penguin", "flamingo", "ostrich", "pelican",
-            "toucan", "parrot", "owl", "peacock", "deer", "moose", "elk", "reindeer", "gazelle",
-            "antelope", "impala", "wildebeest", "horse", "stallion", "donkey", "cow", "cattle",
-            "sheep", "goat", "pig", "boar", "dog", "puppy", "cat", "kitten", "rabbit", "squirrel",
-            "hedgehog", "dolphin", "whale", "orca", "seal", "walrus", "manatee", "otter",
+            "toucan", "parrot", "owl", "peacock", "pheasant", "chicken", "rooster", "duck",
+            "goose", "swan", "eagle", "hawk", "falcon", "vulture", "bird", "deer", "moose",
+            "elk", "reindeer", "gazelle", "antelope", "impala", "wildebeest", "takin", "horse",
+            "stallion", "pony", "donkey", "cow", "cattle", "sheep", "goat", "pig", "boar",
+            "dog", "puppy", "cat", "kitten", "rabbit", "squirrel", "hedgehog", "armadillo",
+            "dolphin", "whale", "orca", "seal", "walrus", "manatee", "otter", "iguana",
+            "chameleon", "gecko", "alligator", "crocodile", "caiman", "python", "snake",
+            "cobra", "viper", "rattlesnake", "turtle", "tortoise", "frog", "toad",
         )
         _allowed_species_ctx = f"{topic} {narration} {query} {clean_q} {' '.join(candidate_queries)}".lower()
 
@@ -1138,12 +1153,22 @@ class StockFetcher:
                 if is_scene_cancelled_ctx():
                     return None
                 from app.agents.visual_curation_agent import VisualCurationAgent
+                from app.graph.tools.tool_schemas import resolve_scene_active_entity
                 curator = VisualCurationAgent()
+                active_vid_subj = resolve_scene_active_entity(
+                    scene_query=query,
+                    narration=narration,
+                    subject_entity=str((visual_analysis or {}).get("subject") or ""),
+                    topic=topic,
+                )
                 v_analysis = dict(visual_analysis or {
-                    "subject": clean_q or query,
+                    "subject": active_vid_subj or clean_q or query,
                     "topic": topic or query,
                     "search_queries": candidate_queries[:3],
                 })
+                if active_vid_subj:
+                    v_analysis["subject"] = active_vid_subj
+                    v_analysis["core_visual_entity"] = active_vid_subj
                 v_analysis.setdefault("topic", topic or query)
                 winner, score, rationale, should_ai = curator.curate_candidate_videos(
                     candidates=collected_candidates,

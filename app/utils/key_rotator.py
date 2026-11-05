@@ -13,14 +13,14 @@ import requests
 # Hệ thống sẽ bắn kiểm tra ĐỒNG THỜI (Parallel Probe) toàn bộ danh sách này cùng 1 lúc,
 # loại bỏ ngay các model bị treo (Timeout) hoặc hết hạn mức (429/404), và chọn Model xịn nhất phản hồi thành công.
 GEMINI_PRIORITY_MODELS: List[str] = [
-    "gemini-flash-lite-latest",      # Tier S+ (#1): Alias Flash-Lite chính thức (Độ trễ cực thấp ~0.6s–1.3s, hỗ trợ Tools/JSON/Vision)
-    "gemini-robotics-er-2-preview",  # Tier S  (#2): Gemini ER 2 Preview (Bucket quota độc lập ~1.4s, hỗ trợ Tools/JSON/Vision)
-    "gemma-4-26b-a4b-it",            # Tier A+ (#3): Gemma 4 26B IT (Bucket quota độc lập ~0.6s, JSON siêu tốc)
-    "gemini-3.5-flash",              # Tier A  (#4): Gemini 3.5 Flash (Bucket quota độc lập)
-    "gemini-3.6-flash",              # Tier A- (#5): Gemini 3.6 Flash
-    "gemini-3.5-flash-lite",         # Tier B  (#6): Gemini 3.5 Flash-Lite
-    "gemini-3-flash-preview",        # Tier B  (#7): Gemini 3.0 Flash Preview
-    "gemini-3.1-flash-lite-preview", # Tier B  (#8): Gemini 3.1 Flash-Lite Preview
+    "gemini-3.1-flash-lite-preview", # Tier S+ (#1): Gemini 3.1 Flash-Lite Preview (Độ trễ thực tế ~1.1s, ổn định nhất cho JSON & Vision)
+    "gemini-3-flash-preview",        # Tier S  (#2): Gemini 3.0 Flash Preview (Độ trễ ~1.2s, suy luận sâu & chấm điểm Vision chính xác)
+    "gemini-3.5-flash-lite",         # Tier A+ (#3): Gemini 3.5 Flash-Lite (Độ trễ ~1.4s, hỗ trợ Tools/JSON/Vision nhanh)
+    "gemini-flash-lite-latest",      # Tier A  (#4): Alias Flash-Lite chính thức
+    "gemini-robotics-er-2-preview",  # Tier B+ (#5): Gemini ER 2 Preview (Bucket quota độc lập, hỗ trợ Tools/JSON/Vision)
+    "gemini-3.5-flash",              # Tier B  (#6): Gemini 3.5 Flash
+    "gemini-3.6-flash",              # Tier B- (#7): Gemini 3.6 Flash
+    "gemma-4-26b-a4b-it",            # Tier C  (#8): Gemma 4 26B IT (Chỉ dùng cho Text/JSON dự phòng cuối)
 ]
 
 # Điểm xếp hạng độ "xịn" (Quality Tier) của từng model để chọn model mạnh nhất trong số các model phản hồi thành công
@@ -253,23 +253,20 @@ class KeyRotator:
                 or status_code in (500, 502, 503, 504)
                 or "internal error" in err_low
             ):
-                wait_t = cooldown_sec if cooldown_sec is not None else 25.0
+                wait_t = cooldown_sec if cooldown_sec is not None else 30.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_t
                 self._global_cursor = (self._global_cursor + 1) % n_pool_keys
-                active_timeout_locks = sum(
-                    1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
+                # Khi model bị Timeout / 500 / 503 trên backend Google, giáng hạng và khóa tạm *:model (30s) ngay lập tức
+                # để mọi luồng song song nhảy thẳng sang model khỏe mạnh kế tiếp trong 0ms thay vì chờ treo lặp lại!
+                KeyRotator._model_slow_demote_until[model] = max(
+                    KeyRotator._model_slow_demote_until.get(model, 0.0),
+                    now + max(wait_t, 60.0),
                 )
-                # Chỉ giáng hạng hoặc khóa tạm *:model (25s) khi >= 3 keys độc lập cùng bị treo trên model này
-                if active_timeout_locks >= min(3, n_pool_keys):
-                    KeyRotator._model_slow_demote_until[model] = max(
-                        KeyRotator._model_slow_demote_until.get(model, 0.0),
-                        now + max(wait_t, 45.0),
-                    )
-                    if model in KeyRotator._verified_live_models:
-                        KeyRotator._verified_live_models = [
-                            m for m in KeyRotator._verified_live_models if m != model
-                        ]
-                    self._model_cooldowns[f"*:{model}"] = now + min(wait_t, 25.0)
+                if model in KeyRotator._verified_live_models:
+                    KeyRotator._verified_live_models = [
+                        m for m in KeyRotator._verified_live_models if m != model
+                    ]
+                self._model_cooldowns[f"*:{model}"] = now + min(wait_t, 30.0)
             elif (
                 status_code == 403
                 or "api_key_invalid" in err_low
@@ -286,23 +283,19 @@ class KeyRotator:
             else:
                 retry_match = _re.search(r"retry in (\d+(?:\.\d+)?)\s*s\b", err_low)
                 parsed_retry_s = float(retry_match.group(1)) if retry_match else 0.0
-                # Hạn mức 429 RPM theo phút là hạn mức RIÊNG của từng bucket (key, model) -> chỉ khóa (key:model) 12–35s,
-                # TUYỆT ĐỐI KHÔNG khóa _global_cooldowns[key] để không làm liệt các model Vision/Text khác trên cùng key!
+                # Hạn mức 429 RPM theo phút là hạn mức của từng model bucket -> khóa (key:model) và tạm khóa *:model 15s
+                # để vòng thử kế tiếp đổi ngay sang model khác còn trống quota (TUYỆT ĐỐI KHÔNG khóa _global_cooldowns[key])!
                 wait_s = (
                     cooldown_sec
                     if cooldown_sec is not None
-                    else (min(parsed_retry_s + 1.5, 35.0) if parsed_retry_s > 0 else 12.0)
+                    else (min(parsed_retry_s + 1.5, 35.0) if parsed_retry_s > 0 else 15.0)
                 )
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
                 if model in ("gemini-flash-lite-latest", "gemini-3.5-flash-lite"):
                     self._model_cooldowns[f"{key}:gemini-flash-lite-latest"] = now + wait_s
                     self._model_cooldowns[f"{key}:gemini-3.5-flash-lite"] = now + wait_s
                 self._global_cursor = (self._global_cursor + 1) % n_pool_keys
-                active_key_locks = sum(
-                    1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
-                )
-                if active_key_locks >= max(2, n_pool_keys):
-                    self._model_cooldowns[f"*:{model}"] = now + min(wait_s, 12.0)
+                self._model_cooldowns[f"*:{model}"] = now + min(wait_s, 15.0)
 
     def probe_all_models_concurrently(
         self,

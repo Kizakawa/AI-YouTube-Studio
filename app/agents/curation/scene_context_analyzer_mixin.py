@@ -239,13 +239,17 @@ class SceneContextAnalyzerMixin:
         )
 
         conn_errors = 0
-        default_attempts = 4 if images else 3
-        eff_attempts = min(int(max_attempts or default_attempts), 4)
+        default_attempts = 6 if images else 5
+        eff_attempts = min(int(max_attempts or default_attempts), 6)
         cand_models = [
             m for m in (models or AVAILABLE_MODELS)
             if not (images and str(m).startswith("gemma-"))
         ]
-        for model, key in self.rotator.iter_best_model_key_pairs(cand_models, max_total_attempts=eff_attempts):
+        for model, key in self.rotator.iter_best_model_key_pairs(
+            cand_models,
+            max_total_attempts=eff_attempts,
+            require_vision=bool(images),
+        ):
             if is_scene_cancelled_ctx():
                 return None
             remaining_wall = call_deadline_ts - _time.monotonic()

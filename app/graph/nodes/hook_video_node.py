@@ -372,12 +372,26 @@ def _produce_and_score_hook_video_sync(
     hook_visual_mode: str = "video"
     is_abstract_keyword: bool = bool(pre_abstract) if isinstance(pre_abstract, bool) else (pre_mode == "scene")
     climax_scene_id: int = int(pre_climax_id) if isinstance(pre_climax_id, int) and 1 < pre_climax_id <= len(base_scenes) else default_climax_scene_id
+    _prim_hook_toks = [
+        w.lower().rstrip("s")
+        for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", str(primary_entity or ""))
+        if w.lower() not in {"animal", "creature", "monster", "predator", "wildlife"}
+    ]
+    _prim_matched_s1_chunks = [
+        q for q in llm_s1_storyline_chunks
+        if not _prim_hook_toks or any(t in q.lower() for t in _prim_hook_toks)
+    ]
+    _secondary_s1_chunks = [
+        q for q in llm_s1_storyline_chunks
+        if q not in _prim_matched_s1_chunks
+    ]
     seeded_hook_qs = [
         str(q).strip()
         for q in dict.fromkeys([
-            *llm_s1_storyline_chunks,
+            *_prim_matched_s1_chunks,
             *(pre_queries if isinstance(pre_queries, list) else []),
             *fallback_queries,
+            *_secondary_s1_chunks,
         ])
         if str(q or "").strip()
     ]
@@ -2153,27 +2167,38 @@ Return ONLY valid JSON:
         if not stock_hook_ok and not _hook_cancelled(2.0):
             try:
                 from app.agents.media_agent import MediaAgent, clean_scene_search_query
+                from app.graph.tools.tool_schemas import build_single_entity_stock_queries
                 ma_s1 = MediaAgent()
+                _prim_anchor_s1 = str(canonical_subject or primary_entity or "").strip()
                 base_s1_qs = [
                     q for q in dict.fromkeys([
-                        *llm_s1_storyline_chunks,
                         *(stock_broll_queries or []),
+                        *_prim_matched_s1_chunks,
+                        (f"{_prim_anchor_s1} closeup" if _prim_anchor_s1 else ""),
+                        _prim_anchor_s1,
                         *(queries or []),
-                        canonical_subject or primary_entity or visual_keyword or topic,
+                        *_secondary_s1_chunks,
+                        visual_keyword or topic,
                     ]) if q
                 ]
-                s1_q_cands: List[str] = []
-                for bq in base_s1_qs:
-                    bq_clean = clean_scene_search_query(str(bq), max_words=5)
-                    if bq_clean and bq_clean not in s1_q_cands:
-                        s1_q_cands.append(bq_clean)
+                s1_q_cands: List[str] = build_single_entity_stock_queries(
+                    base_s1_qs,
+                    subject_entity=_prim_anchor_s1 or s1_plan_subject,
+                    topic=topic,
+                    max_words=3,
+                )
+                if not s1_q_cands:
+                    for bq in base_s1_qs:
+                        bq_clean = clean_scene_search_query(str(bq), max_words=4)
+                        if bq_clean and bq_clean not in s1_q_cands:
+                            s1_q_cands.append(bq_clean)
                 s1_q_cands = s1_q_cands[:5]
                 if s1_q_cands:
                     s1_primary_q = s1_q_cands[0]
                     s1_va = {
                         "analysis_source": "ai",
-                        "subject": s1_plan_subject or canonical_subject or primary_entity or topic,
-                        "core_visual_entity": s1_plan_subject or canonical_subject or primary_entity or topic,
+                        "subject": _prim_anchor_s1 or s1_plan_subject or topic,
+                        "core_visual_entity": _prim_anchor_s1 or s1_plan_subject or topic,
                         "topic": topic,
                         "is_hook_scene": True,
                         "skip_establishing_pass": True,

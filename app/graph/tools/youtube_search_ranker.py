@@ -154,8 +154,8 @@ def _verify_short_clip_with_gemini_vision(
             return False, 2.0, f"Clip là ảnh tĩnh phóng to Ken-Burns / đứng hình ({mot_rsn}, score={mot_sc})"
     except Exception:
         pass
-    if (cancel_event is not None and cancel_event.is_set()) or (deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.5):
-        return False, 0.0, "Cancelled/deadline exceeded after CV pre-gate"
+    if cancel_event is not None and cancel_event.is_set():
+        return False, 0.0, "Cancelled by parent task after CV pre-gate"
 
     with tempfile.TemporaryDirectory() as tmp_v:
         sheet_jpg = str(Path(tmp_v) / "verify_sheet.jpg")

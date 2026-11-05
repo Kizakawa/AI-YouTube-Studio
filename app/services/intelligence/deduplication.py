@@ -432,7 +432,7 @@ Write ONE completely new, fresh, high-CTR YouTube Shorts title for this topic.
 Requirements:
 1. MUST NOT use the same sentence structure or key hook words as "{matched}".
 2. MANDATORY YT_SEARCH ENTITY ANCHOR (Viral Ceiling-Breaker Rule 1): MUST explicitly keep the exact high-search-volume entity name(s) in the title (preferably `[Entity A] vs [Entity B]: [Extreme Physical Metric]`). NEVER hide the primary entity behind vague curiosity gaps ("This 50g Toxin", "This 1,200lb Giant", "This Beast", "This Place").
-3. Under 65 characters, punchy, includes 1-2 impactful emojis and #Shorts.
+3. Under 58 characters, punchy, includes 1-2 impactful emojis and ZERO #hashtags (do NOT include #Shorts).
 4. Output ONLY the new title as raw text, no quotes, no markdown, no explanation.
 """
         from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
@@ -443,7 +443,7 @@ Requirements:
                 res = requests.post(url, json=payload, timeout=12)
                 if res.status_code == 200:
                     text = res.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
-                    text = text.replace('"', '').replace("'", '').strip()
+                    text = re.sub(r"\s*#\S+", "", text.replace('"', '').replace("'", '')).strip()
                     if text and len(text) > 5 and not check_idea_similarity(text, [matched], similarity_threshold=0.45)[0]:
                         logger.info(f"[AntiDuplication] ✅ Đã đổi tiêu đề thành công ({model}): '{clean_cand}' -> '{text}'")
                         return text, True, matched
@@ -453,12 +453,12 @@ Requirements:
             except Exception:
                 pass
 
-    # Fallback nếu AI bận: gắn hậu tố tự nhiên (không ghép "Secret Behind" trước một câu mệnh lệnh gây sai ngữ pháp!)
+    # Fallback nếu AI bận: giữ nguyên cấu trúc Entity A vs Entity B sạch sẽ (không gắn '(The Hidden Truth) ⚠️' hay '#Shorts')
     base_clean = clean_cand.rstrip(".! ")
     fallback_title = (
-        f"{clean_cand.split('?')[0].strip()} — The Hidden Truth! 💀"
+        f"{clean_cand.split('?')[0].strip()} 💀"
         if "?" in clean_cand
-        else f"{base_clean} (The Hidden Truth) ⚠️"
+        else (f"{base_clean} 💀" if not any(ord(c) > 127 for c in base_clean[-2:]) else base_clean)
     )
     return fallback_title, True, matched
 

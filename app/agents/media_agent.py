@@ -826,3 +826,10 @@ If no real entities found, return empty array: []"""
         if last_err:
             raise last_err
         return output_path
+
+
+def build_single_entity_stock_queries(*args: Any, **kwargs: Any) -> List[str]:
+    """Lazy-delegated re-export to prevent circular import with app.graph.tools.tool_schemas."""
+    from app.graph.tools.tool_schemas import build_single_entity_stock_queries as _impl
+    return _impl(*args, **kwargs)
+

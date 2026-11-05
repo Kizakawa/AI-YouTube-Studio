@@ -353,7 +353,7 @@ def run_langgraph_5way_stock_video_search(
             "per_source": 3,
         })
 
-    for idx, pq in enumerate(candidate_queries[:2]):
+    for idx, pq in enumerate(candidate_queries[:4]):
         tasks.append({
             "branch_name": f"pexels_v_{idx + 1}",
             "source": "pexels",
@@ -362,7 +362,7 @@ def run_langgraph_5way_stock_video_search(
         })
 
     if include_pixabay and getattr(stock_fetcher, "_pixabay_key", ""):
-        for p_idx, px_q in enumerate(candidate_queries[:2]):
+        for p_idx, px_q in enumerate(candidate_queries[:3]):
             tasks.append({
                 "branch_name": f"pixabay_v_{p_idx + 1}",
                 "source": "pixabay",

@@ -186,40 +186,50 @@ class ScriptJsonParserMixin:
         # Đảm bảo tiêu đề bài đối đầu ('A vs B') luôn nêu đích danh cả 2 thực thể (Rule 1 youtube-viral-ceiling-breaker-strategy):
         # Nếu LLM lỡ lược bớt 1 trong 2 thực thể ở `title` nhưng đã sinh câu tiêu đề đầy đủ cả 2 thực thể trong `title_variants`,
         # tự động thăng hạng phương án `title_variant` chứa đủ cả 2 thực thể lên làm `title` chính!
-        if topic and isinstance(raw_data.get("title"), str) and isinstance(raw_data.get("title_variants"), list):
-            head_clause = re.split(r"[:\-\u2013\u2014|]", str(topic))[0].strip()
-            vs_parts = re.split(r"\b(?:vs\.?|versus|contra|contre|gegen)\b", head_clause, maxsplit=1, flags=re.IGNORECASE)
-            if len(vs_parts) == 2:
+        _vs_head_clause = ""
+        _vs_side_a_raw = ""
+        _vs_side_b_raw = ""
+        _vs_side_a_toks: set = set()
+        _vs_side_b_toks: set = set()
+        if topic:
+            _vs_head_clause = re.split(r"[:\-\u2013\u2014|]", str(topic))[0].strip()
+            _vs_parts = re.split(r"\b(?:vs\.?|versus|contra|contre|gegen)\b", _vs_head_clause, maxsplit=1, flags=re.IGNORECASE)
+            if len(_vs_parts) == 2:
+                _vs_side_a_raw = _vs_parts[0].strip()
+                _vs_side_b_raw = _vs_parts[1].strip()
                 _vs_stop = {"the", "and", "with", "from", "into", "over", "under", "how", "why", "what", "when", "who"}
-                side_a_toks = {
+                _vs_side_a_toks = {
                     w.lower().rstrip("s")
-                    for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", vs_parts[0])
+                    for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", _vs_side_a_raw)
                     if w.lower() not in _vs_stop
                 }
-                side_b_toks = {
+                _vs_side_b_toks = {
                     w.lower().rstrip("s")
-                    for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", vs_parts[1])
+                    for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", _vs_side_b_raw)
                     if w.lower() not in _vs_stop
                 }
-                if side_a_toks and side_b_toks:
-                    def _matches_both_sides(cand_t: str) -> bool:
-                        c_low = cand_t.lower()
-                        has_a = any(tok in c_low for tok in side_a_toks)
-                        has_b = any(tok in c_low for tok in side_b_toks)
-                        return has_a and has_b
 
-                    cur_t = str(raw_data["title"]).strip()
-                    if not _matches_both_sides(cur_t):
-                        for idx_v, var_t in enumerate(raw_data["title_variants"]):
-                            if isinstance(var_t, str) and _matches_both_sides(var_t.strip()):
-                                promoted_t = var_t.strip()
-                                raw_data["title_variants"][idx_v] = cur_t
-                                raw_data["title"] = promoted_t
-                                logger.info(
-                                    f"🎯 [ViralTitle Rule-1] Thăng hạng title_variant nêu đủ 2 thực thể đối đầu: "
-                                    f"'{cur_t}' -> '{promoted_t}'"
-                                )
-                                break
+        def _matches_both_vs_sides(cand_t: str) -> bool:
+            if not (_vs_side_a_toks and _vs_side_b_toks):
+                return True
+            c_low = str(cand_t or "").lower()
+            has_a = any(tok in c_low for tok in _vs_side_a_toks)
+            has_b = any(tok in c_low for tok in _vs_side_b_toks)
+            return has_a and has_b
+
+        if _vs_side_a_toks and _vs_side_b_toks and isinstance(raw_data.get("title"), str):
+            cur_t = str(raw_data["title"]).strip()
+            if not _matches_both_vs_sides(cur_t) and isinstance(raw_data.get("title_variants"), list):
+                for idx_v, var_t in enumerate(raw_data["title_variants"]):
+                    if isinstance(var_t, str) and _matches_both_vs_sides(var_t.strip()):
+                        promoted_t = var_t.strip()
+                        raw_data["title_variants"][idx_v] = cur_t
+                        raw_data["title"] = promoted_t
+                        logger.info(
+                            f"🎯 [ViralTitle Rule-1] Thăng hạng title_variant nêu đủ 2 thực thể đối đầu: "
+                            f"'{cur_t}' -> '{promoted_t}'"
+                        )
+                        break
 
         # Tự động bù đắp các trường bắt buộc của ScriptContract nếu LLM vô tình bỏ sót
         scenes = raw_data.get("scenes", [])
@@ -527,12 +537,15 @@ class ScriptJsonParserMixin:
 
         if scenes and isinstance(scenes, list):
             is_long_form_parse = str(raw_data.get("video_format") or video_format or "short").strip().lower() == "long"
-            # Nếu LLM tách nhầm phần dẫn câu thoại ("...by saying out loud.", "...and ask.") và câu thoại trực tiếp sang 2 cảnh liền kề -> Gộp lại thành 1 cảnh hoàn chỉnh!
+            # Nếu LLM tách nhầm phần dẫn câu thoại ("...by saying out loud.", "...and ask.") và câu thoại trực tiếp sang 2 cảnh liền kề,
+            # HOẶC tự ý dùng dấu '...' / '…' hay viết chữ thường ở đầu cảnh sau để cắt 1 câu thành 2 cảnh -> Gộp lại thành 1 cảnh hoàn chỉnh!
             _speech_intro_tail_re = re.compile(
                 r'(?:\bby\s+saying(?:\s+out\s+loud)?|\band\s+(?:ask|say|whisper|reply|tell\s+them)|\brespond\s+with|\bsimply\s+(?:ask|say)|'
                 r'\bdizendo(?:\s+em\s+voz\s+alta)?|\be\s+(?:pergunte|diga|responda))[\.\:\!\,\s]*$',
                 re.IGNORECASE,
             )
+            _ellipsis_tail_re = re.compile(r'(?:\.{2,}|…)\s*$')
+            _fragment_head_re = re.compile(r'^(?:(?:\.{2,}|…)\s*|\s*[a-zà-ỹ])')
             merged_pre_scenes: List[Dict[str, Any]] = []
             i_m = 0
             while i_m < len(scenes):
@@ -541,21 +554,39 @@ class ScriptJsonParserMixin:
                     isinstance(cur_s, dict)
                     and i_m + 1 < len(scenes)
                     and isinstance(scenes[i_m + 1], dict)
-                    and _speech_intro_tail_re.search(str(cur_s.get("narration") or "").strip())
                 ):
+                    cur_narr_raw = str(cur_s.get("narration") or "").strip()
                     nxt_s = scenes[i_m + 1]
-                    intro_txt = str(cur_s.get("narration") or "").strip().rstrip(".,!:")
-                    quote_txt = str(nxt_s.get("narration") or "").strip().strip('"\'')
-                    combined_s = dict(cur_s)
-                    combined_s["narration"] = f'{intro_txt}: "{quote_txt}"'
-                    if not combined_s.get("overlay_badge") and nxt_s.get("overlay_badge"):
-                        combined_s["overlay_badge"] = nxt_s.get("overlay_badge")
-                    merged_pre_scenes.append(combined_s)
-                    i_m += 2
-                else:
-                    if isinstance(cur_s, dict):
-                        merged_pre_scenes.append(cur_s)
-                    i_m += 1
+                    nxt_narr_raw = str(nxt_s.get("narration") or "").strip()
+                    if _speech_intro_tail_re.search(cur_narr_raw):
+                        intro_txt = cur_narr_raw.rstrip(".,!:")
+                        quote_txt = nxt_narr_raw.strip('"\'')
+                        combined_s = dict(cur_s)
+                        combined_s["narration"] = f'{intro_txt}: "{quote_txt}"'
+                        if not combined_s.get("overlay_badge") and nxt_s.get("overlay_badge"):
+                            combined_s["overlay_badge"] = nxt_s.get("overlay_badge")
+                        merged_pre_scenes.append(combined_s)
+                        i_m += 2
+                        continue
+                    if _ellipsis_tail_re.search(cur_narr_raw) or _fragment_head_re.match(nxt_narr_raw):
+                        left_txt = re.sub(r'(?:\.{2,}|…|\s)+$', '', cur_narr_raw).rstrip(",")
+                        right_txt = re.sub(r'^(?:\.{2,}|…|\s)+', '', nxt_narr_raw)
+                        if right_txt and right_txt[0].isupper() and not re.match(r'^(?:I\b|[A-Z]{2,})', right_txt):
+                            right_txt = right_txt[0].lower() + right_txt[1:]
+                        combined_s = dict(cur_s)
+                        combined_s["narration"] = f"{left_txt}, {right_txt}" if left_txt and right_txt else f"{left_txt} {right_txt}".strip()
+                        if not combined_s.get("overlay_badge") and nxt_s.get("overlay_badge"):
+                            combined_s["overlay_badge"] = nxt_s.get("overlay_badge")
+                        logger.info(
+                            f"🔗 [ScriptParser] Gộp 2 phân cảnh bị cắt giữa câu bằng '...': "
+                            f"'{cur_narr_raw}' + '{nxt_narr_raw}' -> '{combined_s['narration']}'"
+                        )
+                        merged_pre_scenes.append(combined_s)
+                        i_m += 2
+                        continue
+                if isinstance(cur_s, dict):
+                    merged_pre_scenes.append(cur_s)
+                i_m += 1
             scenes = merged_pre_scenes
 
             paced_scenes: List[Dict[str, Any]] = []
@@ -689,7 +720,7 @@ class ScriptJsonParserMixin:
         if scenes and isinstance(scenes, list) and isinstance(scenes[0], dict):
             sc1 = scenes[0]
             comb_ctx = f"{raw_data.get('title', '')} {sc1.get('narration', '')} {sc1.get('visual_keyword', '')}".lower()
-            _passive_hook_words = r'\b(?:standing|sitting|sleeping|resting|calm|peaceful|empty|still|waiting|walking\s+slowly|idle)\b'
+            _passive_hook_words = r'\b(?:standing|sitting|sleeping|resting|calm|peaceful|empty|still|waiting|walking\s+slowly|idle|mud|grazing)\b'
             for q_field in ("stock_query", "visual_keyword"):
                 val_q = str(sc1.get(q_field) or "").strip()
                 if val_q:
@@ -697,6 +728,31 @@ class ScriptJsonParserMixin:
                     cleaned_q = re.sub(r'\s+', ' ', cleaned_q).strip()
                     if cleaned_q:
                         sc1[q_field] = cleaned_q
+
+            prim_ent_s1 = str(raw_data.get("primary_entity") or _vs_side_a_raw or "").strip()
+            prim_s1_toks = [
+                w.lower().rstrip("s")
+                for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", prim_ent_s1)
+                if w.lower() not in {"animal", "creature", "monster", "predator", "wildlife"}
+            ]
+            if prim_s1_toks:
+                cur_vk1 = str(sc1.get("visual_keyword") or "").strip()
+                cur_sq1 = str(sc1.get("stock_query") or "").strip()
+                if not any(t in cur_vk1.lower() for t in prim_s1_toks):
+                    if _vs_side_a_raw and _vs_side_b_raw:
+                        sc1["visual_keyword"] = f"{_vs_side_a_raw.lower()} attacking {_vs_side_b_raw.lower()}"
+                    else:
+                        sc1["visual_keyword"] = f"{prim_ent_s1.lower()} closeup action"
+                    logger.info(
+                        f"🎯 [Scene-1 Hook Anchor] Khóa visual_keyword Cảnh 1 vào thực thể chính '{prim_ent_s1}': "
+                        f"'{cur_vk1}' -> '{sc1['visual_keyword']}'"
+                    )
+                if not any(t in cur_sq1.lower() for t in prim_s1_toks):
+                    sc1["stock_query"] = f"{prim_ent_s1.lower()} closeup"
+                    logger.info(
+                        f"🎯 [Scene-1 Hook Anchor] Khóa stock_query Cảnh 1 vào thực thể chính '{prim_ent_s1}': "
+                        f"'{cur_sq1}' -> '{sc1['stock_query']}'"
+                    )
 
             vp1 = str(sc1.get("visual_prompt") or "").strip()
             # Đặt chủ thể cụ thể lên ĐẦU câu prompt (để nếu fallback sang tìm kiếm ảnh thì từ đầu luôn là danh từ thật,
@@ -752,6 +808,10 @@ class ScriptJsonParserMixin:
                 s_narr = re.sub(r"\bIt's\s+a\s+high-stakes\s+game\s+of\s+[^.!?]+[.!?]\s*", "", s_narr, flags=re.IGNORECASE).strip()
                 s_narr = re.sub(r"\bIt's\s+a\s+brutal,\s+silent\s+end[.!?]*", "", s_narr, flags=re.IGNORECASE).strip()
                 s_narr = re.sub(r"\blocked\s+in\s+a\s+deadly\s+fight\b", "tearing into each other", s_narr, flags=re.IGNORECASE)
+                # Khử cụm 'act like / acts like / acting like' bị ScriptCritic gắn cờ AI simile
+                s_narr = re.sub(r"\bthat\s+acts?\s+like\b", "that cuts like", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\bacts?\s+like\b", "works as", s_narr, flags=re.IGNORECASE)
+                s_narr = re.sub(r"\bacting\s+like\b", "cutting like", s_narr, flags=re.IGNORECASE)
                 s_narr = re.sub(r"\b(?:global\s+catastrophe)\b", "total disaster", s_narr, flags=re.IGNORECASE)
                 s_narr = re.sub(
                     r"\b(?:global\s+nuclear\s+nightmare|nuclear\s+holocaust|nuclear\s+apocalypse|global\s+nuclear\s+exchange|full-scale\s+atomic\s+retaliation)\b",
@@ -999,8 +1059,16 @@ class ScriptJsonParserMixin:
                     score += 8.0
                 if re.search(r'\b(vs\.?|versus|contra|flee|flees|temem|odeiam|crushes|esmagam|aniquila|terrified|tremem|smile|jump|refused|hay|or)\b', clean_t, flags=re.IGNORECASE):
                     score += 16.0
-                if prim_tokens and any(pt in t_low for pt in prim_tokens):
-                    score += 15.0
+                if _vs_side_a_toks and _vs_side_b_toks:
+                    if _matches_both_vs_sides(clean_t):
+                        score += 28.0
+                    else:
+                        score -= 55.0
+                if prim_tokens:
+                    if any(pt in t_low for pt in prim_tokens):
+                        score += 15.0
+                    else:
+                        score -= 35.0
                 # Phạt nặng các tiêu đề ẩn dụ mơ hồ giấu tên chủ thể (nguyên nhân làm video kẹt < 100 views)
                 if _vague_title_re.search(clean_t) and not (has_num and prim_tokens and any(pt in t_low for pt in prim_tokens)):
                     score -= 32.0
@@ -1027,6 +1095,24 @@ class ScriptJsonParserMixin:
                     best_title,
                     count=1,
                     flags=re.IGNORECASE,
+                )
+            if _vs_side_a_toks and _vs_side_b_toks and not _matches_both_vs_sides(best_title):
+                has_a_bt = any(tok in best_title.lower() for tok in _vs_side_a_toks)
+                has_b_bt = any(tok in best_title.lower() for tok in _vs_side_b_toks)
+                if not has_a_bt and has_b_bt and _vs_side_a_raw:
+                    repaired_t = f"{_vs_side_a_raw} vs {_vs_side_b_raw}: {best_title}"
+                    if len(repaired_t) > 68:
+                        repaired_t = f"{_vs_side_a_raw}: {best_title}"
+                    best_title = repaired_t
+                elif has_a_bt and not has_b_bt and _vs_side_b_raw:
+                    repaired_t = f"{_vs_side_a_raw} vs {_vs_side_b_raw}: {best_title}"
+                    if len(repaired_t) > 68:
+                        repaired_t = f"{best_title} vs {_vs_side_b_raw}"
+                    best_title = repaired_t
+                elif _vs_head_clause:
+                    best_title = f"{_vs_head_clause}: {best_title}"[:68].strip()
+                logger.info(
+                    f"🎯 [ViralTitle Rule-1 Repair] Khôi phục đủ 2 thực thể đối đầu trên Title: '{best_title}'"
                 )
             if best_title != raw_data.get("title"):
                 logger.info(f"[ContentAgent] 🎯 CTR Title Tournament chọn tiêu đề tối ưu: '{best_title}' (thay cho '{raw_data.get('title')}')")

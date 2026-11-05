@@ -11,6 +11,7 @@ from app.graph.tools.tool_schemas import (
     _clean_yt_search_phrase,
     _resolve_adaptive_search_queries,
     build_single_entity_stock_queries,
+    resolve_scene_active_entity,
 )
 
 
@@ -64,8 +65,19 @@ def execute_google_cinematic_image_sync(
     ]
     merged_raw_qs = list(dict.fromkeys([*llm_chunk_qs, *base_search_qs]))
 
-    subj = (subject_entity or "").strip()
-    search_qs = build_single_entity_stock_queries(merged_raw_qs, subject_entity=subject_entity, topic=topic, max_words=6) or merged_raw_qs
+    subj = resolve_scene_active_entity(
+        scene_query=smart_query,
+        narration=narration,
+        subject_entity=subject_entity,
+        topic=topic,
+    ) or (subject_entity or "").strip()
+    search_qs = build_single_entity_stock_queries(
+        merged_raw_qs,
+        subject_entity=subj,
+        topic=topic,
+        narration=narration,
+        max_words=6,
+    ) or merged_raw_qs
     if not subj:
         subj = _clean_yt_search_phrase(overall_script_query or topic, max_words=3) or (search_qs[0] if search_qs else smart_query)
 

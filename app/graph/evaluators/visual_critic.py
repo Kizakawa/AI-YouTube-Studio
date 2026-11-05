@@ -521,9 +521,9 @@ class VisualCritic:
                     for i in range(len(gray_frames) - 1)
                 ]
                 avg_m_diff = sum(pair_diffs) / len(pair_diffs) if pair_diffs else 0.0
-                if pair_diffs and (avg_m_diff < 4.5 or (min(pair_diffs) < 1.2 and avg_m_diff < 9.5)):
+                if pair_diffs and (avg_m_diff < 0.75 and max(pair_diffs) < 1.1):
                     issues.append(
-                        f"Clip bị đứng hình hoặc là ảnh tĩnh giả video (min_motion_diff={min(pair_diffs):.2f}, avg={avg_m_diff:.2f} < 4.5)"
+                        f"Clip bị đứng hình hoặc là ảnh tĩnh giả video (min_motion_diff={min(pair_diffs):.2f}, avg={avg_m_diff:.2f} < 0.75)"
                     )
             except Exception:
                 pass
@@ -897,11 +897,10 @@ Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ... along with
 SELF-SCORING PROTOCOL FOR EVERY SCENE TILE (0.0 to 10.0):
 1. CROSS-SCENE COREFERENCE & CROSS-TILE VISUAL IDENTITY CONSISTENCY (`entity_match_score`: 0.0–10.0):
    - Resolve any pronouns or generic nouns in each scene's narration (e.g., "the hunter", "the eagle", "its prey", "this creature", "he/she/it") back to the exact named protagonists in Overall Script Topic ("{anchor_topic}").
-   - CROSS-TILE MORPHOLOGY CHECK: Compare the physical appearance (plumage/fur color, head crest, body structure, anatomy) of recurring protagonists across all tiles (`SCENE #1 .. SCENE #N`) in this contact sheet! If a tile shows a subject with a noticeably different species morphology or coloration from the true named protagonist shown in the other tiles (for example, a different species from the same broad animal family with different head/body coloration), you MUST score `entity_match_score < 5.0` and set `"passed": false`.
-   - 2-TIER DOCUMENTARY B-ROLL RULE: For rare multi-entity interactions or comparison sentences, a clean shot showing AT LEAST ONE of the exact named protagonists from "{anchor_topic}" in a natural pose OR a close-up of that protagonist's anatomical weapons/features (e.g., talons, claws, jaws, wings, eyes, feathers) scores `8.4–9.5` (`"passed": true`). An empty habitat/landscape shot WITHOUT any named protagonist ONLY passes if the spoken narration chunk itself is describing the environment/setting rather than a specific anatomical weapon, physical action, or confrontation of a protagonist.
+   - 2-TIER DOCUMENTARY B-ROLL RULE: In any two-entity matchup or comparison ("{anchor_topic}"), BOTH named protagonists (and visually similar species from the same genus/family on free stock libraries, such as monitor lizards for Komodo dragon, crocodile/alligator for caiman, brown bear for grizzly) are 100% VALID primary subjects! A clean shot showing AT LEAST ONE of the named protagonists from "{anchor_topic}" in a natural pose OR a close-up of its anatomical features (e.g., claws, jaws, horns, eyes, scales, wings) MUST score `entity_match_score >= 8.5` (`"passed": true`). NEVER fail a tile because only one of the two combatants is visible in that frame, or because different stock clips show different individuals/lighting/sizes of the same animal family! Only score `entity_match_score < 5.0` if the tile shows a completely unrelated animal taxonomic group (e.g., a bird/pheasant, primate, or pet dog when the topic is Komodo Dragon vs Water Buffalo) or irrelevant human faces/charts.
 2. NARRATIVE ACTION & SETTING ALIGNMENT (`relevance_score`: 0.0–10.0):
-   - Does the frame's action, physical state, mood, and setting align with the spoken narration chunk?
-   - Apply the 2-TIER DOCUMENTARY B-ROLL RULE here as well: when a spoken narration chunk describes a complex multi-entity interaction, biomechanics, or concluding reaction (such as one protagonist letting go / flying off or the other resting / clinging), any clean authentic documentary shot showing AT LEAST ONE of the canonical named protagonists from "{anchor_topic}" (or its anatomical weapons such as talons/claws/wings) in its natural wild habitat MUST ALSO score `relevance_score >= 8.4` (`"passed": true`). NEVER fail a scene just because a single extracted freeze-frame shows the protagonist's talons, claws, or perching pose rather than the literal micro-second of letting go or bouncing off!
+   - Does the frame's subject and natural setting align with a wildlife/history documentary on "{anchor_topic}"?
+   - Apply the 2-TIER DOCUMENTARY B-ROLL RULE here as well: when a spoken narration chunk describes a complex attack, internal physiological mechanism (venom, blood clotting, bite force), or fatal outcome ("already dead", "collapses", "waits"), any clean authentic documentary shot showing AT LEAST ONE of the canonical named protagonists from "{anchor_topic}" in its natural wild habitat (standing, walking, resting, wading, stalking, or feeding) MUST score `relevance_score >= 8.5` (`"passed": true`). NEVER fail a scene just because a stock B-roll frame shows the animal alive, standing, or walking calmly while the voiceover describes an attack, injury, or death!
 3. VISUAL CLEANLINESS & AUTHENTICITY (`cleanliness_score`: 0.0–10.0):
    - Score `< 4.0` (`"passed": false`) if the frame contains magazine/infographic text, callout arrows, channel logos, uploader watermarks ("By: ..."), black letterbox/pillarbox bars, AI corner badges (`✦`), surreal AI deformities, or artificial/captive staging that contradicts a wild/historical documentary context.
 4. SELF-CORRECTION QUERIES (`suggested_search_query` & `fallback_broll_query`):
@@ -999,8 +998,7 @@ Return ONLY valid JSON in this exact format:
                     logger.debug(f"[VisualCritic] ContactSheet JSON parse skip ({model_name}): {e_vp}")
                     continue
                 except Exception as e_v:
-                    if "Read timed out" not in str(e_v):
-                        rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_v))
+                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_v)[:200])
                     continue
         return all_scene_evals
 

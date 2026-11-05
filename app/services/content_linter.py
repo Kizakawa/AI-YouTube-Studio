@@ -80,6 +80,16 @@ class ScriptValidationLinter:
                     f"Scene {sc.scene_id} narration contains raw stage direction tag '{tag_found}'. "
                     f"Never include bracketed stage tags like [LOOP] or [HOOK] in spoken narration."
                 )
+            if re.match(r"^(?:\.{2,}|…)", raw_sc_text) or re.search(r"(?:\.{2,}|…)\s*$", raw_sc_text):
+                errors.append(
+                    f"Scene {sc.scene_id} narration uses mid-sentence ellipsis ('...') splitting ('{raw_sc_text}'). "
+                    f"Every scene must be a 100% standalone complete sentence—never split one sentence across two scenes with '...'!"
+                )
+            elif re.match(r"^[a-zà-ỹ]", raw_sc_text):
+                errors.append(
+                    f"Scene {sc.scene_id} narration starts with a lowercase continuation fragment ('{raw_sc_text[:35]}...'). "
+                    f"Every scene must be a complete sentence starting with a capital letter."
+                )
 
         full_blob_low = f"{script.title or ''} {' '.join((s.narration or '') for s in scenes)}".lower()
         is_pt_text = any(
@@ -324,6 +334,28 @@ class ScriptValidationLinter:
                             f"Opening hook hides one of the combatants ('{missing_side}') in a 2-entity matchup ('{side_a_raw} vs {side_b_raw}'). "
                             f"In an 'A vs B' Short, name BOTH '{side_a_raw}' AND '{side_b_raw}' immediately in Scene 1!"
                         )
+                    title_low_vs = raw_title.lower()
+                    title_has_a = _matches_side(toks_a, title_low_vs)
+                    title_has_b = _matches_side(toks_b, title_low_vs)
+                    if toks_a and toks_b and (not title_has_a or not title_has_b):
+                        missing_title_side = side_b_raw if not title_has_b else side_a_raw
+                        issues.append(
+                            f"Title ('{raw_title}') hides one of the combatants ('{missing_title_side}') in a 2-entity matchup ('{side_a_raw} vs {side_b_raw}'). "
+                            f"Rule 1: The Title MUST explicitly name BOTH '{side_a_raw}' AND '{side_b_raw}' for YT_SEARCH discovery!"
+                        )
+
+            _baby_talk_re = re.compile(
+                r"\b(?:a\s+special\s+liquid|a\s+secret\s+liquid|magic\s+liquid|run\s+out\s+of\s+fuel|runs\s+out\s+of\s+fuel|jaws\s+are\s+incredibly\s+weak)\b",
+                re.IGNORECASE,
+            )
+            for sc in script.scenes:
+                sc_narr_chk = (sc.narration or "").strip()
+                m_bt = _baby_talk_re.search(sc_narr_chk)
+                if m_bt:
+                    issues.append(
+                        f"Scene {sc.scene_id} uses vague baby-talk filler ('{m_bt.group(0)}'). "
+                        f"Replace with concrete, visceral physical anatomy and mechanisms (e.g. '60 serrated shark-like teeth', 'blood-thinning venom glands', 'massive blood loss and shock')."
+                    )
 
             # CẤM đọc câu xin Subscribe / Comment ở BẤT KỲ cảnh nào (đặc biệt là cảnh cuối)
             cta_regex = re.compile(

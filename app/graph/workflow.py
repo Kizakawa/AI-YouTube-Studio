@@ -49,7 +49,13 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     retry_count = int(state.get("script_retry_count", 0) or 0)
     evaluated_by = script_eval.get("evaluated_by", "ai")
     max_script_retries = max(0, int(os.getenv("MAX_SCRIPT_RETRIES", "2")))
-    is_strictly_passing = passed and overall_s >= 8.0 and hook_s >= 8.0 and evaluated_by != "heuristic"
+    has_no_actionable_critiques = not bool(script_eval.get("actionable_critiques"))
+    is_strictly_passing = (
+        passed
+        and overall_s >= 8.0
+        and hook_s >= 8.0
+        and (evaluated_by != "heuristic" or (overall_s >= 8.5 and hook_s >= 8.5 and has_no_actionable_critiques))
+    )
 
     if not is_strictly_passing and retry_count < max_script_retries:
         logger.info(

@@ -119,21 +119,17 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             if str(fid).isdigit()
         }
         _is_eval_failed_scene = int(sc_id) in _eval_failed_sids
-        if _is_eval_failed_scene and cur_media_path and Path(cur_media_path).exists():
-            try:
-                Path(cur_media_path).unlink(missing_ok=True)
-                if int(sc_id) == 1:
-                    (work_dir / "hook_motion_001_fullpeak.mp4").unlink(missing_ok=True)
-            except Exception:
-                pass
-            cur_media_path = ""
+        _prev_media_path = cur_media_path if (cur_media_path and Path(cur_media_path).exists()) else ""
+        _prev_media_type = cur_media_type
+        _has_valid_video_on_disk = bool(
+            _prev_media_path and _prev_media_path.lower().endswith((".mp4", ".mov", ".webm"))
+        )
 
         if (
-            _is_eval_failed_scene
-            or not cur_media_path
+            not cur_media_path
             or not Path(cur_media_path).exists()
             or cur_media_path.lower().endswith("_graphic.png")
-            or (_needs_video_for_85pct_floor and not cur_media_path.lower().endswith((".mp4", ".mov", ".webm")))
+            or (_needs_video_for_85pct_floor and not _has_valid_video_on_disk)
         ):
             try:
                 from app.utils.ffmpeg_helper import get_duration_ms, is_completed_clean_mp4, trim_video
@@ -179,17 +175,23 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                     if not rescued_pre:
                         try:
                             from app.agents.media_agent import MediaAgent
-                            from app.graph.tools.tool_schemas import build_single_entity_stock_queries
+                            from app.graph.tools.tool_schemas import build_single_entity_stock_queries, resolve_scene_active_entity
                             ma_g_resc = MediaAgent()
+                            sc_active_ent = resolve_scene_active_entity(
+                                scene_query=str(m.get("visual_keyword") or m.get("stock_query") or ""),
+                                narration=str(m.get("narration") or ""),
+                                subject_entity=str(m.get("subject_entity") or state.get("primary_entity") or ""),
+                                topic=str(state.get("topic") or ""),
+                            ) or str(state.get("primary_entity") or "")
                             qs_g_resc = build_single_entity_stock_queries(
                                 primary_query=str(m.get("visual_keyword") or m.get("stock_query") or ""),
-                                secondary_query=str(state.get("primary_entity") or state.get("topic") or ""),
-                                subject_entity=str(state.get("primary_entity") or ""),
+                                secondary_query=sc_active_ent or str(state.get("topic") or ""),
+                                subject_entity=sc_active_ent,
                                 topic=str(state.get("topic") or ""),
                                 narration=str(m.get("narration") or ""),
                                 max_words=3,
                             )
-                            q_gr_first = qs_g_resc[0] if qs_g_resc else str(state.get("primary_entity") or state.get("topic") or "")
+                            q_gr_first = qs_g_resc[0] if qs_g_resc else (sc_active_ent or str(state.get("topic") or ""))
                             _used_pre_urls = {
                                 str(_mx.get("source_url") or "")
                                 for _mx in scenes_media
@@ -200,7 +202,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                     query=q_gr_first,
                                     used_urls=_used_pre_urls,
                                     visual_analysis={
-                                        "subject": str(state.get("primary_entity") or ""),
+                                        "subject": sc_active_ent,
                                         "search_queries": qs_g_resc[:3],
                                         "skip_establishing_pass": True,
                                     },
@@ -242,7 +244,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                         clip_role="HOOK" if sc_id == 1 else "PEAK",
                                         used_urls=_used_pre_urls,
                                         fallback_query=q_gr_first,
-                                        subject_entity=str(state.get("primary_entity") or q_gr_first),
+                                        subject_entity=sc_active_ent or q_gr_first,
                                         narration=str(m.get("narration") or state.get("topic") or ""),
                                         topic=str(state.get("topic") or ""),
                                         search_scope="SCRIPT_OVERALL",
@@ -278,15 +280,22 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                             )
                     if not rescued_pre and (not cur_media_path or not Path(cur_media_path).exists() or cur_media_path.lower().endswith("_graphic.png")):
                         from app.graph.tools.media_tools import execute_google_cinematic_image_sync
+                        from app.graph.tools.tool_schemas import resolve_scene_active_entity
                         out_pre_gimg = str(m_dir_pre / f"scene_{int(sc_id):03d}_prerender_gimg.jpg")
                         q_pre_gimg = str(m.get("visual_keyword") or m.get("stock_query") or state.get("primary_entity") or state.get("topic") or "")
+                        sc_gimg_subj = resolve_scene_active_entity(
+                            scene_query=q_pre_gimg,
+                            narration=str(m.get("narration") or ""),
+                            subject_entity=str(m.get("subject_entity") or state.get("primary_entity") or ""),
+                            topic=str(state.get("topic") or ""),
+                        ) or str(state.get("primary_entity") or state.get("topic") or "")
                         g_pre_res = execute_google_cinematic_image_sync(
                             smart_query=q_pre_gimg,
                             output_path=out_pre_gimg,
                             narration=str(m.get("narration") or ""),
                             topic=str(state.get("topic") or ""),
                             is_hook_scene=False,
-                            subject_entity=str(state.get("primary_entity") or state.get("topic") or ""),
+                            subject_entity=sc_gimg_subj,
                             job_id=job_id,
                             scene_id=int(sc_id),
                         )
@@ -296,12 +305,27 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                             m["pose_images"] = g_pre_res.get("pose_images") or [cur_media_path]
                             rescued_pre = True
                 if rescued_pre:
+                    if _is_eval_failed_scene and _prev_media_path and Path(_prev_media_path).exists() and str(Path(_prev_media_path).resolve()) != str(Path(cur_media_path).resolve()):
+                        try:
+                            Path(_prev_media_path).unlink(missing_ok=True)
+                        except Exception:
+                            pass
                     m["media_path"] = cur_media_path
                     m["media_type"] = cur_media_type
                     if cur_media_type != "image":
                         m["pose_images"] = []
                     logger.info(f"[RenderNode] 🛡️ Đã nâng cấp/cứu hộ Cảnh #{sc_id} trước khi render -> {Path(cur_media_path).name} (type={cur_media_type})")
+                elif not cur_media_path and _prev_media_path and Path(_prev_media_path).exists():
+                    cur_media_path = _prev_media_path
+                    cur_media_type = _prev_media_type
+                    m["media_path"] = cur_media_path
+                    m["media_type"] = cur_media_type
             except Exception as _e_pre_g:
+                if not cur_media_path and _prev_media_path and Path(_prev_media_path).exists():
+                    cur_media_path = _prev_media_path
+                    cur_media_type = _prev_media_type
+                    m["media_path"] = cur_media_path
+                    m["media_type"] = cur_media_type
                 logger.debug(f"[RenderNode] Pre-render graphic rescue skip for Scene #{sc_id}: {_e_pre_g}")
         if sc_id in (1, 2):
             if sc_id == 1 and is_lf_pre and cur_media_path and Path(cur_media_path).exists() and (
@@ -338,7 +362,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                         bool(cur_media_path)
                         and Path(cur_media_path).exists()
                         and cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
-                        and verify_hook_clip_genuine_motion(cur_media_path)[0]
+                        and (verify_hook_clip_genuine_motion(cur_media_path)[0] if sc_id == 1 else is_completed_clean_mp4(cur_media_path, min_size_bytes=18_000, min_duration_ms=1200))
                     )
                     if not is_cur_genuine_vid:
                         target_dur_open = max(dur_ms / 1000.0, 2.2) + 0.18

@@ -478,6 +478,78 @@ def _clean_yt_search_phrase(
     return " ".join(core[:max_words]).strip()
 
 
+_MULTI_ENTITY_SEP_RE = re.compile(r"\b(?:vs\.?|versus|or|and)\b|[,/&|+;]", re.IGNORECASE)
+
+
+def resolve_scene_active_entity(
+    scene_query: str = "",
+    narration: str = "",
+    subject_entity: str = "",
+    topic: str = "",
+) -> str:
+    """
+    Xác định Thực thể Đích danh đang hoạt động (Active Scene Entity) trong phân cảnh hiện tại,
+    đặc biệt khi kịch bản là kèo đối đầu 2 thực thể (`Entity A vs Entity B`):
+    - Nếu câu truy vấn phân cảnh (`scene_query`) hoặc lời thoại (`narration`) nói riêng về `Entity B`
+      (ví dụ: 'water buffalo running river' trong topic 'Komodo Dragon vs Water Buffalo'),
+      hàm tự động trả về 'Water Buffalo' thay vì mặc định gắn cứng `primary_entity` ('Komodo Dragon').
+    - Nếu cả 2 thực thể cùng xuất hiện trong phân cảnh giao chiến, trả về `'Entity A or Entity B'`.
+    """
+    clean_topic_en = "" if _is_non_english_or_question_title(topic) else str(topic or "").strip()
+    clean_subj_en = "" if _is_non_english_or_question_title(subject_entity) else str(subject_entity or "").strip()
+
+    candidates: List[str] = []
+    for src in (clean_topic_en, clean_subj_en):
+        s = str(src or "").strip()
+        if not s:
+            continue
+        head = re.split(r"[:—–]\s*", s, maxsplit=1)[0].strip()
+        if not _MULTI_ENTITY_SEP_RE.search(head):
+            continue
+        for pt in _MULTI_ENTITY_SEP_RE.split(head):
+            pt_clean = re.sub(r"#\S+", " ", pt)
+            pt_clean = re.sub(r"\b\d[\d,.]*\s*(?:psi|lbs?|kg|km|mph|ft|meters?|m)\b", " ", pt_clean, flags=re.IGNORECASE)
+            ent = _clean_yt_search_phrase(pt_clean, max_words=3, strip_distractor_props=True)
+            if ent and ent.lower() not in {c.lower() for c in candidates}:
+                candidates.append(ent)
+
+    if len(candidates) >= 2:
+        q_low = str(scene_query or "").lower()
+        nar_low = str(narration or "").lower()
+
+        def _matches_text(ent_name: str, text_low: str) -> bool:
+            if not text_low:
+                return False
+            toks = [t for t in ent_name.lower().split() if len(t) >= 3]
+            if not toks:
+                return False
+            if ent_name.lower() in text_low:
+                return True
+            # Khớp token danh từ chính (token cuối hoặc bất kỳ token >= 4 ký tự không trùng với thực thể kia)
+            other_toks = {
+                ot
+                for other in candidates
+                if other.lower() != ent_name.lower()
+                for ot in other.lower().split()
+            }
+            unique_toks = [t for t in toks if t not in other_toks and len(t) >= 4]
+            return any(re.search(rf"\b{re.escape(ut)}s?\b", text_low) for ut in (unique_toks or toks[-1:]))
+
+        q_matched = [c for c in candidates if _matches_text(c, q_low)]
+        if len(q_matched) == 1:
+            return q_matched[0]
+        if len(q_matched) >= 2:
+            return " or ".join(q_matched[:2])
+
+        nar_matched = [c for c in candidates if _matches_text(c, nar_low)]
+        if len(nar_matched) == 1:
+            return nar_matched[0]
+        if len(nar_matched) >= 2:
+            return " or ".join(nar_matched[:2])
+
+    return clean_subj_en or (candidates[0] if candidates else "")
+
+
 def build_single_entity_stock_queries(
     raw_queries: Optional[List[str]] = None,
     subject_entity: str = "",
@@ -486,6 +558,7 @@ def build_single_entity_stock_queries(
     primary_query: str = "",
     secondary_query: str = "",
     narration: str = "",
+    primary_subject: str = "",
     **kwargs: Any,
 ) -> List[str]:
     """
@@ -495,6 +568,8 @@ def build_single_entity_stock_queries(
       1. Chạy nhánh song song (Dual-Track) cùng với 'A vs B' trên YouTube.
       2. Tầng dự phòng Pexels / Pixabay / Wikimedia Stock tuyệt đối KHÔNG gửi cụm 'A vs B' hoặc tiêu đề phi tiếng Anh.
     """
+    if not subject_entity and primary_subject:
+        subject_entity = primary_subject
     merged_raw_queries: List[str] = []
     if isinstance(raw_queries, str):
         merged_raw_queries.append(raw_queries)
@@ -507,7 +582,13 @@ def build_single_entity_stock_queries(
     out: List[str] = []
     seen_low: Set[str] = set()
     clean_topic_en = "" if _is_non_english_or_question_title(topic) else str(topic or "").strip()
-    clean_subj_en = "" if _is_non_english_or_question_title(subject_entity) else str(subject_entity or "").strip()
+    active_subj = resolve_scene_active_entity(
+        scene_query=" ".join(str(x) for x in raw_queries[:2]),
+        narration=narration,
+        subject_entity=subject_entity,
+        topic=topic,
+    )
+    clean_subj_en = active_subj or ("" if _is_non_english_or_question_title(subject_entity) else str(subject_entity or "").strip())
 
     def _add_clean(phrase: str) -> None:
         if not phrase or _is_non_english_or_question_title(phrase):
@@ -528,7 +609,7 @@ def build_single_entity_stock_queries(
             seen_low.add(final_p.lower())
             out.append(final_p)
 
-    _multi_entity_sep_re = re.compile(r"\b(?:vs\.?|versus|or|and)\b|[,/&|+;]", re.IGNORECASE)
+    _multi_entity_sep_re = _MULTI_ENTITY_SEP_RE
 
     # 1. Giữ nguyên trước tất cả các câu truy vấn tiếng Anh vốn đã ĐƠN CHỦ THỂ (không chứa 'vs'/'versus', 'A or B' hoặc dấu phẩy ngăn cách 2 thực thể)
     for rq in raw_queries:
@@ -541,6 +622,7 @@ def build_single_entity_stock_queries(
 
     # 2. Tách các thực thể độc lập từ subject_entity ('A, B' / 'A or B' / 'A vs B'), các câu truy vấn và topic tiếng Anh
     subj_low = clean_subj_en.lower()
+    first_q_low = str(raw_queries[0] if raw_queries else "").lower()
     split_entities: List[str] = []
     for src in (clean_subj_en, *raw_queries, clean_topic_en):
         s = str(src or "").strip()
@@ -558,9 +640,12 @@ def build_single_entity_stock_queries(
             if ent and ent.lower() not in {e.lower() for e in split_entities}:
                 split_entities.append(ent)
 
-    if split_entities and subj_low and not _multi_entity_sep_re.search(subj_low):
+    if split_entities:
         split_entities.sort(
-            key=lambda e: 0 if any(tok in subj_low for tok in e.lower().split() if len(tok) >= 3) else 1
+            key=lambda e: (
+                0 if any(tok in first_q_low for tok in e.lower().split() if len(tok) >= 3) else 1,
+                0 if (subj_low and not _multi_entity_sep_re.search(subj_low) and any(tok in subj_low for tok in e.lower().split() if len(tok) >= 3)) else 1,
+            )
         )
 
     for ent in split_entities:
@@ -622,7 +707,13 @@ def _resolve_adaptive_search_queries(
         scope_norm = "SCENE_SPECIFIC"
 
     clean_topic_en = "" if _is_non_english_or_question_title(topic) else str(topic or "").strip()
-    clean_subj_en = "" if _is_non_english_or_question_title(subject_entity) else str(subject_entity or "").strip()
+    active_subj_en = resolve_scene_active_entity(
+        scene_query=scene_query or fallback_query,
+        narration=narration,
+        subject_entity=subject_entity,
+        topic=topic,
+    )
+    clean_subj_en = active_subj_en or ("" if _is_non_english_or_question_title(subject_entity) else str(subject_entity or "").strip())
     clean_overall_en = "" if _is_non_english_or_question_title(overall_script_query) else str(overall_script_query or "").strip()
 
     overall_base = re.split(
@@ -649,6 +740,7 @@ def _resolve_adaptive_search_queries(
         raw_queries=[*clean_story_qs, fallback_query, scene_query, overall_base, topic_base],
         subject_entity=clean_subj_en,
         topic=clean_topic_en,
+        narration=narration,
         max_words=min(4, max_words),
     )
     q_fallback = (

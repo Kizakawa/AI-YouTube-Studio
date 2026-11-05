@@ -538,17 +538,23 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             )
             ai_prompt = vp or search_query
             from app.graph.tools.media_tools import _sanitize_tool_arg
-            subj_ent = _sanitize_tool_arg(
+            from app.graph.tools.tool_schemas import resolve_scene_active_entity
+            raw_subj_ent = _sanitize_tool_arg(
                 sc_strat.get("creature_name") or sc_strat.get("subject_entity"),
                 fallback=primary_entity or state.get("topic", ""),
             )
+            subj_ent = resolve_scene_active_entity(
+                scene_query=search_query or kw or sq or "",
+                narration=scene.narration,
+                subject_entity=raw_subj_ent,
+                topic=state.get("topic", ""),
+            ) or raw_subj_ent
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
             v_analysis = dict(batch_analyses.get(scene.scene_id) or {})
-            if subj_ent and not v_analysis.get("subject"):
+            if subj_ent:
                 v_analysis["subject"] = subj_ent
-            if (subj_ent or primary_entity) and not v_analysis.get("core_visual_entity"):
-                v_analysis["core_visual_entity"] = subj_ent or primary_entity
+                v_analysis["core_visual_entity"] = subj_ent
             if sc_strat.get("resolved_scene_intent") and not v_analysis.get("narrative_subtext"):
                 v_analysis["narrative_subtext"] = str(sc_strat.get("resolved_scene_intent") or "")
             elif sc_strat.get("scope_audit_reason") and not v_analysis.get("narrative_subtext"):
@@ -728,17 +734,34 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
                     async def _run_pexels_parallel_branch() -> Optional[Dict[str, Any]]:
                         try:
+                            from app.graph.tools.tool_schemas import build_single_entity_stock_queries
                             rag_vf = get_video_memory_rag()
+                            raw_px_seeds = [
+                                str(getattr(scene, "stock_query", "") or "").strip(),
+                                fb_q,
+                                yt_q,
+                                *story_yt_qs,
+                                overall_q,
+                            ]
+                            single_ent_px_qs = build_single_entity_stock_queries(
+                                [q_s for q_s in raw_px_seeds if q_s],
+                                subject_entity=subj_ent or str((v_analysis or {}).get("subject") or ""),
+                                topic=state.get("topic", ""),
+                                narration=scene.narration,
+                                max_words=3,
+                            )
                             vf_q = (
-                                yt_q
-                                or (story_yt_qs[0] if story_yt_qs else "")
+                                (single_ent_px_qs[0] if single_ent_px_qs else "")
                                 or fb_q
                                 or str(getattr(scene, "stock_query", "") or "").strip()
+                                or yt_q
                             )
                             va_vf = dict(v_analysis or {})
-                            va_vf["search_queries"] = [
-                                q_x for q_x in dict.fromkeys([vf_q, *story_yt_qs, yt_q, fb_q, overall_q]) if q_x
-                            ][:4]
+                            va_vf["search_queries"] = (
+                                single_ent_px_qs[:4]
+                                if single_ent_px_qs
+                                else [q_x for q_x in dict.fromkeys([vf_q, fb_q, *story_yt_qs, yt_q]) if q_x][:4]
+                            )
                             va_vf["skip_establishing_pass"] = True
                             vf_deadline = (
                                 min(deadline_ts - 8.0, time.monotonic() + 26.0)

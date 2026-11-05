@@ -15,13 +15,12 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     """Node Visual Critic thẩm định chất lượng KỸ THUẬT & THỊ GIÁC (Single Responsibility — chỉ chấm điểm và điều hướng sang refine_media, tuyệt đối không tự tải đè media)."""
     scenes_media = [m for m in state.get("scenes_media", []) if isinstance(m, dict)]
     script_d = state.get("script_data") if isinstance(state.get("script_data"), dict) else {}
-    primary_entity = (
-        state.get("primary_entity")
-        or script_d.get("primary_entity")
-        or state.get("topic")
-        or script_d.get("title")
-        or ""
-    )
+    raw_topic = str(state.get("topic") or script_d.get("title") or "").strip()
+    raw_primary = str(state.get("primary_entity") or script_d.get("primary_entity") or "").strip()
+    if raw_topic and raw_primary and raw_primary.lower() not in raw_topic.lower():
+        primary_entity = f"{raw_topic} (Primary Entity: {raw_primary})"
+    else:
+        primary_entity = raw_topic or raw_primary
 
     critic = VisualCritic()
     retry_count = int(state.get("media_retry_count", 0))
@@ -106,7 +105,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 return False
             if not (mt_s in ("video", "hook_ready_video") and mp_s.endswith((".mp4", ".mov", ".webm"))):
                 return False
-            if int(sc_d.get("scene_id") or 0) in (1, 2):
+            if int(sc_d.get("scene_id") or 0) == 1:
                 ok_gen_m, _, _ = verify_hook_clip_genuine_motion(raw_mp)
                 if not ok_gen_m:
                     return False

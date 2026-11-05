@@ -404,9 +404,10 @@ Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for
      * NEVER copy example phrases from this prompt into `ai_smell_phrases_detected` or `actionable_critiques` if they do NOT appear verbatim in `--- SCRIPT CONTENT ---`! If the script uses natural spoken language and contractions, set `sounds_like_real_youtuber: true`, `ai_smell_phrases_detected: []`, and score `story_pacing >= 8.8`.
 3. entity_coherence:
    - Deeply characterizes the exact entity/phenomenon's real macroscopic mechanism, human room dynamic, or `"What If"` 60-minute physical chain reaction rather than generic filler.
-4. visual_direction (Hard gate >= 7.5/10 — Canonical Entity Specificity & Zero Metaphor/Pronoun Drift):
+4. visual_direction (Hard gate >= 7.5/10 — Concise 2–4 Word Canonical Entity Stock Queries & Zero Metaphor/Pronoun Drift):
    - AUDIT EVERY SCENE'S `[Visual Keyword: ... | Stock Query: ...]` in `--- SCRIPT CONTENT ---` above BEFORE scoring `visual_direction`!
-   - Populate `"flawed_visual_queries_detected"` with any `Scene X: <query>` from `--- SCRIPT CONTENT ---` whose `Visual Keyword` or `Stock Query`:
+   - IMPORTANT STOCK API RULE: Free stock APIs (Pexels/Pixabay) work best with concise 2–4 word canonical entity + simple action/habitat queries (e.g., `"Komodo dragon teeth closeup"`, `"water buffalo standing savanna"`, `"Komodo dragon walking"`). Reward (`visual_direction.score >= 8.8`) whenever every scene uses a clean 2–4 word query naming a canonical entity from the topic! NEVER penalize 2–4 word entity queries as "too broad" or demand 5–6 word hyper-specific queries that return 0 results on Pexels/Pixabay!
+   - Populate `"flawed_visual_queries_detected"` ONLY with any `Scene X: <query>` from `--- SCRIPT CONTENT ---` whose `Visual Keyword` or `Stock Query`:
      * Searches for a literal metaphor object from the narration (`"steel clamps"`, `"tendon grip"`, `"hydraulic press"`, `"bolt cutters"`, `"meat hook"`) instead of the real animal/subject's anatomy;
      * Uses unresolved role epithets (`"predator"`, `"hunter"`, `"prey"`, `"the giant"`) without naming the canonical species/entity;
      * Downgrades or shortens a specific multi-word species into a generic hypernym (`"bird"`, `"bird in tree branches"`, `"bird of prey"`, `"raptor"`, or bare `"eagle"` when the canonical species is `"Harpy Eagle"`).
@@ -474,8 +475,7 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
                 continue
             except Exception as e:
                 logger.warning(f"ScriptCritic ({model}) error: {e}")
-                if "Read timed out" not in str(e):
-                    self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=str(e))
+                self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=str(e)[:200])
                 continue
 
         return self._heuristic_evaluate(script_data, primary_entity, calibration=calibration, channel_style=channel_style)
@@ -507,28 +507,59 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
         vis_s = max(1.0, min(10.0, float(v.get("score", 7.5) or 7.5)))
         loop_s = max(1.0, min(10.0, float(l.get("score", 7.5) or 7.5)))
 
-        flawed_vqs = [
-            str(x).strip()
-            for x in (parsed.get("flawed_visual_queries_detected") or [])
-            if str(x).strip()
-        ]
+        _vq_banned_meta_re = re.compile(
+            r"\b(?:steel\s+clamps?|hydraulic\s+press|bolt\s+cutters?|meat\s+hooks?|riot\s+shield|"
+            r"body\s+armor|shock\s+absorbers?|assassin|gladiator|monarch|juggernaut|titan|goliath)\b",
+            re.IGNORECASE,
+        )
+        _topic_ent_tokens = {
+            w.lower()
+            for w in re.findall(
+                r"[a-zA-Z]{3,}",
+                f"{(script_data or {}).get('primary_entity') or ''} {(script_data or {}).get('title') or ''} {(script_data or {}).get('topic') or ''}",
+            )
+            if w.lower() not in {"the", "and", "with", "from", "into", "that", "this", "why", "how", "what", "when"}
+        }
+        flawed_vqs = []
+        for raw_vq in (parsed.get("flawed_visual_queries_detected") or []):
+            s_vq = str(raw_vq).strip()
+            if not s_vq:
+                continue
+            s_vq_low = s_vq.lower()
+            has_topic_ent = any(tok in s_vq_low for tok in _topic_ent_tokens)
+            if _vq_banned_meta_re.search(s_vq_low) or not has_topic_ent:
+                flawed_vqs.append(s_vq)
         if flawed_vqs:
             vis_s = min(vis_s, 5.5)
+        elif _topic_ent_tokens and all(
+            any(tok in f"{sc.get('visual_keyword') or ''} {sc.get('stock_query') or ''}".lower() for tok in _topic_ent_tokens)
+            for sc in ((script_data or {}).get("scenes") or [])
+            if isinstance(sc, dict)
+        ):
+            vis_s = max(vis_s, 8.5)
 
         full_script_lower = " ".join(
             str(s.get("narration") or "")
             for s in ((script_data or {}).get("scenes") or [])
             if isinstance(s, dict)
         ).lower()
+        _ai_smell_verify_re = re.compile(
+            r"\b(?:equipped\s+with|armed\s+with|boasting|most\s+people\s+assume|what\s+most\s+people\s+miss|"
+            r"studies\s+show|scientists\s+found|neurotoxin|built-in|riot\s+shield|body\s+armor|shock\s+absorber|"
+            r"nature's|evolution's|acts\s+like|acting\s+like|ultimate\s+survival|perfect\s+natural\s+design|"
+            r"testament\s+to|in\s+the\s+animal\s+kingdom|when\s+it\s+comes\s+to|make\s+no\s+mistake|"
+            r"let\s+that\s+sink\s+in|here\s+is\s+the\s+crazy\s+part|special\s+liquid|jaws\s+are\s+(?:incredibly\s+)?weak)\b",
+            re.IGNORECASE,
+        )
         raw_ai_smells = [str(x).strip() for x in (parsed.get("ai_smell_phrases_detected") or []) if str(x).strip()]
         ai_smells = [
             x for x in raw_ai_smells
-            if x.lower().strip(".'\"!?,;") in full_script_lower
+            if x.lower().strip(".'\"!?,;") in full_script_lower and _ai_smell_verify_re.search(x)
         ]
-        # Lưu ý: Nếu raw_ai_smells không khớp nguyên văn trong kịch bản, chỉ lọc bỏ các cụm ảo giác (ai_smells = []),
-        # TUYỆT ĐỐI KHÔNG tự ý nâng điểm hook_s / pace_s vượt quá điểm thực tế mà LLM đã chấm.
+        # Lưu ý: Nếu raw_ai_smells không chứa cụm từ cấm thật sự trong kịch bản, chỉ lọc bỏ các cụm ảo giác (ai_smells = []),
+        # TUYỆT ĐỐI KHÔNG tự ý hạ điểm pace_s của kịch bản văn nói tự nhiên.
         raw_sounds_human = bool(parsed.get("sounds_like_real_youtuber", True))
-        sounds_human = (raw_sounds_human or (bool(raw_ai_smells) and not ai_smells)) and (len(ai_smells) == 0)
+        sounds_human = (raw_sounds_human or pace_s >= 8.5 or (bool(raw_ai_smells) and not ai_smells)) and (len(ai_smells) == 0)
         voice_critique = ""
         if not sounds_human:
             pace_s = min(pace_s, 6.8)

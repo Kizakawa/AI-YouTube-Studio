@@ -340,28 +340,30 @@ QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM ĐA TRỤC (MULTI-AXIS SELF-SCORING 
 1. QUY CHIẾU ĐẠI TỪ & DANH TỪ CHUNG VỀ THỰC THỂ ĐÍCH DANH (`resolved_scene_entities`):
    - Khi `{narration}` sử dụng đại từ hoặc danh từ chung/ẩn dụ (ví dụ: "the hunter", "its prey", "this creature", "the leader", "the machine"), BẮT BUỘC phải quy chiếu ngược về đúng Thực thể Đích danh trong `{topic_ctx}` và `{subject_req}`.
    - Tuyệt đối KHÔNG chọn một thực thể/chủng loại khác chỉ vì khớp từ khóa danh từ chung trong câu thoại hay URL slug.
-2. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP CHO ỨNG VIÊN TỐT NHẤT (Thang điểm 0.0–10.0):
-   - `entity_identity_score` (0.0–10.0): Nếu ứng viên có xuất hiện chủ thể, hình thái nhận diện của chủ thể trong ảnh preview có khớp chính xác với Thực thể Đích danh của `{topic_ctx}` / `{subject_req}` hay không?
-     + Nếu ứng viên thể hiện sai thực thể đích danh (dù cùng nhóm chung), hoặc là chủ thể đặc thù nhưng không có ảnh preview (`attached_preview_image == None`) để xác minh hình thái, BẮT BUỘC chấm `entity_identity_score < 5.0`.
-     + Trường hợp câu thoại mô tả pha tương tác đa thực thể hiếm, ứng viên quay thật và đúng chính xác MỘT trong các thực thể đích danh của `{topic_ctx}` hoặc quay bối cảnh môi trường tự nhiên/lịch sử đúng câu thoại (không chứa chủ thể sai lệch) được chấm `7.8–8.5`.
-   - `narrative_action_score` (0.0–10.0): Hành động, trạng thái vật lý và bối cảnh trong ứng viên có truyền tải đúng nội dung của chunk `{narration}` hay không?
+2. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP CHO ỨNG VIÊN TỐT NHẤT (Thang điểm 0.0–10.0) — NGUYÊN TẮC B-ROLL PHIM TÀI LIỆU (DOCUMENTARY B-ROLL):
+   - LƯU Ý CỐTT LÕI: Hệ thống KHÔNG có công cụ tạo video AI dự phòng. Trả về `"winner_index": -1` sẽ làm mất cảnh video chuyển động thật!
+   - `entity_identity_score` (0.0–10.0): Nếu ứng viên có xuất hiện chủ thể, hình thái nhận diện của chủ thể trong ảnh preview có khớp với Thực thể Đích danh của `{subject_req}` hoặc `{topic_ctx}` hay không?
+     + Nếu ứng viên thể hiện đúng `{subject_req}` hoặc đúng MỘT trong các thực thể đích danh của `{topic_ctx}` (hoặc loài cùng họ hình thái sát nhất trên kho Stock như monitor lizard/kỳ đà lớn cho Komodo dragon, water buffalo/trâu rừng cho buffalo) trong tự nhiên: BẮT BUỘC chấm `entity_identity_score` từ `7.8–9.5`.
+     + Nếu ứng viên thể hiện sai hẳn sang loài/vật thể ngoại lai không liên quan (ví dụ: hươu cao cổ, mèo nhà, xe cộ đô thị), hoặc không có ảnh preview (`attached_preview_image == None`) để xác minh, chấm `< 5.0`.
+   - `narrative_action_score` (0.0–10.0): Trong phim tài liệu (National Geographic / BBC Earth), khi lời thoại `{narration}` mô tả pha giao chiến đa thực thể hiếm, cơ chế giải phẫu/sinh lý bên trong (nọc độc, huyết áp tụt, cơ bắp tê liệt, răng cưa, lực cắn) hoặc hành động rình mồi/di chuyển:
+     + BẤT KỲ cảnh B-Roll tự nhiên nào quay chủ thể `{subject_req}` (hoặc một trong hai thực thể của `{topic_ctx}`) đang di chuyển, bơi, ngâm mình dưới sông/bùn, thở gấp, cận cảnh đầu/hàm/cơ thể hoặc rình mồi ngoài hoang dã ĐỀU minh họa hoàn hảo cho lời thoại và BẮT BUỘC được chấm `narrative_action_score` từ `7.8–9.2`! Tuyệt đối KHÔNG đòi hỏi clip Stock phải quay cảnh giải phẫu bên trong mạch máu hay cảnh hai con vật đang cắn nhau đúng từng chữ mới duyệt!
    - `visual_integrity_score` (0.0–10.0): Khung hình có nguyên bản, tự nhiên đúng bối cảnh kịch bản (không lẫn yếu tố nhân tạo/nuôi nhốt/hiện đại lệch ngữ cảnh, không bị đơn sắc/đen trắng lệch tông, không chứa chữ/watermark/biểu tượng AI `✦`) hay không?
-3. QUYẾT ĐỊNH DUYỆT HOẶC TỰ ĐỘNG CHUYỂN TẦNG (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score)`):
-   - Chỉ duyệt ứng viên khi CẢ 3 TRỤC đều đạt `>= 7.5` (`confidence_score >= 7.5`, `should_fallback_to_ai: false`). Đồng thời chỉ liệt kê vào `approved_alternate_indices` các ứng viên khác cũng đạt cả 3 trục `>= 7.5`.
-   - Nếu ứng viên cao nhất có bất kỳ trục nào `< 7.5`, BẮT BUỘC trả về `"winner_index": -1`, `"should_fallback_to_ai": true` để bộ điều phối chuyển sang luồng tìm kiếm chuyên sâu.
+3. QUYẾT ĐỊNH DUYỆT (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score)`):
+   - Duyệt ứng viên tốt nhất khi cả 3 trục đạt `>= 7.5` (`confidence_score >= 7.5`, `should_fallback_to_ai: false`). Đồng thời liệt kê vào `approved_alternate_indices` các ứng viên khác cũng đạt `>= 7.5`.
+   - Chỉ trả về `"winner_index": -1`, `"should_fallback_to_ai": true` khi TẤT CẢ ứng viên đều sai loài/sai chủ đề hoàn toàn hoặc vi phạm `visual_integrity_score < 7.5`.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
   "resolved_scene_entities": "Tên thực thể đích danh được quy chiếu từ Topic cho câu thoại này",
-  "winner_index": -1,
-  "winner_url": "",
-  "entity_identity_score": 2.0,
-  "narrative_action_score": 2.0,
-  "visual_integrity_score": 2.0,
-  "confidence_score": 2.0,
+  "winner_index": 0,
+  "winner_url": "url_cua_ung_vien_thang_cuoc",
+  "entity_identity_score": 8.5,
+  "narrative_action_score": 8.2,
+  "visual_integrity_score": 8.8,
+  "confidence_score": 8.2,
   "approved_alternate_indices": [],
   "rationale": "Giải thích điểm 3 trục của ứng viên và lý do duyệt hoặc từ chối",
-  "should_fallback_to_ai": true
+  "should_fallback_to_ai": false
 }}"""
         agent_dec = self._call_gemini_json(prompt, images=thumb_images if thumb_images else None)
         if agent_dec is not None:
@@ -721,10 +723,10 @@ QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM 3 TRỤC (MULTI-AXIS SELF-SCORING RU
 2. QUY CHIẾU ĐẠI TỪ / TỪ CHỈ VAI TRÒ / ẨN DỤ VỀ THỰC THỂ ĐÍCH DANH (`resolved_scene_entities`):
    - Khi `{narration}` dùng đại từ ("It", "They"), từ chỉ vai trò ("the hunter", "the predator", "its living prey") hoặc ẩn dụ ("like steel clamps"), BẮT BUỘC quy chiếu ngược về đúng Thực thể Đích danh trong `{topic_ctx}` và `{subject_req}`.
 3. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP (Thang điểm 0.0–10.0):
-   - `entity_identity_score`: Chủ thể trong ảnh có đúng chính xác loài/thực thể đích danh của `{subject_req}` / `{topic_ctx}` (không chọn loài khác chỉ vì trùng nhóm chung, không chọn đồ chơi/thú nhồi bông/vật thể ẩn dụ nghĩa đen) hay không?
-   - `narrative_action_score`: Hành động, trạng thái và môi trường sinh thái/thời đại trong ảnh có khớp với phân cảnh `{narration}` hay không?
+   - `entity_identity_score`: Chủ thể trong ảnh có đúng loài/thực thể đích danh của `{subject_req}` hoặc một trong hai thực thể chính của `{topic_ctx}` (không chọn loài ngoại lai khác biệt, không chọn đồ chơi/thú nhồi bông/vật thể ẩn dụ nghĩa đen) hay không?
+   - `narrative_action_score`: Hành động, trạng thái và môi trường sinh thái/thời đại trong ảnh có phù hợp để minh họa cho phân cảnh `{narration}` hay không? Khi câu thoại mô tả cơ chế sinh lý bên trong (huyết áp, nọc độc, cơ bắp tê liệt) hoặc pha đối đầu 2 thực thể, ảnh chụp tự nhiên sắc nét của đúng thực thể `{subject_req}` (hoặc một trong hai thực thể của `{topic_ctx}`) ngoài hoang dã BẮT BUỘC được chấm `>= 7.8`.
    - `visual_integrity_score`: Khung hình có nguyên bản, tự nhiên (không lẫn dây buộc chân/lồng chuồng nuôi nhốt khi kịch bản ở hoang dã, không bị chia đôi màn hình split-screen, KHÔNG có hộp chữ chú thích ở dưới/trên, KHÔNG phải ảnh infographic/sơ đồ có mũi tên hay chữ giải thích, không có watermark/meme/biểu đồ) hay không? CẢNH BÁO CỨNG: Bất kỳ bức ảnh nào có dải chữ chú thích (caption box/article text) ở cạnh dưới/trên hoặc chữ infographic trên nền ảnh BẮT BUỘC bị chấm `visual_integrity_score <= 2.0` và TUYỆT ĐỐI KHÔNG được chọn làm `winner_index` hay `approved_alternate_indices`!
-4. Nếu ứng viên tốt nhất có bất kỳ trục nào `< 7.0` (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score) < 7.0`), BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
+4. Nếu ứng viên tốt nhất có bất kỳ trục nào `< 7.0` (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score) < 7.0`), trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
