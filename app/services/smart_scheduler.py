@@ -28,61 +28,61 @@ BR_TZ = ZoneInfo("America/Sao_Paulo")  # Giờ chuẩn Brazil (BRT = UTC-3)
 # Giới hạn tối đa video trên mỗi kênh trong 1 ngày
 MAX_VIDEOS_PER_DAY = 2
 
-# Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (3 giờ = 10,800 giây) để xếp trọn 2 khung giờ Đỉnh Trưa & Chiều Mỹ trong cùng 1 ngày
-MIN_SPACING_SECONDS = 10800
+# Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (6 giờ = 21,600 giây) để tránh tự nuốt view (intra-channel cannibalization)
+MIN_SPACING_SECONDS = 21600
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US DAYTIME PEAK & VIETNAM DEAD-SLEEP WINDOW)
-# ĐÃ TỐI ƯU HÓA ĐỊA LÝ (US GEO-ROUTING):
-# - Loại bỏ hoàn toàn khung 21:15-21:45 UTC (04:15-04:45 Sáng VN) vì sóng phân phối 60-90p sau khi đăng
-#   rơi đúng vào 05:30-07:30 Sáng VN (lúc người dùng Việt Nam thức dậy lướt Shorts làm loãng tệp US!).
-# - Chuyển toàn bộ 2 khung giờ US về lúc Việt Nam đang chuẩn bị ngủ / ngủ say (21:30 Đêm & 22:00 Đêm VN),
-#   đồng thời trùng khớp 100% với Đỉnh Sáng-Trưa Bờ Đông (EDT) & Đỉnh Trưa-Chiều Bờ Tây (PDT) tại Mỹ!
+# CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US DAYTIME & PRIME EVENING PEAK - ZERO VIETNAM SCROLLING WAVE)
+# Thực nghiệm YouTube Analytics API v2 (dimensions="country", tính cả độ trễ sóng đẩy +1.5h đến +3h của YouTube):
+# - Loại bỏ hoàn toàn 14:00-15:00 UTC (21:00-22:00 Đêm VN) vì sóng nổ lúc 22:00-23:59 Đêm VN (giờ VN lướt ĐT trước khi ngủ).
+# - Loại bỏ hoàn toàn 21:00-21:45 UTC (04:00-04:45 Sáng VN) vì sóng nổ sau đó 1.5-2.5h rơi đúng vào 05:30-07:30 Sáng VN
+#   (giờ người Việt vừa thức dậy cầm điện thoại lướt trên giường!).
+# - Chốt 2 Cửa Sổ Kim Cương cách xa nhau đúng 8 tiếng 45 phút (và 15 tiếng 15 phút):
+#   + Khung #1: Base 17:15 UTC (00:15 Rạng Sáng VN / 12:15 PM EST / 1:15 PM EDT) -> Sóng nổ lúc 01:00-04:15 Rạng Sáng VN (100% VN ngủ say).
+#   + Khung #2: Base 02:00 UTC (09:00 Sáng VN / 9:00 PM EST / 10:00 PM EDT & 6:00 PM PST) -> Đỉnh Giờ Vàng Tối 8PM-11PM toàn nước Mỹ,
+#     lúc Việt Nam đang vào giờ làm việc/học hành buổi sáng (09:30-11:30 Sáng VN).
 # ──────────────────────────────────────────────────────────────────────────────
 GOLDEN_SLOTS_UTC = [
     {
-        "hour": 18,
-        "minute": 0,
-        "label_vn": "01:00 Sáng",
-        "label_us": "14:00 PM EDT / 11:00 AM PDT (KHUNG GIỜ KIM CƯƠNG #1 — ĐỈNH TRƯA BỜ TÂY & CHIỀU BỜ ĐÔNG MỸ — 100% VN NGỦ SAY)",
-        "description": "Đăng lúc 00:30-01:30 rạng sáng VN (17:30-18:30 UTC): 100% người dùng VN đã ngủ say, đón trọn giờ nghỉ trưa Bờ Tây (11:00 AM PDT) và buổi chiều Bờ Đông Mỹ (2:00 PM EDT).",
-        "tag": "US_WEST_LUNCH_AFTERNOON_PEAK",
+        "hour": 17,
+        "minute": 15,
+        "label_vn": "00:15 Sáng",
+        "label_us": "12:15 PM EST / 13:15 PM EDT (KHUNG GIỜ KIM CƯƠNG #1 — ĐỈNH NGHỈ TRƯA & CHIỀU MỸ — SÓNG NỔ 01:30-04:15 SÁNG VN NGỦ SAY)",
+        "description": "Đăng lúc 23:15-01:15 đêm VN (16:15-18:15 UTC): Sóng phân phối (+1.5h-3h) nổ vào đúng 01:00-04:15 rạng sáng VN khi 100% người dùng VN ngủ say, đón trọn giờ nghỉ trưa & chiều Mỹ.",
+        "tag": "US_LUNCH_AFTERNOON_PEAK",
         "rank": 1
     },
     {
-        "hour": 21,
+        "hour": 2,
         "minute": 0,
-        "label_vn": "04:00 Sáng",
-        "label_us": "17:00 PM EDT / 14:00 PM PDT (KHUNG GIỜ KIM CƯƠNG #2 — ĐỈNH TỐI BỜ ĐÔNG & CHIỀU BỜ TÂY MỸ — 100% VN NGỦ SAY)",
-        "description": "Đăng lúc 03:30-04:30 rạng sáng VN (20:30-21:30 UTC): 100% người dùng VN ngủ say, đón trọn giờ tan tầm & giải trí buổi tối lớn nhất tại Mỹ (5:00 PM EDT / 2:00 PM PDT).",
-        "tag": "US_PRIME_EVENING_PEAK",
+        "label_vn": "09:00 Sáng",
+        "label_us": "21:00 PM EST / 18:00 PM PST (KHUNG GIỜ KIM CƯƠNG #2 — ĐỈNH TỐI VÀNG 8PM-11PM MỸ — CÁCH KHUNG #1 ĐÚNG 8H45P)",
+        "description": "Đăng lúc 08:00-10:00 sáng VN (01:00-03:00 UTC): Sóng phân phối nổ đúng Đỉnh Tối Vàng 8:00 PM - 11:00 PM toàn nước Mỹ (East & West Coast), lúc người dùng VN đang làm việc/học tập buổi sáng.",
+        "tag": "US_PRIME_NIGHT_PEAK",
         "rank": 2
     },
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH 2 KHUNG GIỜ VÀNG THỊ TRƯỜNG BRAZIL (BRT = UTC-3) CHO KÊNH pt-BR
+# Cách xa nhau 6 tiếng 55 phút (13:20 UTC & 20:15 UTC), giãn cách 2 kênh cùng Gmail đúng 65 phút.
 # ──────────────────────────────────────────────────────────────────────────────
-#   - Khung 1 (Đón đầu Đỉnh Trưa Brazil - Horário de Almoço 11:30 - 13:30 BRT):
-#     Base 13:30 UTC (10:30 AM BRT = 20:30 Tối VN) -> Đăng sớm 60p trước giờ ăn trưa Brazil.
-#   - Khung 2 (Đón đầu Đỉnh Tối Vàng Brazil - Horário Nobre 19:00 - 22:30 BRT):
-#     Base 21:00 UTC (18:00 PM BRT = 04:00 Sáng VN) -> Đăng sớm 60-90p trước đỉnh tối Brazil.
 BRAZIL_GOLDEN_SLOTS_UTC = [
     {
-        "hour": 21,
-        "minute": 0,
-        "label_vn": "04:00 Sáng",
-        "label_us": "18:00 PM BRT (ĐÓN ĐẦU ĐỈNH TỐI VÀNG BRAZIL - HORÁRIO NOBRE #1)",
-        "description": "Đăng sớm 60-90 phút trước giờ vàng giải trí buổi tối lớn nhất Brazil (19:00-22:30 BRT), lúc 100% người dùng VN đang ngủ say (100% hit-rate thực nghiệm).",
+        "hour": 20,
+        "minute": 15,
+        "label_vn": "03:15 Sáng",
+        "label_us": "17:15 PM BRT (ĐÓN ĐẦU ĐỈNH TỐI VÀNG BRAZIL - HORÁRIO NOBRE #1)",
+        "description": "Đăng sớm 90 phút trước giờ vàng giải trí buổi tối lớn nhất Brazil (19:00-22:30 BRT), lúc 100% người dùng VN đang ngủ say.",
         "tag": "BR_EVENING_LEAD",
         "rank": 1
     },
     {
         "hour": 13,
-        "minute": 30,
-        "label_vn": "20:30 Tối",
-        "label_us": "10:30 AM BRT (ĐÓN ĐẦU ĐỈNH TRƯA BRAZIL - HORÁRIO DE ALMOÇO #2)",
-        "description": "Đăng sớm 60 phút trước giờ nghỉ trưa tại São Paulo/Brasília (11:30-13:30 BRT) để thuật toán YouTube Brazil phân phối đúng tệp pt-BR.",
+        "minute": 20,
+        "label_vn": "20:20 Tối",
+        "label_us": "10:20 AM BRT (ĐÓN ĐẦU ĐỈNH TRƯA BRAZIL - HORÁRIO DE ALMOÇO #2)",
+        "description": "Đăng sớm 60-90 phút trước giờ nghỉ trưa tại São Paulo/Brasília (11:30-13:30 BRT) để thuật toán YouTube Brazil phân phối đúng tệp pt-BR.",
         "tag": "BR_LUNCH_LEAD",
         "rank": 2
     },
@@ -90,63 +90,60 @@ BRAZIL_GOLDEN_SLOTS_UTC = [
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH 2 KHUNG GIỜ KIM CƯƠNG RIÊNG CHO KÊNH THE MYSTERIES OF THE WORLD (US EN)
-# Thực nghiệm 100% dữ liệu YouTube Data API v3 & Analytics API v2 chứng minh:
-# - 100% Top 6 video nhiều view nhất lịch sử kênh (892 - 1,250 views) đều nổ ở khung
-#   21:00 UTC (04:00 Sáng Giờ VN — 17:00 PM EDT Đỉnh Tối Bờ Đông Mỹ).
-# - Khung phụ thứ 2 trong ngày là 18:00 UTC (22:00 Đêm Giờ VN — 14:00 PM EDT).
 # ──────────────────────────────────────────────────────────────────────────────
 MYSTERIES_DIAMOND_SLOTS_UTC = [
     {
-        "hour": 21,
-        "minute": 0,
-        "label_vn": "04:00 Sáng",
-        "label_us": "17:00 PM EDT / 14:00 PM PDT (KHUNG GIỜ KIM CƯƠNG #1 — ĐỈNH TỐI BỜ ĐÔNG MỸ)",
-        "description": "Khung giờ Kim Cương #1 thực nghiệm của The mysteries of the world (04:00 Sáng VN / 21:00 UTC): 100% Top 6 video cao view nhất lịch sử kênh đều bùng nổ tại khung giờ này.",
+        "hour": 17,
+        "minute": 15,
+        "label_vn": "00:15 Sáng",
+        "label_us": "12:15 PM EST / 13:15 PM EDT (KHUNG GIỜ KIM CƯƠNG #1 — ĐỈNH NGHỈ TRƯA & CHIỀU MỸ — 100% VN NGỦ SAY)",
+        "description": "Khung giờ Kim Cương #1 (17:45 UTC / 00:45 Sáng VN sau lệch pha +30p): Sóng nổ 02:15-04:15 sáng VN (0% VN traffic), đón đỉnh trưa-chiều Mỹ.",
         "tag": "US_MYSTERIES_DIAMOND_PRIME",
         "rank": 1
     },
     {
-        "hour": 18,
+        "hour": 2,
         "minute": 0,
-        "label_vn": "01:00 Sáng",
-        "label_us": "14:00 PM EDT / 11:00 AM PDT (KHUNG GIỜ KIM CƯƠNG #2 — ĐỈNH TRƯA BỜ TÂY & CHIỀU MỸ)",
-        "description": "Khung giờ Kim Cương #2 (22:00 Đêm VN / 18:00 UTC): Cách khung chính 3 tiếng, 100% người dùng VN ngủ say, đón trọn tệp khán giả Mỹ buổi chiều.",
-        "tag": "US_MYSTERIES_AFTERNOON_PEAK",
+        "label_vn": "09:00 Sáng",
+        "label_us": "21:00 PM EST / 18:00 PM PST (KHUNG GIỜ KIM CƯƠNG #2 — ĐỈNH TỐI VÀNG 8PM-11PM MỸ — CÁCH KHUNG #1 8H45P)",
+        "description": "Khung giờ Kim Cương #2 (02:30 UTC / 09:30 Sáng VN sau lệch pha +30p): Cách khung #1 đúng 8 tiếng 45 phút, đón trọn Đỉnh Tối Vàng 8PM-11PM tại Mỹ.",
+        "tag": "US_MYSTERIES_NIGHT_PEAK",
         "rank": 2
     },
 ]
 
-# Độ lệch thông minh theo từng kênh (phút) để chống trùng khớp giây xuất bản (Bot Footprint)
-# trên các kênh dùng chung Google Account:
-#   [US Channels]
-#   - Alternate History: -30p -> 14:30 UTC (21:30 VN) & 20:45 UTC (03:45 VN)
-#   - Psychology:        -15p -> 14:45 UTC (21:45 VN) & 21:00 UTC (04:00 VN)
-#   - Mysteries:          +0p -> 15:00 UTC (22:00 VN) & 21:15 UTC (04:15 VN)
-#   - Paws & Hearts:     +15p -> 15:15 UTC (22:15 VN) & 21:30 UTC (04:30 VN)
-#   - Wild Odyssey:      +30p -> 15:30 UTC (22:30 VN) & 21:45 UTC (04:45 VN)
-#   [Brazil pt-BR Channels - cùng tài khoản acccount4, giãn cách 45 phút]
-#   - Odisseia Selvagem:  +0p -> 13:30 UTC (10:30 BRT / 20:30 VN) & 21:00 UTC (18:00 BRT / 04:00 VN)
-#   - Mistérios do Mundo:+45p -> 14:15 UTC (11:15 BRT / 21:15 VN) & 21:45 UTC (18:45 BRT / 04:45 VN)
+# Độ lệch thông minh theo từng kênh (phút) đảm bảo:
+# 1. Hai kênh chung 1 tài khoản Gmail luôn cách nhau đúng 60 - 65 phút!
+# 2. Toàn bộ 7 kênh cách nhau ít nhất 30 phút (không có bất kỳ 2 kênh nào trùng giờ):
+#   [US Channels - Base 17:15 UTC & 02:00 UTC, 2 video cùng kênh cách xa 8 tiếng 45 phút]
+#   - Alternate History (accout3):      -60p -> 16:15 UTC (23:15 Đêm VN) & 01:00 UTC (08:00 Sáng VN)
+#   - Psychology (account_1 - Kênh A):  -30p -> 16:45 UTC (23:45 Đêm VN) & 01:30 UTC (08:30 Sáng VN)
+#   - Paws & Hearts (acount_2 - Kênh A): +0p -> 17:15 UTC (00:15 Sáng VN) & 02:00 UTC (09:00 Sáng VN)
+#   - Mysteries EN (account_1 - Kênh B):+30p -> 17:45 UTC (00:45 Sáng VN) & 02:30 UTC (09:30 Sáng VN) [Cách Psychology 60p]
+#   - Wild Odyssey (acount_2 - Kênh B): +60p -> 18:15 UTC (01:15 Sáng VN) & 03:00 UTC (10:00 Sáng VN) [Cách Paws & Hearts 60p]
+#   [Brazil pt-BR Channels - cùng tài khoản acccount4, 2 video cùng kênh cách 6h55p, 2 kênh cách nhau 65 phút]
+#   - Odisseia Selvagem (acccount4 A):   +0p -> 13:20 UTC (20:20 Tối VN)  & 20:15 UTC (03:15 Sáng VN)
+#   - Mistérios do Mundo (acccount4 B): +65p -> 14:25 UTC (21:25 Tối VN)  & 21:20 UTC (04:20 Sáng VN) [Cách Odisseia 65p]
 CHANNEL_STAGGER_MINUTES: Dict[str, int] = {
-    "@alternatehistorywhatif-e2x": -30,
-    "ch_psychology_of_the_world": -15,
-    "channel_maya": -15,
-    "channel_psychology": -15,
-    "@vv1n-oe9gs": -15,
-    "ch_the_mysteries_of_the_world": 0,
-    "@themysteriesoftheworld-f3w": 0,
-    "ucsrjiil67qxidtxt70z-iwa": 0,
-    "ch_paws_hearts_rescue": 15,
-    "@pawsandheartsrescue": 15,
-    "ch_wild_odyssey": 30,
-    "@wildodysseyhq": 30,
+    "@alternatehistorywhatif-e2x": -60,
+    "ch_psychology_of_the_world": -30,
+    "channel_maya": -30,
+    "channel_psychology": -30,
+    "@vv1n-oe9gs": -30,
+    "ch_paws_hearts_rescue": 0,
+    "@pawsandheartsrescue": 0,
+    "ch_the_mysteries_of_the_world": 30,
+    "@themysteriesoftheworld-f3w": 30,
+    "ucsrjiil67qxidtxt70z-iwa": 30,
+    "ch_wild_odyssey": 60,
+    "@wildodysseyhq": 60,
     "ch_odisseia_selvagem": 0,
     "@odisseiaselvagemoficial": 0,
     "ucpbqs4h5qugpu3hcqjg-p9w": 0,
-    "ch_misterios_do_mundo": 45,
-    "@misteriosdomundo-tv": 45,
-    "ucvfonq9jcpvvze8e1cgnng": 45,
-    "ucvfonq9jcpvvze8e1cgng": 45,
+    "ch_misterios_do_mundo": 65,
+    "@misteriosdomundo-tv": 65,
+    "ucvfonq9jcpvvze8e1cgnng": 65,
+    "ucvfonq9jcpvvze8e1cgng": 65,
 }
 
 

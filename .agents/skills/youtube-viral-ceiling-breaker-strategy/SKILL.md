@@ -94,12 +94,24 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ---
 
-### Quy Tắc 5: Luật Khung Giờ Vàng Định Tuyến Địa Lý (`US Geo-Routing Schedule Law`) — TUYỆT ĐỐI CẤM Đăng Kênh Tiếng Anh (`US`) Vào Khung `13:00–16:30 UTC` (`20:00–23:30` Đêm VN)
-1. **Bằng chứng thực nghiệm từ YouTube Analytics API v2 (`dimensions="country"`)**:
-   - Khi đăng các kênh tiếng Anh (`US`) vào khung `14:30–15:30 UTC` (`21:30–22:30` Đêm VN), thời điểm xuất bản rơi đúng vào **giờ cao điểm lướt Shorts trước khi ngủ tại Việt Nam**, khiến thuật toán phân phối `52%–68%` lượt xem hạt giống ban đầu cho khán giả Việt Nam (`VN` chỉ đạt `APV = 42.9%–55.2%`) thay vì Mỹ (`US` đạt `APV = 80.9%–148.3%`), làm kéo tụt chỉ số trung bình và đóng phễu sớm.
-2. **Luật Bất Khả Xâm Phạm trong `app/services/smart_scheduler.py`**:
-   - **5 Kênh Tiếng Anh (`Wild Odyssey`, `The mysteries of the world`, `Alternate History`, `Psychology of the world`, `Paws & Hearts Rescue`)**: **CHỈ ĐƯỢC PHÉP** lên lịch xuất bản trong cửa sổ **`17:30 – 21:45 UTC` (`00:30 – 04:45` Rạng Sáng VN)** — tức Khung #1 = **`18:00 UTC` (`01:00 Sáng VN` / `14:00 PM EDT`)** và Khung #2 = **`21:00 UTC` (`04:00 Sáng VN` / `17:00 PM EDT`)**, khi **100% người dùng Việt Nam đã ngủ say** và thị trường Mỹ đang ở Đỉnh Trưa–Chiều–Tối!
-   - **2 Kênh Tiếng Bồ Đào Nha (`Odisseia Selvagem`, `Mistérios do Mundo`)**: Giữ nguyên 2 khung giờ vàng Brazil (`13:30–14:15 UTC` = `10:30–11:15 AM BRT` Đón Đỉnh Trưa Brazil và `21:00–21:45 UTC` = `18:00–18:45 PM BRT` Đón Đỉnh Tối Brazil) vì ngôn ngữ `pt-BR` miễn nhiễm 100% với tệp VN (`0% VN traffic`).
+### Quy Tắc 5: Luật Khung Giờ Vàng Định Tuyến Địa Lý & Giãn Cách Rộng `8h45p` (`US Geo-Routing & Wide-Spacing Law`) — Tính Chuẩn Độ Trễ Sóng `+1.5h–3h` Của YouTube
+1. **Bằng chứng thực nghiệm từ YouTube Analytics API v2 (`dimensions="country"`) về Độ Trễ Sóng Đẩy (`+1.5h – 3.0h` Seed Wave Delay)**:
+   - YouTube Shorts mất **`1,5 đến 3 tiếng` sau thời điểm `publishAt`** để phân tích và bơm sóng thử nghiệm hạt giống (*Initial Seed Wave*):
+     - ❌ **CẤM đăng kênh `US` lúc `14:00–15:00 UTC` (`21:00–22:00` Đêm VN)**: Sóng nổ lúc `22:00–23:59` Đêm VN (giờ người Việt nằm lướt điện thoại trước khi ngủ → dính `45%–68%` view VN).
+     - ❌ **CẤM đăng kênh `US` lúc `21:00–21:45 UTC` (`04:00–04:45` Sáng VN)**: Sóng nổ sau đó 1.5–2.5 tiếng, rơi đúng vào **`05:30–07:30` Sáng VN** (giờ người Việt vừa ngủ dậy cầm điện thoại lướt trên giường → thực tế `7_2o0yEjPeU` đăng `21:00 UTC` bị dính tới `778/958 views` = `81,2%` từ VN!).
+2. **Luật Bất Khả Xâm Phạm trong `app/services/smart_scheduler.py` (`MIN_SPACING_SECONDS = 21600`)**:
+   - **5 Kênh Tiếng Anh (`US`) — 2 Khung Giờ Cách Xa Nhau Đúng `8 Tiếng 45 Phút` (và `15 Tiếng 15 Phút`), Hai Kênh Cùng Gmail Cách Nhau Đúng `60 Phút`**:
+     - **Khung Mỹ #1 (`Base 17:15 UTC` -> trải từ `16:15 – 18:15 UTC` / `23:15 Đêm – 01:15 Sáng VN`)**: Sóng đẩy `+1.5h–3h` nổ vào đúng **`01:00 – 04:15` Rạng Sáng VN** (100% người Việt ngủ say, thực tế `PVoVipDbLt8` và `pZgYrAcRaAE` đạt **`0` view VN**, `APV Mỹ/Anh = 93%–125%`), đón trọn Đỉnh Nghỉ Trưa & Chiều Mỹ (`12:15 PM – 04:00 PM EST/EDT`).
+     - **Khung Mỹ #2 (`Base 02:00 UTC` -> trải từ `01:00 – 03:00 UTC` / `08:00 – 10:00 Sáng VN`)**: Cách Khung #1 đúng **`8 tiếng 45 phút`**; sóng đẩy nổ đúng vào **Đỉnh Giờ Vàng Buổi Tối Số 1 Toàn Nước Mỹ (`08:00 PM – 11:00 PM EST/EDT` Bờ Đông & `05:00 PM – 08:00 PM PST/PDT` Bờ Tây)**, trong khi Việt Nam đang vào giờ làm việc/học hành buổi sáng (`09:30 – 11:30` Sáng VN).
+     - **Bảng giờ cố định cho từng kênh**:
+       - `Alternate History` (`accout3`, `-60p`): **`16:15 UTC` (`23:15` Đêm VN)** & **`01:00 UTC` (`08:00` Sáng VN)**
+       - `Psychology of the world` (`account_1` A, `-30p`): **`16:45 UTC` (`23:45` Đêm VN)** & **`01:30 UTC` (`08:30` Sáng VN)**
+       - `Paws & Hearts Rescue` (`acount_2` A, `0p`): **`17:15 UTC` (`00:15` Sáng VN)** & **`02:00 UTC` (`09:00` Sáng VN)**
+       - `The mysteries of the world` (`account_1` B, `+30p` — cách Psychology `60p`): **`17:45 UTC` (`00:45` Sáng VN)** & **`02:30 UTC` (`09:30` Sáng VN)**
+       - `Wild Odyssey` (`acount_2` B, `+60p` — cách Paws & Hearts `60p`): **`18:15 UTC` (`01:15` Sáng VN)** & **`03:00 UTC` (`10:00` Sáng VN)**
+   - **2 Kênh Tiếng Bồ Đào Nha (`Brazil pt-BR` trên `acccount4`) — 2 Video Cùng Kênh Cách Xa `6 Tiếng 55 Phút`, Hai Kênh Cách Nhau `65 Phút`**:
+     - `Odisseia Selvagem` (`0p`): **`13:20 UTC` (`20:20` Tối VN / `10:20 AM BRT`)** & **`20:15 UTC` (`03:15` Sáng VN / `05:15 PM BRT`)**
+     - `Mistérios do Mundo` (`+65p`): **`14:25 UTC` (`21:25` Tối VN / `11:25 AM BRT`)** & **`21:20 UTC` (`04:20` Sáng VN / `06:20 PM BRT`)**
 
 ---
 
