@@ -61,10 +61,54 @@ class MetadataHealerMixin:
             needs_update = False
             raw_title = str(snip.get("title") or "").strip()
             cur_tags = list(snip.get("tags") or [])
+
+            allow_affiliate = bool(
+                self.channel_config.get("enable_monetization") is True
+                or self.channel_config.get("affiliate_enabled") is True
+            )
+            stale_generic_markers = (
+                "(1) undiscovered species or (2) natural anomaly",
+                "(1) an undiscovered creature or (2) a natural anomaly",
+                "(1) criatura desconhecida ou (2) fenômeno geológico",
+                "what is your thought on this? drop a comment below",
+            )
+            db_pinned_q = None
+            db_topic = ""
+            db_extra_tags: List[str] = []
+            try:
+                from app.database.models import get_db, VideoJob
+                with get_db() as db:
+                    vj = db.query(VideoJob).filter(VideoJob.youtube_video_id == video_id).order_by(VideoJob.id.desc()).first()
+                    if vj:
+                        db_topic = str(vj.topic or "").strip()
+                        if vj.tags:
+                            try:
+                                parsed_t = json.loads(vj.tags) if isinstance(vj.tags, str) else vj.tags
+                                if isinstance(parsed_t, list):
+                                    db_extra_tags.extend(str(x).strip() for x in parsed_t if str(x).strip())
+                            except Exception:
+                                pass
+                        if vj.scenes_json:
+                            s_obj = json.loads(vj.scenes_json) if isinstance(vj.scenes_json, str) else vj.scenes_json
+                            if isinstance(s_obj, dict):
+                                if isinstance(s_obj.get("tags"), list):
+                                    db_extra_tags.extend(str(x).strip() for x in s_obj["tags"] if str(x).strip())
+                                if s_obj.get("pinned_comment"):
+                                    cand_q = str(s_obj.get("pinned_comment")).strip()
+                                    if (
+                                        cand_q
+                                        and not any(m in cand_q.lower() for m in stale_generic_markers)
+                                        and not (not allow_affiliate and any(k in cand_q.lower() for k in ("http://", "https://", "amazon.com", "paypal.me")))
+                                    ):
+                                        db_pinned_q = self.sanitize_engagement_comment(cand_q).lstrip("💬").strip()
+            except Exception:
+                pass
+
+            combined_extra_tags = db_extra_tags + [t for t in cur_tags if t not in db_extra_tags]
             smart = self.build_smart_video_tags_and_hashtags(
                 title=raw_title,
-                topic=raw_title,
-                extra_tags=cur_tags,
+                topic=db_topic or raw_title,
+                extra_tags=combined_extra_tags,
                 is_long_form=is_long_form_vid,
             )
             healed_title = smart["enriched_title"]
@@ -75,44 +119,16 @@ class MetadataHealerMixin:
                 snip["title"] = healed_title
                 needs_update = True
 
-            if set(t.lower() for t in cur_tags) != set(t.lower() for t in smart["tags"]):
+            if [t.lower() for t in cur_tags] != [t.lower() for t in smart["tags"]]:
                 snip["tags"] = smart["tags"]
                 needs_update = True
 
-            allow_affiliate = bool(
-                self.channel_config.get("enable_monetization") is True
-                or self.channel_config.get("affiliate_enabled") is True
-            )
             raw_desc = str(snip.get("description") or "").strip()
             desc_body = self.sanitize_shorts_description(
                 raw_desc=raw_desc,
                 base_title=smart.get("base_title") or raw_title,
                 allow_affiliate=allow_affiliate,
             )
-            stale_generic_markers = (
-                "(1) undiscovered species or (2) natural anomaly",
-                "(1) an undiscovered creature or (2) a natural anomaly",
-                "(1) criatura desconhecida ou (2) fenômeno geológico",
-                "what is your thought on this? drop a comment below",
-            )
-            # Ưu tiên lấy câu hỏi bình luận (pinned_comment) sinh riêng cho kịch bản của video từ DB VideoJob
-            db_pinned_q = None
-            try:
-                from app.database.models import get_db, VideoJob
-                with get_db() as db:
-                    vj = db.query(VideoJob).filter(VideoJob.youtube_video_id == video_id).order_by(VideoJob.id.desc()).first()
-                    if vj and vj.scenes_json:
-                        s_obj = json.loads(vj.scenes_json) if isinstance(vj.scenes_json, str) else vj.scenes_json
-                        if isinstance(s_obj, dict) and s_obj.get("pinned_comment"):
-                            cand_q = str(s_obj.get("pinned_comment")).strip()
-                            if (
-                                cand_q
-                                and not any(m in cand_q.lower() for m in stale_generic_markers)
-                                and not (not allow_affiliate and any(k in cand_q.lower() for k in ("http://", "https://", "amazon.com", "paypal.me")))
-                            ):
-                                db_pinned_q = self.sanitize_engagement_comment(cand_q).lstrip("💬").strip()
-            except Exception:
-                pass
             if desc_body and any(m in desc_body.lower() for m in stale_generic_markers):
                 cleaned_lines = [
                     ln for ln in desc_body.splitlines()

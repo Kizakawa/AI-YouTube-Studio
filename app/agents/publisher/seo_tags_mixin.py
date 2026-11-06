@@ -115,20 +115,54 @@ class SeoTagsMixin:
                 "behavioral psychology", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
             ]
         elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery", "earth")):
+            marine_signals = (
+                "ocean", "sea", "deep-sea", "deep sea", "underwater", "submarine", "ship",
+                "titanic", "shark", "whale", "squid", "fish", "octop", "abyss", "trench",
+                "mariana", "brine pool", "coral", "reef", "oceano", "mar", "marinh",
+                "fundo do mar", "abismo", "fossa", "tubarão", "tubarao", "baleia", "lula",
+                "peixe", "polvo", "navio", "piscina do titanic", "mergulh", "macropinna",
+            )
+            terrestrial_signals = (
+                "lake natron", "lago natron", "lake nyos", "lago nyos", "volcano", "vulcão",
+                "crater", "cratera", "cave", "caverna", "desert", "deserto", "forest",
+                "floresta", "mountain", "montanha", "boiling river", "rio fervente",
+                "darvaza", "sahara", "antarctica", "yellowstone", "danakil", "catatumbo",
+            )
+            extra_str_low = str(extra_tags or "").lower()
+            full_ctx_low = f"{text_context} {extra_str_low}"
+            is_marine_topic = any(m in full_ctx_low for m in marine_signals) and not any(
+                t in text_context for t in terrestrial_signals
+            )
             if is_br:
-                niche_title_hashes = ["misterios", "curiosidades", "ciencia"]
-                niche_core_tags = [
-                    "misterios", "curiosidades", "ciencia", "misterios do mundo", "oceano",
-                    "descobertas", "fatos desconhecidos", "fenomenos naturais", "fundo do mar",
-                    "brasil", "Shorts", "shorts", "ytshorts", "viral",
-                ]
+                if is_marine_topic:
+                    niche_title_hashes = ["misterios", "curiosidades", "oceano"]
+                    niche_core_tags = [
+                        "misterios", "curiosidades", "ciencia", "misterios do mundo", "oceano",
+                        "fundo do mar", "oceano profundo", "descobertas", "fatos desconhecidos",
+                        "fenomenos naturais", "brasil", "Shorts", "shorts", "ytshorts", "viral",
+                    ]
+                else:
+                    niche_title_hashes = ["misterios", "curiosidades", "ciencia"]
+                    niche_core_tags = [
+                        "misterios", "curiosidades", "ciencia", "misterios do mundo",
+                        "fenomenos naturais", "descobertas", "fatos desconhecidos", "enigmas da terra",
+                        "curiosidades do mundo", "brasil", "Shorts", "shorts", "ytshorts", "viral",
+                    ]
             else:
-                niche_title_hashes = ["mystery", "science", "ocean"]
-                niche_core_tags = [
-                    "mystery", "science facts", "unexplained mysteries", "deep sea",
-                    "ocean mysteries", "earth mysteries", "scientific discovery", "nature mystery",
-                    "facts", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
-                ]
+                if is_marine_topic:
+                    niche_title_hashes = ["mystery", "science", "ocean"]
+                    niche_core_tags = [
+                        "mystery", "science facts", "unexplained mysteries", "deep sea",
+                        "ocean mysteries", "earth mysteries", "scientific discovery", "nature mystery",
+                        "facts", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
+                    ]
+                else:
+                    niche_title_hashes = ["mystery", "science", "nature"]
+                    niche_core_tags = [
+                        "mystery", "earth mysteries", "unexplained mysteries", "science facts",
+                        "nature mystery", "scientific discovery", "weird science", "bizarre nature",
+                        "facts", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
+                    ]
         elif any(k in raw_niche for k in ("history", "what_if", "alternate")):
             niche_title_hashes = ["history", "whatif", "documentary"]
             niche_core_tags = [
@@ -182,41 +216,51 @@ class SeoTagsMixin:
                     return False
             return True
 
-        # 1. Thu thập extra_tags do người dùng/script truyền vào + default_tags/description_tags của kênh
-        custom_tags: List[str] = []
-        for src in (extra_tags, self.channel_config.get("default_tags"), self.channel_config.get("description_tags")):
-            if isinstance(src, list):
-                custom_tags.extend(str(x).strip() for x in src if str(x).strip())
-            elif isinstance(src, str):
-                custom_tags.extend(x.strip() for x in re.split(r'[,;#]+', src) if x.strip())
+        # 1. Tách riêng extra_tags của riêng video (do LLM/caller sinh) và default_tags/description_tags chung của kênh
+        caller_extra_tags: List[str] = []
+        if isinstance(extra_tags, list):
+            caller_extra_tags.extend(str(x).strip() for x in extra_tags if str(x).strip())
+        elif isinstance(extra_tags, str):
+            caller_extra_tags.extend(x.strip() for x in re.split(r'[,;#]+', extra_tags) if x.strip())
 
-        # 2. Trích xuất thực thể chủ đề nổi bật TRỰC TIẾP TỪ TIÊU ĐỀ (ưu tiên khớp tiêu đề trước, đúng ngôn ngữ kênh EN vs pt-BR)
+        channel_cfg_tags: List[str] = []
+        for src in (self.channel_config.get("default_tags"), self.channel_config.get("description_tags")):
+            if isinstance(src, list):
+                channel_cfg_tags.extend(str(x).strip() for x in src if str(x).strip())
+            elif isinstance(src, str):
+                channel_cfg_tags.extend(x.strip() for x in re.split(r'[,;#]+', src) if x.strip())
+
+        # 2. Trích xuất thực thể chủ đề TRỰC TIẾP TỪ CẤU TRÚC TIÊU ĐỀ (Pillar A Matchup + Pillar B Named Entity / Question NP)
         KNOWN_SUBJECTS_EN = [
             "honey badger", "komodo dragon", "sperm whale", "colossal squid", "giant squid",
             "orca", "killer whale", "great white shark", "goblin shark", "saltwater crocodile", "nile crocodile",
             "nile hippo", "hippo", "polar bear", "grizzly bear", "brown bear", "siberian tiger", "bengal tiger",
             "snow leopard", "jaguar", "leopard", "cheetah", "lion", "lions", "hyena", "harpy eagle",
-            "howler monkey", "secretary bird", "water buffalo", "cape buffalo", "cassowary", "king cobra",
-            "black mamba", "reticulated python", "wolverine", "electric eel", "mantis shrimp", "pistol shrimp",
+            "howler monkey", "secretary bird", "shoebill stork", "shoebill", "water buffalo", "cape buffalo",
+            "cassowary", "king cobra", "black mamba", "reticulated python", "wolverine", "electric eel",
+            "mantis shrimp", "pistol shrimp", "army ants", "giant scorpion", "scorpion", "tasmanian devil",
             "coconut crab", "seahorse", "sea turtle", "jellyfish", "moray eel", "octopus", "black dragonfish",
-            "sloth", "sloths", "walrus", "giant otter", "otter", "shark", "crocodile",
+            "barreleye fish", "macropinna", "sloth", "sloths", "walrus", "giant otter", "otter", "shark", "sharks", "crocodile",
             "newfoundland", "poodle", "golden retriever", "blind dog", "shelter puppy", "stray kitten",
             "orphan puppy", "wheelchair dog", "stray dog", "puppy", "kitten", "dog", "cat",
             "mariana trench", "bermuda triangle", "boiling river", "amazon river", "amazon",
             "point nemo", "spacecraft graveyard", "saturation divers", "divers",
-            "antarctica", "brinicle", "lake nyos", "darvaza", "naica cave", "death valley", "eternal flame",
+            "antarctica", "brinicle", "brine pool", "deep sea brine pool", "lake natron", "lake nyos",
+            "darvaza", "naica cave", "death valley", "eternal flame", "flamingos",
             "sahara", "krakatoa", "yellowstone", "pompeii", "roman empire", "rome",
             "spanish armada", "spartans", "hannibal", "kublai khan", "kamikaze", "nikola tesla",
             "carrington", "mongols", "zheng he", "vasili arkhipov", "red army",
-            "steam engine", "titanic", "cold war", "world war 1", "world war 2", "ww2", "ww1",
+            "steam engine", "titanic", "bismarck", "bismarck battleship", "swordfish", "goldsboro", "b 52",
+            "cold war", "world war 1", "world war 2", "ww2", "ww1",
             "ancient egypt", "giza", "alexandria", "alexander", "emperor qin",
-            "chernobyl", "tsunami", "lituya bay", "alaska", "goldsboro", "north carolina",
+            "chernobyl", "tsunami", "lituya bay", "alaska", "north carolina",
             "tambora", "tunguska", "vesuvius", "hiroshima", "hindenburg", "habakkuk",
             "panama canal", "emu war", "tsar bomba", "nuclear", "nuke", "nukes", "b52",
             "napoleon", "genghis khan", "vikings", "sparta", "pearl harbor", "d day",
             "soviet", "rockefeller", "apollo", "spacecraft", "kraken", "abyss", "deep ocean",
             "marshmallow test", "marshmallow", "stanford prison", "milgram experiment", "asch experiment",
             "bystander effect", "orfield labs", "pratfall effect", "benjamin franklin",
+            "hyperthymesia", "perfect memory", "telepathy", "telepathy paradox",
             "polygraph", "interrogation", "dark empath", "casino", "dopamine",
             "body language", "eye contact", "fbi", "cia", "lie detector", "lie detection", "micro expressions",
             "narcissist", "sociopath", "psychopath", "gaslighting", "gaslighters", "love bombed", "manipulators",
@@ -225,57 +269,167 @@ class SeoTagsMixin:
         ]
         KNOWN_SUBJECTS_PT = [
             "onça pintada", "onça", "sucuri", "jacaré açu", "jacaré", "poraquê", "ariranha", "lobo guará",
-            "tatu canastra", "águia harpia", "gavião real", "harpia", "bicho preguiça", "preguiça",
+            "tatu canastra", "águia harpia", "gavião real", "harpia", "ave secretário", "ave secretario",
+            "serpente", "cobra", "diabo da tasmânia", "diabo da tasmania", "bicho preguiça", "preguiça",
             "guepardo", "avestruz", "casuar", "queixadas", "crocodilo do nilo", "búfalo",
             "lagosta boxeadora", "camarão pistola", "tamarutaca", "dragão de komodo", "komodo",
             "polvo de anéis azuis", "polvo", "moreia", "tartaruga de couro", "caravela portuguesa",
-            "tubarão duende", "peixe diabo", "tubarão branco", "tubarão", "orca", "baleia", "cachalote", "lula colossal",
+            "tubarão duende", "peixe diabo", "peixe barril", "macropinna", "tubarão branco", "tubarão",
+            "orca", "baleia", "cachalote", "lula colossal",
             "hipopótamo", "crocodilo", "hiena", "leopardo das neves", "leopardo", "texugo do mel", "ratel",
             "mangusto", "javali", "leões", "leão", "tigre siberiano", "tigre", "urso pardo", "urso polar",
             "cobra rei", "mamba negra", "taiga", "amazônia", "pantanal", "cerrado",
             "fossa das marianas", "triângulo das bermudas", "ponto nemo", "espaçonaves", "mergulhadores",
-            "rio fervente", "caverna movile", "caverna de naica", "caverna", "lago nyos", "lago natron",
-            "danakil", "catatumbo", "brinicle", "oceano", "navios", "ilha", "silêncio", "gelo", "rússia",
+            "piscina do titanic", "titanic", "rio fervente", "caverna movile", "caverna de naica", "caverna",
+            "lago nyos", "lago natron", "danakil", "catatumbo", "brinicle", "oceano", "navios", "ilha", "silêncio", "gelo", "rússia",
         ]
         subject_pool = KNOWN_SUBJECTS_PT if is_br else KNOWN_SUBJECTS_EN
         title_lower = re.sub(r'[\-_]+', ' ', base_title.lower())
         topic_lower = re.sub(r'[\-_]+', ' ', f"{base_title} {clean_topic}".lower())
         extracted_topic_tags: List[str] = []
         topic_hashtag_candidates: List[str] = []
-        # Ưu tiên 1: Các thực thể xuất hiện trực tiếp trong base_title (đảm bảo #hashtag trên tiêu đề khớp 100% với tiêu đề)
+
+        def _add_extracted_entity(raw_ent: str, allow_title_hash: bool = True) -> None:
+            ent_clean = re.sub(r'[^\w\sà-ỹçãõáéíóúâêôíú\-]', ' ', str(raw_ent or "").lower())
+            ent_clean = re.sub(r'[\-_]+', ' ', ent_clean)
+            ent_clean = re.sub(r'\s+', ' ', ent_clean).strip()
+            ent_clean = re.sub(
+                r'^(?:the|a|an|this|that|these|those|o|a|os|as|um|uma|este|esta|esse|essa)\s+',
+                '',
+                ent_clean,
+            ).strip()
+            if not ent_clean or len(ent_clean) < 3 or len(ent_clean) > 36:
+                return
+            if ent_clean in ("why", "how", "what", "what if", "por que", "como", "shorts", "video"):
+                return
+            if not _is_tag_allowed(ent_clean):
+                return
+            if ent_clean not in extracted_topic_tags:
+                extracted_topic_tags.append(ent_clean)
+            if allow_title_hash:
+                h_subj = re.sub(r'[^a-z0-9à-ỹçãõáéíóúâêô]+', '', ent_clean)
+                if 3 <= len(h_subj) <= 18 and h_subj not in topic_hashtag_candidates:
+                    topic_hashtag_candidates.append(h_subj)
+
+        # Ưu tiên 0: Bóc tách cấu trúc trực tiếp từ base_title (Structural Title Entity Extraction)
+        clean_title_no_emoji = re.sub(r'[^\w\sà-ỹçãõáéíóúâêôíú:\-\(\)\?\!°\']+', ' ', base_title).strip()
+        clean_title_no_emoji = re.sub(r'\s+', ' ', clean_title_no_emoji)
+        # 0a. Thực thể trong ngoặc đơn, vd: "Peixe-Barril (Macropinna)" -> "macropinna"
+        paren_entities = re.findall(r'\(([^)]+)\)', clean_title_no_emoji)
+        title_without_parens = re.sub(r'\([^)]*\)', ' ', clean_title_no_emoji)
+        title_without_parens = re.sub(r'\s+', ' ', title_without_parens).strip()
+
+        head_clause = title_without_parens.split(":", 1)[0].strip()
+        tail_clause = title_without_parens.split(":", 1)[1].strip() if ":" in title_without_parens else ""
+
+        # 0b. Cấu trúc Pillar A Matchup: "[Entity A] vs [Entity B]"
+        vs_pattern = re.compile(r'\s+(?:vs\.?|versus|contra)\s+', flags=re.IGNORECASE)
+        if vs_pattern.search(head_clause):
+            vs_parts = [p.strip() for p in vs_pattern.split(head_clause) if p.strip()]
+            core_sides: List[str] = []
+            for side in vs_parts[:2]:
+                _add_extracted_entity(side, allow_title_hash=True)
+                side_stripped = re.sub(
+                    r'^(?:baby|giant|massive|huge|tiny|two|one|three|\d+|4-megaton)\s+',
+                    '',
+                    side.strip(),
+                    flags=re.IGNORECASE,
+                ).strip()
+                if side_stripped and side_stripped.lower() != side.lower():
+                    _add_extracted_entity(side_stripped, allow_title_hash=True)
+                    core_sides.append(side_stripped)
+                else:
+                    core_sides.append(side)
+            if len(core_sides) == 2:
+                matchup_tag = f"{core_sides[0]} vs {core_sides[1]}"
+                _add_extracted_entity(matchup_tag, allow_title_hash=False)
+        elif ":" in title_without_parens and not re.match(
+            r'^(?:why|how|what|when|where|who|por\s+que|como|o\s+que)\b',
+            head_clause,
+            flags=re.IGNORECASE,
+        ):
+            # 0c. Cấu trúc Pillar B Named Entity trước dấu hai chấm: "[Entity]: [Why/How/Hook]"
+            _add_extracted_entity(head_clause, allow_title_hash=True)
+            head_no_year = re.sub(r'^\d{4}\s+', '', head_clause).strip()
+            if head_no_year and head_no_year.lower() != head_clause.lower():
+                _add_extracted_entity(head_no_year, allow_title_hash=True)
+
+        for p_ent in paren_entities:
+            _add_extracted_entity(p_ent, allow_title_hash=True)
+
+        # 0d. Cấu trúc câu hỏi "Why / Por Que / How [Subject NP] [Verb]..." trong head_clause hoặc tail_clause
+        for clause in (head_clause, tail_clause):
+            if not clause:
+                continue
+            m_q = re.match(
+                r'^(?:why|how|por\s+que|como)\s+(?:this|the|a|an|these|those|o|a|os|as|um|uma|este|esta|esse|essa)?\s*'
+                r'(?:\d+°[fc]\s+)?([a-zA-Z0-9À-ỹçãõáéíóúâêôíú\-\s]{3,35}?)\s+'
+                r'(?:paralyzes|paralyze|turns|turn|is|are|was|were|can|could|never|still|continua|transforma|paralisa|faz|tem|é|são|está)\b',
+                clause.strip(),
+                flags=re.IGNORECASE,
+            )
+            if m_q:
+                q_subj = m_q.group(1).strip()
+                _add_extracted_entity(q_subj, allow_title_hash=True)
+                q_subj_core = re.sub(r'^(?:deep[\s\-]sea|red|giant|ancient|modern)\s+', '', q_subj, flags=re.IGNORECASE).strip()
+                if q_subj_core and q_subj_core.lower() != q_subj.lower():
+                    _add_extracted_entity(q_subj_core, allow_title_hash=True)
+
+        # Ưu tiên 1: Các thực thể trong subject_pool xuất hiện trực tiếp trong base_title
         for subj in subject_pool:
             subj_norm = re.sub(r'[\-_]+', ' ', subj.lower()).strip()
             if re.search(rf'\b{re.escape(subj_norm)}\b', title_lower):
-                extracted_topic_tags.append(subj_norm)
-                h_subj = re.sub(r'[^a-z0-9à-ỹçãõáéíóúâêô]+', '', subj_norm)
-                if 3 <= len(h_subj) <= 18 and h_subj not in topic_hashtag_candidates:
-                    topic_hashtag_candidates.append(h_subj)
+                _add_extracted_entity(subj_norm, allow_title_hash=True)
         # Ưu tiên 2: Các thực thể bổ sung trong topic (chỉ thêm vào tags phụ, không đè lên hashtag tiêu đề)
         for subj in subject_pool:
             subj_norm = re.sub(r'[\-_]+', ' ', subj.lower()).strip()
             if subj_norm not in extracted_topic_tags and re.search(rf'\b{re.escape(subj_norm)}\b', topic_lower):
-                extracted_topic_tags.append(subj_norm)
+                _add_extracted_entity(subj_norm, allow_title_hash=False)
 
-        # Khử các tag thực thể động vật khác không xuất hiện nguyên từ trong tiêu đề khỏi custom_tags
+        # Khử các tag thực thể động vật khác không xuất hiện trong tiêu đề/chủ đề khỏi caller_extra_tags & channel_cfg_tags
         ALL_ANIMAL_ENTITIES = set(KNOWN_SUBJECTS_EN + KNOWN_SUBJECTS_PT)
-        filtered_custom_tags: List[str] = []
-        for ct in custom_tags:
-            ct_low = re.sub(r'^#+', '', ct.strip()).lower()
-            if ct_low in ALL_ANIMAL_ENTITIES and not re.search(rf'\b{re.escape(ct_low)}\b', title_lower):
-                continue
-            if is_br and ct_low in KNOWN_SUBJECTS_EN and ct_low not in KNOWN_SUBJECTS_PT:
-                continue
-            filtered_custom_tags.append(ct)
-        custom_tags = filtered_custom_tags
+
+        def _filter_tag_pool(raw_pool: List[str], allow_topic_match: bool = False) -> List[str]:
+            out_pool: List[str] = []
+            ref_text = topic_lower if allow_topic_match else title_lower
+            for ct in raw_pool:
+                ct_low = re.sub(r'[\-_]+', ' ', re.sub(r'^#+', '', ct.strip()).lower()).strip()
+                if ct_low in ALL_ANIMAL_ENTITIES and not re.search(rf'\b{re.escape(ct_low)}\b', ref_text):
+                    continue
+                if is_br and ct_low in KNOWN_SUBJECTS_EN and ct_low not in KNOWN_SUBJECTS_PT:
+                    if not re.search(rf'\b{re.escape(ct_low)}\b', title_lower):
+                        continue
+                out_pool.append(ct)
+            return out_pool
+
+        filtered_caller_tags = _filter_tag_pool(caller_extra_tags, allow_topic_match=True)
+        filtered_channel_tags = _filter_tag_pool(channel_cfg_tags, allow_topic_match=False)
 
         # 3. Hợp nhất danh sách Tags chuẩn cho YouTube (snippet.tags, tối đa 24 tags & < 450 ký tự)
-        # Ưu tiên: Thực thể chủ đề (extracted_topic_tags) + Bộ tag chuẩn Ngách & Quốc gia (niche_core_tags) trước,
-        # sau đó mới đến custom_tags đã qua bộ lọc để KHÔNG BAO GIỜ bị đẩy mất tag định hướng quốc gia ('usa'/'brasil')!
+        # Thứ tự ưu tiên chuẩn SEO Search + Geo-Routing:
+        #   (1) Thực thể chủ đề bóc từ Tiêu đề (extracted_topic_tags[:8])
+        #   (2) Tags chuyên biệt của video do LLM/caller sinh (filtered_caller_tags[:8])
+        #   (3) Tags bắt buộc định tuyến Quốc gia & Định dạng (usa/united states hoặc brasil + Shorts/ytshorts)
+        #   (4) Bộ tag cốt lõi của Ngách (niche_core_tags) + tag mặc định của kênh (filtered_channel_tags)
+        if is_long_form:
+            mandatory_geo_tags = ["brasil", "documentario"] if is_br else ["usa", "united states", "american", "documentary"]
+        else:
+            mandatory_geo_tags = ["Shorts", "shorts", "ytshorts", "brasil"] if is_br else ["Shorts", "shorts", "ytshorts", "usa", "united states", "american"]
+
         final_tags: List[str] = []
         seen_lower = set()
         total_chars = 0
 
-        for candidate in (*extracted_topic_tags, *niche_core_tags, *custom_tags):
+        ordered_candidates = (
+            *extracted_topic_tags[:8],
+            *filtered_caller_tags[:8],
+            *mandatory_geo_tags,
+            *niche_core_tags,
+            *extracted_topic_tags[8:],
+            *filtered_caller_tags[8:],
+            *filtered_channel_tags,
+        )
+        for candidate in ordered_candidates:
             clean_t = re.sub(r'^#+', '', str(candidate or "").strip()).strip()
             if not _is_tag_allowed(clean_t):
                 continue

@@ -6,12 +6,12 @@
 
 ---
 
-## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-07 00:08 +07:00`)
+## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-07 00:36 +07:00`)
 
 - **Nhánh Git hiện tại**: `main` (đồng bộ sạch với `origin/main`).
 - **Tác vụ vừa hoàn thành**:
-  - `TASK-013`: Sản xuất hoàn chỉnh, kiểm định lưới khung hình thực tế (`VideoQA 98–99/100`, `> 85%–100%` cảnh video chuyển động thật), lập lịch Khung Giờ Vàng lên YouTube và gửi về Telegram trọn bộ **12/12 video Shorts** cho **6 kênh** (`ch_wild_odyssey`, `ch_odisseia_selvagem`, `ch_the_mysteries_of_the_world`, `ch_misterios_do_mundo`, `@alternatehistorywhatif-e2x`, `ch_psychology_of_the_world` — trừ `Paws & Hearts Rescue`).
-  - `TASK-007`: Hoàn tất nghiệm thu thực tế (`End-to-End Video QA`) cho cả 2 trụ cột Viral (`pillar_1_direct_matchup` và `pillar_2_why_mystery_explainer`: *Why This Deep-Sea Brine Pool Paralyzes Sharks in Seconds*, *Lake Natron: Why This 140°F Red Lake Turns Birds Into Stone*, *Por Que a Piscina do Titanic Continua Cheia de Água a 3.800m?*, *Hyperthymesia: Why a Perfect Memory Is a Mental Trap*).
+  - `TASK-013` & Kiểm toán/Tự chữa lành SEO Tags (`seo_tags_mixin.py` & `metadata_healer_mixin.py`): Kiểm toán trực tiếp qua YouTube Data API v3 toàn bộ **7 kênh** và **12 video Shorts vừa xuất bản (`#773`–`#784`)**, nâng cấp thuật toán bóc tách thực thể cấu trúc từ tiêu đề (`Pillar A Matchup` + `Pillar B Named Entity / Question NP`), phân tách thông minh `deep_sea_earth_mysteries` (Biển sâu vs Địa chất trên cạn như *Lake Natron*), và đồng bộ (`videos().update`) 100% bộ Tags + Hashtags thực thể lên cả 12 video trên YouTube mà giữ nguyên tuyệt đối giờ hẹn `publishAt`.
+  - `TASK-007`: Hoàn tất nghiệm thu thực tế (`End-to-End Video QA`) cho cả 2 trụ cột Viral (`pillar_1_direct_matchup` và `pillar_2_why_mystery_explainer`).
 
 ---
 
@@ -35,7 +35,8 @@
    - **Psychology of the world (`ch_psychology_of_the_world`)**:
      - `#775` (*Hyperthymesia: Why a Perfect Memory Is a Mental Trap 🧠🔒 #Shorts*, `7/8` video, `VideoQA 98/100`) $\rightarrow$ `https://www.youtube.com/shorts/vyz_-KJzUTM` (`23:45 Đêm T7, 07/11/2026 VN`).
      - `#774` (*Telepathy Paradox: What If You Heard Everyone's Thoughts? 🧠👁️ #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/DbmIZwKK7ik` (`08:30 Sáng CN, 08/11/2026 VN`).
-2. **Sửa tận gốc 4 lỗi hệ thống phát hiện trong quá trình chạy Batch 12 video**:
+2. **Sửa tận gốc 5 lỗi hệ thống phát hiện trong quá trình chạy & kiểm toán Batch 12 video**:
+   - [`app/agents/publisher/seo_tags_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/seo_tags_mixin.py) & [`app/agents/publisher/metadata_healer_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/metadata_healer_mixin.py): Nâng cấp bóc tách thực thể cấu trúc trực tiếp từ tiêu đề (`[Entity A] vs [Entity B]`, `[Named Entity]: ...`, `(Parenthetical Entity)`, và câu hỏi `Why / Por Que / How [Subject NP]`), nạp `vj.tags` / `vj.topic` từ DB khi `verify_and_heal_video_metadata`, phân tách thông minh ngách `deep_sea_earth_mysteries` (Biển sâu vs Địa chất trên cạn như *Lake Natron*), và đồng bộ 100% Tags + Hashtags thực thể lên cả 12 video trên YouTube.
    - [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py) & [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py): Loại bỏ `#hashtags` ở cuối tiêu đề trước khi tính độ tương đồng từ vựng và yêu cầu trùng cả 2 vế khi so khớp tiền tố kèo đấu `A vs B`.
    - [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py): Mở khóa cứu hộ file `.mp4` trên ổ đĩa khi phân cảnh bị gán `_graphic.png` (`not _is_placeholder_cur`), đồng thời kiểm tra `verify_hook_clip_genuine_motion` cho cả Cảnh 1 và Cảnh 2 (`sc_id in (1, 2)`).
    - [`app/services/quota_manager.py`](file:///d:/Python/Youtube/app/services/quota_manager.py): Quét đầy đủ cả thư mục alias kênh trong `get_channel_tokens_pool` để xoay dự án Google Cloud dự phòng chính xác.
@@ -43,7 +44,7 @@
 ---
 
 ## ❗ 2. Đang Kẹt Ở Đâu / Lưu Ý Quan Trọng (Active Watchpoints & Constraints)
-- **Không có lỗi tồn đọng (Zero Blockers)**: Toàn bộ 12/12 video đã lên lịch `SCHEDULED` trên YouTube và gửi file MP4 + bảng tổng kết về Telegram (`-1001234567890`).
+- **Không có lỗi tồn đọng (Zero Blockers)**: Toàn bộ 7 kênh đã gắn chuẩn Channel Keywords + Country (`US`/`BR`), và toàn bộ 12/12 video mới (`#773`–`#784`) đã được đồng bộ 100% Tags thực thể + Hashtags tiêu đề/mô tả + CategoryId (`15`/`22`) trên YouTube mà giữ nguyên lịch hẹn `publishAt`.
 - **Chốt chặn bắt buộc phải giữ vững**:
   1. Giữ vững sàn `> 85.0%` thời lượng là video chuyển động thật (`6–7/7` cảnh `.mp4`) và `100%` chuyển động thật ở `5–7s` mở đầu.
   2. Luôn trích xuất và kiểm tra trực tiếp lưới frame (`job_<id>_sheet.jpg`) trước khi xuất bản lên YouTube.
@@ -51,6 +52,8 @@
 ---
 
 ## 📂 3. Các File Vừa Xử Lý (Recently Modified Files)
+- [`app/agents/publisher/seo_tags_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/seo_tags_mixin.py)
+- [`app/agents/publisher/metadata_healer_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/metadata_healer_mixin.py)
 - [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py)
 - [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py)
 - [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py)
