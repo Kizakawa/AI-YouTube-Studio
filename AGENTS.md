@@ -1,5 +1,18 @@
 # Project Agent Rules — AI YouTube Studio
 
+## 0. Mandatory Workspace External Memory Protocol (`MEMORY.md`, `working_memory.md`, `todo.md`, `progress_log.md`)
+To eliminate context drift, prevent repeating previously fixed bugs, and avoid blind full-codebase scanning across sessions:
+1. **When Starting Any Session or Task (Read First in `< 5s`)**:
+   - Read **[MEMORY.md](MEMORY.md)** (1-page project snapshot, LangGraph pipeline map, Single-Source-of-Truth file routing table, and the 6 Anti-Regression Locks).
+   - Read **[working_memory.md](working_memory.md)** ("External RAM": active task, what was just completed, watchpoints/blockers, recently modified files, and immediate next step).
+   - Read **[todo.md](todo.md)** (checkbox task backlog with `TASK-xxx` IDs and Definition of Done).
+   - Only read specific source files or [`.agents/skills/*/SKILL.md`](.agents/skills/) targeted by the routing table in `MEMORY.md`.
+2. **When Finishing Any Task or Bugfix (Write Before Commit & Push)**:
+   - Update **[working_memory.md](working_memory.md)** with: `✅ Đã làm gì`, `❗ Đang kẹt ở đâu / Lưu ý gì`, `📂 File nào vừa xử lý`, and `➡️ Bước tiếp theo là gì`.
+   - Update checkbox status (`[x]` / `[-]` / `[ ]`) in **[todo.md](todo.md)**.
+   - Append a concise chronological entry (`[YYYY-MM-DD | Commit] — TASK-xxx: ...`) to the bottom of **[progress_log.md](progress_log.md)** (**Append-Only** — NEVER delete or rewrite past log entries).
+   - **Single-Writer Rule for Subagents**: Parallel subagents may read `MEMORY.md` and `working_memory.md` as read-only context; ONLY the Main Agent writes to `working_memory.md`, `todo.md`, and `progress_log.md`.
+
 ## 1. Mandatory Post-Task Workflow: Auto-Optimize, Merge & Push (`auto-optimize-merge-push`)
 - Whenever you complete any code modification, bugfix, refactoring, or configuration update in `d:\AI_YouTube_Project_Ready\AI-youtube-main` (or `d:\Python\Youtube`), you **MUST** automatically follow the [auto-optimize-merge-push](.agents/skills/auto-optimize-merge-push/SKILL.md) skill before finishing your turn:
   1. **Optimize & Verify**: Clean up dead code/imports, ensure backward-compatible method signatures, and verify all modified Python files using `python -m py_compile` plus a quick import/smoke test.

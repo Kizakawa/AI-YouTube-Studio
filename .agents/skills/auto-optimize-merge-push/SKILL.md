@@ -30,6 +30,8 @@ Before staging any files, review and optimize all modified files:
    - Run a quick one-line import & smoke check (`python -c "import ..."`) on the modified modules to verify there are no circular imports or missing symbols.
 4. **Secret & Artifact Hygiene**:
    - **NEVER** stage or commit sensitive or runtime-generated files: `.env`, `*.pickle`, `client_secret*.json`, `*.db`, `*.sqlite`, `output/`, `logs/`, `temp/`, or `__pycache__/`.
+5. **External Memory State Sync (`working_memory.md`, `todo.md`, `progress_log.md`)**:
+   - Before staging and committing, update **[working_memory.md](../../../working_memory.md)** (`✅ Đã làm gì`, `❗ Đang kẹt ở đâu`, `📂 File vừa xử lý`, `➡️ Bước tiếp theo`), update task checkboxes in **[todo.md](../../../todo.md)**, and append a new chronological entry to the bottom of **[progress_log.md](../../../progress_log.md)** (append-only).
 
 ---
 
