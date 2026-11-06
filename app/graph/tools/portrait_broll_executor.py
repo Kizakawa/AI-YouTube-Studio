@@ -133,14 +133,38 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                                 preserve_continuous_flow=True,
                             )
                             if Path(vid_out).exists() and Path(vid_out).stat().st_size > 20000:
-                                ok_st_sig, _ = rag.verify_and_commit_in_job_clip(
-                                    job_id=job_id,
-                                    scene_id=scene_id,
-                                    media_path=vid_out,
-                                    url=v_url,
-                                    title=st_title,
-                                    is_continuation_slice=False,
+                                from app.graph.evaluators.visual_critic import VisualCritic
+                                from app.graph.nodes.media.hook_video_helpers import verify_hook_clip_genuine_motion
+                                from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
+                                gate_p = VisualCritic.inspect_clip_before_concat(
+                                    vid_out, min_short_edge=720, min_sharpness=5.2, check_watermark=True, allow_snow=True
                                 )
+                                ok_p_mot, _, _ = verify_hook_clip_genuine_motion(vid_out)
+                                is_p_vis_ok = bool(best_stock_v.get("vision_curated"))
+                                if gate_p.get("passed", False) and ok_p_mot and not is_p_vis_ok:
+                                    is_p_vis_ok, _, _ = _verify_short_clip_with_gemini_vision(
+                                        video_path=vid_out,
+                                        topic=topic,
+                                        narration=narration,
+                                        subject_entity=subject_entity or clean_act_q,
+                                        overall_script_query=overall_script_query or clean_act_q,
+                                        target_visual_query=clean_act_q,
+                                        search_scope=search_scope,
+                                        video_title=st_title,
+                                        strict_no_fallback=True,
+                                        cancel_event=cancel_event,
+                                        deadline_ts=max(deadline_ts or 0.0, time.monotonic() + 12.0),
+                                    )
+                                ok_st_sig = False
+                                if gate_p.get("passed", False) and ok_p_mot and is_p_vis_ok:
+                                    ok_st_sig, _ = rag.verify_and_commit_in_job_clip(
+                                        job_id=job_id,
+                                        scene_id=scene_id,
+                                        media_path=vid_out,
+                                        url=v_url,
+                                        title=st_title,
+                                        is_continuation_slice=False,
+                                    )
                                 if ok_st_sig:
                                     full_peak_path = None
                                     if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:
@@ -279,26 +303,6 @@ def execute_clean_cinematic_portrait_or_broll_sync(
     for u_cand in [best_photo.get("url"), *(best_photo.get("alternate_urls") or [])]:
         if u_cand and u_cand not in all_candidate_urls:
             all_candidate_urls.append(u_cand)
-
-    if len(all_candidate_urls) < max(8, target_image_count * 2):
-        try:
-            from app.graph.parallel_search import run_langgraph_parallel_tasks
-            supp_queries = story_q_list[:4] if story_q_list else [clean_act_q]
-            px_tasks = [{"q": q_s} for q_s in supp_queries]
-            px_completed = run_langgraph_parallel_tasks(
-                tasks=px_tasks,
-                worker_fn=lambda t: media_agent.search_photos(
-                    t["q"], per_page=5, orientation="portrait", topic="dramatic portrait", narration="", used_urls=used
-                ) or [],
-                task_group=f"PortraitPexelsSearch({len(px_tasks)} queries)",
-            )
-            for px_res in px_completed:
-                for p_it in (px_res.get("result") or []):
-                    u_px = p_it.get("url")
-                    if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
-                        all_candidate_urls.append(u_px)
-        except Exception:
-            pass
 
     Path(img_out).parent.mkdir(parents=True, exist_ok=True)
     primary_selected_url = ""

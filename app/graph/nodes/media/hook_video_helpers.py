@@ -76,43 +76,30 @@ def _build_hook_video_search_queries(
         kw_tokens = list(dict.fromkeys(kw_tokens))[:4]
 
     niche_l = (niche or "").lower()
-    comb_l = f"{topic} {visual_keyword} {full_script_text[:400]}".lower()
-    if "psych" in niche_l or any(k in comb_l for k in ("interrogat", "liar", "body language", "fake smile", "eye contact")):
-        if "feet" in comb_l or "foot" in comb_l or "table" in comb_l:
-            queries.extend(["nervous hands interrogation dark", "man intense eye contact shadow"])
-        elif "smile" in comb_l or "envy" in comb_l:
-            queries.extend(["woman cold fake smile dark", "suspicious glance side eye cinematic"])
-        else:
-            queries.extend(["intense eye contact dark room", "man serious expression shadow noir"])
-    elif "history" in niche_l or "what if" in comb_l:
-        if kw_tokens:
-            queries.append(" ".join(kw_tokens))
-        if ent_tokens:
-            queries.append(f"{' '.join(ent_tokens)} historical cinematic")
-        queries.append("dramatic fire smoke cinematic")
-    else:
-        action_suffix = "wildlife action" if any(k in niche_l for k in ("wildlife", "predator")) else "footage"
-        if ent_tokens and kw_tokens:
-            seen_m = set()
-            merged_toks = []
-            for tok in ent_tokens + kw_tokens[:2]:
-                if tok.lower() not in seen_m:
-                    seen_m.add(tok.lower())
-                    merged_toks.append(tok)
-            merged = " ".join(merged_toks)
-            queries.append(f"{merged} {action_suffix}".strip())
-        if kw_tokens:
-            queries.append(" ".join(kw_tokens))
-        if top_tokens:
-            queries.append(" ".join(top_tokens))
-        if full_script_text:
-            for kw_m in re.findall(r"\[kw:\s*([^\]]+)\]", full_script_text)[:3]:
-                extra_kw = [w for w in _extract_ascii_words(kw_m) if w.lower() not in stop_words][:4]
-                if extra_kw:
-                    queries.append(" ".join(extra_kw))
-        core_tokens = ent_tokens or kw_tokens[:2] or top_tokens[:2]
-        if core_tokens:
-            queries.append(f"{' '.join(core_tokens)} real caught on camera")
+    action_suffix = "wildlife action" if any(k in niche_l for k in ("wildlife", "predator")) else "cinematic footage"
+    if ent_tokens and kw_tokens:
+        seen_m = set()
+        merged_toks = []
+        for tok in ent_tokens + kw_tokens[:2]:
+            if tok.lower() not in seen_m:
+                seen_m.add(tok.lower())
+                merged_toks.append(tok)
+        merged = " ".join(merged_toks)
+        queries.append(f"{merged} {action_suffix}".strip())
+    if kw_tokens:
+        queries.append(" ".join(kw_tokens))
+    if ent_tokens:
+        queries.append(f"{' '.join(ent_tokens)} {action_suffix}".strip())
+    if top_tokens:
+        queries.append(" ".join(top_tokens))
+    if full_script_text:
+        for kw_m in re.findall(r"\[kw:\s*([^\]]+)\]", full_script_text)[:3]:
+            extra_kw = [w for w in _extract_ascii_words(kw_m) if w.lower() not in stop_words][:4]
+            if extra_kw:
+                queries.append(" ".join(extra_kw))
+    core_tokens = ent_tokens or kw_tokens[:2] or top_tokens[:2]
+    if core_tokens:
+        queries.append(f"{' '.join(core_tokens)} real footage")
 
     unique_q = []
     for q in queries:

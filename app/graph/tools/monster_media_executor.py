@@ -151,23 +151,6 @@ def execute_epic_monster_cinematic_media_sync(
         if u_cand and u_cand not in all_candidate_urls:
             all_candidate_urls.append(u_cand)
 
-    if target_image_count >= 2 and len(all_candidate_urls) < max(10, target_image_count * 3):
-        try:
-            from app.services.media.web_image_fetcher import WebImageFetcher
-            extra_web = WebImageFetcher().search_all(
-                query=c_qs[1] if len(c_qs) > 1 else f"giant {c_name} movie scene cgi",
-                per_source=8,
-                subject=c_name,
-                extra_queries=c_qs[2:4],
-                creature_mode=True,
-            )
-            for item_ex in (extra_web or []):
-                u_ex = item_ex.get("url")
-                if u_ex and u_ex not in all_candidate_urls and not is_media_already_used(u_ex, used):
-                    all_candidate_urls.append(u_ex)
-        except Exception:
-            pass
-
     Path(img_out).parent.mkdir(parents=True, exist_ok=True)
     primary_selected_url = ""
     remaining_urls: List[str] = []

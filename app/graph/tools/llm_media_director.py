@@ -382,12 +382,23 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         # Chỉ chạy nhánh dự phòng khi LLM không trả về tool call cho phân cảnh `sid` này
         narr = s.get("narration", "")
         kw = s.get("visual_keyword") or narr[:50]
-        scope = "SCENE_SPECIFIC" if s.get("visual_keyword") else "SCRIPT_OVERALL"
-        clean_kw = _clean_yt_search_phrase(kw, subject_entity=default_subj, max_words=5) or default_overall_q
+        sc_contract_subj = _sanitize_tool_arg(s.get("subject_entity"), fallback="") or default_subj
+        sc_contract_qs = [
+            _clean_yt_search_phrase(str(q_c), subject_entity=sc_contract_subj, max_words=5)
+            for q_c in (s.get("search_queries") or [])
+            if str(q_c or "").strip()
+        ]
+        sc_contract_qs = [q_c for q_c in sc_contract_qs if q_c]
+        scope = "SCENE_SPECIFIC" if (s.get("visual_keyword") or sc_contract_qs) else "SCRIPT_OVERALL"
+        clean_kw = (
+            sc_contract_qs[0]
+            if sc_contract_qs
+            else (_clean_yt_search_phrase(kw, subject_entity=sc_contract_subj, max_words=5) or default_overall_q)
+        )
         dur = float(s.get("estimated_seconds") or 4.5)
 
         if llm_monster_ref is not None:
-            c_name_inh = _sanitize_tool_arg(llm_monster_ref.get("creature_name"), fallback=default_subj or "colossal sea monster")
+            c_name_inh = _sanitize_tool_arg(llm_monster_ref.get("creature_name"), fallback=sc_contract_subj or "colossal sea monster")
             s_anchor_inh = _sanitize_tool_arg(llm_monster_ref.get("scale_anchor_object"), fallback="submarine")
             m_mode_inh = "3D_CGI_VIDEO"
             final_plan.append({
@@ -400,6 +411,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "search_scope": scope,
                 "action_or_concept_query": clean_kw,
                 "overall_script_query": llm_monster_ref.get("overall_script_query") or default_overall_q,
+                "storyline_search_queries": sc_contract_qs[:4] if sc_contract_qs else [clean_kw],
                 "target_duration_sec": dur,
                 "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
                 "scope_audited": False,
@@ -409,11 +421,12 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             final_plan.append({
                 "tool_name": "fetch_clean_cinematic_portrait_or_broll",
                 "scene_id": sid,
-                "subject_entity": llm_portrait_ref.get("subject_entity") or default_subj,
+                "subject_entity": sc_contract_subj or llm_portrait_ref.get("subject_entity") or default_subj,
                 "human_action_query": clean_kw,
                 "media_preference": m_pref_inh,
                 "search_scope": scope,
                 "overall_script_query": llm_portrait_ref.get("overall_script_query") or default_overall_q,
+                "storyline_search_queries": sc_contract_qs[:4] if sc_contract_qs else [clean_kw],
                 "target_duration_sec": dur,
                 "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
                 "scope_audited": False,
@@ -423,11 +436,12 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             final_plan.append({
                 "tool_name": "clone_youtube_short_peak_clip",
                 "scene_id": sid,
-                "subject_entity": default_subj,
+                "subject_entity": sc_contract_subj,
                 "search_scope": scope,
                 "youtube_search_query": clean_kw,
                 "overall_script_query": default_overall_q,
-                "fallback_broad_query": s.get("stock_query") or default_overall_q,
+                "fallback_broad_query": s.get("stock_query") or (sc_contract_qs[-1] if sc_contract_qs else default_overall_q),
+                "storyline_search_queries": sc_contract_qs[:4] if sc_contract_qs else [clean_kw],
                 "clip_role": "HOOK" if sid == 1 else "PEAK",
                 "target_duration_sec": dur,
                 "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
@@ -437,11 +451,12 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             final_plan.append({
                 "tool_name": "clone_youtube_short_peak_clip",
                 "scene_id": sid,
-                "subject_entity": default_subj,
+                "subject_entity": sc_contract_subj,
                 "search_scope": scope,
                 "youtube_search_query": clean_kw,
                 "overall_script_query": default_overall_q,
-                "fallback_broad_query": s.get("stock_query") or default_overall_q,
+                "fallback_broad_query": s.get("stock_query") or (sc_contract_qs[-1] if sc_contract_qs else default_overall_q),
+                "storyline_search_queries": sc_contract_qs[:4] if sc_contract_qs else [clean_kw],
                 "clip_role": "PEAK",
                 "target_duration_sec": dur,
                 "camera_motion": motion_cycle[idx % len(motion_cycle)],
@@ -617,16 +632,16 @@ def _ensure_subject_anchored_decisions(
             and scene_subj_meaningful == [default_lead_toks[-1]]
         ):
             lead_ent = default_lead_ent
-        elif (set(scene_subj_meaningful) & anchor_toks) or is_llm_decomposed:
+        else:
+            # Bảo toàn tuyệt đối thực thể riêng của phân cảnh (ví dụ Entity B trong chủ đề 'Entity A vs Entity B',
+            # hoặc tên thực thể tiếng Anh khi tiêu đề gốc là PT/VI); truyền `topic=scene_subj` để không bị Entity A ghi đè!
             scene_ents = build_single_entity_stock_queries(
                 raw_queries=[scene_subj],
                 subject_entity=scene_subj,
-                topic=str(topic or ""),
+                topic=scene_subj,
                 max_words=3,
             )
-            lead_ent = scene_ents[0] if scene_ents else (scene_subj if is_llm_decomposed else default_lead_ent)
-        else:
-            lead_ent = default_lead_ent
+            lead_ent = scene_ents[0] if scene_ents else scene_subj
 
         if lead_ent and not item.get("creature_name") and not is_human_broll_tool:
             item["subject_entity"] = lead_ent
@@ -907,12 +922,18 @@ Return ONLY a valid JSON object in this exact format:
                                                     item["human_action_query"] = app_query
                                                 else:
                                                     item["smart_image_query"] = app_query
-                                            # Chỉ giữ lại các câu truy vấn đã được LLM phê duyệt (không giữ câu raw `visual_keyword` lỗi từ bước trước)
+                                            # Hợp nhất các câu truy vấn đã được LLM phê duyệt với truy vấn gốc từ SceneContract
+                                            prev_story_qs = [
+                                                str(x).strip()
+                                                for x in (item.get("storyline_search_queries") or [])
+                                                if str(x or "").strip() and not _is_non_english_or_question_title(str(x))
+                                            ]
                                             story_qs = [
                                                 q_s for q_s in dict.fromkeys([
                                                     app_query,
                                                     app_sec_query,
                                                     app_fb_query,
+                                                    *prev_story_qs,
                                                 ]) if q_s
                                             ]
                                             if story_qs:

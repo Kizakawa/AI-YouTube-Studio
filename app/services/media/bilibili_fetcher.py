@@ -920,21 +920,21 @@ def download_and_crop_bilibili_broll_clip(
                     str(output_path),
                 ]
             else:
-                fc_short = (
-                    "[0:v]crop=iw*0.86:ih*0.68:iw*0.07:ih*0.10,split=2[v_fg][v_bg];"
-                    "[v_bg]scale=1080:1920:force_original_aspect_ratio=increase:flags=fast_bilinear,"
-                    "crop=1080:1920,boxblur=24:4,eq=brightness=-0.16:saturation=1.15[bg];"
-                    "[v_fg]scale=1080:1320:force_original_aspect_ratio=increase:flags=lanczos,"
-                    "crop=1080:1320,unsharp=5:5:0.85:5:5:0.0,eq=contrast=1.04:saturation=1.06[fg];"
-                    "[bg][fg]overlay=0:(H-h)/2,setsar=1,fps=30,format=yuv420p[vout]"
+                # Chuyển nguồn ngang Bilibili sang khung dọc 9:16 full-screen (1080x1920) đồng nhất với toàn bộ Shorts,
+                # cắt bỏ 10% mép trên (logo Bilibili) + 14% mép dưới (phụ đề tiếng Trung) và KHÔNG dùng viền mờ trên/dưới!
+                vf_short_full = (
+                    "crop=iw*0.86:ih*0.76:iw*0.07:ih*0.10,"
+                    "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
+                    "crop=1080:1920,"
+                    "unsharp=5:5:0.85:5:5:0.0,eq=contrast=1.04:saturation=1.06,"
+                    "setsar=1,fps=30,format=yuv420p"
                 )
                 cmd = [
                     ffmpeg_bin, "-y", "-v", "error",
                     "-ss", f"{max(0.0, peak_start):.2f}",
                     "-t", f"{clip_dur:.2f}",
                     "-i", str(raw_m4s),
-                    "-filter_complex", fc_short,
-                    "-map", "[vout]",
+                    "-vf", vf_short_full,
                     "-an",
                     "-threads", "2",
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19",

@@ -112,19 +112,12 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
             fullpeak_to = work_dir_to / "hook_motion_001_fullpeak.mp4"
             cand_dirs_to = [work_dir_to / "hook_candidates", work_dir_to / "media" / "hook_candidates"]
             cand_mp4s_to: List[Path] = []
+            # Chỉ khôi phục các file Hook đã được Gemini Vision phê duyệt và ghi ra đường dẫn chính thức (`hook_motion_001.mp4` / `fullpeak`);
+            # TUYỆT ĐỐI KHÔNG nhặt các ứng viên thô chưa qua Vision trong `hook_candidates/*.mp4` để tránh lọt video sai chủ thể!
             for p_direct in (hook_out_to, fullpeak_to):
                 if p_direct.exists() and is_completed_clean_mp4(str(p_direct), min_size_bytes=20_000, min_duration_ms=1500):
                     cand_mp4s_to.append(p_direct)
-            for d_to in cand_dirs_to:
-                if d_to.exists():
-                    for p_c in sorted(
-                        list(d_to.glob("hook_peak_clean_*.mp4")) + list(d_to.glob("multisrc_hook_cand_*.mp4")),
-                        key=lambda x: x.stat().st_size if x.exists() else 0,
-                        reverse=True,
-                    ):
-                        if is_completed_clean_mp4(str(p_c), min_size_bytes=25_000, min_duration_ms=2000):
-                            cand_mp4s_to.append(p_c)
-            for p_try in cand_mp4s_to[:4]:
+            for p_try in cand_mp4s_to[:2]:
                 ok_m_to, m_val_to, _ = verify_hook_clip_genuine_motion(str(p_try))
                 if not ok_m_to:
                     continue
@@ -888,14 +881,17 @@ Return ONLY valid JSON:
                         )
                         ok_ms_mot, _, _ = verify_hook_clip_genuine_motion(insp_ms)
                         if ms_gate.get("passed", False) and ok_ms_mot:
+                            is_vision_curated_ms = bool(
+                                best_multi_v.get("vision_curated") or best_multi_v.get("vision_verified")
+                            )
                             peak_meta_ms = {
                                 "passed": True,
                                 "peak_offset_sec": p_off,
                                 "peak_duration_sec": p_dur,
                                 "clean_peak_path": clean_ms_path,
                                 "inspect_target": insp_ms,
-                                "pre_curated_stock": True,
-                                "vision_score": float(best_multi_v.get("vision_score") or 8.2),
+                                "pre_curated_stock": is_vision_curated_ms,
+                                "vision_score": float(best_multi_v.get("vision_score") or best_multi_v.get("curation_score") or 8.2),
                             }
                             return mb_idx, st_q_hook, multi_v_path, best_multi_v, peak_meta_ms
                 except Exception as e_b_worker:
@@ -1594,7 +1590,9 @@ Return ONLY valid JSON:
                 elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                     rotator.mark_model_rate_limited(key, model_name, status_code=resp.status_code, error_text=resp.text[:300])
             except Exception as e_vis:
-                rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e_vis))
+                _err_vis_s = str(e_vis)
+                _st_vis = 504 if ("timed out" in _err_vis_s.lower() or "timeout" in _err_vis_s.lower()) else 503
+                rotator.mark_model_rate_limited(key, model_name, status_code=_st_vis, error_text=_err_vis_s[:240])
                 logger.debug(f"[HookVideoNode] Gemini Vision Peak score error ({model_name}): {e_vis}")
 
         # Nếu cửa sổ Peak #1 của video Short chưa đạt (do đoạn đầu bị khuất/chưa xuất hiện chủ thể hoặc chưa tới đoạn cao trào):
@@ -1734,22 +1732,33 @@ Return ONLY valid JSON:
                                         elif r2.status_code in (429, 403, 404, 500, 502, 503, 504):
                                             rotator.mark_model_rate_limited(k_2, m_n2, status_code=r2.status_code, error_text=r2.text[:300])
                                     except Exception as e_v2:
-                                        rotator.mark_model_rate_limited(k_2, m_n2, status_code=503, error_text=str(e_v2))
+                                        _err_v2_s = str(e_v2)
+                                        _st_v2 = 504 if ("timed out" in _err_v2_s.lower() or "timeout" in _err_v2_s.lower()) else 503
+                                        rotator.mark_model_rate_limited(k_2, m_n2, status_code=_st_v2, error_text=_err_v2_s[:240])
                                         continue
             except Exception as e_alt2:
                 logger.debug(f"[HookVideoNode] Window #2 retry skip: {e_alt2}")
 
         if score_res is None:
             cand_title_low = str((pre_v or {}).get("title") or "").lower()
-            subj_tokens = [
-                tok
-                for tok in re.findall(
-                    r"[a-z]{4,}",
-                    f"{beat_1_subject} {beat_2_subject} {primary_entity} {canonical_subject}".lower(),
-                )
-                if tok not in {"with", "from", "that", "this", "into", "over", "under", "most", "wild", "real", "video", "short", "shorts"}
-            ]
-            if pre_v and pre_v.get("passed") and subj_tokens and any(t in cand_title_low for t in subj_tokens):
+            _stop_outage = {
+                "with", "from", "that", "this", "into", "over", "under", "most", "wild", "real",
+                "video", "short", "shorts", "caught", "camera", "footage", "giant", "deadly", "deadliest",
+            }
+            _entity_groups: List[List[str]] = []
+            for _ent_phrase in (beat_1_subject, beat_2_subject, primary_entity, canonical_subject):
+                _grp = [
+                    tok for tok in re.findall(r"[a-z]{3,}", str(_ent_phrase or "").lower())
+                    if tok not in _stop_outage
+                ]
+                if _grp:
+                    _entity_groups.append(_grp)
+            _strict_title_match = any(
+                all(t in cand_title_low for t in grp[:2])
+                for grp in _entity_groups
+                if grp
+            )
+            if pre_v and pre_v.get("passed") and _strict_title_match:
                 logger.info(
                     f"🛡️ [HookVideoGrader Outage-Rescue] Gemini Vision tạm chạm trần 429/503, nhưng '{Path(v_path).name}' "
                     f"đã vượt qua VisualCritic CV Gate (sạch phụ đề/logo, sắc nét HD) & khớp chủ thể tiêu đề ('{cand_title_low[:45]}') -> Duyệt!"
@@ -1840,14 +1849,17 @@ Return ONLY valid JSON:
             v_path = score_res["video_path"]
             scored_candidates.append(score_res)
             if score_res["passed"]:
-                m_yt_cand = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(v_path).name)
+                m_yt_cand = re.search(
+                    r"(?:yt_hook_cand_\d+|hook_peak_clean_(?:yt|ext|alt2)_\d+(?:_\d+)?)_([A-Za-z0-9_-]{11})",
+                    Path(v_path).name,
+                )
                 c_vid_id = m_yt_cand.group(1) if m_yt_cand else Path(v_path).stem
                 score_res["view_count"] = int(candidate_views.get(c_vid_id, 0))
                 passing_candidates.append(score_res)
 
     passing_candidates.sort(
         key=lambda x: (
-            bool(re.search(r"yt_hook_cand_", Path(str(x.get("video_path") or "")).name)),
+            bool(re.search(r"(?:yt_hook_cand_|hook_peak_clean_yt_)", Path(str(x.get("video_path") or "")).name)),
             float(x.get("overall_score", 0.0)),
             float(x.get("scroll_stop_score", 0.0)),
             int(x.get("view_count", 0)),
@@ -1926,7 +1938,10 @@ Return ONLY valid JSON:
             float(best_candidate.get("peak_duration_sec") or target_hook_duration_sec),
             actual_src_dur_sec,
         )
-        m_yt_hook = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(best_v_path).name)
+        m_yt_hook = re.search(
+            r"(?:yt_hook_cand_\d+|hook_peak_clean_(?:yt|ext|alt2)_\d+(?:_\d+)?)_([A-Za-z0-9_-]{11})",
+            Path(best_v_path).name,
+        )
         hook_vid_id = m_yt_hook.group(1) if m_yt_hook else ""
         hook_vid_title = candidate_titles.get(hook_vid_id) or candidate_titles.get(Path(best_v_path).stem, "")
 
@@ -2251,23 +2266,45 @@ Return ONLY valid JSON:
                                 preserve_continuous_flow=True,
                             )
                             if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
-                                ok_s1_broll, s1_broll_sh = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.5)
-                                ok_s1_commit, _ = rag.verify_and_commit_in_job_clip(
-                                    job_id=job_id,
-                                    scene_id=1,
-                                    media_path=hook_output_clip,
-                                    vid_id=s1_raw_url,
-                                    url=s1_raw_url,
-                                    title=s1_raw_title,
-                                    is_continuation_slice=False,
+                                from app.graph.evaluators.visual_critic import VisualCritic
+                                s1_broll_gate = VisualCritic.inspect_clip_before_concat(
+                                    hook_output_clip,
+                                    min_short_edge=540,
+                                    min_sharpness=11.0,
+                                    check_watermark=True,
+                                    auto_sanitize=True,
                                 )
-                                if (ok_s1_broll or s1_broll_sh >= 12.0) and ok_s1_commit:
+                                ok_s1_mot, _, _ = verify_hook_clip_genuine_motion(hook_output_clip)
+                                is_broll_verified = bool(
+                                    (best_s1_vid or {}).get("vision_curated") or (best_s1_vid or {}).get("vision_verified")
+                                ) and (s1_raw_url == str((best_s1_vid or {}).get("url") or ""))
+                                if s1_broll_gate.get("passed") and ok_s1_mot and not is_broll_verified:
+                                    from app.graph.tools.media_tools import _verify_short_clip_with_gemini_vision
+                                    is_broll_verified, _ = _verify_short_clip_with_gemini_vision(
+                                        video_path=hook_output_clip,
+                                        query=s1_primary_q,
+                                        narration=hook_narration,
+                                        topic=topic,
+                                        subject_entity=_prim_anchor_s1 or s1_plan_subject or primary_entity,
+                                        is_hook_scene=True,
+                                    )
+                                ok_s1_broll, s1_broll_sh = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.5)
+                                ok_s1_commit = False
+                                if s1_broll_gate.get("passed") and ok_s1_mot and is_broll_verified:
+                                    ok_s1_commit, _ = rag.verify_and_commit_in_job_clip(
+                                        job_id=job_id,
+                                        scene_id=1,
+                                        media_path=hook_output_clip,
+                                        vid_id=s1_raw_url,
+                                        url=s1_raw_url,
+                                        title=s1_raw_title,
+                                        is_continuation_slice=False,
+                                    )
+                                Path(s1_dl_raw).unlink(missing_ok=True)
+                                if (ok_s1_broll or s1_broll_sh >= 12.0) and ok_s1_commit and is_broll_verified:
                                     stock_hook_ok = True
                                     final_hook_visual_mode = "video"
                                     hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
-                                    is_broll_verified = bool(
-                                        (best_s1_vid or {}).get("vision_curated") or (best_s1_vid or {}).get("vision_verified")
-                                    )
                                     broll_ov_score = float(
                                         (best_s1_vid or {}).get("curation_score") or (best_s1_vid or {}).get("vision_score") or 8.0
                                     )
@@ -2278,7 +2315,7 @@ Return ONLY valid JSON:
                                         "production_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
                                         "visual_strategy": "STOCK_VIDEO",
                                         "source_url": s1_raw_url,
-                                        "hook_verified": is_broll_verified,
+                                        "hook_verified": True,
                                         "hook_overall_score": broll_ov_score,
                                         "hook_clean_score": 8.0,
                                         "hook_sharpness": broll_sh_round,
@@ -2288,7 +2325,7 @@ Return ONLY valid JSON:
                                     scene_1["media_type"] = "hook_ready_video"
                                     scene_1["production_method"] = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
                                     scene_1["source_url"] = s1_raw_url
-                                    scene_1["hook_verified"] = is_broll_verified
+                                    scene_1["hook_verified"] = True
                                     scene_1["hook_overall_score"] = broll_ov_score
                                     scene_1["hook_clean_score"] = 8.0
                                     scene_1["hook_sharpness"] = broll_sh_round
@@ -2298,17 +2335,22 @@ Return ONLY valid JSON:
                                     break
                                 else:
                                     Path(hook_output_clip).unlink(missing_ok=True)
+                            else:
+                                Path(s1_dl_raw).unlink(missing_ok=True)
             except Exception as e_s1_broll:
                 logger.debug(f"[HookVideoNode] Direct stock video rescue skip: {e_s1_broll}")
 
         # CỨU HỘ TẦNG 2 (CHỐNG RỚT VỀ ẢNH TĨNH `TRADITIONAL_SCENE_FALLBACK`):
         if not stock_hook_ok:
             try:
-                local_cand_mp4s = sorted(
-                    list(hook_cand_dir.glob("hook_peak_clean_*.mp4")) + list(hook_cand_dir.glob("s1_stock_rescue_*.mp4")),
-                    key=lambda p: p.stat().st_size if p.exists() else 0,
-                    reverse=True,
-                )
+                local_cand_mp4s = [
+                    p for p in sorted(
+                        list(hook_cand_dir.glob("hook_peak_clean_*.mp4")),
+                        key=lambda p: p.stat().st_size if p.exists() else 0,
+                        reverse=True,
+                    )
+                    if str(p.resolve()) in approved_cand_paths
+                ]
                 for lc_mp4 in local_cand_mp4s[:4]:
                     if not lc_mp4.exists() or lc_mp4.stat().st_size < 25_000:
                         continue

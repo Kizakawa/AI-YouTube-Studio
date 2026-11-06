@@ -236,8 +236,11 @@ Return ONLY valid JSON:
         from app.agents.curation.scene_context_analyzer_mixin import _VISION_SEM
         from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
         vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
-        # Đảm bảo bước gọi HTTP Gemini Vision luôn có tối thiểu 18s tính từ sau khi trích xuất xong verify_sheet.jpg
-        vision_http_deadline = max(deadline_ts or 0.0, time.monotonic() + 18.0)
+        # Tôn trọng deadline của node cha nhưng đảm bảo tối thiểu 8.5s cho clip đã tải xong trên đĩa để gọi HTTP Gemini Vision
+        if deadline_ts is not None:
+            vision_http_deadline = max(time.monotonic() + 8.5, min(deadline_ts, time.monotonic() + 18.0))
+        else:
+            vision_http_deadline = time.monotonic() + 18.0
         for model_name, api_key in rotator.iter_best_model_key_pairs(vision_models, max_total_attempts=8):
             if cancel_event is not None and cancel_event.is_set():
                 return False, 0.0, "Cancelled by parent task"
@@ -287,8 +290,8 @@ Return ONLY valid JSON:
                     rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
             except Exception as req_ex:
                 err_s_v = str(req_ex)
-                if "Read timed out" not in err_s_v and "timed out" not in err_s_v.lower():
-                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=err_s_v[:160])
+                st_code_v = 504 if ("read timed out" in err_s_v.lower() or "timed out" in err_s_v.lower()) else 503
+                rotator.mark_model_rate_limited(api_key, model_name, status_code=st_code_v, error_text=err_s_v[:160])
                 continue
             finally:
                 _VISION_SEM.release()
@@ -299,8 +302,7 @@ Return ONLY valid JSON:
         return False, 0.0, "Strict vision gate: rejected unverified clip"
 
     # Chỉ chạy đến đây khi strict_no_fallback=False và TẤT CẢ các model Gemini Vision đều bị lỗi mạng/429/503.
-    # Khi đó, kiểm tra nghiêm ngặt bằng VisualCritic (bật check_watermark=True) + đối chiếu thực thể trong tiêu đề video
-    # để không vứt bỏ oan clip YouTube thật đã tải về chỉ vì Google API tạm quá tải 503!
+    # Khi đó, kiểm tra nghiêm ngặt bằng VisualCritic (bật check_watermark=True) + đối chiếu ĐẦY ĐỦ token thực thể chính trong tiêu đề video!
     try:
         if pre_gate.get("passed", False) and video_title and not is_edit_or_ai_slop_video_metadata(video_title):
             from app.services.media.entity_detector import is_incongruent_stock_image
@@ -314,21 +316,19 @@ Return ONLY valid JSON:
                     auto_sanitize=False,
                 )
                 if wm_gate.get("passed", False):
-                    anchor_text = f"{subject_entity} {topic} {overall_script_query}".lower()
-                    anchor_tokens = {
-                        w for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", anchor_text)
+                    subj_only_tokens = [
+                        w for w in re.findall(r"[a-zA-ZÀ-ÿ]{3,}", str(subject_entity or eff_target_query or "").lower())
                         if w not in _YT_QUERY_FILLER_WORDS
-                    }
-                    title_tokens = set(re.findall(r"[a-zA-ZÀ-ÿ]{4,}", video_title.lower()))
-                    if anchor_tokens and len(anchor_tokens.intersection(title_tokens)) >= 1:
+                    ]
+                    title_tokens = set(re.findall(r"[a-zA-ZÀ-ÿ]{3,}", video_title.lower()))
+                    req_matches = min(2, len(subj_only_tokens)) if subj_only_tokens else 2
+                    if subj_only_tokens and len(set(subj_only_tokens[:2]).intersection(title_tokens)) >= req_matches:
                         cv_score = max(7.5, min(8.2, float(wm_gate.get("score", 7.6))))
-                        return True, cv_score, f"CV WatermarkGate + Title Anchor verified ({cv_score}/10 while Gemini Vision API 503/rate-limited)"
+                        return True, cv_score, f"CV WatermarkGate + Strict Entity Title Anchor verified ({cv_score}/10 while Gemini Vision API 503/rate-limited)"
     except Exception:
         pass
 
-    if strict_no_fallback:
-        return False, 0.0, "Strict vision gate: rejected unverified clip"
-    return True, 7.2, "Fallback pass"
+    return False, 0.0, "Rejected unverified clip after Vision retry exhaustion"
 
 
 def _search_youtube_flat_cached(

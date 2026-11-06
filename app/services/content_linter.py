@@ -553,8 +553,8 @@ class ScriptValidationLinter:
         if not is_valid:
             if is_long_form:
                 word_target_instruction = (
-                    "Write a smooth, full-bodied, complete 16:9 Widescreen Documentary of 360 to 650 words "
-                    "(2.5-4.5 min across 16 to 24 natural scenes, 18-26 words per body scene)."
+                    "Write a smooth, full-bodied, complete 16:9 Widescreen Documentary of 1,250 to 1,650 words "
+                    "(8-11 min across 36 to 48 natural scenes, 28-38 words per body scene)."
                 )
             else:
                 word_target_instruction = (

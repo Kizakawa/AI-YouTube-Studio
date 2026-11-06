@@ -439,11 +439,14 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             cq_s = str(cq or "").strip()
                             if cq_s and cq_s not in custom_pexels_qs:
                                 custom_pexels_qs.append(cq_s)
+                        eff_pexels_subj = subj_refine or primary_entity or clean_kw_q
+                        if critic_broll_q and (retry_count >= 2 or critic_broll_q.lower() not in eff_pexels_subj.lower()):
+                            eff_pexels_subj = f"{eff_pexels_subj} (or atmospheric B-roll: {critic_broll_q})"
                         va_ref_v = {
                             "video_format": "long" if is_lf_refine else "short",
                             "search_queries": custom_pexels_qs[:4] if custom_pexels_qs else [clean_kw_q],
-                            "subject": subj_refine or primary_entity or clean_kw_q,
-                            "core_visual_entity": subj_refine or primary_entity or clean_kw_q,
+                            "subject": eff_pexels_subj,
+                            "core_visual_entity": eff_pexels_subj,
                             "negative_cues": (
                                 [critic_fb]
                                 if (
@@ -629,9 +632,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 win_r: Optional[Dict[str, Any]] = None
                 extra_r: List[Dict[str, Any]] = []
                 race_ref_deadline = (
-                    min(deadline_ts - 8.0, time.monotonic() + 54.0)
-                    if deadline_ts is not None
-                    else (time.monotonic() + 54.0)
+                    min(deadline_ts - 18.0, time.monotonic() + 44.0)
+                    if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 24.0)
+                    else (min(deadline_ts - 8.0, time.monotonic() + 44.0) if deadline_ts is not None else (time.monotonic() + 44.0))
                 )
 
                 while pending_r and win_r is None:
@@ -726,7 +729,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         topic=state.get("topic", ""),
                         narration=narr or state.get("topic", ""),
                         overall_script_query=overall_refine_q,
-                        effective_scope="SCENE_SPECIFIC" if critic_sug_q else "SCRIPT_OVERALL",
+                        effective_scope="SCRIPT_OVERALL" if retry_count >= 2 else ("SCENE_SPECIFIC" if critic_sug_q else "SCRIPT_OVERALL"),
                         output_path=out_bili_open,
                         target_duration_sec=sc_dur_sec,
                         clip_role="HOOK" if scene_id == 1 else "PEAK",
@@ -747,17 +750,24 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         logger.info(f"Scene {scene_id}: 🎬 [Mandatory >85% Video Bilibili Documentary] Đã nạp Video tư liệu kiểm định Vision cho '{clean_kw_q}'")
 
                 # LUẬT THÉP > 85% THỜI LƯỢNG VIDEO:
-                # Tuyệt đối CẤM hạ cấp xuống Ảnh tĩnh Google (Tier 3) nếu tổng thời lượng các cảnh Video thật còn lại <= 85.0%
-                # (tức phải có tối thiểu 6/7 cảnh là video thật)!
+                # Tuyệt đối CẤM hạ cấp một cảnh ĐANG LÀ VIDEO xuống Ảnh tĩnh Google nếu tổng thời lượng các cảnh Video thật còn lại <= 85.0%.
+                # NHƯNG nếu cảnh hiện tại ĐANG LÀ MÀN HÌNH XANH RỖNG (_graphic.png / GRAPHIC_FALLBACK / mất file) và mọi tầng Video đều hết ứng viên,
+                # bắt buộc thay màn hình xanh rỗng bằng Ảnh thật Google HD để không bao giờ lọt placeholder rỗng vào video xuất bản!
+                is_blank_placeholder = (
+                    not existing_mp
+                    or not Path(existing_mp).exists()
+                    or existing_mp.lower().endswith("_graphic.png")
+                    or existing_pm in ("GRAPHIC_FALLBACK", "PLACEHOLDER")
+                )
                 can_downgrade_to_image = (
                     scene_id not in mandatory_video_refine_sids
                     and video_floor_satisfied_without_scene
                 )
-                if not replaced and scene_id not in (1, 2) and can_downgrade_to_image:
+                if not replaced and scene_id not in (1, 2) and (can_downgrade_to_image or is_blank_placeholder):
                     out_resc_img = str(media_dir / f"scene_{scene_id:03d}_refined_gimg_rescue_r{retry_count}.jpg")
                     g_res = await asyncio.to_thread(
                         execute_google_cinematic_image_sync,
-                        smart_query=clean_kw_q or overall_refine_q,
+                        smart_query=clean_kw_q or critic_broll_q or overall_refine_q,
                         output_path=out_resc_img,
                         narration=narr,
                         topic=state.get("topic", ""),

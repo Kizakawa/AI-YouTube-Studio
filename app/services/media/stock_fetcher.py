@@ -1158,66 +1158,93 @@ class StockFetcher:
                 min_vid_score = 7.2 if is_hook_vid else 6.5
                 if winner and score >= min_vid_score and not should_ai:
                     from app.services.media.media_history import extract_media_identity
-                    with _stock_video_claim_lock:
-                        live_used = set(used)
-                        if used_urls is not None:
-                            live_used.update(used_urls)
-                        formatted_winner = self.format_video_candidate(winner, query=query, used=live_used)
+                    formatted_winner = None
+                    rem_cands_pool = list(collected_candidates)
+                    for _claim_retry in range(2):
+                        with _stock_video_claim_lock:
+                            live_used = set(used)
+                            if used_urls is not None:
+                                live_used.update(used_urls)
+                            formatted_winner = self.format_video_candidate(winner, query=query, used=live_used)
+                            if formatted_winner and formatted_winner.get("url"):
+                                cand_win_urls = [
+                                    formatted_winner["url"],
+                                    *(formatted_winner.get("_vision_alternates") or []),
+                                ]
+                                chosen_win_url = None
+                                rem_alt_urls = []
+                                for cw_u in cand_win_urls:
+                                    if not cw_u:
+                                        continue
+                                    if chosen_win_url is None and not is_media_already_used(cw_u, live_used):
+                                        chosen_win_url = cw_u
+                                    elif cw_u != chosen_win_url and not is_media_already_used(cw_u, live_used):
+                                        rem_alt_urls.append(cw_u)
+                                if chosen_win_url:
+                                    win_creator_k = str(
+                                        formatted_winner.get("creator_key") or winner.get("creator_key") or ""
+                                    ).strip()
+                                    if (
+                                        chosen_win_url == winner.get("url")
+                                        and win_creator_k
+                                        and win_creator_k in live_used
+                                    ):
+                                        chosen_win_url = rem_alt_urls.pop(0) if rem_alt_urls else None
+                                if chosen_win_url:
+                                    is_primary_win = (chosen_win_url == winner.get("url"))
+                                    formatted_winner["url"] = chosen_win_url
+                                    formatted_winner["_vision_alternates"] = rem_alt_urls
+                                    formatted_winner["vision_curated"] = (rationale != "Rule-based curation passed")
+                                    formatted_winner["vision_score"] = round(float(score), 2)
+                                    ids = extract_media_identity(chosen_win_url)
+                                    if is_primary_win and formatted_winner.get("web_url"):
+                                        ids.update(extract_media_identity(str(formatted_winner["web_url"])))
+                                    win_creator_k = str(
+                                        formatted_winner.get("creator_key") or winner.get("creator_key") or ""
+                                    ).strip()
+                                    if is_primary_win and win_creator_k:
+                                        ids.add(win_creator_k)
+                                    used.update(ids)
+                                    used.add(chosen_win_url)
+                                    if used_urls is not None:
+                                        used_urls.update(ids)
+                                        used_urls.add(chosen_win_url)
+                                else:
+                                    formatted_winner = None
                         if formatted_winner and formatted_winner.get("url"):
-                            cand_win_urls = [
-                                formatted_winner["url"],
-                                *(formatted_winner.get("_vision_alternates") or []),
+                            record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
+                            return formatted_winner
+                        # Nếu winner vừa bị luồng song song khác claim mất, loại bỏ các URL đã dùng và thử chọn ứng viên kế tiếp trong pool
+                        if _claim_retry == 0 and not self._should_abort(cancel_event, deadline_ts, min_remaining_sec=4.0):
+                            claimed_win_u = str(winner.get("url") or "")
+                            rem_cands_pool = [
+                                c for c in rem_cands_pool
+                                if str(c.get("url") or "") != claimed_win_u
+                                and not is_media_already_used(str(c.get("url") or ""), live_used)
                             ]
-                            chosen_win_url = None
-                            rem_alt_urls = []
-                            for cw_u in cand_win_urls:
-                                if not cw_u:
-                                    continue
-                                if chosen_win_url is None and not is_media_already_used(cw_u, live_used):
-                                    chosen_win_url = cw_u
-                                elif cw_u != chosen_win_url and not is_media_already_used(cw_u, live_used):
-                                    rem_alt_urls.append(cw_u)
-                            if chosen_win_url:
-                                win_creator_k = str(
-                                    formatted_winner.get("creator_key") or winner.get("creator_key") or ""
-                                ).strip()
-                                if (
-                                    chosen_win_url == winner.get("url")
-                                    and win_creator_k
-                                    and win_creator_k in live_used
-                                ):
-                                    chosen_win_url = rem_alt_urls.pop(0) if rem_alt_urls else None
-                            if chosen_win_url:
-                                is_primary_win = (chosen_win_url == winner.get("url"))
-                                formatted_winner["url"] = chosen_win_url
-                                formatted_winner["_vision_alternates"] = rem_alt_urls
-                                formatted_winner["vision_curated"] = (rationale != "Rule-based curation passed")
-                                formatted_winner["vision_score"] = round(float(score), 2)
-                                ids = extract_media_identity(chosen_win_url)
-                                if is_primary_win and formatted_winner.get("web_url"):
-                                    ids.update(extract_media_identity(str(formatted_winner["web_url"])))
-                                win_creator_k = str(
-                                    formatted_winner.get("creator_key") or winner.get("creator_key") or ""
-                                ).strip()
-                                if is_primary_win and win_creator_k:
-                                    ids.add(win_creator_k)
-                                used.update(ids)
-                                used.add(chosen_win_url)
-                                if used_urls is not None:
-                                    used_urls.update(ids)
-                                    used_urls.add(chosen_win_url)
+                            if rem_cands_pool:
+                                winner, score, rationale, should_ai = curator.curate_candidate_videos(
+                                    candidates=rem_cands_pool,
+                                    visual_analysis=v_analysis,
+                                    narration=narration or query,
+                                    used_urls=live_used,
+                                    topic=topic or query,
+                                )
+                                if not (winner and score >= min_vid_score and not should_ai):
+                                    break
                             else:
-                                formatted_winner = None
-                    if formatted_winner and formatted_winner.get("url"):
-                        record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
-                        return formatted_winner
+                                break
                 if not is_hook_vid:
                     est_res = _try_establishing_pass(f"LLM Link & Vision Auditor từ chối clip cụ thể ({str(rationale)[:80]})")
                     if est_res:
                         return est_res
+                reject_detail = (
+                    f"score={score:.1f} < {min_vid_score}"
+                    if score < min_vid_score
+                    else ("should_fallback_to_ai=True" if should_ai else "ứng viên đạt chuẩn đã được luồng song song khác claim")
+                )
                 logger.info(
-                    f"[StockFetcher] 🚫 LLM Link & Vision Auditor từ chối các link stock video không khớp chủ thể "
-                    f"(score={score:.1f} < {min_vid_score}, {rationale}) → Bỏ qua, không chọn ngẫu nhiên!"
+                    f"[StockFetcher] 🚫 Không chọn được stock video độc lập ({reject_detail}, {rationale}) → Bỏ qua, không chọn ngẫu nhiên!"
                 )
                 return None
             except Exception as e:
