@@ -279,9 +279,6 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 return st_res
 
     # 2. Nhánh Bộ 3-4 Ảnh Chân Dung Nghệ Thuật Pexels / Pixabay HD Sạch Chữ 100% (`clean_stock_only=True`)
-    # [RULE 2]: Tuyệt đối CẤM hạ cấp Cảnh 1 & Cảnh 2 (5-7s đầu tiên) xuống Ảnh tĩnh!
-    if is_hook_scene or int(scene_id or 0) in (1, 2):
-        return None
     img_out = (
         output_path
         if output_path.lower().endswith((".jpg", ".jpeg", ".png"))

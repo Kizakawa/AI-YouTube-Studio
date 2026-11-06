@@ -826,92 +826,95 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     used_pool_urls.add(str(cand_hk_url))
                                     continue
                                 raw_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst_raw.mp4")
+                                cand_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst_cand.mp4")
                                 vid_hk_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst.mp4")
-                                await asyncio.to_thread(media_agent.download_file, str(cand_hk_url), raw_hk_out)
-                                if px_cancel_ev.is_set():
-                                    Path(raw_hk_out).unlink(missing_ok=True)
-                                    rag_vf.release_in_job_video_claim(
-                                        job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
-                                    )
-                                    return None
-                                if Path(raw_hk_out).exists() and Path(raw_hk_out).stat().st_size > 15_000:
-                                    await asyncio.to_thread(
-                                        trim_video,
-                                        input_path=raw_hk_out,
-                                        duration_seconds=max(3.0, dur + 0.25),
-                                        output_path=vid_hk_out,
-                                        width=1920 if is_long_form else 1080,
-                                        height=1080 if is_long_form else 1920,
-                                        fps=30,
-                                        is_scifi=is_scifi_val,
-                                        niche=current_niche,
-                                        apply_grading=True,
-                                        is_hook_scene=False,
-                                        fair_use_transform=True,
-                                    )
-                                    Path(raw_hk_out).unlink(missing_ok=True)
-                                    if Path(vid_hk_out).exists() and Path(vid_hk_out).stat().st_size > 15_000:
-                                        from app.graph.evaluators.visual_critic import VisualCritic
-                                        from app.graph.nodes.media.hook_video_helpers import verify_hook_clip_genuine_motion
-                                        from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
-                                        vf_cv_gate = VisualCritic.inspect_clip_before_concat(
-                                            vid_hk_out, min_short_edge=540, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
+                                try:
+                                    await asyncio.to_thread(media_agent.download_file, str(cand_hk_url), raw_hk_out)
+                                    if px_cancel_ev.is_set():
+                                        rag_vf.release_in_job_video_claim(
+                                            job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
                                         )
-                                        ok_vf_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, vid_hk_out)
-                                        is_vf_vis_ok = False
-                                        if vf_cv_gate.get("passed", False) and ok_vf_mot:
-                                            is_vf_vis_ok, _, _ = await asyncio.to_thread(
-                                                _verify_short_clip_with_gemini_vision,
-                                                vid_hk_out,
-                                                state.get("topic", ""),
-                                                scene.narration,
-                                                subj_ent,
-                                                overall_q,
-                                                sc_scope,
-                                                vf_title,
-                                                False,
-                                                vf_q,
-                                                True,
-                                                px_cancel_ev,
-                                                max(vf_deadline, time.monotonic() + 12.0),
+                                        return None
+                                    if Path(raw_hk_out).exists() and Path(raw_hk_out).stat().st_size > 15_000:
+                                        await asyncio.to_thread(
+                                            trim_video,
+                                            input_path=raw_hk_out,
+                                            duration_seconds=max(3.0, dur + 0.25),
+                                            output_path=cand_hk_out,
+                                            width=1920 if is_long_form else 1080,
+                                            height=1080 if is_long_form else 1920,
+                                            fps=30,
+                                            is_scifi=is_scifi_val,
+                                            niche=current_niche,
+                                            apply_grading=True,
+                                            is_hook_scene=False,
+                                            fair_use_transform=True,
+                                        )
+                                        Path(raw_hk_out).unlink(missing_ok=True)
+                                        if Path(cand_hk_out).exists() and Path(cand_hk_out).stat().st_size > 15_000:
+                                            from app.graph.evaluators.visual_critic import VisualCritic
+                                            from app.graph.nodes.media.hook_video_helpers import verify_hook_clip_genuine_motion
+                                            from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
+                                            vf_cv_gate = VisualCritic.inspect_clip_before_concat(
+                                                cand_hk_out, min_short_edge=540, min_sharpness=5.2, check_watermark=False, allow_snow=True, auto_sanitize=True
                                             )
-                                        ok_vf_sig = False
-                                        if vf_cv_gate.get("passed", False) and ok_vf_mot and is_vf_vis_ok:
-                                            ok_vf_sig, _ = rag_vf.verify_and_commit_in_job_clip(
-                                                job_id=job_id,
-                                                scene_id=scene.scene_id,
-                                                media_path=vid_hk_out,
-                                                vid_id=str(cand_hk_url),
-                                                url=str(cand_hk_url),
-                                                title=vf_title,
-                                            )
-                                        used_pool_urls.add(str(cand_hk_url))
-                                        if ok_vf_sig and is_vf_vis_ok:
-                                            logger.info(
-                                                f"Scene {scene.scene_id}: 🎬 [Parallel Pexels+YT -> Pexels Won] "
-                                                f"Đã nạp Video B-Roll Pexels chuyển động thật cho '{vf_q}'"
-                                            )
-                                            return {
-                                                "branch": "pexels",
-                                                "media_path": vid_hk_out,
-                                                "media_type": "video",
-                                                "prod_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
-                                                "chosen_strategy": "STOCK_VIDEO",
-                                                "source_url": str(cand_hk_url),
-                                                "vid_id": str(cand_hk_url),
-                                                "title": vf_title,
-                                                "rationale": f"Video-First Stock Video ({vf_title[:45]})",
-                                            }
-                                        else:
-                                            Path(vid_hk_out).unlink(missing_ok=True)
-                                            rag_vf.release_in_job_video_claim(
-                                                job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
-                                            )
-                                else:
+                                            ok_vf_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, cand_hk_out)
+                                            is_vf_vis_ok = bool(best_hk_vid.get("vision_curated")) and (str(cand_hk_url) == str(best_hk_vid.get("url") or ""))
+                                            if vf_cv_gate.get("passed", False) and ok_vf_mot and not is_vf_vis_ok:
+                                                is_vf_vis_ok, _, _ = await asyncio.to_thread(
+                                                    _verify_short_clip_with_gemini_vision,
+                                                    video_path=cand_hk_out,
+                                                    topic=state.get("topic", ""),
+                                                    narration=scene.narration,
+                                                    subject_entity=subj_ent,
+                                                    overall_script_query=overall_q,
+                                                    search_scope=sc_scope,
+                                                    video_title=vf_title,
+                                                    allow_3d_cgi_monster=False,
+                                                    strict_no_fallback=True,
+                                                    cancel_event=px_cancel_ev,
+                                                    deadline_ts=max(vf_deadline, time.monotonic() + 12.0),
+                                                    target_visual_query=vf_q,
+                                                )
+                                            ok_vf_sig = False
+                                            if vf_cv_gate.get("passed", False) and ok_vf_mot and is_vf_vis_ok:
+                                                ok_vf_sig, _ = rag_vf.verify_and_commit_in_job_clip(
+                                                    job_id=job_id,
+                                                    scene_id=scene.scene_id,
+                                                    media_path=cand_hk_out,
+                                                    vid_id=str(cand_hk_url),
+                                                    url=str(cand_hk_url),
+                                                    title=vf_title,
+                                                )
+                                            used_pool_urls.add(str(cand_hk_url))
+                                            if ok_vf_sig and is_vf_vis_ok:
+                                                os.replace(cand_hk_out, vid_hk_out)
+                                                logger.info(
+                                                    f"Scene {scene.scene_id}: 🎬 [Parallel Pexels+YT -> Pexels Won] "
+                                                    f"Đã nạp Video B-Roll Pexels chuyển động thật cho '{vf_q}'"
+                                                )
+                                                return {
+                                                    "branch": "pexels",
+                                                    "media_path": vid_hk_out,
+                                                    "media_type": "video",
+                                                    "prod_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
+                                                    "chosen_strategy": "STOCK_VIDEO",
+                                                    "source_url": str(cand_hk_url),
+                                                    "vid_id": str(cand_hk_url),
+                                                    "title": vf_title,
+                                                    "rationale": f"Video-First Stock Video ({vf_title[:45]})",
+                                                }
+                                            else:
+                                                rag_vf.release_in_job_video_claim(
+                                                    job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
+                                                )
+                                    else:
+                                        rag_vf.release_in_job_video_claim(
+                                            job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
+                                        )
+                                finally:
                                     Path(raw_hk_out).unlink(missing_ok=True)
-                                    rag_vf.release_in_job_video_claim(
-                                        job_id=job_id, vid_id=str(cand_hk_url), url=str(cand_hk_url), title=vf_title, scene_id=scene.scene_id
-                                    )
+                                    Path(cand_hk_out).unlink(missing_ok=True)
                         except Exception as hk_vf_err:
                             logger.debug(f"Scene {scene.scene_id}: Parallel Pexels lookup fallback: {hk_vf_err}")
                         return None
@@ -926,11 +929,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         try:
                             _prefer_non_yt_node = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
                             _yt_budget_sec = (
-                                50.0
+                                68.0
                                 if scene.scene_id == 1
-                                else (44.0 if _prefer_non_yt_node else 46.0)
+                                else (60.0 if _prefer_non_yt_node else 64.0)
                             )
-                            _reserve_tail_sec = 10.0 if scene.scene_id == 1 else 12.0
+                            _reserve_tail_sec = 8.0 if scene.scene_id == 1 else 9.0
                             yt_sub_deadline = (
                                 min(deadline_ts - _reserve_tail_sec, time.monotonic() + _yt_budget_sec)
                                 if deadline_ts is not None
@@ -981,7 +984,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     ),
                                 }
                         except Exception as yt_p_err:
-                            logger.debug(f"Scene {scene.scene_id}: Parallel YouTube lookup fallback: {yt_p_err}")
+                            logger.warning(f"Scene {scene.scene_id}: Parallel YouTube lookup error: {yt_p_err}")
                         return None
 
                     async def _run_bilibili_parallel_branch() -> Optional[Dict[str, Any]]:
@@ -991,9 +994,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         try:
                             from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
                             bili_sub_deadline = (
-                                min(deadline_ts - 10.0, time.monotonic() + 50.0)
+                                min(deadline_ts - 8.0, time.monotonic() + 64.0)
                                 if deadline_ts is not None
-                                else (time.monotonic() + 50.0)
+                                else (time.monotonic() + 64.0)
                             )
                             if bili_sub_deadline <= time.monotonic() + 6.0:
                                 return None
@@ -1039,7 +1042,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     "rationale": f"Bilibili Documentary Parallel Video: {str(bili_res.get('title') or yt_q)[:45]}",
                                 }
                         except Exception as bili_p_err:
-                            logger.debug(f"Scene {scene.scene_id}: Parallel Bilibili lookup fallback: {bili_p_err}")
+                            logger.warning(f"Scene {scene.scene_id}: Parallel Bilibili lookup error: {bili_p_err}")
                         return None
 
                     t_px = asyncio.create_task(_run_pexels_parallel_branch())
@@ -1048,9 +1051,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     pending_tasks = {t_px, t_yt, t_bili}
                     win_res: Optional[Dict[str, Any]] = None
                     extra_results: List[Dict[str, Any]] = []
-                    race_max_sec = 56.0 if scene.scene_id == 1 else 52.0
+                    race_max_sec = 70.0 if scene.scene_id == 1 else 66.0
                     race_deadline_ts = (
-                        min(deadline_ts - 14.0, time.monotonic() + race_max_sec)
+                        min(deadline_ts - 8.0, time.monotonic() + race_max_sec)
                         if deadline_ts is not None
                         else (time.monotonic() + race_max_sec)
                     )
@@ -1293,24 +1296,24 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                         from app.graph.evaluators.visual_critic import VisualCritic
                                         from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
                                         body_gate = VisualCritic.inspect_clip_before_concat(
-                                            vid_out, min_short_edge=540, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
+                                            vid_out, min_short_edge=540, min_sharpness=5.2, check_watermark=False, allow_snow=True, auto_sanitize=True
                                         )
                                         is_body_vis_ok = bool(best_vid.get("vision_curated"))
                                         if body_gate.get("passed", False) and not is_body_vis_ok:
                                             is_body_vis_ok, _, _ = await asyncio.to_thread(
                                                 _verify_short_clip_with_gemini_vision,
-                                                vid_out,
-                                                state.get("topic", ""),
-                                                scene.narration,
-                                                subj_ent,
-                                                overall_q,
-                                                sc_scope,
-                                                str(best_vid.get("title") or img_q),
-                                                False,
-                                                img_q,
-                                                True,
-                                                cancel_event,
-                                                max(deadline_ts or 0.0, time.monotonic() + 12.0),
+                                                video_path=vid_out,
+                                                topic=state.get("topic", ""),
+                                                narration=scene.narration,
+                                                subject_entity=subj_ent,
+                                                overall_script_query=overall_q,
+                                                search_scope=sc_scope,
+                                                video_title=str(best_vid.get("title") or img_q),
+                                                allow_3d_cgi_monster=False,
+                                                strict_no_fallback=True,
+                                                cancel_event=cancel_event,
+                                                deadline_ts=max(deadline_ts or 0.0, time.monotonic() + 12.0),
+                                                target_visual_query=img_q,
                                             )
                                         ok_b_sig, _ = rag.verify_and_commit_in_job_clip(
                                             job_id=job_id,
@@ -1378,24 +1381,24 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     from app.graph.evaluators.visual_critic import VisualCritic
                                     from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
                                     hk2_gate = VisualCritic.inspect_clip_before_concat(
-                                        vid_hk_out, min_short_edge=540, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
+                                        vid_hk_out, min_short_edge=540, min_sharpness=5.2, check_watermark=False, allow_snow=True, auto_sanitize=True
                                     )
                                     is_hk2_vis_ok = bool(best_hk_vid.get("vision_curated"))
                                     if hk2_gate.get("passed", False) and not is_hk2_vis_ok:
                                         is_hk2_vis_ok, _, _ = await asyncio.to_thread(
                                             _verify_short_clip_with_gemini_vision,
-                                            vid_hk_out,
-                                            state.get("topic", ""),
-                                            scene.narration,
-                                            subj_ent,
-                                            overall_q,
-                                            sc_scope,
-                                            str(best_hk_vid.get("title") or img_q),
-                                            False,
-                                            img_q,
-                                            True,
-                                            cancel_event,
-                                            max(deadline_ts or 0.0, time.monotonic() + 12.0),
+                                            video_path=vid_hk_out,
+                                            topic=state.get("topic", ""),
+                                            narration=scene.narration,
+                                            subject_entity=subj_ent,
+                                            overall_script_query=overall_q,
+                                            search_scope=sc_scope,
+                                            video_title=str(best_hk_vid.get("title") or img_q),
+                                            allow_3d_cgi_monster=False,
+                                            strict_no_fallback=True,
+                                            cancel_event=cancel_event,
+                                            deadline_ts=max(deadline_ts or 0.0, time.monotonic() + 12.0),
+                                            target_visual_query=img_q,
                                         )
                                     ok_hk2_sig, _ = rag.verify_and_commit_in_job_clip(
                                         job_id=job_id,

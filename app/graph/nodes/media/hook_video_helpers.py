@@ -410,12 +410,12 @@ def verify_hook_clip_genuine_motion(
                 raw_d = float(ImageStat.Stat(diff_im).mean[0])
                 best_d = raw_d
                 best_diff_im = diff_im
-                for z_fac in (0.94, 0.96, 0.975, 0.988, 1.0, 1.012, 1.025, 1.04, 1.06):
+                for z_fac in (0.95, 0.98, 1.0, 1.02, 1.05):
                     zw, zh = int(round(w * z_fac)), int(round(h * z_fac))
                     ar = a.resize((zw, zh), Image.Resampling.BILINEAR)
                     ox, oy = (zw - w) // 2, (zh - h) // 2
-                    for dx in range(-14, 15, 2):
-                        for dy in range(-14, 15, 2):
+                    for dx in range(-12, 13, 4):
+                        for dy in range(-12, 13, 4):
                             bx0, by0 = ox + mx + dx, oy + my + dy
                             bx1, by1 = ox + w - mx + dx, oy + h - my + dy
                             if 0 <= bx0 and 0 <= by0 and bx1 <= zw and by1 <= zh:

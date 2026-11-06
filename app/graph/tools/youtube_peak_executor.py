@@ -19,7 +19,7 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 # Điều tiết tối đa 4 luồng tải yt-dlp vật lý cùng lúc để tránh YouTube CDN bóp băng thông mà không gây nghẽn hàng đợi
-_yt_download_sem = threading.BoundedSemaphore(4)
+_yt_download_sem = threading.BoundedSemaphore(8)
 from app.graph.tools.tool_schemas import (
     _yt_url_lock,
     _YT_QUERY_FILLER_WORDS,
@@ -63,6 +63,7 @@ def execute_youtube_short_peak_clone_sync(
     allow_3d_cgi_monster: bool = False,
     skip_youtube_search: bool = False,
     skip_stock_fallback: bool = False,
+    allow_bili_fallback: bool = True,
     storyline_queries: Optional[List[str]] = None,
     cancel_event: Optional[threading.Event] = None,
     deadline_ts: Optional[float] = None,
@@ -75,25 +76,29 @@ def execute_youtube_short_peak_clone_sync(
     - Mỗi phân cảnh bắt buộc sử dụng một nguồn video độc lập, tuyệt đối không cắt/tái sử dụng một clip cho nhiều phân cảnh trong cùng 1 video.
     """
     t_fn_start = time.monotonic()
-    default_budget_sec = 72.0 if (clip_role or "").upper() == "HOOK" else 68.0
+    default_budget_sec = 74.0 if (clip_role or "").upper() == "HOOK" else 70.0
     deadline_ts = (
         min(deadline_ts, t_fn_start + default_budget_sec)
         if deadline_ts is not None
         else (t_fn_start + default_budget_sec)
     )
     # Tách ngân sách Tầng 1 (YouTube) và Tầng 2/3 (Pexels/Pixabay/Bilibili) tỷ lệ thuận theo ngân sách thực tế:
-    # Ngay cả khi caller đã quét Pexels trước đó (skip_stock_fallback=True), vẫn giữ lại 10–14s cho Tầng 3 Bilibili Documentary Safe-Crop!
+    # Khi chạy trong nhánh song song (`skip_stock_fallback=True` và `allow_bili_fallback=False`), dành 100% thời lượng cho Tầng 1 YouTube!
     total_avail_sec = max(8.0, deadline_ts - t_fn_start)
-    yt_tier1_budget_sec = 42.0 if (clip_role or "").upper() == "HOOK" else 38.0
-    if skip_stock_fallback:
-        reserve_for_tier2_sec = 9.0 if total_avail_sec >= 24.0 else max(5.0, total_avail_sec * 0.22)
-    elif total_avail_sec >= 42.0:
-        reserve_for_tier2_sec = 14.0
+    if skip_stock_fallback and not allow_bili_fallback:
+        yt_tier1_budget_sec = 68.0 if (clip_role or "").upper() == "HOOK" else 64.0
+        reserve_for_tier2_sec = 0.0
     else:
-        reserve_for_tier2_sec = min(9.0, max(5.0, total_avail_sec * 0.24))
+        yt_tier1_budget_sec = 46.0 if (clip_role or "").upper() == "HOOK" else 42.0
+        if skip_stock_fallback:
+            reserve_for_tier2_sec = 9.0 if total_avail_sec >= 24.0 else max(5.0, total_avail_sec * 0.22)
+        elif total_avail_sec >= 42.0:
+            reserve_for_tier2_sec = 14.0
+        else:
+            reserve_for_tier2_sec = min(9.0, max(5.0, total_avail_sec * 0.24))
     yt_tier1_deadline = min(deadline_ts - reserve_for_tier2_sec, t_fn_start + yt_tier1_budget_sec)
     if yt_tier1_deadline <= t_fn_start + 8.0:
-        yt_tier1_deadline = max(t_fn_start + 8.0, deadline_ts - 4.0)
+        yt_tier1_deadline = max(t_fn_start + 8.0, deadline_ts - 2.0)
 
     def _is_cancelled() -> bool:
         return cancel_event is not None and cancel_event.is_set()
@@ -515,27 +520,30 @@ def execute_youtube_short_peak_clone_sync(
                         )
                         # Chạy Subtitle-Safe Reframe Rescue ngay khi ứng viên đã tải xong trên đĩa, đúng chủ thể thật nhưng bị từ chối chỉ vì dòng phụ đề sát mép dưới/trên
                         # (tuyệt đối không cứu video sở thú, sai loài, AI/CGI hoặc talking head).
-                        if not passed_vis and claimed_probes >= 1 and not _is_cancelled() and _remaining_sec() > 7.5:
+                        if not passed_vis and not _is_cancelled():
                             reason_low = (vis_reason or "").lower()
                             hard_reject_tokens = (
                                 "zoo", "captive", "enclosure", "fence", "cage", "wrong",
                                 "species", "jesses", "strap", "anklet", "falconry", "animated", "cartoon",
                                 "talking", "presenter", "ai-generated", "cgi", "synthetic", "illustration",
-                                "static", "photograph", "slideshow", "ken-burns", "frozen",
+                                "static", "photograph", "slideshow", "ken-burns", "frozen", "lego", "toy",
                             )
                             if (
-                                any(k in reason_low for k in ("subtitle", "caption", "bottom", "top", "text", "burned-in", "overlay", "banner"))
+                                any(k in reason_low for k in ("subtitle", "caption", "bottom", "top", "text", "burned-in", "overlay", "banner", "watermark", "logo"))
                                 and not any(bad in reason_low for bad in hard_reject_tokens)
                             ):
                                 rescue_crop_path = str(Path(tmp_dir) / "rescue_safecrop.mp4")
                                 if any(k in reason_low for k in ("top", "banner", "header")):
-                                    y_crop_expr = "ih*0.20"
+                                    y_crop_expr = "ih*0.28"
+                                    h_crop_expr = "ih*0.56"
                                 elif "bottom" in reason_low:
-                                    y_crop_expr = "ih*0.06"
+                                    y_crop_expr = "ih*0.08"
+                                    h_crop_expr = "ih*0.64"
                                 else:
-                                    y_crop_expr = "ih*0.14"
+                                    y_crop_expr = "ih*0.18"
+                                    h_crop_expr = "ih*0.60"
                                 vf_safecrop = (
-                                    f"crop=iw*0.74:ih*0.72:iw*0.13:{y_crop_expr},"
+                                    f"crop=iw*0.74:{h_crop_expr}:iw*0.13:{y_crop_expr},"
                                     "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
                                     "crop=1080:1920:(iw-1080)/2:(ih-1920)/2,"
                                     "eq=contrast=1.06:saturation=1.10:brightness=0.01,"
@@ -564,11 +572,7 @@ def execute_youtube_short_peak_clone_sync(
                                         allow_3d_cgi_monster=allow_3d_cgi_monster,
                                         strict_no_fallback=True,
                                         cancel_event=cancel_event,
-                                        deadline_ts=(
-                                            min(deadline_ts, max(yt_tier1_deadline, time.monotonic() + 9.0))
-                                            if deadline_ts is not None
-                                            else max(yt_tier1_deadline, time.monotonic() + 9.0)
-                                        ),
+                                        deadline_ts=time.monotonic() + 11.5,
                                         target_visual_query=target_vq,
                                     )
                                     if passed_sc:

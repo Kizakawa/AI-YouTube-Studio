@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
-_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "24") or 24)))
+_VISION_SEM = _threading.BoundedSemaphore(max(16, int(_os.getenv("VISION_CONCURRENCY", "24") or 24)))
 
 _SCENE_CANCEL_CTX: _contextvars.ContextVar[Optional[_threading.Event]] = _contextvars.ContextVar(
     "_SCENE_CANCEL_CTX", default=None
@@ -266,7 +266,7 @@ class SceneContextAnalyzerMixin:
                 "contents": [{"parts": parts}],
                 "generationConfig": gen_cfg,
             }
-            sem_wait = min(9.5, max(0.8, remaining_wall - 2.5))
+            sem_wait = min(14.0, max(2.0, remaining_wall - 2.0))
             if not _VISION_SEM.acquire(timeout=sem_wait):
                 logger.warning(f"[VisualCurationAgent] Quá hạn chờ _VISION_SEM ({sem_wait:.1f}s) -> thoát sớm tránh dồn hàng đợi.")
                 break

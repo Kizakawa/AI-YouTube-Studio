@@ -129,7 +129,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 str(p_cand),
                 min_short_edge=720,
                 min_sharpness=12.0 if scene_id == 1 else 5.8,
-                check_watermark=True,
+                check_watermark=False,
                 auto_sanitize=True,
             )
             if not gate.get("passed", False):
@@ -492,87 +492,90 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 used_refine_urls.add(cand_url)
                                 continue
                             raw_v = str(media_dir / f"scene_{scene_id:03d}_refined_raw_r{retry_count}.mp4")
+                            cand_v = str(media_dir / f"scene_{scene_id:03d}_refined_cand_r{retry_count}.mp4")
                             out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video_r{retry_count}.mp4")
-                            await asyncio.to_thread(media_agent.download_file, cand_url, raw_v)
-                            if px_ref_ev.is_set():
-                                Path(raw_v).unlink(missing_ok=True)
-                                rag_ref.release_in_job_video_claim(
-                                    job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
-                                )
-                                return None
-                            if Path(raw_v).exists() and Path(raw_v).stat().st_size > 15_000:
-                                await asyncio.to_thread(
-                                    trim_video,
-                                    input_path=raw_v,
-                                    duration_seconds=sc_dur_sec,
-                                    output_path=out_v,
-                                    width=w_ref,
-                                    height=h_ref,
-                                    fps=30,
-                                    is_scifi=is_scifi_val,
-                                    niche=current_niche,
-                                    apply_grading=True,
-                                    is_hook_scene=(scene_id == 1),
-                                    fair_use_transform=True,
-                                    start_offset_sec=0.0,
-                                    preserve_continuous_flow=True,
-                                )
-                                Path(raw_v).unlink(missing_ok=True)
-                                if Path(out_v).exists() and Path(out_v).stat().st_size > 12_000:
-                                    used_refine_urls.add(cand_url)
-                                    ok_v_clean, _ = await asyncio.to_thread(
-                                        _verify_and_sanitize_refined_media, out_v, True, scene_id
+                            try:
+                                await asyncio.to_thread(media_agent.download_file, cand_url, raw_v)
+                                if px_ref_ev.is_set():
+                                    rag_ref.release_in_job_video_claim(
+                                        job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
                                     )
-                                    is_ref_v_vis_ok = False
-                                    if ok_v_clean:
-                                        from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
-                                        is_ref_v_vis_ok, _, _ = await asyncio.to_thread(
-                                            _verify_short_clip_with_gemini_vision,
-                                            out_v,
-                                            state.get("topic", ""),
-                                            narr,
-                                            subj_refine or primary_entity,
-                                            overall_refine_q,
-                                            "SCENE_SPECIFIC",
-                                            cand_title,
-                                            False,
-                                            clean_kw_q,
-                                            True,
-                                            px_ref_ev,
-                                            max(px_dl, time.monotonic() + 12.0),
-                                        )
-                                    ok_v_sig, _ = (
-                                        rag_ref.verify_and_commit_in_job_clip(
-                                            job_id=job_id_refine,
-                                            scene_id=scene_id,
-                                            media_path=out_v,
-                                            vid_id=cand_url,
-                                            url=cand_url,
-                                            title=cand_title,
-                                        )
-                                        if (ok_v_clean and is_ref_v_vis_ok)
-                                        else (False, "failed_refine_gate")
+                                    return None
+                                if Path(raw_v).exists() and Path(raw_v).stat().st_size > 15_000:
+                                    await asyncio.to_thread(
+                                        trim_video,
+                                        input_path=raw_v,
+                                        duration_seconds=sc_dur_sec,
+                                        output_path=cand_v,
+                                        width=w_ref,
+                                        height=h_ref,
+                                        fps=30,
+                                        is_scifi=is_scifi_val,
+                                        niche=current_niche,
+                                        apply_grading=True,
+                                        is_hook_scene=(scene_id == 1),
+                                        fair_use_transform=True,
+                                        start_offset_sec=0.0,
+                                        preserve_continuous_flow=True,
                                     )
-                                    if ok_v_clean and is_ref_v_vis_ok and ok_v_sig:
-                                        logger.info(f"Scene {scene_id}: ✅ [Parallel Pexels+YT] Sửa lỗi kỹ thuật bằng Video Clip Pexels mới độc lập: '{clean_kw_q}'")
-                                        return {
-                                            "media_path": out_v,
-                                            "media_type": "video",
-                                            "production_method": "REFINED_STOCK_VIDEO",
-                                            "source_url": cand_url,
-                                            "vid_id": cand_url,
-                                            "title": cand_title,
-                                        }
-                                    else:
-                                        Path(out_v).unlink(missing_ok=True)
-                                        rag_ref.release_in_job_video_claim(
-                                            job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
+                                    Path(raw_v).unlink(missing_ok=True)
+                                    if Path(cand_v).exists() and Path(cand_v).stat().st_size > 12_000:
+                                        used_refine_urls.add(cand_url)
+                                        ok_v_clean, _ = await asyncio.to_thread(
+                                            _verify_and_sanitize_refined_media, cand_v, True, scene_id
                                         )
-                            else:
+                                        is_ref_v_vis_ok = bool(best_v.get("vision_curated")) and (cand_url == str(best_v.get("url") or ""))
+                                        if ok_v_clean and not is_ref_v_vis_ok:
+                                            from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
+                                            is_ref_v_vis_ok, _, _ = await asyncio.to_thread(
+                                                _verify_short_clip_with_gemini_vision,
+                                                video_path=cand_v,
+                                                topic=state.get("topic", ""),
+                                                narration=narr,
+                                                subject_entity=subj_refine or primary_entity,
+                                                overall_script_query=overall_refine_q,
+                                                search_scope="SCENE_SPECIFIC",
+                                                video_title=cand_title,
+                                                allow_3d_cgi_monster=False,
+                                                strict_no_fallback=True,
+                                                cancel_event=px_ref_ev,
+                                                deadline_ts=max(px_dl, time.monotonic() + 12.0),
+                                                target_visual_query=clean_kw_q,
+                                            )
+                                        ok_v_sig, _ = (
+                                            rag_ref.verify_and_commit_in_job_clip(
+                                                job_id=job_id_refine,
+                                                scene_id=scene_id,
+                                                media_path=cand_v,
+                                                vid_id=cand_url,
+                                                url=cand_url,
+                                                title=cand_title,
+                                            )
+                                            if (ok_v_clean and is_ref_v_vis_ok)
+                                            else (False, "failed_refine_gate")
+                                        )
+                                        if ok_v_clean and is_ref_v_vis_ok and ok_v_sig:
+                                            os.replace(cand_v, out_v)
+                                            logger.info(f"Scene {scene_id}: ✅ [Parallel Pexels+YT] Sửa lỗi kỹ thuật bằng Video Clip Pexels mới độc lập: '{clean_kw_q}'")
+                                            return {
+                                                "media_path": out_v,
+                                                "media_type": "video",
+                                                "production_method": "REFINED_STOCK_VIDEO",
+                                                "source_url": cand_url,
+                                                "vid_id": cand_url,
+                                                "title": cand_title,
+                                            }
+                                        else:
+                                            rag_ref.release_in_job_video_claim(
+                                                job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
+                                            )
+                                else:
+                                    rag_ref.release_in_job_video_claim(
+                                        job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
+                                    )
+                            finally:
                                 Path(raw_v).unlink(missing_ok=True)
-                                rag_ref.release_in_job_video_claim(
-                                    job_id=job_id_refine, vid_id=cand_url, url=cand_url, title=cand_title, scene_id=scene_id
-                                )
+                                Path(cand_v).unlink(missing_ok=True)
                     except Exception as ex_v:
                         logger.debug(f"Scene {scene_id}: Parallel Pexels refine error: {ex_v}")
                     return None
@@ -581,9 +584,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     try:
                         rag_yt_ref = get_video_memory_rag()
                         yt_ref_dl = (
-                            min(deadline_ts - 12.0, time.monotonic() + 50.0)
-                            if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 16.0)
-                            else (deadline_ts or (time.monotonic() + 50.0))
+                            min(deadline_ts - 8.0, time.monotonic() + 64.0)
+                            if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 14.0)
+                            else (deadline_ts or (time.monotonic() + 64.0))
                         )
                         out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
                         yt_ref_res = await asyncio.to_thread(
@@ -641,7 +644,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             else:
                                 Path(yt_ref_res["media_path"]).unlink(missing_ok=True)
                     except Exception as ex_yt_r:
-                        logger.debug(f"Scene {scene_id}: Parallel YouTube Short refine error: {ex_yt_r}")
+                        logger.warning(f"Scene {scene_id}: Parallel YouTube Short refine error: {ex_yt_r}")
                     return None
 
                 async def _refine_bilibili_branch() -> Optional[Dict[str, Any]]:
@@ -651,9 +654,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     try:
                         from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
                         bili_ref_dl = (
-                            min(deadline_ts - 10.0, time.monotonic() + 50.0)
+                            min(deadline_ts - 8.0, time.monotonic() + 64.0)
                             if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 14.0)
-                            else (deadline_ts or (time.monotonic() + 50.0))
+                            else (deadline_ts or (time.monotonic() + 64.0))
                         )
                         out_bili_r = str(media_dir / f"scene_{scene_id:03d}_refined_bili_par_r{retry_count}.mp4")
                         bili_r_res = await asyncio.to_thread(
@@ -688,7 +691,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 "title": str(bili_r_res.get("title") or clean_kw_q),
                             }
                     except Exception as ex_bili_r:
-                        logger.debug(f"Scene {scene_id}: Parallel Bilibili refine error: {ex_bili_r}")
+                        logger.warning(f"Scene {scene_id}: Parallel Bilibili refine error: {ex_bili_r}")
                     return None
 
                 t_px_r = asyncio.create_task(_refine_pexels_branch())
@@ -698,9 +701,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 win_r: Optional[Dict[str, Any]] = None
                 extra_r: List[Dict[str, Any]] = []
                 race_ref_deadline = (
-                    min(deadline_ts - 10.0, time.monotonic() + 54.0)
-                    if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 16.0)
-                    else (min(deadline_ts - 6.0, time.monotonic() + 54.0) if deadline_ts is not None else (time.monotonic() + 54.0))
+                    min(deadline_ts - 8.0, time.monotonic() + 66.0)
+                    if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 14.0)
+                    else (min(deadline_ts - 5.0, time.monotonic() + 66.0) if deadline_ts is not None else (time.monotonic() + 66.0))
                 )
 
                 while pending_r and win_r is None:
@@ -921,18 +924,18 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
                             ok_vis_to, _, _ = await asyncio.to_thread(
                                 _verify_short_clip_with_gemini_vision,
-                                str(rc_p),
-                                state.get("topic", ""),
-                                str(item.get("narration") or state.get("topic", "")),
-                                primary_entity or state.get("topic", ""),
-                                primary_entity or state.get("topic", ""),
-                                "SCENE_SPECIFIC",
-                                rc_p.stem,
-                                False,
-                                str(item.get("visual_keyword") or primary_entity or ""),
-                                True,
-                                None,
-                                time.monotonic() + 10.0,
+                                video_path=str(rc_p),
+                                topic=state.get("topic", ""),
+                                narration=str(item.get("narration") or state.get("topic", "")),
+                                subject_entity=primary_entity or state.get("topic", ""),
+                                overall_script_query=primary_entity or state.get("topic", ""),
+                                search_scope="SCENE_SPECIFIC",
+                                video_title=rc_p.stem,
+                                allow_3d_cgi_monster=False,
+                                strict_no_fallback=True,
+                                cancel_event=None,
+                                deadline_ts=time.monotonic() + 10.0,
+                                target_visual_query=str(item.get("visual_keyword") or primary_entity or ""),
                             )
                             if not ok_vis_to:
                                 Path(rc_p).unlink(missing_ok=True)

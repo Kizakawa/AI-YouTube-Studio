@@ -114,17 +114,30 @@ def _verify_short_clip_with_gemini_vision(
     search_scope: str = "SCENE_SPECIFIC",
     video_title: str = "",
     allow_3d_cgi_monster: bool = False,
-    strict_no_fallback: bool = True,
-    cancel_event: Optional[threading.Event] = None,
+    strict_no_fallback: Any = True,
+    cancel_event: Any = None,
     deadline_ts: Optional[float] = None,
     target_visual_query: str = "",
+    **kwargs: Any,
 ) -> Tuple[bool, float, str]:
     """
     Trích xuất 3 khung hình (tile=3x1) từ đoạn clip vừa cắt và nhờ Gemini Vision kiểm duyệt nghiêm ngặt:
     - Chặn 100% clip có watermark, logo kênh khác (LatestSightings, MR. FRIEND, @username), phụ đề TikTok/Shorts in cứng, hoặc chữ bị lật ngược.
     - Chặn clip mờ, vỡ hạt, lệch màu, tranh vẽ trộn lẫn cảnh thật, hoặc sai môi trường sống (vd: báo trong sở thú tuyết khi truyện ở thảo nguyên).
     """
-    if cancel_event is not None and cancel_event.is_set():
+    # Tương thích ngược nếu caller truyền thứ tự positional cũ: (..., allow_3d_cgi_monster, target_visual_query, strict_no_fallback, cancel_event, deadline_ts)
+    if isinstance(strict_no_fallback, str) and isinstance(cancel_event, bool):
+        _legacy_tvq = strict_no_fallback
+        _legacy_strict = cancel_event
+        _legacy_ev = deadline_ts if hasattr(deadline_ts, "is_set") else None
+        _legacy_dl = target_visual_query if isinstance(target_visual_query, (int, float)) else None
+        target_visual_query = _legacy_tvq
+        strict_no_fallback = _legacy_strict
+        cancel_event = _legacy_ev
+        deadline_ts = _legacy_dl
+    if not target_visual_query and kwargs.get("query"):
+        target_visual_query = str(kwargs["query"])
+    if cancel_event is not None and hasattr(cancel_event, "is_set") and cancel_event.is_set():
         return False, 0.0, "Cancelled by parent task"
     if not Path(video_path).exists():
         return False, 0.0, "File không tồn tại"
@@ -152,8 +165,8 @@ def _verify_short_clip_with_gemini_vision(
             return False, 2.0, f"Clip là ảnh tĩnh phóng to Ken-Burns / đứng hình ({mot_rsn}, score={mot_sc})"
     except Exception:
         pass
-    if cancel_event is not None and cancel_event.is_set():
-        return False, 0.0, "Cancelled by parent task after CV pre-gate"
+    # Lưu ý [RULE 2]: Khi clip ĐÃ tải xong trên đĩa và ĐÃ vượt qua toàn bộ cổng CV + Motion, KHÔNG hủy ngang bước HTTP Gemini Vision (~3-5s)
+    # chỉ vì hết giờ đua nhánh ngoài, để tránh vứt bỏ oan clip video thật đã tải thành công!
 
     with tempfile.TemporaryDirectory() as tmp_v:
         sheet_jpg = str(Path(tmp_v) / "verify_sheet.jpg")

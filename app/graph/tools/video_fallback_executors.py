@@ -70,7 +70,7 @@ def _try_bilibili_broll_fallback(
         bili_cands = search_bilibili_videos(zh_query, max_results=10, min_dur_s=10.0, max_dur_s=540.0)
         probed_bili = 0
         for b_cand in bili_cands:
-            if probed_bili >= 2:
+            if probed_bili >= 3:
                 break
             if (cancel_event is not None and cancel_event.is_set()) or (
                 deadline_ts is not None and (deadline_ts - time.monotonic()) <= 3.0
@@ -135,6 +135,61 @@ def _try_bilibili_broll_fallback(
                     cancel_event=cancel_event,
                     deadline_ts=max(deadline_ts or 0.0, time.monotonic() + 14.0),
                 )
+                if not passed_vis_b and not _is_cancelled():
+                    reason_b_low = (vis_reason_b or "").lower()
+                    hard_reject_b = (
+                        "zoo", "captive", "enclosure", "fence", "cage", "wrong",
+                        "species", "animated", "cartoon", "talking", "presenter",
+                        "ai-generated", "cgi", "synthetic", "illustration", "static",
+                        "photograph", "slideshow", "ken-burns", "frozen", "lego", "toy", "game",
+                    )
+                    if (
+                        any(k in reason_b_low for k in ("subtitle", "caption", "bottom", "top", "text", "burned-in", "overlay", "banner", "chinese", "watermark", "logo"))
+                        and not any(bad in reason_b_low for bad in hard_reject_b)
+                    ):
+                        bili_safecrop_path = f"{cand_bili_stage}_safecrop.mp4"
+                        try:
+                            import subprocess as _sp_bili
+                            vf_bili_sc = (
+                                "crop=iw*0.76:ih*0.64:iw*0.12:ih*0.16,"
+                                "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
+                                "crop=1080:1920:(iw-1080)/2:(ih-1920)/2,"
+                                "eq=contrast=1.06:saturation=1.10:brightness=0.01,"
+                                "unsharp=5:5:0.85:3:3:0.35,fps=30,format=yuv420p"
+                            )
+                            cmd_b_sc = [
+                                "ffmpeg", "-y", "-v", "error",
+                                "-i", cand_bili_stage,
+                                "-an", "-vf", vf_bili_sc,
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19",
+                                "-pix_fmt", "yuv420p", "-color_range", "tv",
+                                bili_safecrop_path,
+                            ]
+                            _sp_bili.run(cmd_b_sc, capture_output=True, timeout=12, check=False)
+                            if Path(bili_safecrop_path).exists() and Path(bili_safecrop_path).stat().st_size > 20000:
+                                passed_b_sc, score_b_sc, reason_b_sc = _verify_short_clip_with_gemini_vision(
+                                    video_path=bili_safecrop_path,
+                                    topic=topic,
+                                    narration=narration,
+                                    subject_entity=subject_entity or topic,
+                                    overall_script_query=overall_script_query or base_q_for_bili,
+                                    target_visual_query=base_q_for_bili,
+                                    search_scope=effective_scope,
+                                    video_title=f"{b_title} ({zh_query})",
+                                    allow_3d_cgi_monster=allow_3d_cgi_monster,
+                                    strict_no_fallback=True,
+                                    cancel_event=cancel_event,
+                                    deadline_ts=time.monotonic() + 11.5,
+                                )
+                                if passed_b_sc:
+                                    import shutil as _sh_b_sc
+                                    _sh_b_sc.copy2(bili_safecrop_path, cand_bili_stage)
+                                    passed_vis_b, vis_score_b, vis_reason_b = passed_b_sc, score_b_sc, reason_b_sc
+                                    logger.info(
+                                        f"✨ [Bilibili Subtitle-Safe Reframe Rescue] Đã cắt bỏ viền phụ đề và cứu thành công clip Bilibili '{b_title[:40]}' ({vis_score_b}/10)!"
+                                    )
+                        finally:
+                            Path(bili_safecrop_path).unlink(missing_ok=True)
                 if not passed_vis_b:
                     logger.info(
                         f"🚫 [BilibiliPeakTool] Gemini Vision từ chối clip Bilibili '{b_title[:40]}' "

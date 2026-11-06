@@ -2312,13 +2312,13 @@ Return ONLY valid JSON:
                                 ) and (s1_raw_url == str((best_s1_vid or {}).get("url") or ""))
                                 if s1_broll_gate.get("passed") and ok_s1_mot and not is_broll_verified:
                                     from app.graph.tools.media_tools import _verify_short_clip_with_gemini_vision
-                                    is_broll_verified, _ = _verify_short_clip_with_gemini_vision(
+                                    is_broll_verified, _, _ = _verify_short_clip_with_gemini_vision(
                                         video_path=hook_output_clip,
-                                        query=s1_primary_q,
-                                        narration=hook_narration,
                                         topic=topic,
+                                        narration=hook_narration,
                                         subject_entity=_prim_anchor_s1 or s1_plan_subject or primary_entity,
-                                        is_hook_scene=True,
+                                        overall_script_query=s1_primary_q,
+                                        target_visual_query=s1_primary_q,
                                     )
                                 ok_s1_broll, s1_broll_sh = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.5)
                                 ok_s1_commit = False
