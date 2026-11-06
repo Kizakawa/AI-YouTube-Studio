@@ -48,16 +48,21 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ## 2. Ba Quy Tắc Chiến Lược Bắt Buộc Khi Sản Xuất Video (`Mandatory Production Rules`)
 
-### Quy Tắc 1: CẤM Giấu Tên Thực Thể Trong Tiêu Đề — Bắt Buộc Nêu Đích Danh Cặp Thực Thể Có Lượng Tìm Kiếm Cao (`YT_SEARCH` Anchor)
-1. **Tuyệt đối KHÔNG đặt tiêu đề "Curiosity Gap mù" (Giấu tên con vật / thực thể chính)**:
+### Quy Tắc 1: CẤM Giấu Tên Thực Thể Trong Tiêu Đề — Bắt Buộc Nêu Đích Danh Thực Thể Có Lượng Tìm Kiếm Cao Trên Cả 2 Trụ Cột Viral (`YT_SEARCH` Anchor)
+1. **Tuyệt đối KHÔNG đặt tiêu đề "Curiosity Gap mù" (Giấu tên con vật / địa danh / thực thể chính)**:
    - ❌ **CẤM**:
      - *"Mordida de 1.100 PSI esmaga ossos!"* (Lỗi thực tế của `Brorr-C2VCI`: Không có tên con vật trong tiêu đề → Công cụ tìm kiếm không phân loại được chủ đề, hết 24h đầu là video chết đứng ở `1.799 views` dù `APV = 93,4%`).
      - *"Why Polar Bears Flee From This 4,000lb Arctic Giant!"* (Lỗi thực tế của `noYqQOCxYpE`: Giấu tên **Walrus / Hải mã** thành cụm từ chung chung *"This 4,000lb Arctic Giant"* → Chỉ có `11 views` tìm kiếm, Ngày 2 tụt từ `1.088 views` về `10 views`).
      - *"Why King Cobra Venom Can't Kill This Beast"* (Giấu tên **Honey Badger / Lửng mật** thành *"This Beast"*).
-2. **BẮT BUỘC nêu đích danh Tên Thực Thể Chính (hoặc Cặp Đối Đầu `Thực thể A vs Thực thể B`) + Thông Số Vật Lý Cực Hạn ngay trong Tiêu đề**:
-   - ✅ **CHUẨN VƯỢT TRẦN**:
+2. **BẮT BUỘC nêu đích danh Tên Thực Thể Chính theo 1 trong 2 Trụ Cột Viral Triệu View (`Dual-Pillar Viral Architecture`)**:
+   - ✅ **Trụ cột A — Đối Đầu Trực Diện (`[Thực thể A] vs [Thực thể B]: [Cược Sinh Tử]`)**:
      - `"Lula-Colossal vs Cachalote: O Duelo Mortal A 2.000m No Oceano 🦑🐋"` (`imvC7zulBAM` — `201 views YT_SEARCH`, tổng `3.525+ views`).
-     - `"Mordida de 1.500 PSI: Onça-Pintada vs Jacaré 💀🔥"` (`kPEnbE3E3Oo` — `258 views YT_SEARCH`, tổng `2.504+ views`).
+     - `"Onça-Pintada vs Jacaré: O Bote Que Fura o Crânio 🐆🐊"` (`kPEnbE3E3Oo` — `258 views YT_SEARCH`, tổng `2.504+ views`).
+   - ✅ **Trụ cột B — Giải Mã Bí Ẩn / Nghịch Lý `"Why / Por Que / Tại Sao / How"` (`Why [Tên Thực Thể / Địa Danh] [Bí Ẩn Ngược Đời]`)** (*Zack D. Films / Você Sabia? / Fern*):
+     - `"Why This Underwater Lake Paralyzes Deep-Sea Sharks 💀🦈"` / `"Por Que Esse Lago No Fundo Do Mar Paralisa Tubarões? 💀🦈"`.
+     - `"Why Great White Sharks Panic When Orcas Show Up 🐋🦈"`.
+     - `"Why Titanic's Swimming Pool Is Still Full Of Water 🚢🌊"`.
+     - Khi Tiêu đề mở bằng câu hỏi `"Why / Por Que / How..."` nêu đích danh thực thể/hiện tượng, Cảnh 1 (`0.0s`) **TUYỆT ĐỐI KHÔNG lặp lại câu hỏi `"Why..."`** mà phải thả người xem rơi thẳng vào hiện tượng vật lý kỳ bí hoặc cú sốc đang diễn ra trên màn hình ở `0.0s`, sau đó dẫn dắt qua **5 Hồi Giải Mã Bí Ẩn** (Hồi 1: Hiện tượng kỳ bí ở `0.0s` $\rightarrow$ Hồi 2: Dấu hiệu quan sát & vì sao suy đoán thông thường sai $\rightarrow$ Hồi 3 Cảnh 4: Bóc tách cơ chế vật lý/sinh học/lịch sử ẩn giấu bằng phép so sánh đời thường `$1` $\rightarrow$ Hồi 4: Hệ quả thực tế $\rightarrow$ Hồi 5: Chi tiết vật lý trớ trêu khóa vòng lặp).
 
 ---
 

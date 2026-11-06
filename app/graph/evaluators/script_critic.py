@@ -142,22 +142,17 @@ class ScriptCritic:
                 "Rewrite ALL scenes (especially Scene 1 Hook) 100% in the target language (English or Brazilian Portuguese) with ZERO Vietnamese words."
             )
 
-        # 1. Cấm câu hỏi Yes/No yếu hoặc ẩn dụ văn chương trừu tượng ở Cảnh 1 (tương quan trực tiếp với Swipe-Away > 70%)
+        # 1. Cấm câu hỏi Yes/No yếu ở Cảnh 1 (tương quan trực tiếp với Swipe-Away > 70%); đánh giá ẩn dụ/ngữ nghĩa do LLM đảm nhiệm
         weak_q = re.match(
             r"^(?:did you know|do you know|have you ever|are you|can you|would you|imagine if|what if i told you|bạn có biết|você sabia)\b",
             s1_narr,
             re.IGNORECASE,
         )
-        abstract_metaphor = re.search(
-            r"\b(?:loaded weapon|silent cage|invisible armor|a word\.\s*a face|sweet compliment is actually)\b",
-            s1_narr,
-            re.IGNORECASE,
-        )
-        if weak_q or abstract_metaphor:
+        if weak_q:
             score = min(score, 5.5)
             extra_critiques.append(
-                f"HOOK BLOCKED: Scene 1 uses a weak Yes/No question or abstract metaphor ('{s1_narr}') which causes >70% swipe-away. "
-                f"Immediately name the primary entity/combatants + a concrete physical action or paradox in 6-10 words!"
+                f"HOOK BLOCKED: Scene 1 uses a weak Yes/No question ('{s1_narr}') which causes >70% swipe-away. "
+                f"Immediately name the primary entity/combatants + a concrete physical action or paradox in 6-12 words!"
             )
 
         # 1B. Chặn Đọc Nhãn Tiêu Đề Có Dấu Hai Chấm ("A vs B: ...") VÀ Chặn Hook Mơ Hồ Giấu Chủ Thể ("Look closely at..." / "Watch the exact moment...")
@@ -285,24 +280,6 @@ class ScriptCritic:
                     )
                     break
 
-        # 4. Kiểm tra cấu trúc Tiêu đề không giấu thực thể ("This Beast / This Creature") — phần đánh giá ngữ nghĩa & độ hấp dẫn giao hoàn toàn cho LLM Critic
-        vague_title_match = bool(
-            eff_title
-            and re.search(
-                r"\b(?:this\s+(?:cute\s+|deadly\s+|terrifying\s+|tiny\s+|giant\s+)?(?:creature|animal|beast|place|point|bird|thing|monster|predator)|"
-                r"invisible\s+monsters|one\s+bite\s+is\s+all(?:\s+it\s+takes)?|the\s+point\s+in\s+the\s+ocean\s+where|"
-                r"este\s+animal|esta\s+criatura|esta\s+ave)\b",
-                eff_title,
-                re.IGNORECASE,
-            )
-        )
-        if vague_title_match:
-            score = min(score, 6.5)
-            extra_critiques.append(
-                f"VAGUE TITLE BLOCKED: Title hides the primary entity ('{eff_title}'). "
-                f"Explicitly name the exact species/entity/location in the title!"
-            )
-
         return round(score, 1), extra_critiques
 
     @trace_custom_span("ScriptCritic.evaluate_script", run_type="llm")
@@ -359,9 +336,11 @@ class ScriptCritic:
             "   - Scene 1 Cold-Open Hook (12-34 spoken words) MUST jump straight into an active split-second crisis, high-stakes confrontation, or vivid historical/scientific tension naming the primary subject (ZERO '?' questions).\n"
             "   - Fails (< 6.0) if it opens with generic 'Welcome back' greetings, weak Yes/No questions ('Did you know...'), or leaked foreign/Vietnamese words."
             if is_long_form
-            else f"1. hook_strength (Hard gate >= {min_hook_req}/10 — Target: Viewed > 75%, Swipe-Away < 25%):\n"
-            "   - Scene 1 (6-12 spoken words) MUST complement `title` without echoing it: if `title` asks a 'Why / Por que / How' question, Scene 1 MUST drop straight into a declarative spoken paradox, active split-second crisis, visceral physical clash/strike, or staged real-room quote (`\"...\"`) without repeating the 'Why / Por que' question! Reward (>= 8.8/10) whenever Scene 1 explicitly names the primary entity (or BOTH entities in an 'Entity A vs Entity B' matchup) + an immediate physical action, anatomical weapon strike, or life-or-death contrast!\n"
-            "   - Fails (< 6.0) if Scene 1 repeats a 'Why / Por que' question from the title, hides the second entity in an A vs B matchup ('You'd think a massive whale wouldn't fear anything!'), opens with passive background scenery, dry textbook units (`PSI`, `Newtons`, `kPa`), weak Yes/No questions (`\"Did you know...\"`, `\"Você já viu...\"`), or leaked foreign/Vietnamese words."
+            else f"1. hook_strength (Hard gate >= {min_hook_req}/10 — Target: Viewed > 75%, Swipe-Away < 25% across BOTH Viral Pillars):\n"
+            "   - TWO CO-EQUAL MILLION-VIEW VIRAL PILLARS ARE SUPPORTED:\n"
+            "     * Pillar A — Direct Confrontation / Matchup (`[Entity A] vs [Entity B]: [Visceral Stakes]`): Both `Proposed Title` and `Scene 1` explicitly name BOTH combatants + an immediate physical strike or survival paradox at 0.0s.\n"
+            "     * Pillar B — 'Why / Por Que / How / Tại Sao' Mystery & Paradox Explainer (`Why [Named Entity/Place/Phenomenon] [Counter-Intuitive Mystery]` — Zack D. Films / Você Sabia? / Fern style): `Proposed Title` explicitly names the searchable entity, place, or phenomenon + a fascinating 'Why / Por Que / How' mystery trigger, while `Scene 1` (6-12 spoken words) complements the title WITHOUT repeating the 'Why / Por que' question by dropping straight into the baffling physical phenomenon, impossible paradox, or active crisis at 0.0s! (Or if `Proposed Title` is declarative, `Scene 1` may open with a sharp 'Why / Por Que / How' mystery question naming the exact entity).\n"
+            "   - Fails (< 6.0) if `Proposed Title` hides the primary entity behind vague entity-blind clickbait ('This Beast', 'This Place' with no named subject), if Scene 1 repeats a 'Why / Por que' question already asked in the title, hides the second entity in an A vs B matchup, opens with passive background scenery, abstract literary metaphors, dry textbook units (`PSI`, `Newtons`, `kPa`), weak Yes/No questions (`\"Did you know...\"`, `\"Você já viu...\"`), or leaked foreign/Vietnamese words."
         )
         pacing_criterion_desc = (
             "2. story_pacing & spoken_creator_voice (Target Long-Form 16:9 Documentary: 8.0 - 11.0 min, 1,200 - 1,750 words, 32 - 48 scenes across 8-10 Chapters — AUTHENTIC SPOKEN YOUTUBER VOICE, NEVER ABRUPT):"

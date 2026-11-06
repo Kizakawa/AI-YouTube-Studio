@@ -152,7 +152,9 @@ def format_inspection_report(result: Dict[str, Any]) -> str:
 
     # PHẦN 1: SO SÁNH KỊCH BẢN VỚI CÁC KÊNH HOT HIT TRIỆU VIEW
     bench_channels = ", ".join(hot_eval.get("benchmark_channels_compared") or ["Top Viral Channels"])
+    det_arch = hot_eval.get("detected_viral_archetype") or "direct_matchup_or_mystery_explainer"
     lines.append(f"## 1. ĐỐI SÁNH KỊCH BẢN VỚI KÊNH HOT HIT ({bench_channels})")
+    lines.append(f"- Trụ cột Viral nhận diện    : `{det_arch}`")
     lines.append(
         f"- Điểm ScriptCritic tổng thể : {script_eval.get('overall_score')}/10 "
         f"(Hook 0.0s: {(script_eval.get('hook_strength') or {}).get('score')}/10 | "
@@ -253,6 +255,7 @@ async def _async_main() -> None:
     if args.suite:
         suite_cases = [
             ("Jaguar vs Black Caiman: Skull-Crushing River Ambush", "wildlife_predators", "en"),
+            ("Why Ships And Sharks Vanish In This Underwater Lake In The Gulf Of Mexico", "deep_sea_earth_mysteries", "en"),
             ("When Someone Says 'Relax, I'm Just Joking' To Disrespect You", "psychology", "en"),
             ("1961 Goldsboro B-52 Crash: Two 4-Megaton Nukes vs One Switch", "alternate_history", "en"),
         ]
