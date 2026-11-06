@@ -154,6 +154,19 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ---
 
+### Quy Tắc 9: Luật `config/niches/*.yaml` Là Nguồn Chân Lý Duy Nhất Cho Form Chủ Đề, Kịch Bản & Thị Giác Từng Ngách (`100% YAML Niche Profile Single Source of Truth`)
+1. **Mọi Form Chủ Đề, Công Thức Hook, Cấu Trúc Kịch Bản & Luật Hình Ảnh Đều Nằm Trong `config/niches/*.yaml`**:
+   - Hệ thống có 6 hồ sơ ngách chuyên biệt trong `config/niches/`: `psychology.yaml`, `wildlife_predators.yaml`, `deep_sea_earth_mysteries.yaml`, `alternate_history.yaml`, `animal_rescue.yaml`, và `general.yaml` (được ánh xạ với từng kênh trong `config/channels.yaml`).
+   - Mỗi file YAML đã định nghĩa đầy đủ:
+     - **`script_blueprint.viral_topic_bank_2026`**: Ngân hàng chủ đề chuẩn form của riêng ngách đó (ví dụ: `psychology.yaml` dùng form giải mã hành vi đời thường `"Why Someone... / Why You..."`; `wildlife_predators.yaml` dùng form đối đầu sinh tồn & nghịch lý sinh học; `deep_sea_earth_mysteries.yaml` dùng form giải mã hiện tượng/địa danh bí ẩn).
+     - **`script_blueprint.hook_formulas`, `narrative_structure`, `pacing`, `tone_of_voice`, `showrunner_prose_dna`, `controversy_comment_bait_engine`**: Cấu trúc 5 hồi và giọng văn đặc trưng của từng ngách.
+     - **`visual_aesthetics` & `llm_production_blueprint`**: Bảng màu, ánh sáng, chiến lược từ khóa tìm kiếm video (`video_search_strategy`), phân luồng công cụ (`visual_archetypes_and_tool_routing`), quy tắc dịch khái niệm trừu tượng sang hành động vật lý quay được (`abstract_to_physical_query_translations`), và danh sách hình ảnh cấm (`strictly_forbidden_visuals`).
+2. **Bắt Buộc Nạp Động Qua `app/services/niche_manager.py` — CẤM Hardcode Trong Code Python**:
+   - Mọi luồng sinh ý tưởng (`batch_producer.py`, `viral_ideation_mixin.py`), viết kịch bản (`content_agent.py`), đạo diễn truy vấn (`llm_media_director.py`, `scene_context_analyzer_mixin.py`), và chấm điểm/kiểm duyệt hình ảnh (`media_vision_curator_mixin.py`, `visual_critic.py`, `evaluate_media_node.py`, `render_nodes.py`, `youtube_search_ranker.py`) **BẮT BUỘC** lấy hướng dẫn từ `config/niches/*.yaml` thông qua các hàm chuẩn của `niche_manager.py` (`get_niche`, `get_channel_niche`, `build_script_prompt_instructions`, `build_million_view_showrunner_prose_dna`, `build_llm_production_overview_prompt`, `build_video_search_strategy_prompt_block`).
+   - **TUYỆT ĐỐI CẤM** truyền `director_notes` cứng hoặc `cfg["topics"]` cứng trong `batch_producer.py` / `.py` làm ghi đè lên cấu hình của `config/niches/*.yaml`, và **TUYỆT ĐỐI CẤM** lấy form `"A vs B"` của ngách Động vật áp đặt sang ngách Tâm lý học (`psychology`) hay Cứu hộ động vật (`animal_rescue`). Khi muốn cập nhật form chủ đề, kịch bản hay luật hình ảnh của ngách nào, chỉ sửa trực tiếp trong `config/niches/<niche>.yaml`.
+
+---
+
 ## Workflow Áp Dụng Cho Agent Trong Mọi Phiên Làm Việc
 
 ### 1. Khi Lên Ý Tưởng Chủ Đề & Đặt Tiêu Đề (`Ideation & Title Generation`)
