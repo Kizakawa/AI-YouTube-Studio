@@ -336,8 +336,17 @@ class MediaVisionCuratorMixin:
         if not candidates_for_llm or not has_any_preview:
             return None, 2.5, "Tất cả ứng viên video kho đều quá mờ hoặc không tải được ảnh preview (< chuẩn VisualCritic).", True
 
+        niche_yaml_ctx = ""
+        try:
+            from app.services.niche_manager import build_llm_production_overview_prompt
+            n_style = str(visual_analysis.get("channel_niche") or visual_analysis.get("niche") or "").strip()
+            if n_style:
+                niche_yaml_ctx = "\n" + build_llm_production_overview_prompt(n_style, include_all_niches_map=False)[:1600] + "\n"
+        except Exception:
+            pass
+
         prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Thẩm Định Ngữ Cảnh Kịch Bản Đa Phương Thức (Multimodal Script-Intent Video Auditor).
-Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Tóm tắt cốt truyện tổng thể, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để tự chấm điểm nghiêm ngặt và chọn ra VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản.
+Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Tóm tắt cốt truyện tổng thể, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để tự chấm điểm nghiêm ngặt và chọn ra VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản.{niche_yaml_ctx}
 
 NGỮ CẢNH KỊCH BẢN CỦA NGƯỜI DÙNG:
 - Chủ đề tổng thể (Topic): "{topic_ctx}"
@@ -363,7 +372,7 @@ QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM ĐA TRỤC (MULTI-AXIS SELF-SCORING 
    - `entity_identity_score` (0.0–10.0): Nếu ứng viên có xuất hiện chủ thể, hình thái nhận diện của chủ thể trong ảnh preview có khớp với `{subject_req}`, `{expected_vis}` hoặc `{topic_ctx}` hay không?
      + Nếu ứng viên thể hiện đúng `{subject_req}` / `{expected_vis}` của phân cảnh (ví dụ: mô hình/quét não bộ, hộp sọ, bác sĩ ghi chép, người đàn ông trầm tư/tức giận trong bóng tối, tia lửa vụ nổ cho phân cảnh tâm lý/thần kinh học; hoặc đúng loài động vật / loài cùng họ hình thái sát nhất trên kho Stock cho phân cảnh thiên nhiên): BẮT BUỘC chấm `entity_identity_score` từ `8.0–9.5`.
      + CẤM MINH HỌA ẨN DỤ NGHĨA ĐEN CHO CHỦ THỂ VẬT LÝ (ZERO LITERAL METAPHOR FOR ANIMALS/VEHICLES): Khi chủ thể chính là động vật hoặc tàu chiến/máy bay mà `{narration}` dùng từ ẩn dụ/so sánh (ví dụ: `"a floating hunk of steel"`, `"iron trap"`, `"like steel clamps"`), TUYỆT ĐỐI KHÔNG duyệt clip quay ống sắt/đường ống nước trong nhà, lưới thông gió hay bức tường gạch!
-     + Nếu ứng viên thể hiện sai sang loài động vật khác họ/khác hình thái (ví dụ: kỳ nhông xanh Iguana/tắc kè/rắn khi kịch bản yêu cầu Rồng Komodo/kỳ đà, hoặc loài chim/thú ngoại lai không có trong `{topic_ctx}`), xuất hiện Quốc kỳ / Quân hiệu / Phù hiệu quân phục hoặc chữ sơn ngoại ngữ của quốc gia khác mâu thuẫn trực tiếp với quốc gia/nhân vật trong `{topic_ctx}` & `{narration}` (ví dụ: chữ Nga Cyrillic `"НЕ БРАТЬСЯ"`, phù hiệu `U.S. ARMY` khi lời thoại nói về sĩ quan Liên Xô, hoặc cờ bang/quốc gia khác trên thân máy bay/tàu chiến lịch sử), máy bay/tàu thuyền dân sự hiện đại tại triển lãm/bảo tàng có du khách/nhà cao tầng hiện đại khi kịch bản nói về trận đánh lịch sử, lẫn khách du lịch hiện đại đứng xem trong bối cảnh hoang dã, hoặc không có ảnh preview (`attached_preview_image == None`) để xác minh: BẮT BUỘC chấm `entity_identity_score < 3.0`, `visual_integrity_score < 3.0` và trả về `"winner_index": -1`.
+     + Nếu ứng viên thể hiện sai sang loài động vật khác họ/khác hình thái (ví dụ: kỳ nhông xanh Iguana/tắc kè/rắn khi kịch bản yêu cầu Rồng Komodo/kỳ đà, hoặc loài chim/thú ngoại lai không có trong `{topic_ctx}`), xuất hiện Quốc kỳ / Quân hiệu / Phù hiệu quân phục hoặc chữ sơn ngoại ngữ của quốc gia khác mâu thuẫn trực tiếp với quốc gia/nhân vật trong `{topic_ctx}` & `{narration}` (ví dụ: chữ Nga Cyrillic `"НЕ БРАТЬСЯ"`, phù hiệu `U.S. ARMY` khi lời thoại nói về sĩ quan Liên Xô, hoặc cờ bang/quốc gia khác trên thân máy bay/tàu chiến lịch sử), máy bay/tàu thuyền dân sự hiện đại sơn màu thể thao sặc sỡ (đỏ/vàng tươi), logo `"Commemorative Air Force"`, tháp không lưu/nhà chứa máy bay hiện đại hoặc đường băng triển lãm có du khách mặc áo phông đứng xem khi kịch bản nói về trận đánh lịch sử, lẫn khách du lịch hiện đại đứng xem trong bối cảnh hoang dã, hoặc không có ảnh preview (`attached_preview_image == None`) để xác minh: BẮT BUỘC chấm `entity_identity_score < 2.5`, `visual_integrity_score < 2.5` và trả về `"winner_index": -1`.
    - `narrative_action_score` (0.0–10.0): Trong phim tài liệu (National Geographic / BBC Earth / Netflix Mind Explained), khi lời thoại `{narration}` mô tả pha giao chiến đa thực thể hiếm, cơ chế giải phẫu/thần kinh/sinh lý bên trong (vỏ não trước trán, nọc độc, huyết áp tụt, cơ bắp tê liệt, xung thần kinh) hoặc trạng thái tâm lý/hành động:
      + BẤT KỲ cảnh B-Roll điện ảnh nào khớp với `{subject_req}` / `{expected_vis}` của phân cảnh (ví dụ: mô hình 3D não bộ/hộp sọ/xung thần kinh phát sáng, cận cảnh biểu cảm tâm lý con người sắc lạnh, hoặc chủ thể động vật đang di chuyển/bơi/rình mồi ngoài hoang dã) ĐỀU minh họa hoàn hảo cho lời thoại và BẮT BUỘC được chấm `narrative_action_score` từ `8.0–9.2`!
    - `visual_integrity_score` (0.0–10.0): Khung hình có nguyên bản, sắc nét, đúng tông màu điện ảnh của kịch bản (không lẫn khách du lịch hiện đại/xe đẩy trẻ em tại triển lãm trong bối cảnh chiến sự hay hoang dã, không treo cờ/biểu tượng sai quốc gia, không chứa chữ/watermark/biểu tượng AI `✦`) hay không?

@@ -28,7 +28,11 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
     # Luôn đánh giá toàn bộ scenes_media trên cùng 1 Contact Sheet (các cảnh không đổi đã có cache CV 0.01s)
     # để bảo toàn đối chiếu hình thái thực thể xuyên cảnh (Cross-Tile Identity) và chống trùng dHash xuyên cảnh ở mọi vòng retry!
-    eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
+    eval_report = critic.evaluate_media(
+        scenes_media=scenes_media,
+        primary_entity=primary_entity,
+        channel_style=str(state.get("channel_style") or ""),
+    )
 
     # Thu hồi tức thì chứng chỉ (`*_meta.txt` / `*.meta`) của mọi Chapter Master bị VisualCritic ContactSheet Vision bắt lỗi ngữ nghĩa,
     # đảm bảo `node_refine_media` không bao giờ cắt lại từ Master lỗi trên bất kỳ cảnh nào!

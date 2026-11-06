@@ -523,7 +523,24 @@ async def produce_channel_video(
     if custom_topic:
         topic = custom_topic
     else:
-        candidate_topics: list[str] = list(cfg["topics"])
+        from app.services.niche_manager import get_niche
+        niche_prof_bp = get_niche(ch_niche)
+        yaml_topics_2026 = [
+            str(t).strip()
+            for t in ((niche_prof_bp.get("script_blueprint") or {}).get("viral_topic_bank_2026") or [])
+            if str(t).strip()
+        ]
+        # Đối với kênh Shorts, lọc bỏ các chủ đề dành riêng cho Long-Form ('Every ... Explained', '5-Round Gauntlet', 'Hour 1 to Day 14') nếu đang dựng Shorts
+        is_lf_mode = str(video_format or "short").strip().lower() in ("long", "long_form", "longform", "16:9")
+        if not is_lf_mode:
+            yaml_topics_filtered = [
+                t for t in yaml_topics_2026
+                if not any(lf_k in t.lower() for lf_k in ("every ", "todos os recordes", "5-round gauntlet", "hour 1 to day 14"))
+            ]
+        else:
+            yaml_topics_filtered = yaml_topics_2026
+
+        candidate_topics: list[str] = list(yaml_topics_filtered)
         try:
             wb = get_winner_cloner_blueprint(ch_id, niche_id=ch_niche)
             fresh_pool = wb.get("fresh_sequel_topics") or []
@@ -533,6 +550,10 @@ async def produce_channel_video(
                     print(f"   🏆 [Winner Cloner] Tham chiếu công thức quán quân '{wb['winner_title']}' ({wb['winner_views']} views)")
         except Exception:
             pass
+        # Bổ sung danh sách dự phòng của kênh sau danh sách chuẩn từ YAML `config/niches/*.yaml`
+        for fb_t in cfg.get("topics", []):
+            if fb_t not in candidate_topics:
+                candidate_topics.append(fb_t)
 
         topic = None
         for cand_t in candidate_topics:
@@ -557,10 +578,34 @@ async def produce_channel_video(
             break
 
         if not topic:
-            # Nếu toàn bộ danh sách tĩnh cfg["topics"] đã từng xuất bản trên kênh,
-            # chọn ứng viên có độ trùng lặp thấp nhất (< 0.48) thay vì mù quáng lấy lại remaining[0] gây nhân bản video!
+            # Nếu các chủ đề mẫu trong YAML đã được sản xuất, gọi LLM sinh chủ đề mới bám sát `config/niches/*.yaml`
+            try:
+                ai_ideas = agent.suggest_viral_ideas(
+                    channel_id=ch_id,
+                    channel_name=ch_name,
+                    channel_niche=ch_niche,
+                    language=ch_lang,
+                    recent_titles=existing_refs[:10],
+                    count=5,
+                )
+                for idea_obj in (ai_ideas or []):
+                    cand_ai_t = str((idea_obj or {}).get("topic") or "").strip()
+                    if not cand_ai_t or cand_ai_t in used_in_session:
+                        continue
+                    if not validate_channel_niche_alignment(channel_id=ch_id, title=cand_ai_t, topic=cand_ai_t).get("passed", True):
+                        continue
+                    is_sim_ai, _, _ = check_idea_similarity(cand_ai_t, existing_refs, similarity_threshold=0.40, channel_id=ch_id)
+                    if not is_sim_ai:
+                        topic = cand_ai_t
+                        print(f"   ✨ [YAML -> LLM Ideation] Đã sinh chủ đề mới theo chuẩn YAML '{ch_niche}.yaml': {topic}")
+                        break
+            except Exception:
+                pass
+
+        if not topic:
+            # Fallback: chọn ứng viên có độ trùng lặp thấp nhất
             scored_remaining = []
-            for t in cfg["topics"]:
+            for t in candidate_topics:
                 if t in used_in_session:
                     continue
                 if not validate_channel_niche_alignment(channel_id=ch_id, title=t, topic=t).get("passed", True):
@@ -568,7 +613,7 @@ async def produce_channel_video(
                 _, sim_sc, _ = check_idea_similarity(t, existing_refs, similarity_threshold=0.40, channel_id=ch_id)
                 scored_remaining.append((sim_sc, t))
             scored_remaining.sort(key=lambda x: x[0])
-            topic = scored_remaining[0][1] if scored_remaining else cfg["topics"][0]
+            topic = scored_remaining[0][1] if scored_remaining else candidate_topics[0]
 
     used_in_session.append(topic)
     print(f"   -> Chủ đề được chọn: {topic}")
@@ -582,13 +627,13 @@ async def produce_channel_video(
     script_evaluation = None
     is_long_form = str(video_format or "short").strip().lower() in ("long", "long_form", "longform", "16:9")
     for attempt in range(1, 2 if is_long_form else 4):
-        print(f"\n   [Lần {attempt}/3] Sinh kịch bản và gửi ban thẩm định AI...")
+        print(f"\n   [Lần {attempt}/3] Sinh kịch bản từ hồ sơ YAML `config/niches/{ch_niche}.yaml` và gửi ban thẩm định AI...")
         is_long_form = str(video_format or "short").strip().lower() in ("long", "long_form", "longform", "16:9")
         raw_script = agent.generate_script(
             topic=topic,
             channel_niche=ch_niche,
             language=ch_lang,
-            director_notes=cfg["director_notes"],
+            director_notes=None,
             cooldown_entities=saturated_cooldown,
             channel_id=ch_id,
             video_format="long" if is_long_form else "short",

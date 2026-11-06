@@ -464,30 +464,34 @@ CRITICAL CHANNEL ALIGNMENT & BINGE-WATCHING RULES:
         fallback_psychology_vi = fallback_psychology_en
 
         niche_topic_bank: List[str] = []
+        yaml_niche_instructions: str = ""
         try:
-            from app.services.niche_manager import get_niche
+            from app.services.niche_manager import get_niche, build_script_prompt_instructions
             n_prof = get_niche(channel_niche)
             niche_topic_bank = list((n_prof.get("script_blueprint") or {}).get("viral_topic_bank_2026") or [])
+            yaml_niche_instructions = build_script_prompt_instructions(n_prof, language=language, video_format="short")
         except Exception:
             pass
 
         hook_mastery_block = build_regional_hook_mastery_instruction(language=language, channel_niche=channel_niche)
         topic_bank_block = (
-            "\nPROVEN 2026 TOPIC ARCHETYPES FOR THIS NICHE:\n" + "\n".join(f"  - {t}" for t in niche_topic_bank[:6])
+            f"\nPROVEN 2026 TOPIC ARCHETYPES FROM `config/niches/{channel_niche}.yaml` (FOLLOW THIS EXACT TOPIC FORM & STYLE):\n"
+            + "\n".join(f"  - {t}" for t in niche_topic_bank[:10])
             if niche_topic_bank else ""
         )
 
         prompt = f"""You are an elite YouTube Shorts Growth Hacker and Viral Strategist for the channel '{channel_name}' in niche: '{channel_niche}'.
 Language: {language}
-Goal: Generate {count} ULTRA-VIRAL video concepts tailored specifically to match this channel's existing identity and build upon its highest-performing video.
+Goal: Generate {count} ULTRA-VIRAL video concepts tailored specifically to match the YAML Niche Intelligence Profile (`config/niches/{channel_niche}.yaml`) and build upon this channel's highest-performing videos.
 {recent_context_block}
 {hook_mastery_block}{topic_bank_block}
+{yaml_niche_instructions[:2600]}
 
-CORE RETENTION PRINCIPLES:
-1. High-Stakes Niche Confrontation ('A vs. B' + Concrete Physical/Historical/Behavioral Metric): Frame every concept around an undeniable physical or situational clash backed by a hard number.
-2. Electric 1.8s Hook (5-8 words max in Grade-5 conversational language): Immediate deictic pointer or physical shock at 0.0s.
+CORE RETENTION PRINCIPLES (STRICTLY ALIGNED WITH `config/niches/{channel_niche}.yaml`):
+1. YAML Topic Form & Archetype Alignment: Match the exact topic phrasing, hook formulas, and showrunner prose DNA defined in `config/niches/{channel_niche}.yaml` above (whether it is a forensic interrogation/brain/casino paradox, a "Why / Por Que / How" mystery explainer, or an asymmetric 2-entity clash).
+2. Electric 0.0s Hook (6-12 spoken words in conversational language): Follow the YAML `hook_formulas` and `showrunner_prose_dna` for `{channel_niche}`.
 3. Psychological Call to Action (Double Tap & Protect, Debate in Comments, Curiosity Part 2).
-4. Pinned Bait Question: A binary 1-vs-2 poll question to pin at the top of comments to ignite massive debate and subscriber conversion.
+4. Pinned Bait Question: A binary 1-vs-2 poll question matching the YAML `cta_templates` to pin at the top of comments.
 
 Return ONLY a JSON array with exactly {count} objects:
 [

@@ -336,8 +336,8 @@ class VisualCritic:
             issues.append(f"Clip quá tối hoặc có khung hình đen (brightness={avg_lum:.1f}, min={min_lum:.1f} < 18)")
         if max_lum > 242.0:
             issues.append(f"Clip bị cháy sáng / lóa trắng (max_brightness={max_lum:.1f} > 242)")
-        if min_con < 16.0:
-            issues.append(f"Clip thiếu tương phản hoặc phẳng màu (contrast={min_con:.1f} < 16)")
+        if min_con < 13.0:
+            issues.append(f"Clip thiếu tương phản hoặc phẳng màu (contrast={min_con:.1f} < 13)")
         if avg_sharp < min_sharpness or min_f_sharp < 2.2:
             issues.append(
                 f"Clip bị mờ nhòe / vỡ hạt (sharpness={avg_sharp:.1f}, min={min_f_sharp:.1f}, yêu cầu >= {min_sharpness})"
@@ -706,6 +706,7 @@ class VisualCritic:
         cls,
         scenes_media: List[Dict[str, Any]],
         primary_entity: Optional[str] = None,
+        channel_style: Optional[str] = None,
     ) -> Dict[int, Dict[str, Any]]:
         """
         Trích xuất khung hình đại diện của toàn bộ các phân cảnh, ghép thành 1 bảng Contact Sheet
@@ -768,9 +769,9 @@ class VisualCritic:
                         subprocess.run(
                             [
                                 "ffmpeg", "-v", "error", "-y",
-                                "-t", "4.2", "-i", str(p),
+                                "-t", "5.5", "-i", str(p),
                                 "-vf", f"fps=1,scale={tw}:{th}:force_original_aspect_ratio=increase,crop={tw}:{th}",
-                                "-frames:v", "4",
+                                "-frames:v", "5",
                                 f_pattern,
                             ],
                             capture_output=True,
@@ -786,12 +787,14 @@ class VisualCritic:
                                 (idx_cf, cf, cls._measure_sharpness(str(cf)))
                                 for idx_cf, cf in enumerate(cand_frames)
                             ]
-                            core_sharp = [
-                                (idx_cf, cf, sh) for idx_cf, cf, sh in scored_cands[:3] if sh >= 9.5
+                            max_sh_val = max(sh for _, _, sh in scored_cands)
+                            mid_sharp = [
+                                (idx_cf, cf, sh)
+                                for idx_cf, cf, sh in scored_cands
+                                if idx_cf in (1, 2, 3) and sh >= max(10.5, max_sh_val * 0.85)
                             ]
-                            if core_sharp:
-                                mid_match = [cf for idx_cf, cf, sh in core_sharp if idx_cf in (1, 2) and sh >= 10.5]
-                                best_f_jpg = mid_match[0] if mid_match else max(core_sharp, key=lambda x: x[2])[1]
+                            if mid_sharp:
+                                best_f_jpg = max(mid_sharp, key=lambda x: x[2])[1]
                             else:
                                 best_f_jpg = max(scored_cands, key=lambda x: x[2])[1]
                         else:
@@ -819,15 +822,18 @@ class VisualCritic:
                     im_obj = None
 
                 if im_obj is not None:
-                    draw = ImageDraw.Draw(im_obj)
-                    draw.rectangle([(0, 0), (96, 30)], fill=(0, 0, 0))
-                    draw.text((8, 7), f"SCENE #{sid}", fill=(255, 230, 0))
+                    hdr_h = 26
+                    card = Image.new("RGB", (tw, th + hdr_h), (16, 16, 20))
+                    card.paste(im_obj, (0, hdr_h))
+                    draw = ImageDraw.Draw(card)
+                    draw.rectangle([(0, 0), (tw, hdr_h)], fill=(0, 0, 0))
+                    draw.text((8, 5), f"SCENE #{sid}", fill=(255, 230, 0))
                     vis_kw_cs = str(item.get("visual_keyword") or "").strip()
                     if vis_kw_cs and vis_kw_cs.lower() not in narr.lower():
                         label_desc = f"{narr[:180]} [Directed B-Roll Query: {vis_kw_cs[:70]}]"
                     else:
                         label_desc = narr[:220]
-                    return (sid, im_obj, label_desc)
+                    return (sid, card, label_desc)
                 return None
 
             if not hasattr(cls, "_cs_scene_pass_cache"):
@@ -864,7 +870,7 @@ class VisualCritic:
             if cached_ref_candidates and len(scenes_to_extract) < len(scenes_media):
                 scenes_for_sheet = cached_ref_candidates[:2] + scenes_to_extract
             else:
-                scenes_for_sheet = scenes_media
+                scenes_for_sheet = scenes_to_extract if scenes_to_extract else scenes_media
 
             with ThreadPoolExecutor(max_workers=min(max(len(scenes_for_sheet), 1), 8)) as cs_thumb_pool:
                 for t_res in cs_thumb_pool.map(_extract_cs_thumb, scenes_for_sheet):
@@ -881,27 +887,45 @@ class VisualCritic:
             chunk_thumbs = thumbs[b_start : b_start + batch_chunk_size]
             cols = min(4, len(chunk_thumbs))
             rows = (len(chunk_thumbs) + cols - 1) // cols
-            sheet = Image.new("RGB", (cols * tw, rows * th), (12, 12, 12))
+            cell_h = th + 26
+            sheet = Image.new("RGB", (cols * tw, rows * cell_h), (12, 12, 12))
             scene_lines: List[str] = []
             for idx, (sid, im_t, narr_t) in enumerate(chunk_thumbs):
                 r_i = idx // cols
                 c_i = idx % cols
-                sheet.paste(im_t, (c_i * tw, r_i * th))
+                sheet.paste(im_t, (c_i * tw, r_i * cell_h))
                 scene_lines.append(f"- SCENE #{sid}: \"{narr_t}\"")
 
             buf = io.BytesIO()
             sheet.save(buf, format="JPEG", quality=80)
             b64_sheet = base64.b64encode(buf.getvalue()).decode("ascii")
 
+            niche_yaml_visual_block = ""
+            try:
+                from app.services.niche_manager import build_llm_production_overview_prompt
+                eff_niche_cs = str(
+                    channel_style
+                    or (scenes_media[0].get("channel_style") if scenes_media and isinstance(scenes_media[0], dict) else "")
+                    or ""
+                ).strip()
+                if not eff_niche_cs:
+                    top_l = anchor_topic.lower()
+                    if any(k in top_l for k in ("psychology", "brain", "cortex", "interrogation", "fbi", "suspect", "phineas gage", "experiment", "casino", "dopamine")):
+                        eff_niche_cs = "psychology"
+                if eff_niche_cs:
+                    niche_yaml_visual_block = "\n" + build_llm_production_overview_prompt(eff_niche_cs, include_all_niches_map=False)[:1800] + "\n"
+            except Exception:
+                pass
+
             prompt = f"""You are the Chief Multimodal Visual Critic inspecting and self-scoring the final scene frames of a YouTube {'16:9 Documentary' if is_widescreen_sheet else 'Short'} BEFORE rendering.
-Overall Script Topic & Named Protagonists: "{anchor_topic}"
+Overall Script Topic & Named Protagonists: "{anchor_topic}"{niche_yaml_visual_block}
 Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ... along with each scene's spoken narration):
 {chr(10).join(scene_lines)}
 
 SELF-SCORING PROTOCOL FOR EVERY SCENE TILE (0.0 to 10.0):
 1. CROSS-SCENE COREFERENCE & CROSS-TILE VISUAL IDENTITY CONSISTENCY (`entity_match_score`: 0.0–10.0):
    - Resolve any pronouns or generic nouns in each scene's narration (e.g., "the hunter", "the eagle", "its prey", "this creature", "he/she/it") back to the exact named protagonists in Overall Script Topic ("{anchor_topic}").
-   - 2-TIER DOCUMENTARY B-ROLL RULE: In any two-entity matchup or comparison ("{anchor_topic}"), BOTH named protagonists (and visually similar species from the same genus/family on free stock libraries, such as monitor lizards for Komodo dragon, crocodile/alligator for caiman, brown bear for grizzly) are 100% VALID primary subjects! A clean shot showing AT LEAST ONE of the named protagonists from "{anchor_topic}" in a natural pose OR a close-up of its anatomical features (e.g., claws, jaws, horns, eyes, scales, wings) MUST score `entity_match_score >= 8.5` (`"passed": true`). NEVER fail a tile because only one of the two combatants is visible in that frame, or because different stock clips show different individuals/lighting/sizes of the same animal family! Only score `entity_match_score < 5.0` if the tile shows a completely unrelated animal taxonomic group (e.g., a bird/pheasant, primate, or pet dog when the topic is Komodo Dragon vs Water Buffalo) or irrelevant human faces/charts.
+   - 2-TIER DOCUMENTARY B-ROLL RULE: In any two-entity matchup or comparison ("{anchor_topic}"), BOTH named protagonists (and visually similar species/vessels/aircraft from the same class on free stock/documentary libraries, such as monitor lizards for Komodo dragon, crocodile/alligator for caiman, brown bear for grizzly, or authentic WWII/naval battleships, naval artillery turrets firing, ocean combat explosions, warship silhouettes on the horizon with smoke/shell splashes, ship rudder/propeller underwater or drydock shots, stormy Atlantic ocean waves illustrating a trapped/drifting vessel at sea, and vintage military biplanes/warplanes in flight for a naval/aerial war topic) are 100% VALID primary subjects! A clean shot showing AT LEAST ONE of the named protagonists or class-equivalent warships/aircraft/ocean battle settings from "{anchor_topic}" in a natural/historical pose OR a close-up of its features (e.g., claws, jaws, naval gun turrets firing, battleship bow/superstructure, ship rudder, ocean explosion, torpedo wake, horizon naval battle, cockpit in flight) MUST score `entity_match_score >= 8.5` (`"passed": true`). NEVER fail a tile because only one of the two combatants is visible in that frame, because an authentic archival war film or horizon naval shot has vintage film grain/smoke/ocean waves without a readable ship nameplate, or because an authentic preserved battleship has a naval hull pennant number! Only score `entity_match_score < 5.0` if the tile shows a completely unrelated animal taxonomic group or modern civilian airshows with tourists/bright red civilian sports monoplanes/Commemorative Air Force tarmac.
    - PSYCHOLOGY / NEUROSCIENCE / MEDICAL / PRE-CINEMA HISTORICAL CASE STUDY B-ROLL RULE: Whenever the Overall Script Topic ("{anchor_topic}") involves psychology, neuroscience, brain anatomy/mechanisms (e.g., prefrontal cortex, synapses, neural pathways, split-brain), a medical case study, or a 19th-century/pre-cinema historical figure where live footage of the accident/event cannot exist (e.g., Phineas Gage 1848), ANY scene tile in the video — EVEN IF that specific scene's narration or query describes a physical injury, explosion, skull trauma, surgery, or 19th-century survivor action — that shows 3D glowing brain/neural/synapse activity, microscopic neurons, medical skull/CT reconstructions, archival historical portraits/engravings, OR cinematic/monochrome human behavioral/walking/emotional B-roll (even with contemporary clothing/streets on free stock libraries where 19th-century period video does not exist) IS 100% VALID primary documentary B-roll and MUST score `entity_match_score >= 8.5`, `relevance_score >= 8.5`, and `cleanliness_score >= 8.5` (`"passed": true`)! NEVER fail any scene in a psychology/neuroscience/pre-cinema case study topic for showing 3D neural/brain activity or contemporary stock human behavioral/emotional B-roll instead of 19th-century period actors!
 2. NARRATIVE ACTION & SETTING ALIGNMENT (`relevance_score`: 0.0–10.0):
    - Does the frame's subject, setting, and historical era align with a documentary on "{anchor_topic}" or the scene's `[Directed B-Roll Query: ...]`?
@@ -967,6 +991,9 @@ Return ONLY valid JSON in this exact format:
                                         if not is_p and ck_e and ck_e in cls._cs_scene_pass_cache:
                                             all_scene_evals[sid_e] = dict(cls._cs_scene_pass_cache[ck_e])
                                             continue
+                                        if is_p and ck_e and ck_e in cls._cs_scene_fail_cache:
+                                            all_scene_evals[sid_e] = dict(cls._cs_scene_fail_cache[ck_e])
+                                            continue
                                         ev_entry = {
                                             "passed": is_p,
                                             "entity_match_score": ent_s,
@@ -1012,7 +1039,8 @@ Return ONLY valid JSON in this exact format:
     def evaluate_media(
         self,
         scenes_media: List[Dict[str, Any]],
-        primary_entity: Optional[str] = None
+        primary_entity: Optional[str] = None,
+        channel_style: Optional[str] = None,
     ) -> VisualEvaluationReport:
         """
         Kiểm định SONG SONG ĐỘ SẮC NÉT, ĐỘ PHÂN GIẢI, TÍNH TOÀN VẸN BITMAP & CHỐNG TRÙNG LẶP của tất cả các cảnh.
@@ -1254,6 +1282,7 @@ Return ONLY valid JSON in this exact format:
                 self._gemini_vision_audit_contact_sheet,
                 scenes_media,
                 primary_entity,
+                channel_style,
             )
             inspected_list = list(pool.map(_inspect_single_scene, scenes_media))
             try:

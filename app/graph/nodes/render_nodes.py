@@ -3,6 +3,7 @@ app.graph.nodes.render_nodes — Node Render Video bằng VideoAgent & Kiểm đ
 """
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Dict, Any
 
@@ -120,7 +121,17 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                 continue
             _sid_s = int(_sc_s.get("scene_id") or 0)
             _iss_s = " ".join(str(x) for x in (_sc_s.get("issues") or [])).lower()
-            _sc_val = float(_sc_s.get("score") or 10.0)
+            _sc_val = float(
+                _sc_s.get("score")
+                or (
+                    (
+                        float(_sc_s.get("relevance_score", 9.0) or 9.0)
+                        + float(_sc_s.get("entity_match_score", 9.0) or 9.0)
+                        + float(_sc_s.get("aesthetic_score", 9.0) or 9.0)
+                    )
+                    / 3.0
+                )
+            )
             _is_only_sharpness_issue = (
                 _sid_s == 1
                 and ("độ sắc nét" in _iss_s or "sharpness" in _iss_s)
@@ -261,11 +272,11 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                             from app.graph.nodes.media.hook_video_helpers import verify_hook_clip_genuine_motion
                                             from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
                                             pre_g_chk = VisualCritic.inspect_clip_before_concat(
-                                                out_pre_resc, min_short_edge=540, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
+                                                out_pre_resc, min_short_edge=540, min_sharpness=5.2, check_watermark=False, allow_snow=True, auto_sanitize=True
                                             )
                                             ok_pre_mot, _, _ = verify_hook_clip_genuine_motion(out_pre_resc)
-                                            is_pre_vis_ok = False
-                                            if pre_g_chk.get("passed", False) and ok_pre_mot:
+                                            is_pre_vis_ok = bool((best_v_pre or {}).get("vision_curated")) and (u_gr == str((best_v_pre or {}).get("url") or ""))
+                                            if pre_g_chk.get("passed", False) and ok_pre_mot and not is_pre_vis_ok:
                                                 is_pre_vis_ok, _, _ = _verify_short_clip_with_gemini_vision(
                                                     video_path=out_pre_resc,
                                                     topic=str(state.get("topic") or ""),
@@ -305,7 +316,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                         job_id=job_id,
                                         scene_id=int(sc_id),
                                         skip_stock_fallback=True,
-                                        deadline_ts=time.monotonic() + 34.0,
+                                        allow_bili_fallback=False,
+                                        deadline_ts=time.monotonic() + 38.0,
                                     )
                                     if yt_pre_res and yt_pre_res.get("media_path") and Path(yt_pre_res["media_path"]).exists():
                                         cur_media_path = yt_pre_res["media_path"]
@@ -338,7 +350,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                         rescued_pre = True
                         except Exception:
                             pass
-                    if not rescued_pre and int(sc_id) not in (1, 2) and not _needs_video_for_85pct_floor:
+                    if not rescued_pre and int(sc_id) not in (1, 2) and not _needs_video_for_85pct_floor and not _is_eval_failed_scene:
                         same_scene_imgs = sorted(
                             [
                                 p for p in (list(m_dir_pre.glob(f"scene_{int(sc_id):03d}_*.jpg")) if m_dir_pre.exists() else [])
@@ -355,7 +367,12 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                             logger.info(
                                 f"🛡️ [PreRenderRescue] Đã khôi phục ảnh thật '{same_scene_imgs[0].name}' trên đĩa cho Cảnh #{sc_id} (thay thế _graphic.png)!"
                             )
-                    if not rescued_pre and (not cur_media_path or not Path(cur_media_path).exists() or cur_media_path.lower().endswith("_graphic.png")):
+                    if not rescued_pre and (
+                        not cur_media_path
+                        or not Path(cur_media_path).exists()
+                        or cur_media_path.lower().endswith("_graphic.png")
+                        or (_is_eval_failed_scene and int(sc_id) not in (1, 2) and not _needs_video_for_85pct_floor)
+                    ):
                         from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                         from app.graph.tools.tool_schemas import resolve_scene_active_entity
                         out_pre_gimg = str(m_dir_pre / f"scene_{int(sc_id):03d}_prerender_gimg.jpg")
@@ -842,6 +859,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         re_eval_report = VisualCritic().evaluate_media(
             scenes_media,
             primary_entity=vc_primary_entity,
+            channel_style=str(state.get("channel_style") or ""),
         )
         prev_ov = float((updated_media_eval or {}).get("overall_score") or 0.0)
         prev_had_graphic = any(
