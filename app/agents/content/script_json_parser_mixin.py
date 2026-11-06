@@ -99,9 +99,8 @@ class ScriptJsonParserMixin:
             except Exception as e:
                 err_s = str(e)
                 logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {err_s}")
-                if "Read timed out" not in err_s:
-                    self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=err_s)
-                time.sleep(0.3)
+                self.rotator.mark_model_rate_limited(key, model, status_code=504, error_text=err_s)
+                time.sleep(0.2)
                 continue
 
         # Fallback đám mây độc lập (timeout ngắn 10s) khi toàn bộ pool Gemini API tạm chạm trần 429/503

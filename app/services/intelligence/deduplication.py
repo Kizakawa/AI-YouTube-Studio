@@ -317,6 +317,10 @@ def check_idea_similarity(
     if not cand_tokens:
         return False, 0.0, ""
 
+    # Tách phần Subject/Entity cốt lõi đứng trước dấu ':' (nếu là topic dài dạng "[Entity A vs Entity B]: [Description]")
+    cand_prefix_raw = str(candidate_title_or_topic).split(":")[0].strip()
+    cand_prefix_tokens = set(_normalize_text_for_similarity(cand_prefix_raw).split()) if cand_prefix_raw else cand_tokens
+
     max_score = 0.0
     best_match = ""
 
@@ -328,20 +332,33 @@ def check_idea_similarity(
         if not item_tokens:
             continue
 
+        item_prefix_raw = str(item).split(":")[0].strip()
+        item_prefix_tokens = set(_normalize_text_for_similarity(item_prefix_raw).split()) if item_prefix_raw else item_tokens
+
         intersection = cand_tokens.intersection(item_tokens)
         union = cand_tokens.union(item_tokens)
 
-        # 1. Jaccard similarity
+        # 1. Jaccard similarity toàn câu
         jaccard = len(intersection) / len(union) if union else 0.0
 
-        # 2. Overlap trên tập từ nhỏ hơn (phát hiện ý tưởng bị bao hàm 100%)
-        containment = len(intersection) / min(len(cand_tokens), len(item_tokens)) if min(len(cand_tokens), len(item_tokens)) > 0 else 0.0
+        # 2. Overlap trên tập từ nhỏ hơn (phát hiện tiêu đề ngắn nằm trọn trong topic dài)
+        min_len = min(len(cand_tokens), len(item_tokens))
+        containment = len(intersection) / min_len if min_len > 0 else 0.0
+
+        # 3. Subject-Prefix Similarity (so sánh trực tiếp cụm thực thể trước dấu ':')
+        prefix_inter = cand_prefix_tokens.intersection(item_prefix_tokens)
+        prefix_min = min(len(cand_prefix_tokens), len(item_prefix_tokens))
+        prefix_containment = (len(prefix_inter) / prefix_min) if (prefix_min > 0 and len(prefix_inter) >= 2) else 0.0
 
         # Nếu chỉ trùng đúng 1 từ đơn lẻ (vd: 'oceano', 'metros', 'shark'), không được phép vọt điểm containment ảo
-        if len(intersection) == 1 and min(len(cand_tokens), len(item_tokens)) >= 3:
+        if len(intersection) == 1 and min_len >= 3:
             combined_score = min(0.22, jaccard)
         else:
-            combined_score = max(jaccard, containment * 0.75)
+            # Khi trùng từ 3 token thực thể/sự kiện trở lên giữa prompt dài và tiêu đề ngắn, tăng trọng số containment
+            containment_weight = 0.90 if len(intersection) >= 3 else 0.80
+            combined_score = max(jaccard, containment * containment_weight, prefix_containment * 0.92)
+            if len(intersection) >= 3 and containment >= 0.45:
+                combined_score = max(combined_score, 0.58)
 
         if combined_score > max_score:
             max_score = combined_score
@@ -350,10 +367,12 @@ def check_idea_similarity(
     # 3. Truy vấn Mini-RAG (nếu có channel_id hoặc tìm trong toàn kho kịch bản + visual metadata)
     if channel_id:
         try:
+            from app.database.models import normalize_channel_id
             from app.services.video_memory_rag import get_video_memory_rag
+            norm_cid = normalize_channel_id(channel_id)
             rag_hits = get_video_memory_rag().query_similar(
                 query_text=candidate_title_or_topic,
-                channel_id=channel_id,
+                channel_id=norm_cid or channel_id,
                 top_k=2,
                 min_score=max(0.25, similarity_threshold * 0.85),
             )

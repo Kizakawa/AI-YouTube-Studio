@@ -289,6 +289,20 @@ class ScriptFallbackAndRefineMixin:
                 }
 
         vf = "long" if str(video_format or "short").strip().lower() in ("long", "long_form", "long-form", "16:9", "landscape", "horizontal", "documentary") else "short"
+        # Bảo vệ chống nhân bản tiêu đề tĩnh (Anti-Duplicate Fallback Guard):
+        # Nếu caller truyền vào một `topic` cụ thể KHÔNG chứa chủ thể của mẫu fallback tĩnh,
+        # tự động giữ nguyên tiêu đề & chủ thể từ `topic` của caller thay vì ghi đè bằng Arkhipov/Petrov/Franklin!
+        clean_topic = (topic or "").strip()
+        if clean_topic:
+            fallback_entity = str(raw_data.get("primary_entity") or "").lower()
+            if fallback_entity and fallback_entity not in t_low:
+                prefix_title = clean_topic.split(":")[0].strip()
+                if len(prefix_title) < 18:
+                    prefix_title = clean_topic[:68].strip()
+                raw_data["title"] = f"{prefix_title} #Shorts" if vf == "short" and "#shorts" not in prefix_title.lower() else prefix_title
+                raw_data["topic"] = clean_topic
+                extracted_entity = prefix_title.split(" vs ")[0].strip() if " vs " in prefix_title.lower() else prefix_title[:40].strip()
+                raw_data["primary_entity"] = extracted_entity
         if vf == "long":
             # Mở rộng kịch bản dự phòng thành 16 phân cảnh (5 Chương Phim Tài Liệu 16:9, ~360+ từ)
             base_scenes = list(raw_data.get("scenes") or [])

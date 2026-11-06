@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from config.settings import settings
-from app.database.models import get_db, PublishedVideo, VideoJob
+from app.database.models import get_db, PublishedVideo, VideoJob, normalize_channel_id
 
 logger = logging.getLogger(__name__)
 
@@ -724,10 +724,14 @@ def get_weekly_winners_and_losers(channel_id: str, top_k: int = 3, force_refresh
 # ─────────────────────────────────────────────────────────────
 def list_videos(channel_id: str = "", q: str = "", limit: int = 100) -> List[Dict[str, Any]]:
     names = _channel_names()
+    norm_cid = normalize_channel_id(channel_id) if channel_id else ""
     with get_db() as db:
         query = db.query(PublishedVideo)
-        if channel_id:
-            query = query.filter(PublishedVideo.channel_id == channel_id)
+        if norm_cid:
+            if norm_cid != channel_id:
+                query = query.filter(PublishedVideo.channel_id.in_([channel_id, norm_cid]))
+            else:
+                query = query.filter(PublishedVideo.channel_id == norm_cid)
         rows = query.order_by(PublishedVideo.published_at.desc()).all()
         out = [_serialize(r, names) for r in rows]
     if q:
@@ -757,6 +761,7 @@ def check_duplicate(channel_id: str, topic: str, threshold: float = 0.34) -> Lis
     bằng cách ưu tiên truy vấn tức thời (0ms) trên hệ thống Mini-RAG (`VideoMemoryRAG`)
     kết hợp với bảng `PublishedVideo`.
     """
+    channel_id = normalize_channel_id(channel_id) if channel_id else ""
     tq = _tokens(topic)
     if not tq:
         return []

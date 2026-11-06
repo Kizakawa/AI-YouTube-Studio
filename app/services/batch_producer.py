@@ -57,8 +57,8 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel The mysteries of the world (US English). Deep 5-Act Dual-Peak abyssal showdown & lethal ocean/earth physics arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (Zack D. Films / Nature Lenses / RealLifeLore Viral Style — 6-9 conversational words): Write a natural human Why/How title naming the exact creature/phenomenon + everyday action/paradox (e.g. 'Why Great White Sharks Are Terrified Of Orcas', 'Why Sea Turtles Can Eat Deadly Jellyfish', 'Why Submarines Never Pass Below This Depth'). NEVER use stiff 'A vs B: Metric' colon formulas and NEVER put textbook units (PSI, °C, dB, atm, Newtons) in the title! "
-            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — PRIORITIZE 'WHY...' CURIOSITY PARADOX HOOK): Open right at 0.0s with a counter-intuitive 'Why...' question or 'Here's why...' paradox naming the exact entities (e.g., 'Why do massive great white sharks panic the second an orca shows up?', 'Why can a sea turtle chew up deadly box jellyfish without dying?') that forces the viewer to stay for the answer! NEVER repeat the title word-for-word at 0.0s! "
+            "TITLE (YT_SEARCH Anchor — '[Entity A] vs [Entity B]: [Extreme Physical Metric]'): Explicitly name both high-search-volume entities + a concrete extreme physical metric (e.g. 'Colossal Squid vs Sperm Whale: Battle at 6,500 Feet', 'Mariana Trench 15,750 PSI vs Titanium Submarine'). NEVER hide the entity behind vague pronouns! "
+            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — 4 Psychological-Visual Hook Archetypes): Open right at 0.0s with (1) Visual Micro-Observation, (2) The Fatal Mistake, (3) 2nd-Person Survival Simulation, or (4) Role Reversal naming the exact entities without repeating the title word-for-word! "
             "ACT 2 (Scenes 2-3): Reveal the first physical reason or lethal weapon translated into a vivid everyday physical analogy anyone can picture. "
             "ACT 3 (Scene 4 - 15s Twist): Second explosive peak / deeper counter-mechanism translated into a visceral sensory image that flips the viewer's assumption. "
             "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
@@ -106,38 +106,28 @@ CHANNELS_CONFIG = {
         "director_notes": (
             "Target channel Psychology of the world (US English). Deep 5-Act Dual-Peak Forensic Interrogation, Famous Brain Experiments & Behavioral Traps arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
             "STRICT NICHE PIVOT: Focus ONLY on (1) Forensic Courtroom & Detective Interrogation Psychology, (2) Famous University Brain & Obedience Experiments, and (3) Casino/Billionaire Behavioral Traps. "
-            "TITLE (Charisma on Command / Zack D. Films Viral Style — 6-9 conversational words): Write a natural human Why/How title naming the exact situation/test + everyday human outcome (e.g. 'Why FBI Agents Put A Water Cup Near Suspects', 'Why Guilty Suspects Always Freeze Their Feet', 'Why Casinos Never Have Windows Or Clocks'). NEVER use stiff 'A vs B: Metric' colon formulas or dry lab units! "
-            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — PRIORITIZE 'WHY...' CURIOSITY HOOK): Open right at 0.0s with a counter-intuitive 'Why...' question naming the exact test or behavior (e.g. 'Why do FBI detectives place one paper water cup six inches from a suspect?', 'Why do trained liars control their face, yet freeze both feet under the table?') without repeating the title verbatim! "
+            "TITLE (YT_SEARCH Anchor — '[Entity A] vs [Entity B]: [Extreme Metric/Test]'): Explicitly name the forensic test/experiment vs the human brain/suspect + concrete metric (e.g. 'Polygraph vs FBI Interrogation: The 0.4-Second Lie', 'FBI Cognitive Load Test vs Rehearsed Alibis: 8-Second Breakdown', 'Orfield Labs -24.9 dB Room vs Human Brain: 45-Minute Limit'). NEVER hide the core subject! "
+            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — 4 Psychological-Visual Hook Archetypes): Open right at 0.0s with (1) Visual Micro-Observation, (2) The Fatal Mistake, (3) 2nd-Person Interrogation Simulation, or (4) Role Reversal naming the exact test or behavior without repeating the title verbatim! "
             "ACT 2 (Scenes 2-3): Real courtroom/experiment setup and first behavioral reaction. "
             "ACT 3 (Scene 4 - 15s Twist): The hidden second psychological mechanism that flips expectations. "
             "ACT 4-5 (Scenes 6-8): Practical counter-move and Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
             "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology style). Strict English only."
         ),
         "topics": [
-            "Why Las Vegas Casinos Never Have Windows Or Clocks And Curve Every Hallway To Trap Your Brain",
-            "Why 72 Hours Inside A Completely White Soundproof Room Makes The Human Brain Hallucinate",
-            "Why FBI Detectives Place A Paper Water Cup 6 Inches From Guilty Suspects In Police Interrogations",
             "FBI Cognitive Load Reverse-Order Test vs Rehearsed Alibis: Why Telling a Story Backward Collapses a Liar's Brain in 8 Seconds",
+            "Orfield Labs -24.9 dB Quietest Room vs Human Brain: Why Hearing Your Own Blood Rushing Drives Test Subjects Out in 45 Minutes",
             "1972 Stanford Marshmallow Delay Test vs Dopamine Impulse: How Prefrontal Cortex Self-Control Predicts Wealth 40 Years Later",
             "1961 Yale Milgram Experiment vs 450-Volt Authority Switch: Why 65% of Ordinary People Obeyed the Final Lethal Command",
             "FBI Foot-Freeze Interrogation Test vs Trained Liars: Why Guilty Suspects Control Their Face But Betray Deception Below the Desk",
-            "Water Cup Barrier Test vs Guilty Suspects: Why Detectives Place a Paper Cup 6 Inches From Your Hand to Expose Deception",
-            "Las Vegas Casino Labyrinth vs Human Brain: How Zero Clocks and Curved Carpets Trigger a 400% Dopamine Trap",
-            "The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a Suspect",
-            "Orfield Labs -24.9 dB Quietest Room vs Human Brain: Why Hearing Your Own Blood Rushing Drives Test Subjects Out in 45 Minutes",
-            "Why Guilty Suspects Repeat Your Exact Question Before Answering in Police Interrogations",
-            "White Room Torture: What 72 Hours of Complete Color Deprivation Does to the Human Brain",
-            "Las Vegas Casino Oxygen & Curved Carpets vs Human Brain: How Zero Windows and Zero Clocks Trigger a 400% Dopamine Trap",
-            "The 1971 Stanford Prison Collapse: How 24 Normal Students Turned Ruthless in Just 6 Days",
-            "Why Trained Liars Control Their Face But Always Betray Themselves With Their Feet (FBI Profiling)",
-            "The Decoy Pricing Trap: How Movie Theaters and Tech Giants Trick Your Brain Into Buying the Expensive Option",
-            "Why Suspects Stare Straight Unblinking After Telling a Lie (The Cognitive Load Stare)",
-            "The Monster Study of 1939: The Forbidden Speech Experiment That Broke Orphans in 4 Months",
-            "Why Billionaires and Surgeons Wear the Exact Same Outfit Every Day (Decision Fatigue Science)",
-            "How Hostage Negotiators Use the 8-Second Late-Night FM DJ Voice to Disarm Armed Suspects",
-            "The Milgram Shock Machine: Why 65% of Ordinary People Obeyed Orders to Deliver 450 Volts",
-            "Why Your Brain Slows Down Time During a Car Crash (The Amygdala High-Speed Frame Illusion)",
-            "How Polygraph Examiners Catch You Before They Even Ask the Real Question (The Control Lie Trap)",
+            "FBI Hostage Negotiator 8-Second Late-Night FM Voice vs Armed Suspects: How Low-Frequency Speech Drops Cortisol in 30 Seconds",
+            "1951 Asch Conformity Experiment vs Group Pressure: Why 75% of Intelligent Adults Denied What Their Own Eyes Saw",
+            "Split-Brain Corpus Callosum Surgery vs Two Independent Minds: Why One Hand Buttons a Shirt While the Other Unbuttons It",
+            "Phineas Gage Iron Rod Skull Injury vs Prefrontal Cortex: How One 1848 Railroad Explosion Rewrote Human Personality Science",
+            "1971 Stanford Prison Experiment vs 6-Day Authority Collapse: How 24 Honor Students Turned Into Ruthless Guards in 144 Hours",
+            "Rubber Hand Illusion vs Human Somatosensory Cortex: How 60 Seconds of Synchronized Brush Strokes Trick Your Brain Into Feeling a Fake Limb",
+            "1939 Iowa Monster Study vs 22 Orphans: The Forbidden Speech Experiment That Triggered Permanent Stuttering in 4 Months",
+            "Capgras Delusion vs Fusiform Face Area: The Rare Brain Disconnect That Makes Patients Believe Loved Ones Are Impostors",
+            "Darley and Latané Bystander Effect vs 38 Witnesses: Why Adding More People to an Emergency Drops Rescue Odds by 70%",
         ],
         "default_tags": [
             "shorts", "psychology", "forensicpsychology", "brainscience", "interrogation",
@@ -156,22 +146,20 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 18,
         "director_notes": (
             "Target channel Wild Odyssey (US English). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (Nature Lenses / Casual Geographic / Zack D. Films Viral Style — 6-9 conversational words): Explicitly name both animals in a natural, conversational Why/How title (e.g. 'Why Deadly Black Mambas Can't Kill A Mongoose', 'Why Lions Never Mess With A Honey Badger', 'How Jaguars Hunt Caimans Inside Deep Rivers'). NEVER use stiff 'A vs B: Metric' colon formulas and NEVER use dry physics units like PSI or Newtons! "
-            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — PRIORITIZE 'WHY...' CURIOSITY PARADOX HOOK): Open right at 0.0s with a counter-intuitive 'Why...' question naming both animals (e.g. 'Why can't Africa's deadliest black mamba kill a tiny ten-pound mongoose?', 'Why does a hungry lion pride back down from one honey badger?') without repeating the title verbatim! "
+            "TITLE (YT_SEARCH Anchor — '[Entity A] vs [Entity B]: [Extreme Physical Metric]'): Explicitly name both high-search-volume animals + a concrete physical metric (e.g. 'Jaguar vs Black Caiman: 1,500 PSI Skull Bite', 'Black Mamba vs Mongoose: 15ms Reflex'). NEVER hide the species name! "
+            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — 4 Psychological-Visual Hook Archetypes): Open right at 0.0s with (1) Visual Micro-Observation, (2) The Fatal Mistake, (3) 2nd-Person Survival Simulation, or (4) Role Reversal naming both animals without repeating the title verbatim! "
             "ACT 2 (Scenes 2-3): Animal A's offensive weapon translated into a vivid everyday physical analogy anyone can picture. "
             "ACT 3 (Scene 4 - 15s Twist): Animal B's counter-mechanism or the unexpected biomechanical twist painted as a mental movie. "
             "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
             "Tone: cinematic, adrenaline-pumping, National Geographic documentary style. Strict English only."
         ),
         "topics": [
-            "Why Giant Nile Crocodiles Never Attack A Full-Grown Hippopotamus In Deep African Rivers",
-            "Why Even Giant Crocodiles Fear The 70-Pound Goliath Tigerfish In The Congo River",
-            "Why A Pride Of Hungry Lions Backs Down From A 25-Pound Honey Badger In The Savanna",
+            "Hippopotamus vs Nile Crocodile: How a 4,000-Pound River Titan Snaps 16-Foot Reptiles in Half With Foot-Long Ivory Tusks",
+            "Goliath Tigerfish vs Nile Crocodile: Why River Predators Fear This 70-Pound Congo Monster's 32 Interlocking Razor Teeth",
+            "Honey Badger vs Lion Pride: Why 6 Hungry Apex Cats Back Down From a 25-Pound Armored Rebel in the Savanna",
             "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive to Hurl Prey Off Ledges",
             "Honey Badger vs Puff Adder Venom: How Loose 6mm Skin Armor and Mutated Receptors Shrug Off a Lethal Snake Bite",
-            "Hippopotamus vs Nile Crocodile: How a 4,000-Pound River Titan Snaps 16-Foot Reptiles in Half With Foot-Long Ivory Tusks",
             "Spotted Hyena Clan vs African Leopard: How Bone-Splintering Jaws Steal Kills From a 150-Pound Stealth Cat",
-            "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive to Hurl Prey Off Ledges",
             "Siberian Tiger vs 1,000-Pound Brown Bear: How a 660-Pound Big Cat Ambushes Giants Twice Its Size in the Frozen Taiga",
             "Electric Eel vs Caiman: How an 860-Volt Biological Taser Stops a River Predator",
             "African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop a 150-Pound Ambush",
@@ -179,7 +167,6 @@ CHANNELS_CONFIG = {
             "Cape Buffalo vs Lion Pride: Why the 2,000-Pound Black Death Hunts Its Own Predators",
             "Mongoose vs Black Mamba: The 0.03-Second Reflex and Venom-Proof Receptors That Beat Africa's Deadliest Snake",
             "Tasmanian Devil vs 60-Pound Kangaroo Carcass: How a 26-Pound Marsupial Crushes Thick Bone With the Strongest Bite Per Pound on Earth",
-            "Goliath Tigerfish: The 70-Pound Congo River Predator With 32 Interlocking Razor Teeth",
             "Wild Boar vs Tiger: Why 400 Pounds of Armored Cartilage and Razor Tusks Can Gore an Apex Cat",
             "Giant Horned Lizard vs Coyote: The Desert Reptile That Shoots Pressurized Blood From Its Eyes",
             "Jaguar vs Green Anaconda: When Skull-Piercing Fangs Meet 500 Pounds of Bone-Crushing Coils",
@@ -201,33 +188,28 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 17,
         "director_notes": (
             "Target channel Alternate History & What If (US English). Deep 5-Act Dual-Peak historical showdown & butterfly-effect arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (Zack D. Films / RealLifeLore Viral Style — 6-9 conversational words): Write a natural human Why/How/What-If title naming the historical person/empire/event (e.g. 'Why One Wrong Turn By A Driver Started WW1', 'Why Napoleon's Giant Army Froze In Russia', 'Why One Man Refused To Start World War 3'). NEVER use stiff 'A vs B: Metric' colon formulas! "
-            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — PRIORITIZE 'WHY / WHAT IF...' CURIOSITY HOOK): Open right at 0.0s with a gripping 'Why...' or 'What if...' question naming the historical person/crisis (e.g. 'Why did one wrong turn by a chauffeur in 1914 trigger World War One?', 'Why did one Soviet submarine officer refuse to launch a nuclear torpedo in 1962?') without repeating the title verbatim. "
-            "ACT 2 (Scenes 2-3): Documented historical scale and vivid human stakes. "
+            "TITLE (YT_SEARCH Anchor — '[Historical Entity/Force A] vs [Rival Force/Crisis B]: [Extreme Physical Metric]'): Explicitly name the famous historical empire/leader/weapon + concrete physical metric (e.g. '300 Spartans vs 100,000 Persians: The 50-Foot Gate', 'Bismarck 50,000-Ton Battleship vs Swordfish Biplane: 1 Torpedo', '1914 Christmas Truce vs WW1 Trenches: The 24-Hour Ceasefire'). NEVER hide the historical subject! "
+            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — 4 Psychological-Visual Hook Archetypes): Open right at 0.0s with (1) Visual Micro-Observation, (2) The Fatal Tactical Mistake, (3) 2nd-Person Battlefield Simulation, or (4) Role Reversal naming the historical crisis without repeating the title verbatim. "
+            "ACT 2 (Scenes 2-3): Documented historical scale and vivid physical/tactical stakes. "
             "ACT 3 (Scene 4 - 15s Twist): The hidden tactical blunder or physical chain-reaction twist at second 15 that sealed the outcome. "
             "ACT 5 (Scene 7/8): Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
             "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin documentary style. Strict English only."
         ),
         "topics": [
-            "Why Kublai Khan's 4,400 Mongol Warships Vanished Overnight Before Conquering Samurai Japan In 1281",
-            "Why Roman Emperors Built A 73-Mile Stone Wall Instead Of Conquering Ancient Scotland",
-            "Why Snow Fell In June 1816 And Froze The World After Mount Tambora Exploded",
-            "1812 Napoleon's 600,000 Grande Armée vs Russian -40°C Winter: How Scorched Earth and Frostbite Erased 500,000 Troops in 5 Months",
-            "1983 Stanislav Petrov vs Soviet Satellite Glitch: How One Officer Stopped 5 False Nuclear Launch Alarms From Triggering WW3",
-            "1588 Spanish Armada 130 Warships vs English Fire Ships: How 8 Burning Hulks at Midnight Shattered the World's Richest Empire",
-            "1986 Chernobyl Divers vs 20-Megaton Steam Explosion: How 3 Volunteers Drained 20,000 Tons of Radioactive Water to Save Europe",
-            "1281 Kamikaze Mega-Typhoon vs Kublai Khan 4,400 Warships: How a 2-Day Hurricane Sank 140,000 Troops and Saved Samurai Japan",
-            "1815 Mount Tambora Super-Eruption vs The Year Without a Summer: How One Volcano Blocked the Sun and Froze Crops in June 1816",
-            "How 1 Unlocked Gate in 1453 Ended the 1,100-Year Byzantine Empire at Constantinople",
-            "What If the 1983 Stanislav Petrov Satellite Glitch Launched 10,000 Nuclear Warheads?",
-            "1945 Operation Unthinkable Allied Armies vs 11 Million Red Army Troops: Churchill's Secret Plan to Invade the USSR in July 1945",
-            "How One Wrong Turn By A Driver In 1914 Erased Four Empires Forever",
-            "The Man Who Refused To Launch A Nuclear Strike In 1962 Inside Submarine B-59",
-            "How A 15-Minute Rainstorm At Waterloo Ended Napoleon's Empire",
-            "What If The Titanic Never Hit The Iceberg? The Dark Truth Nobody Tells You",
-            "What If The Roman Empire Discovered Steam Engines 1,800 Years Early?",
-            "What If The Library Of Alexandria Was Never Burned Down?",
-            "How A Single Jammed Rifle In 1914 Changed The Entire 20th Century",
+            "Bismarck 50,000-Ton Battleship vs Canvas Swordfish Biplane: How One 85-MPH Torpedo Jammed Hitler's Deadliest Warship Rudder in 1941",
+            "300 Spartans vs 100,000 Persian Troops at Thermopylae: How a 50-Foot Coastal Bottleneck Neutralized Xerxes's Empire for 3 Days",
+            "1944 Operation Fortitude Inflatable Ghost Army vs German Reconnaissance: How Rubber Tanks Tricked Hitler Before D-Day",
+            "1915 Attack of the Dead Men at Osowiec Fortress vs Chlorine Gas: How 100 Russian Soldiers Routed 7,000 German Troops",
+            "1961 Tsar Bomba 50-Megaton Shockwave vs Tu-95 Bomber: How the Largest Explosion in History Nearly Vaporized Its Own Crew",
+            "Hannibal's 37 War Elephants vs Freezing Alps: How Crossing 9,000-Foot Ice Peaks Caught the Roman Republic Off Guard",
+            "1942 Battle of Midway 5-Minute Dive Bomber Strike vs 4 Japanese Carriers: How One Decoded Cipher Flipped the Pacific War",
+            "1914 WW1 Christmas Truce vs Western Front Trenches: Why 100,000 Enemy Soldiers Dropped Their Rifles on December 25",
+            "1815 Battle of Waterloo Rainstorm vs Napoleon's Grand Battery: How 3 Hours of Mud Delayed Artillery and Ended an Empire",
+            "1940 Dunkirk Evacuation 850 Little Ships vs Luftwaffe: How Civilian Fishing Boats Rescued 338,000 Allied Soldiers in 9 Days",
+            "1970 Apollo 13 Oxygen Tank Explosion vs 200,000 Miles of Deep Space: How Duct Tape and a Cardboard Sock Saved 3 Astronauts",
+            "1941 Simo Häyhä White Death vs Red Army Divisions: How One Finnish Sniper With Iron Sights Survived -40°C Winter Warfare",
+            "79 AD Mount Vesuvius 1,000°F Pyroclastic Surge vs Pompeii: Why 2,000 Romans Froze in Ash Within 15 Minutes",
+            "1986 Chernobyl 3 Suicide Squad Divers vs 20-Megaton Radioactive Steam Explosion: How Draining One Flooded Basement Saved Europe",
         ],
         "default_tags": [
             "shorts", "alternatehistory", "whatif", "history", "empires",
@@ -246,8 +228,8 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Odisseia Selvagem (Brazilian Portuguese). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TÍTULO (Estilo Você Sabia? / Nature Lenses — 6-9 palavras naturais): Escreva um título natural e curioso com 'Por Que / Como' nomeando os animais claramente sem fórmulas robóticas (ex: 'Por Que o Guepardo Tem Medo do Avestruz?', 'Por Que a Onça-Pintada Foge Desse Porco do Mato?', 'Como a Sucuri Engole um Jacaré Inteiro no Rio'). NUNCA use unidades secas como PSI, Newtons ou toneladas no título! "
-            "HOOK DA CENA 1 (0,0s-2,5s, 6-12 palavras — PRIORIZE O HOOK 'POR QUE...' DE CURIOSIDADE): Abra o segundo 0,0s com uma pergunta contraintuitiva 'Por que...' nomeando ambos os animais (ex: 'Por que uma onça-pintada sobe na árvore apavorada quando vê esse bando de porcos do mato?', 'Por que o guepardo mais rápido da África recua diante de um avestruz?') sem repetir o título palavra por palavra! "
+            "TÍTULO (Âncora YT_SEARCH — '[Animal A] vs [Animal B]: [Métrica Extrema]'): Nomeie claramente os dois animais de alto volume de busca + métrica física impactante (ex: 'Mamba-Negra vs Mangusto: O Reflexo de 15ms!', 'Onça-Pintada vs Jacaré: Mordida de 1.500 PSI', 'Dragão-de-Komodo vs Búfalo: Veneno Letal'). NUNCA esconda o nome do animal! "
+            "HOOK DA CENA 1 (0,0s-2,5s, 6-12 palavras — 4 Arquétipos de Hook Visual-Psicológico): Abra o segundo 0,0s com (1) Micro-Observação Visual, (2) O Erro Fatal, (3) Simulação de Sobrevivência em 2ª Pessoa, ou (4) Inversão de Papel nomeando os animais sem repetir o título palavra por palavra! "
             "ATO 2 (Cenas 2-3): Arma biomecânica do Animal A explicada de forma visual e simples. "
             "ATO 3 (Cena 4 - Twist de 15s): Contra-ataque ou mecanismo oculto do Animal B que vira o jogo. "
             "ATO 5 (Cena 7/8): Frase completa conectando em loop infinito de volta à Cena 1 (ZERO CTA falado de Inscreva-se). "
@@ -290,8 +272,8 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Mistérios do Mundo (Brazilian Portuguese). Deep 5-Act Dual-Peak abyssal showdown & extreme ocean/earth mystery arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TÍTULO (Estilo Você Sabia? / Zack D. Films — 6-9 palavras naturais): Escreva um título humano e curioso com 'Por Que / Como / O Que' nomeando a criatura ou lugar real + mistério visual (ex: 'Por Que Esse Lago Silencioso Apagou Uma Cidade Inteira?', 'Por Que Esse Peixe do Fundo do Mar Tem Uma Luz Invisível?', 'Por Que Nenhum Submarino Desce Até o Fundo Dessa Fossa?'). NUNCA use fórmulas robóticas 'A vs B: Número' nem unidades secas como PSI, °C ou atmosferas! "
-            "HOOK DA CENA 1 (0,0s-2,5s, 6-12 palavras — PRIORIZE O HOOK 'POR QUE...' DE CURIOSIDADE): Abra o segundo 0,0s com uma pergunta contraintuitiva 'Por que...' nomeando a criatura ou fenômeno real (ex: 'Por que tubarões do fundo do mar ficam paralisados ao nadar dentro desse lago submarino?', 'Por que os cientistas selaram esse poço profundo na Rússia?') sem repetir o título palavra por palavra! "
+            "TÍTULO (Âncora YT_SEARCH — '[Entidade A] vs [Entidade B]: [Métrica Extrema]'): Nomeie claramente a criatura/fenômeno real + métrica física impactante (ex: 'Lula-Colossal vs Cachalote: Batalha a 2.000m!', 'Fossa das Marianas 1.086 Atm vs Submarino', 'Polvo-de-Anéis-Azuis vs Moreia: Veneno 1.200x Mais Letal'). NUNCA esconda a entidade! "
+            "HOOK DA CENA 1 (0,0s-2,5s, 6-12 palavras — 4 Arquétipos de Hook Visual-Psicológico): Abra o segundo 0,0s com (1) Micro-Observação Visual, (2) O Erro Fatal, (3) Simulação de Sobrevivência em 2ª Pessoa, ou (4) Inversão de Papel nomeando a criatura ou fenômeno real sem repetir o título palavra por palavra! "
             "ATO 2 (Cenas 2-3): Profundidade real ou perigo explicado com comparação do dia a dia. "
             "ATO 3 (Cena 4 - Twist de 15s): Segundo pico explosivo / mecanismo reverso no segundo 15 que muda tudo. "
             "ATO 5 (Cena 7/8): Frase 100% completa fechando o Loop Infinito com a Cena 1 (ZERO CTA falado de Inscreva-se). "
@@ -563,7 +545,7 @@ async def produce_channel_video(
             )
             if not niche_res.get("passed", True):
                 continue
-            is_sim, _, _ = check_idea_similarity(cand_t, existing_refs, similarity_threshold=0.52, channel_id=ch_id)
+            is_sim, _, _ = check_idea_similarity(cand_t, existing_refs, similarity_threshold=0.40, channel_id=ch_id)
             if is_sim:
                 continue
             recent_ordered_refs = list(reversed(used_in_session)) + [r for r in existing_refs if r not in used_in_session][:6]
@@ -575,12 +557,18 @@ async def produce_channel_video(
             break
 
         if not topic:
-            remaining = [
-                t for t in cfg["topics"]
-                if t not in used_in_session
-                and validate_channel_niche_alignment(channel_id=ch_id, title=t, topic=t).get("passed", True)
-            ]
-            topic = remaining[0] if remaining else cfg["topics"][0]
+            # Nếu toàn bộ danh sách tĩnh cfg["topics"] đã từng xuất bản trên kênh,
+            # chọn ứng viên có độ trùng lặp thấp nhất (< 0.48) thay vì mù quáng lấy lại remaining[0] gây nhân bản video!
+            scored_remaining = []
+            for t in cfg["topics"]:
+                if t in used_in_session:
+                    continue
+                if not validate_channel_niche_alignment(channel_id=ch_id, title=t, topic=t).get("passed", True):
+                    continue
+                _, sim_sc, _ = check_idea_similarity(t, existing_refs, similarity_threshold=0.40, channel_id=ch_id)
+                scored_remaining.append((sim_sc, t))
+            scored_remaining.sort(key=lambda x: x[0])
+            topic = scored_remaining[0][1] if scored_remaining else cfg["topics"][0]
 
     used_in_session.append(topic)
     print(f"   -> Chủ đề được chọn: {topic}")
