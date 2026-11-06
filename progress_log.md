@@ -30,3 +30,7 @@
 - **`[2026-11-06 | Cross-Session Master Synthesis]` — `TASK-012`**:
   - Tổng hợp toàn bộ các kế hoạch và **Sổ Đen 14 Lỗi Cấm Lặp Lại** từ tất cả các kênh chat (`861ab3b5`, `40c844d4`, `7cfb8e13`, `1b893567`, `b6af5c48`, `a9b608a3`) vào hệ thống Bộ Nhớ Ngoài (`AGENTS.md`, `MEMORY.md`, `working_memory.md`, `todo.md`, `progress_log.md`).
   - Hợp nhất và kiểm định cú pháp (`py_compile`) cho `render_nodes.py` (Pre-Render Zero-Graphic Rescue & Hook motion verification), `deduplication.py` và `video_library.py` (lọc `#hashtags` và so khớp 2 vế `A vs B`).
+
+- **`[2026-11-07 | Batch 12 Shorts Golden Hour Production]` — `TASK-007` & `TASK-013`**:
+  - Sản xuất, kiểm định trực tiếp lưới frame (`job_773_sheet.jpg`..`job_784_sheet.jpg`, đạt `VideoQA 98–99/100`, `6/7` đến `8/8` cảnh video chuyển động thật), lập lịch Khung Giờ Vàng lên YouTube và gửi về Telegram (`-1001234567890`) trọn bộ **12/12 video Shorts** trên 6 kênh (`#777 Jsh3Q_0ip04`, `#778 AV4R0W8nCBg`, `#779 ZnzDxKwlrE4`, `#782 mRDUKrglCOs`, `#780 1Txbhnr3x5o`, `#783 0cQrpF7MM3Y`, `#781 88IxuM46wTI`, `#784 YaZReDxYyxE`, `#776 DcN_wEKF-Ek`, `#773 jOXGfmsc0w4`, `#775 vyz_-KJzUTM`, `#774 DbmIZwKK7ik`).
+  - Sửa tận gốc lỗi nhiễu `#hashtags` & tiền tố `A vs B` trong `deduplication.py` / `video_library.py`, mở khóa cứu hộ file `.mp4` cho cảnh `_graphic.png` + kiểm định chuyển động thật cả Cảnh 1 & Cảnh 2 trong `render_nodes.py`, và bổ sung quét thư mục alias trong `quota_manager.py`.

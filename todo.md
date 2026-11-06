@@ -73,10 +73,10 @@
 
 ## ⏳ Danh Sách Kế Hoạch Sẵn Sàng Thực Thi / Đang Theo Dõi (Active Backlog & Roadmap)
 
-- [ ] **TASK-013: Sản Xuất & Kiểm Định Video Thực Tế (`End-to-End Video QA`) Cho Trụ Cột Số 2 — `"Why / Por Que / How"` Mystery Explainer**
-  - **Mô tả**: Chạy trọn luồng tạo video từ `generate_script` $\rightarrow$ `evaluate_tool_calls` $\rightarrow$ `fetch_media` $\rightarrow$ `assemble_video` cho các chủ đề giải mã bí ẩn `"Why / Por Que..."` và kiểm định lưới khung hình thực tế.
-  - **File liên quan**: [`app/graph/workflow.py`](file:///d:/Python/Youtube/app/graph/workflow.py), [`app/utils/llm_node_inspector.py`](file:///d:/Python/Youtube/app/utils/llm_node_inspector.py), [`app/utils/langsmith_tracer.py`](file:///d:/Python/Youtube/app/utils/langsmith_tracer.py).
-  - **Tiêu chí hoàn thành**: Video đầu ra đạt `> 85%` thời lượng là video chạy thật (`0` thẻ `_graphic.png`), khớp chủ thể 100%, điểm `HotChannelBenchmark >= 8.5/10`.
+- [x] **TASK-013: Sản Xuất, Kiểm Định Video Thực Tế (`End-to-End Video QA`) & Lập Lịch Giờ Vàng Lô 12 Video Shorts (`#773`–`#784`) Cho Cả 2 Trụ Cột (`Entity A vs Entity B` & `"Why / Por Que"` Mystery Explainer)**
+  - **Mô tả**: Chạy trọn luồng tạo video, kiểm định lưới khung hình thực tế (`VideoQA 98–99/100`, `> 85%–100%` cảnh video thật), lập lịch Khung Giờ Vàng lên YouTube và gửi về Telegram đủ 12/12 video cho 6 kênh (trừ `Paws & Hearts Rescue`).
+  - **File liên quan**: [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py), [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py), [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py), [`app/services/quota_manager.py`](file:///d:/Python/Youtube/app/services/quota_manager.py).
+  - **Tiêu chí hoàn thành**: 12/12 video (`#773`–`#784`) đạt `VideoQA 98–99/100`, `0%` trùng lặp, đã lên lịch `SCHEDULED` trên YouTube và gửi về Telegram (`-1001234567890`).
 
 - [ ] **TASK-014: Vận Hành Chiến Lược Hybrid `Shorts (9:16) + 10-Min Long-Form (16:9)` & Lộ Trình 60 Ngày Bật Kiếm Tiền YPP (`longform_launch_report.md` & `competitive_intelligence_and_60day_roadmap.md`)**
   - **Mô tả**: Duy trì nhịp đăng 2 Shorts/ngày/kênh đúng khung giờ vàng Mỹ (`16:15–18:15 UTC` & `01:00–03:00 UTC`) và Brazil (`13:20/20:15 UTC` & `14:25/21:20 UTC`), kết hợp sản xuất phim tài liệu dài `10 phút` (`>= 9m15s`) vào khung `21:30–22:30 UTC` và đẩy phễu bình luận từ Shorts sang Long-Form.

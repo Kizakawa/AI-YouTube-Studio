@@ -6,51 +6,61 @@
 
 ---
 
-## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-06 23:12 +07:00`)
+## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-07 00:08 +07:00`)
 
 - **Nhánh Git hiện tại**: `main` (đồng bộ sạch với `origin/main`).
 - **Tác vụ vừa hoàn thành**:
-  - `TASK-012`: **Tổng hợp 100% các kế hoạch tối ưu và Sổ Đen 14 Lỗi Cấm Lặp Lại từ toàn bộ các kênh chat song song** (`861ab3b5`, `40c844d4`, `7cfb8e13`, `1b893567`, `b6af5c48`, `a9b608a3`) vào hệ thống Bộ Nhớ Ngoài ([`AGENTS.md`](file:///d:/Python/Youtube/AGENTS.md), [`MEMORY.md`](file:///d:/Python/Youtube/MEMORY.md), [`working_memory.md`](file:///d:/Python/Youtube/working_memory.md), [`todo.md`](file:///d:/Python/Youtube/todo.md), [`progress_log.md`](file:///d:/Python/Youtube/progress_log.md)).
-  - Đồng thời kiểm định (`py_compile`) và hợp nhất sạch sẽ 3 bản sửa lỗi từ phiên chat song song vào nhánh `main`:
-    1. [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py): Cứu hộ trực tiếp từ file video gốc (`.mp4`) trước khi render để diệt tận gốc thẻ xanh `_graphic.png` và kiểm định chuyển động thật (`verify_hook_clip_genuine_motion`) cho Cảnh 1 & 2.
-    2. [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py) & [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py): Lọc bỏ `#hashtags` (`#shorts`, `#humanbehavior`) trước khi tính độ trùng lặp chủ đề và yêu cầu khớp cả 2 vế `A vs B` khi kiểm tra tiền tố.
+  - `TASK-013`: Sản xuất hoàn chỉnh, kiểm định lưới khung hình thực tế (`VideoQA 98–99/100`, `> 85%–100%` cảnh video chuyển động thật), lập lịch Khung Giờ Vàng lên YouTube và gửi về Telegram trọn bộ **12/12 video Shorts** cho **6 kênh** (`ch_wild_odyssey`, `ch_odisseia_selvagem`, `ch_the_mysteries_of_the_world`, `ch_misterios_do_mundo`, `@alternatehistorywhatif-e2x`, `ch_psychology_of_the_world` — trừ `Paws & Hearts Rescue`).
+  - `TASK-007`: Hoàn tất nghiệm thu thực tế (`End-to-End Video QA`) cho cả 2 trụ cột Viral (`pillar_1_direct_matchup` và `pillar_2_why_mystery_explainer`: *Why This Deep-Sea Brine Pool Paralyzes Sharks in Seconds*, *Lake Natron: Why This 140°F Red Lake Turns Birds Into Stone*, *Por Que a Piscina do Titanic Continua Cheia de Água a 3.800m?*, *Hyperthymesia: Why a Perfect Memory Is a Mental Trap*).
 
 ---
 
-## ✅ 1. Đã Làm Gì (Completed Across All Recent Sessions)
-1. **Tổng hợp "Sổ Đen 14 Lỗi Cấm Lặp Lại" từ tất cả các phiên chat vào [`MEMORY.md`](file:///d:/Python/Youtube/MEMORY.md) và [`AGENTS.md`](file:///d:/Python/Youtube/AGENTS.md)**:
-   - Khóa cứng luật `> 85%` thời lượng Shorts là video chuyển động thật (`5–7` clip `.mp4`) + **0% thẻ xanh `_graphic.png`** (`Pre-Render Zero-Graphic Rescue` + chặn tái sử dụng checkpoint `fetch_media` có `_graphic.png`).
-   - Khóa cứng **100% YAML Single Source of Truth** (`config/niches/*.yaml` qua `niche_manager.py`; cấm hardcode `cfg["topics"]` hay `cfg["director_notes"]` trong `batch_producer.py`).
-   - Khóa cứng **Zero Disguised Keyword/Regex Lists in Python** (`5a79a8c`) + **Script-LLM Scene Search Authority** (`SceneContract.subject_entity` + `search_queries`).
-   - Khóa cứng **Hai Trụ Cột Viral Ngang Hàng**: `pillar_1_direct_matchup` (`Entity A vs Entity B`) & `pillar_2_why_mystery_explainer` (`Why / Por Que / How [Thực Thể/Địa Danh] [Bí Ẩn Ngược Đời]`).
-   - Khóa cứng kiến trúc **Long-Form `16:9` 10 Chương / 30–40 Cảnh (`>= 9m15s` / `LONGFORM_MIDROLL_FLOOR_MS = 555_000`)** mở khóa quảng cáo giữa giờ `>= 08:00`, khung giờ vàng Long-Form Mỹ **`21:30–22:30 UTC`**, và tự động gắn link Long-Form vào bình luận Shorts cùng kênh (`8900842`).
-   - Khóa cứng **3-Frame Gemini Vision trên mọi nguồn video (kể cả Pexels `dd3d124`)**, `Subtitle-Safe Bilibili Crop`, cấm thanh tiêu đề vàng trên đỉnh video ở `0.0s`, cấm cờ quốc gia/thời đại sai lệch (`< 4.0`), và chuyển trạng thái **`PRIVATE`** thay vì xóa hàng loạt video lỗi.
-2. **Hợp nhất đầy đủ các kế hoạch từ mọi phiên chat vào [`todo.md`](file:///d:/Python/Youtube/todo.md)**:
-   - Đã ghi nhận đầy đủ 12 hạng mục lớn đã hoàn thành (`TASK-001` $\rightarrow$ `TASK-012`) và 6 kế hoạch sẵn sàng/đang theo dõi (`TASK-013` $\rightarrow$ `TASK-018`: Kiểm định Video `"Why..."` End-to-End, Theo dõi hiệu suất & Cross-Promo Long-Form 10 phút, Nâng cấp NVIDIA Driver `>= 610.0` mở khóa `h264_nvenc`, Tối ưu tốc độ render Long-Form từ `26p` xuống `12–15p`, Cấp lại OAuth cho kênh `Wild Odyssey` khi cần, và Kiểm toán định kỳ 14 ngày).
+## ✅ 1. Đã Làm Gì (Completed In Recent Turns)
+1. **Sản xuất, Kiểm định Lưới Hình Ảnh & Lập Lịch Giờ Vàng 12/12 Video Shorts (`#773`–`#784`)**:
+   - **Wild Odyssey (`ch_wild_odyssey`)**:
+     - `#777` (*Shoebill Stork vs Baby Nile Crocodile: The Machine-Gun Beak 🦤🐊 #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/Jsh3Q_0ip04` (`10:00 Sáng T7, 07/11/2026 VN`).
+     - `#778` (*Army Ants vs Giant Scorpion: 500,000 Jaws in the Amazon 🐜🦂 #Shorts*, `6/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/AV4R0W8nCBg` (`01:15 Sáng CN, 08/11/2026 VN`).
+   - **Odisseia Selvagem (`ch_odisseia_selvagem`)**:
+     - `#779` (*Ave-Secretário vs Serpente: O Pisão Mortal de 195 Newtons 🦅🐍 #Shorts*, `7/7` video, `VideoQA 98/100`) $\rightarrow$ `https://www.youtube.com/shorts/ZnzDxKwlrE4` (`03:15 Sáng T7, 07/11/2026 VN`).
+     - `#782` (*Diabo-da-Tasmânia vs Ossos: A Mordida Mais Forte por Quilo 👹🦴 #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/mRDUKrglCOs` (`20:20 Đêm T7, 07/11/2026 VN`).
+   - **The mysteries of the world (`ch_the_mysteries_of_the_world`)**:
+     - `#780` (*Why This Deep-Sea Brine Pool Paralyzes Sharks in Seconds 🌊🦈 #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/1Txbhnr3x5o` (`00:45 Sáng CN, 08/11/2026 VN`).
+     - `#783` (*Lake Natron: Why This 140°F Red Lake Turns Birds Into Stone 🦩🪨 #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/0cQrpF7MM3Y` (`00:45 Sáng T2, 09/11/2026 VN`).
+   - **Mistérios do Mundo (`ch_misterios_do_mundo`)**:
+     - `#781` (*Por Que a Piscina do Titanic Continua Cheia de Água a 3.800m? 🚢🌊 #Shorts*, `6/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/88IxuM46wTI` (`04:20 Sáng T7, 07/11/2026 VN`).
+     - `#784` (*Peixe-Barril (Macropinna): O Peixe Com Cabeça Transparente 🐟👁️ #Shorts*, `6/6` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/YaZReDxYyxE` (`21:25 Đêm T7, 07/11/2026 VN`).
+   - **Alternate History & "What If?" (`@alternatehistorywhatif-e2x`)**:
+     - `#776` (*1961 Goldsboro B-52 Crash: Two 4-Megaton Nukes vs One Switch ☢️✈️ #Shorts*, `8/8` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/DcN_wEKF-Ek` (`23:15 Đêm T6, 06/11/2026 VN`).
+     - `#773` (*Bismarck Battleship vs Swordfish: 1 Torpedo vs 50,000 Tons 🚢✈️ #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/jOXGfmsc0w4` (`08:00 Sáng T7, 07/11/2026 VN`).
+   - **Psychology of the world (`ch_psychology_of_the_world`)**:
+     - `#775` (*Hyperthymesia: Why a Perfect Memory Is a Mental Trap 🧠🔒 #Shorts*, `7/8` video, `VideoQA 98/100`) $\rightarrow$ `https://www.youtube.com/shorts/vyz_-KJzUTM` (`23:45 Đêm T7, 07/11/2026 VN`).
+     - `#774` (*Telepathy Paradox: What If You Heard Everyone's Thoughts? 🧠👁️ #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/DbmIZwKK7ik` (`08:30 Sáng CN, 08/11/2026 VN`).
+2. **Sửa tận gốc 4 lỗi hệ thống phát hiện trong quá trình chạy Batch 12 video**:
+   - [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py) & [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py): Loại bỏ `#hashtags` ở cuối tiêu đề trước khi tính độ tương đồng từ vựng và yêu cầu trùng cả 2 vế khi so khớp tiền tố kèo đấu `A vs B`.
+   - [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py): Mở khóa cứu hộ file `.mp4` trên ổ đĩa khi phân cảnh bị gán `_graphic.png` (`not _is_placeholder_cur`), đồng thời kiểm tra `verify_hook_clip_genuine_motion` cho cả Cảnh 1 và Cảnh 2 (`sc_id in (1, 2)`).
+   - [`app/services/quota_manager.py`](file:///d:/Python/Youtube/app/services/quota_manager.py): Quét đầy đủ cả thư mục alias kênh trong `get_channel_tokens_pool` để xoay dự án Google Cloud dự phòng chính xác.
 
 ---
 
 ## ❗ 2. Đang Kẹt Ở Đâu / Lưu Ý Quan Trọng (Active Watchpoints & Constraints)
-- **Không có lỗi code tồn đọng (Zero Code Blockers)**: Toàn bộ file Python và hệ thống Bộ Nhớ Ngoài đã đồng bộ sạch sẽ trên nhánh `main`.
-- **3 Lưu ý vận hành từ các phiên chat song song cần nhớ**:
-  1. **Driver GPU trên máy trạm**: Hiện NVIDIA Driver đang ở bản `581.29` (FFmpeg `h264_nvenc` SDK 13.1 yêu cầu `>= 610.00`), nên hệ thống đang tự động chuyển sang **`h264_qsv` (Intel QuickSync GPU)** để giữ tốc độ render nhanh mà không bị lỗi tạo tiến trình giả `nvenc` (`b45b567`). Khi người dùng cập nhật NVIDIA Driver lên `>= 610.00`, `h264_nvenc` trên RTX 3050 sẽ tự động kích hoạt trở lại.
-  2. **OAuth Token kênh `Wild Odyssey` (`ch_wild_odyssey`)**: Các kênh khác (`Mysteries`, `Psychology`, `Alternate History`, `Paws & Hearts`, `Odisseia`, `Mistérios`) đều đang hoạt động OAuth bình thường; riêng token `account_1_wild_odyssey_token.pickle` nếu báo `invalid_grant` khi chạy batch upload thì cần làm mới OAuth trước khi đẩy lịch kênh này.
-  3. **Bất biến chống lặp lỗi**: Luôn đọc Bảng 14 Lỗi Cấm Lặp Lại trong [`MEMORY.md`](file:///d:/Python/Youtube/MEMORY.md) trước khi sửa bất kỳ dòng code hay prompt nào.
+- **Không có lỗi tồn đọng (Zero Blockers)**: Toàn bộ 12/12 video đã lên lịch `SCHEDULED` trên YouTube và gửi file MP4 + bảng tổng kết về Telegram (`-1001234567890`).
+- **Chốt chặn bắt buộc phải giữ vững**:
+  1. Giữ vững sàn `> 85.0%` thời lượng là video chuyển động thật (`6–7/7` cảnh `.mp4`) và `100%` chuyển động thật ở `5–7s` mở đầu.
+  2. Luôn trích xuất và kiểm tra trực tiếp lưới frame (`job_<id>_sheet.jpg`) trước khi xuất bản lên YouTube.
 
 ---
 
 ## 📂 3. Các File Vừa Xử Lý (Recently Modified Files)
-- [`AGENTS.md`](file:///d:/Python/Youtube/AGENTS.md)
-- [`MEMORY.md`](file:///d:/Python/Youtube/MEMORY.md)
+- [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py)
+- [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py)
+- [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py)
+- [`app/services/quota_manager.py`](file:///d:/Python/Youtube/app/services/quota_manager.py)
 - [`working_memory.md`](file:///d:/Python/Youtube/working_memory.md)
 - [`todo.md`](file:///d:/Python/Youtube/todo.md)
 - [`progress_log.md`](file:///d:/Python/Youtube/progress_log.md)
-- [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py)
-- [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py)
-- [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py)
 
 ---
 
 ## ➡️ 4. Bước Tiếp Theo (Immediate Next Steps)
-1. Khi bắt đầu yêu cầu mới từ người dùng: chỉ cần đọc [`MEMORY.md`](file:///d:/Python/Youtube/MEMORY.md) + [`working_memory.md`](file:///d:/Python/Youtube/working_memory.md) + [`todo.md`](file:///d:/Python/Youtube/todo.md) trong `< 5s`.
-2. Sẵn sàng thực thi ngay bất kỳ tác vụ nào trong Backlog [`todo.md`](file:///d:/Python/Youtube/todo.md) (`TASK-013` $\rightarrow$ `TASK-018`) theo yêu cầu của người dùng mà không bao giờ lặp lại 14 lỗi cũ.
+1. Theo dõi hiệu suất thực tế (`Views`, `Like/View %`, `APV %`, `Stayed to watch %`) của 12 video Shorts vừa lên lịch công chiếu qua YouTube Data API v3 & YouTube Analytics API v2 khi người dùng yêu cầu.
+2. Tự động đính kèm bình luận ghim mồi tranh luận 2 phe + link dẫn sang video Long-Form 10 phút (`sync_channel_pinned_comments`) khi các video chuyển từ `scheduled` sang `public`.

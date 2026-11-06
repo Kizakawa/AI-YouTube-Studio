@@ -337,13 +337,29 @@ class QuotaManager:
         if primary_tok.exists():
             token_files.append(primary_tok)
 
-        for p in ch_dir.glob("*.json"):
-            if p != primary_tok and ("token" in p.name or "youtube" in p.name):
-                token_files.append(p)
-        tokens_subdir = ch_dir / "tokens"
-        if tokens_subdir.exists():
-            for p in tokens_subdir.glob("*.json"):
-                token_files.append(p)
+        base_ch_dir = Path(settings.CREDENTIALS_DIR) / "channels"
+        alias_map = {
+            "ch_psychology_of_the_world": ["channel_maya"],
+            "channel_maya": ["ch_psychology_of_the_world"],
+            "ch_the_mysteries_of_the_world": ["ucsrjiil67qxidtxt70z-iwa"],
+            "ucsrjiil67qxidtxt70z-iwa": ["ch_the_mysteries_of_the_world"],
+            "ch_alternate_history": ["@alternatehistorywhatif-e2x"],
+        }
+        scan_dirs = [ch_dir]
+        for alt_name in alias_map.get(str(channel_id or "").strip().lower(), []):
+            alt_dir = base_ch_dir / alt_name
+            if alt_dir.exists() and alt_dir not in scan_dirs:
+                scan_dirs.append(alt_dir)
+
+        for s_dir in scan_dirs:
+            for p in s_dir.glob("*.json"):
+                if p not in token_files and ("token" in p.name or "youtube" in p.name):
+                    token_files.append(p)
+            tokens_subdir = s_dir / "tokens"
+            if tokens_subdir.exists():
+                for p in tokens_subdir.glob("*.json"):
+                    if p not in token_files:
+                        token_files.append(p)
 
         for tf in token_files:
             try:
