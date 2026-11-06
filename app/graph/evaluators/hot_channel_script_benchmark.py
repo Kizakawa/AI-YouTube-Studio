@@ -48,6 +48,10 @@ class SceneScriptSearchAuditItem(BaseModel):
 
 class HotChannelBenchmarkReport(BaseModel):
     niche_id: str = "general"
+    detected_viral_archetype: str = Field(
+        default="direct_matchup_or_mystery_explainer",
+        description="Cấu trúc Viral được nhận diện: 'pillar_1_direct_matchup' hoặc 'pillar_2_why_mystery_explainer'",
+    )
     benchmark_channels_compared: List[str] = Field(default_factory=list)
     title_vs_hot_channel: HotChannelDimensionScore = Field(default_factory=HotChannelDimensionScore)
     hook_0s_vs_hot_channel: HotChannelDimensionScore = Field(default_factory=HotChannelDimensionScore)
@@ -162,6 +166,22 @@ Compare our generated script directly against the top million-view competitor ch
 - BAD AI SLOP COUNTER-EXAMPLE (What to reject):
 "{ref_pack['bad_ai_slop_example']}"
 
+CRITICAL DUAL-PILLAR VIRAL EVALUATION RULE (REWARD BOTH CO-EQUAL MILLION-VIEW ARCHETYPES!):
+Top million-view channels (`Zack D. Films`, `Você Sabia?`, `Casual Geographic`, `Fern`, `FossilVideos`, `Charisma on Command`, `IFinity What`) dominate YouTube Shorts using TWO co-equal viral pillars. Identify which pillar our script uses (`detected_viral_archetype`) and evaluate it by that pillar's exact million-view standard:
+1. `pillar_1_direct_matchup` (`[Entity A] vs [Entity B]: [Extreme Stakes]`):
+   - `title_vs_hot_channel`: Names BOTH searchable entities + visceral stakes (no hidden "This Beast" clickbait).
+   - `hook_0s_vs_hot_channel`: Opens at 0.0s with an immediate physical clash or 2-entity survival paradox naming both combatants.
+   - `dual_peak_5act_arc_vs_hot_channel`: 2-Way Ping-Pong Escalation (Act 2 shows Entity B's dangerous weapon/defense vs. Entity A's counter, Act 3 Scene 4 delivers the 15-second anatomical/venom twist, Act 4–5 lands the physical outcome and ironic mic-drop).
+2. `pillar_2_why_mystery_explainer` (`"Why / Por Que / How / Tại Sao"` Mystery & Paradox Explainer — e.g., `"Why Ships And Sharks Vanish In This Underwater Lake"`, `"Why Great White Sharks Panic When Orcas Show Up"`, `"Why Titanic's Swimming Pool Is Still Full Of Water"`, `"Por Que Esse Lago No Fundo Do Mar Paralisa Tubarões?"`):
+   - `title_vs_hot_channel`: Strongly REWARD (`>= 9.0/10`) `"Why / Por Que / How"` mystery explainer titles that explicitly name the searchable entity, place, or phenomenon (`YT_SEARCH` anchor) paired with a counter-intuitive mystery trigger! NEVER penalize a `"Why / Por Que / How"` question title as "clickbait" when it names the real entity/place and sparks genuine curiosity! (Only penalize vague entity-blind titles like `"Why Nobody Can Explain This Place"` that hide the entity name).
+   - `hook_0s_vs_hot_channel`: Complementarity Rule — When the Title starts with `"Why / Por Que / How..."`, Scene 1 (`0.0s`) MUST NOT repeat the `"Why..."` question; instead, strongly REWARD (`>= 9.0/10`) Scene 1 when it drops the viewer straight into the **baffling physical phenomenon, impossible paradox, or split-second crisis happening on camera at 0.0s**! Conversely, if the Title is declarative, Scene 1 may open with a sharp `"Why / Por Que"` mystery question naming the exact entity.
+   - `dual_peak_5act_arc_vs_hot_channel`: Evaluate Mystery Explainers on the **5-Act Mystery-to-Hidden-Mechanism Reveal Curve** (*Zack D. Films* / *Você Sabia?* signature):
+     * Act 1 (Scene 1 — 0.0s Anomaly): The impossible phenomenon or counter-intuitive action happening right on camera.
+     * Act 2 (Scenes 2–3 — Deepening the Mystery & Flipping the Obvious Guess): Show why normal intuition or ordinary physics fails to explain it.
+     * Act 3 (Scenes 4–5 — The 15-Second Hidden Mechanism Reveal in `$1` Everyday Imagery): Unmask the real scientific, biological, geological, historical, or psychological secret using a crystal-clear everyday comparison (e.g., hollow sealed soda can vs. water-filled jelly body; super-salty underwater brine pool five times heavier than seawater that shocks gills into toxic paralysis).
+     * Act 4 (Scene 6 — Extreme Real-World Consequence): What happens next when that hidden mechanism triggers.
+     * Act 5 (Scene 7/8 — Ironic Physical Mic-Drop Finale): A mind-bending ironic physical detail or visual aftermath that loops curiosity back to Scene 1.
+
 PART B — AUDIT THE SCRIPT LLM'S PER-SCENE `subject_entity` AND `search_queries` (ANTI-OFF-TOPIC SCENE SEARCH CHECK):
 Because the Script LLM that writes the narration is the primary authority that understands what each scene is actually about, verify that for EVERY scene (`scene_id` 1 to {len(scenes_payload)}):
 1. `subject_entity` explicitly names the exact canonical entity/species/person physically acting in that scene (resolving any pronouns like "It", "He", "They", "This creature" or role epithets like "the predator", "the prey" back to the real canonical name; in an "Entity A vs Entity B" duel, when a scene describes Entity B's reaction/defense, `subject_entity` MUST be Entity B!).
@@ -179,11 +199,12 @@ Scenes ({len(scenes_payload)} scenes):
 
 Return ONLY a single valid JSON object (no markdown fences) matching this exact schema:
 {{
+  "detected_viral_archetype": "pillar_1_direct_matchup | pillar_2_why_mystery_explainer",
   "benchmark_channels_compared": ["Name of Hot Channel 1", "Name of Hot Channel 2"],
   "title_vs_hot_channel": {{
     "score": 9.0,
-    "hot_channel_reference": "Exact hot channel title pattern compared against",
-    "comparison_notes": "How our title compares on explicit entity naming (YT_SEARCH discovery) and curiosity gap"
+    "hot_channel_reference": "Exact hot channel title pattern compared against (e.g. 'Entity A vs Entity B' OR 'Why [Named Entity/Place] [Counter-Intuitive Mystery]')",
+    "comparison_notes": "How our title compares on explicit entity naming (YT_SEARCH discovery) and curiosity trigger"
   }},
   "hook_0s_vs_hot_channel": {{
     "score": 9.0,
@@ -197,8 +218,8 @@ Return ONLY a single valid JSON object (no markdown fences) matching this exact 
   }},
   "dual_peak_5act_arc_vs_hot_channel": {{
     "score": 9.0,
-    "hot_channel_reference": "5-Act Dual-Peak 34s-40s retention curve",
-    "comparison_notes": "Evaluation of Act 3 mid-video twist (14s-18s) and Act 5 concrete physical mic-drop ending"
+    "hot_channel_reference": "5-Act Dual-Peak 34s-40s retention curve (2-Way Duel OR Mystery-to-Hidden-Mechanism Reveal)",
+    "comparison_notes": "Evaluation of Act 3 mid-video twist/mechanism reveal (14s-18s) and Act 5 concrete physical mic-drop ending"
   }},
   "script_llm_scene_search_score": 9.0,
   "scene_search_audits": [
@@ -358,8 +379,12 @@ Return ONLY a single valid JSON object (no markdown fences) matching this exact 
             if str(c).strip()
         ]
 
+        det_arch = str(
+            parsed.get("detected_viral_archetype") or "direct_matchup_or_mystery_explainer"
+        ).strip()
         return HotChannelBenchmarkReport(
             niche_id=str(ref_pack.get("niche_id") or "general"),
+            detected_viral_archetype=det_arch,
             benchmark_channels_compared=channels_compared,
             title_vs_hot_channel=t_dim,
             hook_0s_vs_hot_channel=h_dim,

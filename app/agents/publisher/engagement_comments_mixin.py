@@ -237,7 +237,7 @@ class EngagementCommentsMixin:
             logger.warning(f"💬 [PublisherAgent] Không thể đăng bình luận tác giả lên video {video_id}: {e}")
             return None
 
-    def ensure_pinned_comment(self, video_id: str, comment_text: Optional[str] = None) -> Optional[Dict]:
+    def ensure_pinned_comment(self, video_id: str, comment_text: Optional[str] = None, **kwargs) -> Optional[Dict]:
         """
         Kiểm tra và đăng bình luận tương tác của chính chủ kênh cho video nếu video đã ở trạng thái PUBLIC
         và tác giả chưa có bình luận nào trên video.
@@ -338,7 +338,13 @@ class EngagementCommentsMixin:
             logger.warning(f"💬 [PublisherAgent] Lỗi khi ensure_pinned_comment cho {video_id}: {e}")
             return None
 
-    def sync_channel_pinned_comments(self, limit: int = 10) -> List[Dict]:
+    def sync_channel_pinned_comments(
+        self,
+        limit: int = 15,
+        max_videos: Optional[int] = None,
+        max_new_comments: int = 6,
+        **kwargs,
+    ) -> List[Dict]:
         """
         Quét danh sách các video đã xuất bản gần nhất của kênh và tự động bổ sung bình luận mồi nếu còn thiếu.
         Sử dụng uploads playlist (tiết kiệm quota API: 1 unit).

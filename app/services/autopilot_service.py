@@ -853,7 +853,14 @@ def auto_publish_rendered_jobs(notify_telegram: bool = True) -> List[Dict[str, A
             ch_name = ch_cfg.get("name", ch_id)
             ch_lang = ch_cfg.get("language", "en")
 
-            slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(ch_id)
+            from app.services.smart_scheduler import _is_long_form_entry
+            is_lf_pub = _is_long_form_entry(
+                title=title or "",
+                video_path=v_path or "",
+                scenes_json=scenes_json,
+                duration_sec=float(audio_dur_ms or 0) / 1000.0,
+            )
+            slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(ch_id, is_long_form=is_lf_pub)
 
             pinned_comment = None
             try:

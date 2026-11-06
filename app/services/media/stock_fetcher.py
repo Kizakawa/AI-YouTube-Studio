@@ -591,8 +591,17 @@ class StockFetcher:
         # 1. Nếu Agent gọi công cụ `fetch_clean_cinematic_portrait_or_broll` (`clean_stock_only=True`):
         #    Ưu tiên tuyệt đối kho ảnh chụp thật Pexels / Pixabay HD không chữ (bỏ qua Open Web để tránh Quote Card / bìa sách)
         if clean_stock_only:
-            for pq_p in (queries + ["man intense eyes dark shadow", "dramatic portrait dark lighting", "person silhouette shadow"]):
-                _add(self.search_photos(pq_p, per_page=5, orientation="portrait", topic="dramatic portrait", narration="", used_urls=used))
+            for pq_p in queries:
+                _add(
+                    self.search_photos(
+                        pq_p,
+                        per_page=5,
+                        orientation="portrait",
+                        topic=f"{congruence_topic} {pq_p}".strip(),
+                        narration=narration,
+                        used_urls=used,
+                    )
+                )
                 _add(self.search_pixabay_photos(pq_p, per_page=5))
                 if len(candidates) >= 10:
                     break
@@ -1023,8 +1032,6 @@ class StockFetcher:
         if (visual_analysis or {}).get("clean_stock_only"):
             for sq_clean in ((visual_analysis or {}).get("search_queries") or []):
                 _push(sq_clean)
-            for pq_fallback in ["close up eyes dark lighting", "man intense stare", "silhouette person walking night", "dramatic portrait lighting"]:
-                _push(pq_fallback)
         if visual_analysis and visual_analysis.get("search_queries"):
             for sq in visual_analysis["search_queries"]:
                 _push(sq)

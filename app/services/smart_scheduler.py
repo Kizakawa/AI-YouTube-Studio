@@ -25,11 +25,41 @@ US_EASTERN = ZoneInfo("America/New_York")
 US_TZ = US_EASTERN  # Alias để đảm bảo tương thích ngược
 BR_TZ = ZoneInfo("America/Sao_Paulo")  # Giờ chuẩn Brazil (BRT = UTC-3)
 
-# Giới hạn tối đa video trên mỗi kênh trong 1 ngày
+# Giới hạn tối đa video Shorts trên mỗi kênh trong 1 ngày (chưa tính 1 video Long-Form 16:9 độc lập)
 MAX_VIDEOS_PER_DAY = 2
+MAX_LONG_FORM_PER_DAY = 1
 
-# Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (6 giờ = 21,600 giây) để tránh tự nuốt view (intra-channel cannibalization)
+# Khoảng cách tối thiểu an toàn giữa 2 video cùng định dạng trên cùng kênh (6 giờ = 21,600 giây)
 MIN_SPACING_SECONDS = 21600
+# Luật 4 (Anti-Collision Law): Khoảng cách tối thiểu giữa 1 video Long-Form (16:9) và 1 video Short (9:16) cùng kênh (>= 3.0 giờ = 10,800 giây)
+LONG_SHORT_ANTI_COLLISION_SECONDS = 10800
+
+
+def _is_long_form_entry(
+    title: str = "",
+    video_path: str = "",
+    scenes_json: Any = None,
+    duration_sec: float = 0.0,
+) -> bool:
+    """Nhận diện chính xác một bản ghi/job video thuộc định dạng Long-Form 16:9 Documentary hay Shorts 9:16."""
+    if duration_sec and float(duration_sec) >= 180.0:
+        return True
+    vp_low = str(video_path or "").lower()
+    if "16x9" in vp_low or "longform" in vp_low:
+        return True
+    if scenes_json:
+        try:
+            s_obj = json.loads(scenes_json) if isinstance(scenes_json, str) else scenes_json
+            if isinstance(s_obj, dict):
+                vf = str(s_obj.get("video_format") or "").strip().lower()
+                if vf == "long":
+                    return True
+                sc_list = s_obj.get("scenes") or []
+                if isinstance(sc_list, list) and len(sc_list) >= 14:
+                    return True
+        except Exception:
+            pass
+    return False
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US DAYTIME & PRIME EVENING PEAK - ZERO VIETNAM SCROLLING WAVE)
@@ -495,8 +525,17 @@ def process_waiting_quota_jobs() -> int:
                     sched_dt = sched_dt.replace(tzinfo=timezone.utc)
                 # Nếu giờ hẹn vẫn còn ở tương lai (> 15 phút nữa) thì giữ đúng lịch hẹn giờ vàng (SCHEDULED),
                 # nếu đã qua giờ hẹn thì tìm khung giờ vàng tiếp theo cho kênh thay vì đăng bừa giờ xấu!
+                is_lf_wait = _is_long_form_entry(
+                    title=job_data.get("title") or "",
+                    video_path=job_data.get("video_path") or "",
+                    scenes_json=job_data.get("scenes_json"),
+                )
                 if not sched_dt or sched_dt <= now_utc + timedelta(minutes=15):
-                    sched_dt, _, _, _ = get_next_available_golden_slot(job_data["target_channel_id"], _skip_sync=True)
+                    sched_dt, _, _, _ = get_next_available_golden_slot(
+                        job_data["target_channel_id"],
+                        _skip_sync=True,
+                        is_long_form=is_lf_wait,
+                    )
                 sched_iso = sched_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
                 thumb_p = str(Path("storage/thumbnails") / f"thumb_{job_id}_9x16.jpg")
                 if not Path(thumb_p).exists():
@@ -563,12 +602,14 @@ def get_next_available_golden_slot(
     channel_id: str = "ch_psychology_of_the_world",
     min_lead_minutes: int = 20,
     _skip_sync: bool = False,
+    is_long_form: bool = False,
 ) -> Tuple[datetime, str, str, str]:
     """
     Tính toán khe giờ vàng tiếp theo còn trống cho kênh.
     Tự động phân luồng múi giờ & khung giờ vàng theo thị trường mục tiêu:
     - Thị trường Mỹ (US Channels - EDT/EST): GOLDEN_SLOTS_UTC
     - Thị trường Brazil (pt-BR Channels - BRT UTC-3): BRAZIL_GOLDEN_SLOTS_UTC
+    - Hỗ trợ lịch Hybrid Tier-2 (2 Shorts 9:16 + 1 Long-Form 16:9 / ngày) với Anti-Collision >= 3.0h (10,800s).
     """
     # 0. Đồng bộ các video đã qua giờ hẹn trước khi tính toán
     if not _skip_sync:
@@ -580,10 +621,36 @@ def get_next_available_golden_slot(
     # 1. Tìm tất cả alias của kênh này để quét occupied slots
     channel_family = resolve_channel_family(channel_id)
     is_br = is_brazil_channel(channel_id)
-    active_slots_pool = get_active_slots_pool(channel_id)
+    active_slots_pool = list(get_active_slots_pool(channel_id))
+    if is_long_form:
+        # Thêm khe giờ vàng chuyên biệt cho Long-Form 16:9 Documentary (cách khe Shorts >= 3h20p theo Luật 4 Anti-Collision)
+        lf_slot = (
+            {
+                "hour": 23,
+                "minute": 40,
+                "label_vn": "06:40 Sáng",
+                "label_us": "20:40 PM BRT (KHUNG GIỜ VÀNG PHIM TÀI LIỆU 16:9 BRAZIL — CÁCH SHORTS >= 3H25P)",
+                "description": "Khung giờ vàng tối 20:40 BRT dành riêng cho Phim tài liệu 16:9 tích lũy 4.000h xem (cách khe Shorts >= 3h25p).",
+                "tag": "BR_LONGFORM_PRIME",
+                "rank": 0,
+            }
+            if is_br
+            else {
+                "hour": 20,
+                "minute": 45,
+                "label_vn": "03:45 Sáng",
+                "label_us": "15:45 PM EST / 16:45 PM EDT (KHUNG GIỜ VÀNG PHIM TÀI LIỆU 16:9 MỸ — CÁCH SHORTS >= 3H30P)",
+                "description": "Khung giờ vàng chiều-tối Mỹ dành riêng cho Phim tài liệu 16:9 tích lũy 4.000h xem (cách cả 2 khe Shorts >= 3h30p, 100% VN ngủ say).",
+                "tag": "US_LONGFORM_PRIME",
+                "rank": 0,
+            }
+        )
+        active_slots_pool = [lf_slot] + active_slots_pool
     target_tz = BR_TZ if is_br else US_EASTERN
 
-    occupied_slots_utc = []
+    occupied_slots_utc: List[datetime] = []
+    occupied_short_slots_utc: List[datetime] = []
+    occupied_long_slots_utc: List[datetime] = []
     cutoff_48h = now_utc - timedelta(hours=48)
     with get_db() as db:
         scheduled_rows = db.query(
@@ -592,12 +659,16 @@ def get_next_available_golden_slot(
             VideoJob.youtube_video_id,
             VideoJob.updated_at,
             VideoJob.created_at,
+            VideoJob.title,
+            VideoJob.video_path,
+            VideoJob.scenes_json,
+            VideoJob.audio_duration_ms,
         ).filter(
             VideoJob.target_channel_id.in_(channel_family),
             VideoJob.status.in_(["SCHEDULED", "PUBLISHED", "WAITING_QUOTA_RESET", "RENDERED", "RENDERING"]),
         ).order_by(VideoJob.id.desc()).limit(60).all()
 
-        for st_val, status_val, yt_val, upd_val, cre_val in scheduled_rows:
+        for st_val, status_val, yt_val, upd_val, cre_val, t_val, vp_val, sj_val, adur_val in scheduled_rows:
             st = st_val
             if not st and status_val == "PUBLISHED" and yt_val:
                 st = upd_val or cre_val
@@ -607,6 +678,16 @@ def get_next_available_golden_slot(
                 # Chỉ tính các slot đã đăng hoặc lên lịch trong vòng 48h qua hoặc trong tương lai
                 if st >= cutoff_48h:
                     occupied_slots_utc.append(st)
+                    is_lf_row = _is_long_form_entry(
+                        title=t_val or "",
+                        video_path=vp_val or "",
+                        scenes_json=sj_val,
+                        duration_sec=float(adur_val or 0) / 1000.0,
+                    )
+                    if is_lf_row:
+                        occupied_long_slots_utc.append(st)
+                    else:
+                        occupied_short_slots_utc.append(st)
 
         # Bổ sung cả các video đã xuất bản thực tế từ bảng PublishedVideo (bao gồm upload trực tiếp / youtube_sync)
         try:
@@ -626,6 +707,11 @@ def get_next_available_golden_slot(
                         pv_dt = pv_dt.replace(tzinfo=timezone.utc)
                     if pv_dt >= cutoff_48h and not any(abs((pv_dt - ex).total_seconds()) < 120 for ex in occupied_slots_utc):
                         occupied_slots_utc.append(pv_dt)
+                        pv_dur = float(getattr(pv, "duration_seconds", 0) or 0)
+                        if _is_long_form_entry(title=getattr(pv, "title", "") or "", duration_sec=pv_dur):
+                            occupied_long_slots_utc.append(pv_dt)
+                        else:
+                            occupied_short_slots_utc.append(pv_dt)
         except Exception as e_pv:
             logger.debug(f"[SmartScheduler] Không thể quét PublishedVideo cho {channel_id}: {e_pv}")
 
@@ -644,19 +730,27 @@ def get_next_available_golden_slot(
                                 sq_dt = datetime.fromisoformat(sq_iso.replace("Z", "+00:00"))
                                 if sq_dt >= cutoff_48h and not any(abs((sq_dt - ex).total_seconds()) < 120 for ex in occupied_slots_utc):
                                     occupied_slots_utc.append(sq_dt)
+                                    if _is_long_form_entry(title=sq.get("title", ""), duration_sec=float(sq.get("duration_sec") or 0)):
+                                        occupied_long_slots_utc.append(sq_dt)
+                                    else:
+                                        occupied_short_slots_utc.append(sq_dt)
                         for vd in ch_v.get("videos", []):
                             vd_iso = vd.get("published_at_utc")
                             if vd_iso:
                                 vd_dt = datetime.fromisoformat(vd_iso.replace("Z", "+00:00"))
                                 if vd_dt >= cutoff_48h and not any(abs((vd_dt - ex).total_seconds()) < 120 for ex in occupied_slots_utc):
                                     occupied_slots_utc.append(vd_dt)
+                                    if _is_long_form_entry(title=vd.get("title", ""), duration_sec=float(vd.get("duration_sec") or 0)):
+                                        occupied_long_slots_utc.append(vd_dt)
+                                    else:
+                                        occupied_short_slots_utc.append(vd_dt)
         except Exception as e_aud:
             logger.debug(f"[SmartScheduler] Không thể quét channel_audit_latest.json cho {channel_id}: {e_aud}")
 
     logger.debug(f"[SmartScheduler] Kênh {channel_id} (Family: {channel_family}, Brazil={is_br}) hiện có {len(occupied_slots_utc)} khe giờ đã đặt lịch/xuất bản.")
 
     # 2. Duyệt tìm khe giờ trống bắt đầu từ ngày hôm nay đến 45 ngày tiếp theo
-    # Áp dụng triệt để: TỐI ĐA 2 VIDEO / NGÀY / KÊNH
+    # Áp dụng triệt để: TỐI ĐA 2 SHORTS / NGÀY / KÊNH (+ 1 LONG-FORM 16:9 ĐỘC LẬP CÁCH >= 3.0 GIỜ)
     start_date = now_utc.date()
     stagger_minutes = get_channel_stagger_minutes(channel_id)
     for day_offset in range(45):
@@ -678,32 +772,40 @@ def get_next_available_golden_slot(
             if candidate_dt > min_allowed_time:
                 candidate_slots.append((candidate_dt, slot))
 
-        # Kênh The mysteries of the world ưu tiên tuyệt đối Khung Giờ Kim Cương Rank #1 (04:00 Sáng VN / 21:00 UTC) trước
-        if is_mysteries_diamond_channel(channel_id):
+        if is_long_form or is_mysteries_diamond_channel(channel_id):
             candidate_slots.sort(key=lambda item: (item[1].get("rank", 99), item[0]))
         else:
             candidate_slots.sort(key=lambda item: item[0])
 
+        same_format_slots = occupied_long_slots_utc if is_long_form else occupied_short_slots_utc
+        cross_format_slots = occupied_short_slots_utc if is_long_form else occupied_long_slots_utc
+        max_for_format = MAX_LONG_FORM_PER_DAY if is_long_form else MAX_VIDEOS_PER_DAY
+
         for candidate_dt, slot in candidate_slots:
-            # 1. Kiểm tra va chạm thời gian: Cách mọi video đã có ít nhất 6.0 giờ (21,600s)
+            # 1. Kiểm tra va chạm thời gian:
+            # - Cùng định dạng (Short vs Short hoặc Long vs Long): cách nhau >= 6.0 giờ (21,600s)
+            # - Khác định dạng (Long 16:9 vs Short 9:16): cách nhau >= 3.0 giờ (10,800s theo Luật 4 Anti-Collision)
             is_too_close = False
-            for occ in occupied_slots_utc:
-                diff_seconds = abs((candidate_dt - occ).total_seconds())
-                if diff_seconds < MIN_SPACING_SECONDS:
+            for occ_same in same_format_slots:
+                if abs((candidate_dt - occ_same).total_seconds()) < MIN_SPACING_SECONDS:
                     is_too_close = True
                     break
+            if not is_too_close:
+                for occ_cross in cross_format_slots:
+                    if abs((candidate_dt - occ_cross).total_seconds()) < LONG_SHORT_ANTI_COLLISION_SECONDS:
+                        is_too_close = True
+                        break
             if is_too_close:
                 continue
 
-            # 2. KIỂM TRA QUY TẮC "TỐI ĐA 2 VIDEO / 1 NGÀY":
-            # Đếm số lượng video đã đặt trên cùng chu kỳ ngày của thị trường mục tiêu (US EDT/EST hoặc Brazil BRT)
+            # 2. KIỂM TRA QUOTA TRONG NGÀY THEO ĐỊNH DẠNG (2 Shorts/ngày + 1 Long-Form/ngày):
             target_market_date = candidate_dt.astimezone(target_tz).date()
-            market_day_count = sum(1 for occ in occupied_slots_utc if occ.astimezone(target_tz).date() == target_market_date)
+            market_day_count = sum(1 for occ in same_format_slots if occ.astimezone(target_tz).date() == target_market_date)
 
-            if market_day_count >= MAX_VIDEOS_PER_DAY:
+            if market_day_count >= max_for_format:
                 logger.debug(
                     f"[SmartScheduler] Ngày {target_market_date} ({'BR' if is_br else 'US'}) đã có đủ {market_day_count} video "
-                    f"(đạt giới hạn tối đa {MAX_VIDEOS_PER_DAY} video/ngày) -> Chuyển sang ngày tiếp theo."
+                    f"{'Long-Form' if is_long_form else 'Shorts'} (giới hạn {max_for_format}/ngày) -> Chuyển sang ngày tiếp theo."
                 )
                 continue
 

@@ -237,10 +237,18 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         replaced = False
         sc_dur_sec = _scene_audio_duration(work_dir, scene_id)
         sc_issues_list = scene_eval_issues_map.get(scene_id) or []
-        has_semantic_vision_defect = any("Gemini Vision ContactSheet" in iss or "trùng lặp" in iss.lower() for iss in sc_issues_list)
         critic_sug_q = str(item.get("critic_suggested_query") or "").strip()
         critic_broll_q = str(item.get("critic_fallback_broll_query") or "").strip()
         critic_fb = str(item.get("critic_feedback") or "").strip()
+        has_semantic_vision_defect = bool(
+            critic_fb
+            or critic_sug_q
+            or any(
+                k in str(iss).lower()
+                for iss in sc_issues_list
+                for k in ("gemini vision", "contactsheet", "trùng lặp", "điểm ", "< 7.5", "sai ", "watermark", "logo", "phụ đề")
+            )
+        )
         if not critic_sug_q or not critic_broll_q:
             for iss_s in sc_issues_list:
                 if not critic_sug_q:
@@ -258,31 +266,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 f"(B-Roll dự phòng: '{critic_broll_q}' | Lý do loại vòng trước: {critic_fb or '; '.join(sc_issues_list)})"
             )
 
-        # 0. Bảo vệ Video Hook thật ở Cảnh 1 & Cảnh 2 (CHỈ khi không bị Gemini Vision ContactSheet bắt lỗi AI dị dạng/chữ rác/trùng lặp):
-        # Lưu ý: File video Hook thật của Cảnh 1 có tên `hook_motion_001.mp4` (`CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK` / `CLIMAX_STOCK_VIDEO_REAL_MOTION`),
-        # nên chỉ loại trừ `CLIMAX_IMAGES_LIVE_FX` (slide ảnh), TUYỆT ĐỐI không loại trừ tên file `hook_motion_`!
         existing_mp = str(item.get("media_path") or "")
-        existing_pm = str(item.get("production_method") or "").upper()
-        if (
-            scene_id in (1, 2)
-            and not has_semantic_vision_defect
-            and existing_mp
-            and Path(existing_mp).exists()
-            and existing_mp.lower().endswith((".mp4", ".mov", ".webm"))
-            and "_i2v" not in existing_mp.lower()
-            and "CLIMAX_IMAGES_LIVE_FX" not in existing_pm
-            and "GOOGLE_MULTI_CHUNK_HOOK_VIDEO" not in existing_pm
-        ):
-            try:
-                ok_inp_clean, _ = await asyncio.to_thread(
-                    _verify_and_sanitize_refined_media, existing_mp, True, scene_id
-                )
-                if ok_inp_clean:
-                    item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
-                    replaced = True
-                    logger.info(f"Scene {scene_id}: 🛡️ Đã làm sạch/nâng nét tại chỗ Video chuyển động thật '{Path(existing_mp).name}' (giữ nguyên Hook Video thật)")
-            except Exception as _e_inp:
-                logger.debug(f"Scene {scene_id}: In-place hook video sanitize skip: {_e_inp}")
 
         if scene_id == 1 and not replaced and not has_semantic_vision_defect:
             for hk_disk_cand in (work_dir / "hook_motion_001_fullpeak.mp4", work_dir / "hook_motion_001.mp4"):
@@ -336,28 +320,28 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         for m_tok in re.findall(r"chapter_\d+_master\.mp4", str(item.get("strategy_rationale") or "").lower()):
                             tainted_masters.add(m_tok)
 
-                    # Ưu tiên số 1 (~1.5–2.5s trên ổ cứng): Cắt lát mới không trùng từ kho Chapter Master 16:9 SẠCH (loại trừ Master bị lỗi ngữ nghĩa)
                     from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
-                    lf_local_res = await asyncio.to_thread(
-                        slice_any_available_chapter_master_for_scene,
-                        media_dir=media_dir,
-                        scene_id=scene_id,
-                        target_duration_sec=sc_dur_sec,
-                        job_id=job_id_refine,
-                        output_override_path=out_lf_ref,
-                        exclude_masters=tainted_masters if tainted_masters else None,
-                        max_master_uses_override=5,
-                    )
-                    if lf_local_res and lf_local_res.get("media_path") and Path(lf_local_res["media_path"]).exists():
-                        ok_loc_clean, _ = await asyncio.to_thread(
-                            _verify_and_sanitize_refined_media, lf_local_res["media_path"], True, scene_id
+                    if not has_semantic_vision_defect:
+                        lf_local_res = await asyncio.to_thread(
+                            slice_any_available_chapter_master_for_scene,
+                            media_dir=media_dir,
+                            scene_id=scene_id,
+                            target_duration_sec=sc_dur_sec,
+                            job_id=job_id_refine,
+                            output_override_path=out_lf_ref,
+                            exclude_masters=tainted_masters if tainted_masters else None,
+                            max_master_uses_override=5,
                         )
-                        if ok_loc_clean:
-                            lf_ref_res = lf_local_res
-                        else:
-                            Path(lf_local_res["media_path"]).unlink(missing_ok=True)
+                        if lf_local_res and lf_local_res.get("media_path") and Path(lf_local_res["media_path"]).exists():
+                            ok_loc_clean, _ = await asyncio.to_thread(
+                                _verify_and_sanitize_refined_media, lf_local_res["media_path"], True, scene_id
+                            )
+                            if ok_loc_clean:
+                                lf_ref_res = lf_local_res
+                            else:
+                                Path(lf_local_res["media_path"]).unlink(missing_ok=True)
 
-                    # Ưu tiên số 2 (chỉ khi cắt local chưa đạt, dành riêng 26s để luôn chừa >= 18s cho kho Stock/Ảnh HD dự phòng):
+                    # Khi cảnh bị lỗi ngữ nghĩa/sai chủ thể (hoặc cắt local chưa đạt), tìm kiếm B-Roll 16:9 mới theo truy vấn của VisualCritic trước:
                     if not lf_ref_res and not _refine_cancelled():
                         now_ref_ts = time.monotonic()
                         lf_vid_dl = (
@@ -384,6 +368,19 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             cancel_event=cancel_event,
                             deadline_ts=lf_vid_dl,
                         )
+                    if not lf_ref_res and has_semantic_vision_defect and not _refine_cancelled():
+                        lf_local_fb = await asyncio.to_thread(
+                            slice_any_available_chapter_master_for_scene,
+                            media_dir=media_dir,
+                            scene_id=scene_id,
+                            target_duration_sec=sc_dur_sec,
+                            job_id=job_id_refine,
+                            output_override_path=out_lf_ref,
+                            exclude_masters=tainted_masters if tainted_masters else None,
+                            max_master_uses_override=5,
+                        )
+                        if lf_local_fb and lf_local_fb.get("media_path") and Path(lf_local_fb["media_path"]).exists():
+                            lf_ref_res = lf_local_fb
                     if lf_ref_res and lf_ref_res.get("media_path") and Path(lf_ref_res["media_path"]).exists():
                         ok_lf_clean, _ = await asyncio.to_thread(
                             _verify_and_sanitize_refined_media, lf_ref_res["media_path"], True, scene_id
@@ -524,6 +521,24 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     ok_v_clean, _ = await asyncio.to_thread(
                                         _verify_and_sanitize_refined_media, out_v, True, scene_id
                                     )
+                                    is_ref_v_vis_ok = False
+                                    if ok_v_clean:
+                                        from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
+                                        is_ref_v_vis_ok, _, _ = await asyncio.to_thread(
+                                            _verify_short_clip_with_gemini_vision,
+                                            out_v,
+                                            state.get("topic", ""),
+                                            narr,
+                                            subj_refine or primary_entity,
+                                            overall_refine_q,
+                                            "SCENE_SPECIFIC",
+                                            cand_title,
+                                            False,
+                                            clean_kw_q,
+                                            True,
+                                            px_ref_ev,
+                                            max(px_dl, time.monotonic() + 12.0),
+                                        )
                                     ok_v_sig, _ = (
                                         rag_ref.verify_and_commit_in_job_clip(
                                             job_id=job_id_refine,
@@ -533,10 +548,10 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                             url=cand_url,
                                             title=cand_title,
                                         )
-                                        if ok_v_clean
+                                        if (ok_v_clean and is_ref_v_vis_ok)
                                         else (False, "failed_refine_gate")
                                     )
-                                    if ok_v_clean and ok_v_sig:
+                                    if ok_v_clean and is_ref_v_vis_ok and ok_v_sig:
                                         logger.info(f"Scene {scene_id}: ✅ [Parallel Pexels+YT] Sửa lỗi kỹ thuật bằng Video Clip Pexels mới độc lập: '{clean_kw_q}'")
                                         return {
                                             "media_path": out_v,
@@ -820,9 +835,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     prev_mp_to = str(item.get("media_path") or "")
                     ref_cands_to = sorted(
                         [
-                            p for p in media_dir.glob(f"scene_{sid_to:03d}_*.mp4")
+                            p for p in media_dir.glob(f"scene_{sid_to:03d}_*_r{retry_count}.mp4")
                             if str(p) != prev_mp_to
-                            and not any(tok in p.name.lower() for tok in ("_raw", "_cand", "_tmp", ".tmp", "_fftmp"))
+                            and not any(tok in p.name.lower() for tok in ("_raw", "_cand", "_tmp", ".tmp", "_fftmp", "_stage"))
                             and is_completed_clean_mp4(p, min_size_bytes=20_000, min_duration_ms=1200)
                         ],
                         key=_safe_mtime,
@@ -832,13 +847,32 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     for rc_p in ref_cands_to[:2]:
                         ok_rc_to, _ = await asyncio.to_thread(_verify_and_sanitize_refined_media, str(rc_p), True, sid_to)
                         if ok_rc_to:
+                            from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
+                            ok_vis_to, _, _ = await asyncio.to_thread(
+                                _verify_short_clip_with_gemini_vision,
+                                str(rc_p),
+                                state.get("topic", ""),
+                                str(item.get("narration") or state.get("topic", "")),
+                                primary_entity or state.get("topic", ""),
+                                primary_entity or state.get("topic", ""),
+                                "SCENE_SPECIFIC",
+                                rc_p.stem,
+                                False,
+                                str(item.get("visual_keyword") or primary_entity or ""),
+                                True,
+                                None,
+                                time.monotonic() + 10.0,
+                            )
+                            if not ok_vis_to:
+                                Path(rc_p).unlink(missing_ok=True)
+                                continue
                             item["media_path"] = str(rc_p)
                             item["media_type"] = "hook_ready_video" if sid_to == 1 else "video"
                             item["pose_images"] = []
                             item["production_method"] = "REFINED_TIMEOUT_DISK_RECOVERED_VIDEO"
                             recovered_to = True
                             logger.info(
-                                f"Scene {sid_to}: 🛡️ [RefineMedia Timeout Recovery] Đã khôi phục file '{rc_p.name}' vừa tải xong trên đĩa!"
+                                f"Scene {sid_to}: 🛡️ [RefineMedia Timeout Recovery] Đã khôi phục & hậu kiểm Vision file '{rc_p.name}' vừa tải xong trên đĩa!"
                             )
                             break
                     if not recovered_to and sid_to not in (1, 2):

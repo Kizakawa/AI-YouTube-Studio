@@ -299,10 +299,13 @@ class MediaVisionCuratorMixin:
             negative_cues.append(str(forbidden_fp))
 
         candidates_for_llm = []
+        has_any_preview = bool(idx_to_img_order)
         for idx, c in enumerate(eval_pool):
             if c.get("_thumb_low_quality"):
                 continue
             img_ord = idx_to_img_order.get(idx)
+            if has_any_preview and img_ord is None:
+                continue
             candidates_for_llm.append({
                 "index": idx,
                 "returned_url": c["url"],
@@ -341,10 +344,10 @@ QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM ĐA TRỤC (MULTI-AXIS SELF-SCORING 
    - Khi `{narration}` sử dụng đại từ hoặc danh từ chung/ẩn dụ (ví dụ: "the hunter", "its prey", "this creature", "the leader", "the machine"), BẮT BUỘC phải quy chiếu ngược về đúng Thực thể Đích danh trong `{topic_ctx}` và `{subject_req}`.
    - Tuyệt đối KHÔNG chọn một thực thể/chủng loại khác chỉ vì khớp từ khóa danh từ chung trong câu thoại hay URL slug.
 2. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP CHO ỨNG VIÊN TỐT NHẤT (Thang điểm 0.0–10.0) — NGUYÊN TẮC B-ROLL PHIM TÀI LIỆU (DOCUMENTARY B-ROLL):
-   - LƯU Ý CỐTT LÕI: Hệ thống KHÔNG có công cụ tạo video AI dự phòng. Trả về `"winner_index": -1` sẽ làm mất cảnh video chuyển động thật!
+   - LƯU Ý CỐT LÕI VỀ KIẾN TRÚC: Hệ thống đang chạy song song nhánh Video Tư Liệu Thực Tế (YouTube/Bilibili Archival & Documentary Footage). Nếu kho Stock (Pexels/Pixabay) không có clip đúng chủ thể hoặc bị lệch niên đại lịch sử / lẫn khách du lịch hiện đại, việc trả về `"winner_index": -1` sẽ nhường quyền thắng cho nhánh Video Tư Liệu Thực Tế! Do đó TUYỆT ĐỐI KHÔNG chấm điểm nương tay cho clip Stock sai loài, sai niên đại lịch sử (như máy bay dân sự hiện đại ở triển lãm hàng không có trẻ em/xe đẩy, tàu bảo tàng neo cạnh chung cư hiện đại khi kịch bản nói về chiến sự lịch sử), hoặc lẫn khách du lịch đứng xem!
    - `entity_identity_score` (0.0–10.0): Nếu ứng viên có xuất hiện chủ thể, hình thái nhận diện của chủ thể trong ảnh preview có khớp với Thực thể Đích danh của `{subject_req}` hoặc `{topic_ctx}` hay không?
      + Nếu ứng viên thể hiện đúng `{subject_req}` hoặc đúng MỘT trong các thực thể đích danh của `{topic_ctx}` (hoặc loài cùng họ hình thái sát nhất trên kho Stock như monitor lizard/kỳ đà lớn cho Komodo dragon, water buffalo/trâu rừng cho buffalo) trong tự nhiên: BẮT BUỘC chấm `entity_identity_score` từ `7.8–9.5`.
-     + Nếu ứng viên thể hiện sai hẳn sang loài/vật thể ngoại lai không liên quan (ví dụ: hươu cao cổ, mèo nhà, xe cộ đô thị), xuất hiện Quốc kỳ / Quân hiệu của quốc gia khác mâu thuẫn trực tiếp với quốc gia/đế chế trong `{topic_ctx}` (ví dụ: kịch bản về tàu ngầm Liên Xô/Mỹ nhưng clip lại treo quốc kỳ quốc gia khác), hoặc không có ảnh preview (`attached_preview_image == None`) để xác minh, chấm `< 5.0`.
+     + Nếu ứng viên thể hiện sai sang loài động vật khác họ/khác hình thái (ví dụ: kỳ nhông xanh Iguana/tắc kè/rắn khi kịch bản yêu cầu Rồng Komodo/kỳ đà, hoặc loài chim/thú ngoại lai không có trong `{topic_ctx}`), xuất hiện Quốc kỳ / Quân hiệu / Phù hiệu quân phục của quốc gia khác mâu thuẫn trực tiếp với quốc gia/nhân vật trong `{topic_ctx}` & `{narration}` (ví dụ: phù hiệu `U.S. ARMY` khi lời thoại nói về sĩ quan Liên Xô, hoặc cờ bang/quốc gia khác trên thân máy bay/tàu chiến lịch sử), máy bay/tàu thuyền dân sự hiện đại tại triển lãm/bảo tàng có du khách/nhà cao tầng hiện đại khi kịch bản nói về trận đánh lịch sử, lẫn khách du lịch hiện đại đứng xem trong bối cảnh hoang dã, hoặc không có ảnh preview (`attached_preview_image == None`) để xác minh: BẮT BUỘC chấm `entity_identity_score < 4.0` và `visual_integrity_score < 4.0`.
    - `narrative_action_score` (0.0–10.0): Trong phim tài liệu (National Geographic / BBC Earth), khi lời thoại `{narration}` mô tả pha giao chiến đa thực thể hiếm, cơ chế giải phẫu/sinh lý bên trong (nọc độc, huyết áp tụt, cơ bắp tê liệt, răng cưa, lực cắn) hoặc hành động rình mồi/di chuyển:
      + BẤT KỲ cảnh B-Roll tự nhiên nào quay chủ thể `{subject_req}` (hoặc một trong hai thực thể của `{topic_ctx}`) đang di chuyển, bơi, ngâm mình dưới sông/bùn, thở gấp, cận cảnh đầu/hàm/cơ thể hoặc rình mồi ngoài hoang dã ĐỀU minh họa hoàn hảo cho lời thoại và BẮT BUỘC được chấm `narrative_action_score` từ `7.8–9.2`! Tuyệt đối KHÔNG đòi hỏi clip Stock phải quay cảnh giải phẫu bên trong mạch máu hay cảnh hai con vật đang cắn nhau đúng từng chữ mới duyệt!
    - `visual_integrity_score` (0.0–10.0): Khung hình có nguyên bản, tự nhiên đúng bối cảnh và niên đại lịch sử của kịch bản (không lẫn yếu tố nhân tạo/nuôi nhốt/khách du lịch hiện đại/xe cộ hiện đại lệch niên đại lịch sử, không treo cờ/biểu tượng sai quốc gia, không bị đơn sắc/đen trắng lệch tông, không chứa chữ/watermark/biểu tượng AI `✦`) hay không?
@@ -448,6 +451,10 @@ TRẢ VỀ JSON DUY NHẤT:
                 w for w in _re_fb.findall(r"[a-zA-Z]{3,}", eff_subj_str.lower())
                 if w not in _stop_fb and w not in _habitat_generic_fb
             }
+            req_subj_only_tokens = [
+                w for w in _re_fb.findall(r"[a-zA-Z]{3,}", str(subject_req or "").lower())
+                if w not in _stop_fb and w not in _habitat_generic_fb
+            ]
             specific_subj_tokens = {
                 w for w in _re_fb.findall(r"[a-zA-Z]{3,}", f"{subject_req} {scene_queries_str}".lower())
                 if w not in _stop_fb and w not in _habitat_generic_fb
@@ -471,6 +478,8 @@ TRẢ VỀ JSON DUY NHẤT:
                 cand_tokens = set(_re_fb.findall(r"[a-zA-Z]{3,}", slug_txt))
                 if neg_tokens and cand_tokens.intersection(neg_tokens - core_subj_tokens - scene_intent_tokens):
                     continue
+                if req_subj_only_tokens and not all(t in cand_tokens for t in req_subj_only_tokens[:2]):
+                    continue
                 subj_hits = len(cand_tokens.intersection(core_subj_tokens))
                 spec_hits = len(cand_tokens.intersection(specific_subj_tokens))
                 intent_hits = len(cand_tokens.intersection(scene_intent_tokens))
@@ -490,7 +499,7 @@ TRẢ VỀ JSON DUY NHẤT:
                 rationale_fb = f"Deterministic Subject-Anchor Match ({best_det_score:.1f}/10 while Gemini Vision API rate-limited)"
                 logger.info(
                     f"🎬 [LLM Link & Vision Audit] ⚡ Cứu hộ Subject-Anchor chọn Video #{best_det_cand['raw_video'].get('id')} "
-                    f"('{best_det_cand['url']}') | Điểm: {best_det_score:.1f}/10"
+                    f"('{best_det_cand['url']}') | Điểm: {best_det_score:.1f}/10 (sẽ hậu kiểm khung hình thật sau khi tải)"
                 )
                 return _format_winner(best_det_cand, round(best_det_score, 2), rationale_fb, vision_curated=False), round(best_det_score, 2), rationale_fb, False
         except Exception as _e_det_fb:

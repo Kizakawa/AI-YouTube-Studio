@@ -287,9 +287,9 @@ def _build_audit_engagement_comment(ch: Dict[str, Any], title: str = "", desc: s
         )
     if any(k in raw_niche for k in ("predator", "wildlife")):
         return (
-            "Quem leva a melhor nesse confronto de sobrevivência: (1) Predador ou (2) Presa? Deixe seu voto abaixo e INSCREVA-SE no canal! 👇🔥"
+            "Quem leva a melhor nesse confronto em território neutro: (1) Predador A ou (2) Predador B? Comente 1 ou 2 abaixo! 👇🔥"
             if is_pt else
-            "Who takes the crown in this survival showdown: (1) Predator or (2) Challenger? Drop 1 or 2 below & SUBSCRIBE for daily Apex Battles! 👇🔥🦁"
+            "Who takes the crown in neutral territory: (1) Contender 1 or (2) Contender 2? Drop 1 or 2 below! 👇🔥"
         )
     if any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana", "mystery", "earth")):
         return (

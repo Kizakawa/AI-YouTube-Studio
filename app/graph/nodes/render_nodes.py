@@ -129,6 +129,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             not cur_media_path
             or not Path(cur_media_path).exists()
             or cur_media_path.lower().endswith("_graphic.png")
+            or _is_eval_failed_scene
             or (_needs_video_for_85pct_floor and not _has_valid_video_on_disk)
         ):
             try:
@@ -229,10 +230,34 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                         )
                                         Path(raw_gr).unlink(missing_ok=True)
                                         if Path(out_pre_resc).exists() and Path(out_pre_resc).stat().st_size > 15_000:
-                                            cur_media_path = out_pre_resc
-                                            cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
-                                            m["source_url"] = u_gr
-                                            rescued_pre = True
+                                            from app.graph.evaluators.visual_critic import VisualCritic
+                                            from app.graph.nodes.media.hook_video_helpers import verify_hook_clip_genuine_motion
+                                            from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
+                                            pre_g_chk = VisualCritic.inspect_clip_before_concat(
+                                                out_pre_resc, min_short_edge=540, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
+                                            )
+                                            ok_pre_mot, _, _ = verify_hook_clip_genuine_motion(out_pre_resc)
+                                            is_pre_vis_ok = bool((best_v_pre or {}).get("vision_curated"))
+                                            if pre_g_chk.get("passed", False) and ok_pre_mot and not is_pre_vis_ok:
+                                                is_pre_vis_ok, _, _ = _verify_short_clip_with_gemini_vision(
+                                                    video_path=out_pre_resc,
+                                                    topic=str(state.get("topic") or ""),
+                                                    narration=str(m.get("narration") or ""),
+                                                    subject_entity=sc_active_ent,
+                                                    overall_script_query=q_gr_first,
+                                                    target_visual_query=q_gr_first,
+                                                    search_scope="SCENE_SPECIFIC",
+                                                    video_title=str((best_v_pre or {}).get("title") or q_gr_first),
+                                                    strict_no_fallback=True,
+                                                    deadline_ts=time.monotonic() + 12.0,
+                                                )
+                                            if pre_g_chk.get("passed", False) and ok_pre_mot and is_pre_vis_ok:
+                                                cur_media_path = out_pre_resc
+                                                cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                                m["source_url"] = u_gr
+                                                rescued_pre = True
+                                            else:
+                                                Path(out_pre_resc).unlink(missing_ok=True)
                                     else:
                                         Path(raw_gr).unlink(missing_ok=True)
                                 if not rescued_pre and not is_lf_pre:
@@ -360,6 +385,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                     from app.agents.media_agent import MediaAgent
                     is_cur_genuine_vid = (
                         bool(cur_media_path)
+                        and not _is_eval_failed_scene
                         and Path(cur_media_path).exists()
                         and cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
                         and (verify_hook_clip_genuine_motion(cur_media_path)[0] if sc_id == 1 else is_completed_clean_mp4(cur_media_path, min_size_bytes=18_000, min_duration_ms=1200))
@@ -367,17 +393,21 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                     if not is_cur_genuine_vid:
                         target_dur_open = max(dur_ms / 1000.0, 2.2) + 0.18
                         disk_open_cands: List[Path] = []
-                        if sc_id == 1:
+                        if sc_id == 1 and not _is_eval_failed_scene:
                             for p_hk_d in (
                                 work_dir / "hook_motion_001_fullpeak.mp4",
                                 work_dir / "hook_motion_001.mp4",
-                                *sorted((work_dir / "hook_candidates").glob("*.mp4")),
                             ):
                                 if p_hk_d.exists() and is_completed_clean_mp4(p_hk_d, min_size_bytes=18_000, min_duration_ms=1200):
                                     disk_open_cands.append(p_hk_d)
-                        for p_sc_d in sorted((work_dir / "media").glob(f"scene_{sc_id:03d}_*.mp4")):
-                            if p_sc_d.exists() and is_completed_clean_mp4(p_sc_d, min_size_bytes=18_000, min_duration_ms=1200):
-                                disk_open_cands.append(p_sc_d)
+                        if not _is_eval_failed_scene:
+                            for p_sc_d in sorted((work_dir / "media").glob(f"scene_{sc_id:03d}_*.mp4")):
+                                if (
+                                    p_sc_d.exists()
+                                    and not any(tok in p_sc_d.name.lower() for tok in ("_raw", "_cand", "_tmp", ".tmp", "_fftmp", "_stage"))
+                                    and is_completed_clean_mp4(p_sc_d, min_size_bytes=18_000, min_duration_ms=1200)
+                                ):
+                                    disk_open_cands.append(p_sc_d)
                         recovered_open = False
                         for cand_op in disk_open_cands:
                             if verify_hook_clip_genuine_motion(str(cand_op))[0]:
@@ -409,7 +439,6 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                 logger.info(f"[RenderNode] 🎬 Đã khôi phục Video chuyển động thật '{cand_op.name}' cho Cảnh #{sc_id} (cấm ảnh tĩnh 5-7s đầu)!")
                                 break
                         if not recovered_open:
-                            sf_pre = StockFetcher()
                             ma_pre = MediaAgent()
                             open_2w_qs = build_single_entity_stock_queries(
                                 primary_query=str(m.get("visual_keyword") or state.get("primary_entity") or state.get("topic") or ""),
@@ -417,20 +446,27 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                 subject_entity=str(m.get("subject_entity") or state.get("primary_entity") or ""),
                                 topic=str(state.get("topic") or ""),
                                 narration=str(m.get("narration") or ""),
-                                max_words=2,
+                                max_words=3,
                             )
-                            for q_op_2w in open_2w_qs[:4]:
-                                if recovered_open or not q_op_2w:
-                                    break
-                                v_op_hits = (
-                                    sf_pre.search_videos(q_op_2w, per_page=6, min_duration=2, orientation="portrait")
-                                    or sf_pre.search_pixabay_videos(q_op_2w, per_page=6, min_duration=2, orientation="portrait")
-                                    or []
+                            if open_2w_qs:
+                                q_op_first = open_2w_qs[0]
+                                best_op_v = ma_pre.search_best_video_clip(
+                                    query=q_op_first,
+                                    used_urls={
+                                        str(_mx.get("source_url") or "")
+                                        for _mx in scenes_media
+                                        if isinstance(_mx, dict) and _mx.get("source_url")
+                                    },
+                                    visual_analysis={
+                                        "subject": str(m.get("subject_entity") or state.get("primary_entity") or q_op_first),
+                                        "search_queries": open_2w_qs[:3],
+                                        "skip_establishing_pass": True,
+                                    },
+                                    narration=str(m.get("narration") or ""),
+                                    topic=str(state.get("topic") or ""),
                                 )
-                                for vh_op in v_op_hits[:3]:
-                                    vh_op_u = str(vh_op.get("url") or "").strip()
-                                    if not vh_op_u:
-                                        continue
+                                vh_op_u = str((best_op_v or {}).get("url") or "").strip()
+                                if vh_op_u:
                                     raw_op_dl = str(work_dir / "media" / f"scene_{sc_id:03d}_prerender_raw.mp4")
                                     out_op_dl = str(work_dir / ("hook_motion_001.mp4" if sc_id == 1 else f"media/scene_{sc_id:03d}_prerender_pure_vid.mp4"))
                                     ma_pre.download_file(vh_op_u, raw_op_dl)
@@ -459,8 +495,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                             m["pose_images"] = []
                                             m["production_method"] = "PRERENDER_PURE_STOCK_OPENING_VIDEO"
                                             recovered_open = True
-                                            logger.info(f"[RenderNode] 🎬 Đã tải Video chuyển động thật cho Cảnh #{sc_id} ('{q_op_2w}') trước khi render!")
-                                            break
+                                            logger.info(f"[RenderNode] 🎬 Đã tải Video chuyển động thật qua Gemini Vision cho Cảnh #{sc_id} ('{q_op_first}') trước khi render!")
                                     else:
                                         Path(raw_op_dl).unlink(missing_ok=True)
                 except Exception as e_s1_conv:

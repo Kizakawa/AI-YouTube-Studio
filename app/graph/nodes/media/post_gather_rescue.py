@@ -303,8 +303,7 @@ async def run_post_gather_media_rescues(
                             or strategy_map.get(r_sid, {}).get("storyline_search_queries")
                             or []
                         )
-                        p_facet = portrait_broll_facets[r_pos % len(portrait_broll_facets)]
-                        cand_p_queries = list(dict.fromkeys([q for q in (*r_story_qs, r_kw, r_stock_q, p_facet) if q]))[:3]
+                        cand_p_queries = list(dict.fromkeys([q for q in (*r_story_qs, r_kw, r_stock_q) if q]))[:3]
                         for p_q in cand_p_queries:
                             if rescued_ok or not p_q:
                                 break
@@ -400,14 +399,10 @@ async def run_post_gather_media_rescues(
                 if not rescued_ok and not _rescue_cancelled():
                     stock_queries: List[str] = []
                     cand_sq_list = (
-                        (portrait_broll_facets[r_pos % len(portrait_broll_facets)], r_stock_q, overall_rescue_q)
-                        if is_portrait_tool
-                        else (
-                            *(scene_single_queries[:4]),
-                            r_stock_q,
-                            r_kw,
-                            overall_rescue_q,
-                        )
+                        *(scene_single_queries[:4]),
+                        r_stock_q,
+                        r_kw,
+                        overall_rescue_q,
                     )
                     for sq in cand_sq_list:
                         sq_clean = (sq or "").strip()
@@ -441,11 +436,16 @@ async def run_post_gather_media_rescues(
                                 va_resc = {
                                     "video_format": "long" if is_long_form else "short",
                                     "search_queries": stock_queries[:3],
-                                    "subject": (primary_entity or sq_try) if is_long_form else (r_subj or sq_try),
-                                    "core_visual_entity": (primary_entity or sq_try) if is_long_form else (r_subj or sq_try),
+                                    "subject": (primary_entity or r_subj or sq_try) if is_long_form else (r_subj or primary_entity or sq_try),
+                                    "core_visual_entity": (primary_entity or r_subj or sq_try) if is_long_form else (r_subj or primary_entity or sq_try),
                                     "topic": state.get("topic", ""),
                                     "skip_establishing_pass": (r_sid == 1),
                                 }
+                                px_sub_dl = (
+                                    min(deadline_ts - 4.0, time.monotonic() + 26.0)
+                                    if deadline_ts is not None
+                                    else (time.monotonic() + 26.0)
+                                )
                                 best_v_fb = await asyncio.to_thread(
                                     media_agent.search_best_video_clip,
                                     sq_try,
@@ -453,6 +453,8 @@ async def run_post_gather_media_rescues(
                                     va_resc,
                                     str(r_sc.get("narration") or state.get("topic", "")),
                                     state.get("topic", ""),
+                                    cancel_event=px_rescue_cancel_ev,
+                                    deadline_ts=px_sub_dl,
                                 )
                                 if px_rescue_cancel_ev.is_set() or _rescue_cancelled():
                                     return None
@@ -498,16 +500,42 @@ async def run_post_gather_media_rescues(
                                             )
                                             Path(raw_dl_mp4).unlink(missing_ok=True)
                                             if Path(r_out_px_mp4).exists() and Path(r_out_px_mp4).stat().st_size > 15_000:
-                                                ok_sig, _ = rag.verify_and_commit_in_job_clip(
-                                                    job_id=job_id,
-                                                    scene_id=r_sid,
-                                                    media_path=r_out_px_mp4,
-                                                    vid_id=cand_u_fb,
-                                                    url=cand_u_fb,
-                                                    title=cand_title_fb,
+                                                from app.graph.evaluators.visual_critic import VisualCritic
+                                                from app.graph.nodes.media.hook_video_helpers import verify_hook_clip_genuine_motion
+                                                from app.graph.tools.youtube_search_ranker import _verify_short_clip_with_gemini_vision
+                                                px_resc_gate = VisualCritic.inspect_clip_before_concat(
+                                                    r_out_px_mp4, min_short_edge=540, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
                                                 )
+                                                ok_px_mot, _, _ = await asyncio.to_thread(verify_hook_clip_genuine_motion, r_out_px_mp4)
+                                                is_px_vis_ok = False
+                                                if px_resc_gate.get("passed", False) and ok_px_mot:
+                                                    is_px_vis_ok, _, _ = await asyncio.to_thread(
+                                                        _verify_short_clip_with_gemini_vision,
+                                                        r_out_px_mp4,
+                                                        state.get("topic", ""),
+                                                        str(r_sc.get("narration") or state.get("topic", "")),
+                                                        r_subj or primary_entity,
+                                                        overall_rescue_q,
+                                                        "SCENE_SPECIFIC",
+                                                        cand_title_fb,
+                                                        False,
+                                                        sq_try,
+                                                        True,
+                                                        px_rescue_cancel_ev,
+                                                        max(px_sub_dl, time.monotonic() + 12.0),
+                                                    )
+                                                ok_sig = False
+                                                if px_resc_gate.get("passed", False) and ok_px_mot and is_px_vis_ok:
+                                                    ok_sig, _ = rag.verify_and_commit_in_job_clip(
+                                                        job_id=job_id,
+                                                        scene_id=r_sid,
+                                                        media_path=r_out_px_mp4,
+                                                        vid_id=cand_u_fb,
+                                                        url=cand_u_fb,
+                                                        title=cand_title_fb,
+                                                    )
                                                 used_pool_urls.add(cand_u_fb)
-                                                if ok_sig:
+                                                if ok_sig and is_px_vis_ok:
                                                     return {
                                                         "branch": "pexels",
                                                         "media_path": r_out_px_mp4,
@@ -520,6 +548,9 @@ async def run_post_gather_media_rescues(
                                                     }
                                                 else:
                                                     Path(r_out_px_mp4).unlink(missing_ok=True)
+                                                    rag.release_in_job_video_claim(
+                                                        job_id=job_id, vid_id=cand_u_fb, url=cand_u_fb, title=cand_title_fb, scene_id=r_sid
+                                                    )
                                         else:
                                             Path(raw_dl_mp4).unlink(missing_ok=True)
                                             rag.release_in_job_video_claim(
