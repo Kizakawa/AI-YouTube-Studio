@@ -121,9 +121,10 @@ class VideoWorkflowState(TypedDict, total=False):
     entity_type: str
     entity_media_pool: List[Dict[str, Any]]
 
-    # Bước 1: Kịch bản (Script)
+    # Bước 1: Kịch bản (Script) & Đối sánh Kênh Hot Hit
     script_data: Optional[Dict[str, Any]]  # ScriptContract dict
     script_eval: Optional[Dict[str, Any]]  # ScriptEvaluationReport dict
+    hot_channel_benchmark_eval: Optional[Dict[str, Any]]  # HotChannelBenchmarkReport dict
     script_retry_count: int
     best_script_data: Optional[Dict[str, Any]]
     best_script_eval: Optional[Dict[str, Any]]
@@ -136,8 +137,9 @@ class VideoWorkflowState(TypedDict, total=False):
     audio_eval: Optional[Dict[str, Any]]
     audio_retry_count: int
 
-    # Bước 2.5: Đạo diễn Thị giác (Visual Director Agent)
+    # Bước 2.5: Đạo diễn Thị giác (Visual Director Agent) & Kiểm định Tool-Calling
     visual_plan: Optional[Dict[str, Any]]  # VisualPlanReport dict
+    tool_call_eval: Optional[Dict[str, Any]]  # LLMToolCallEvaluationReport dict
 
     # Bước 3: Hình ảnh / Video (Media) & Node chuyên biệt Cảnh 1 Hook Video
     pre_resolved_hook_media: Optional[Dict[int, Dict[str, Any]]]  # Các cảnh (Cảnh 1 / Cảnh Cao Trào) đã được HookVideoNode cắt từ Short trên mạng

@@ -638,9 +638,10 @@ YouTube rewards TWO metrics simultaneously:
    - NEVER repeat the `title` question in Scene 1, NEVER start with passive `"X sat in a..."`, `"locked in a deadly fight"`, vague `"Look closely at..."`, textbook definitions, greetings, or weak Yes/No questions (`"Did you know...?"`, `"Have you ever...?"`).
    - thumbnail_text MUST be STRICTLY 2 to 3 ULTRA-PUNCHY WORDS MAX in ALL CAPS with ZERO emojis and ZERO dry physics units (e.g. "TOO EASY?", "ZERO AIR", "ONE VOTE", "4 SECONDS MAX").
 
-3. SEAMLESS INFINITE LOOP ENDING (NO SPOKEN OUTRO CTA):
+3. SEAMLESS INFINITE LOOP ENDING & STANDALONE COMPLETE SENTENCES PER SCENE (NO SPOKEN OUTRO CTA):
    - NEVER include "Subscribe", "Like", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in ANY scene's spoken narration!
-   - Every single scene's spoken narration MUST be a 100% grammatically complete sentence with proper closing punctuation. NEVER end any scene with dangling prepositions or conjunctions ('because', 'which', 'and', 'so', 'that', 'but', 'with').
+   - Every single scene's spoken narration MUST be 100% standalone, grammatically complete sentence(s) with its own explicit subject and main verb! NEVER split a single sentence across two consecutive scenes (e.g., NEVER end Scene 2 on `"They spread their wings to bait the snake"` and start Scene 3 with `"Into striking at empty feathers"`), and NEVER end any scene with dangling prepositions or conjunctions ('because', 'which', 'and', 'so', 'that', 'but', 'with').
+   - In every scene, set `subject_entity` to the exact canonical entity whose body part or action is the main grammatical subject of THAT scene (do NOT set `subject_entity` to a secondary entity mentioned only in a subordinate clause!).
 
 4. CONTEXT-ANCHORED, CANONICAL-ENTITY-LOCKED VISUAL QUERIES (`visual_keyword` & `stock_query` — STRICTLY FOLLOW SECTION 9 `YAML VIDEO SEARCH & DUAL-TRACK QUERY STRATEGY` ABOVE):
    - Downstream visual agents search YouTube (`visual_keyword`, 3–5 English words) and Pexels/Pixabay Stock APIs (`stock_query`, 2–4 English words) for each scene independently:

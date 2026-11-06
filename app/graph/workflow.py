@@ -24,6 +24,7 @@ from app.graph.nodes import (
     node_generate_audio,
     node_evaluate_audio,
     node_direct_visual_strategy,
+    node_evaluate_llm_tool_calls,
     node_fetch_media,
     node_evaluate_media,
     node_refine_media,
@@ -180,6 +181,7 @@ def create_video_workflow_graph() -> StateGraph:
     builder.add_node("generate_audio", wrap_node_with_checkpoint("generate_audio", node_generate_audio))
     builder.add_node("evaluate_audio", wrap_node_with_checkpoint("evaluate_audio", node_evaluate_audio))
     builder.add_node("visual_director", wrap_node_with_checkpoint("visual_director", node_direct_visual_strategy))
+    builder.add_node("evaluate_tool_calls", wrap_node_with_checkpoint("evaluate_tool_calls", node_evaluate_llm_tool_calls))
     builder.add_node("produce_hook_video", wrap_node_with_checkpoint("produce_hook_video", node_produce_and_score_hook_video))
     builder.add_node("fetch_media", wrap_node_with_checkpoint("fetch_media", node_fetch_media))
     builder.add_node("evaluate_media", node_evaluate_media)
@@ -220,7 +222,8 @@ def create_video_workflow_graph() -> StateGraph:
             "visual_director": "visual_director",
         }
     )
-    builder.add_edge("visual_director", "produce_hook_video")
+    builder.add_edge("visual_director", "evaluate_tool_calls")
+    builder.add_edge("evaluate_tool_calls", "produce_hook_video")
     builder.add_edge("produce_hook_video", "fetch_media")
 
     # ── Kiểm tra ĐỘ SẮC NÉT & KỸ THUẬT media (VisualCritic) -> Merge & Lồng tiếng cuối cùng (render_video) -> VideoQA ──

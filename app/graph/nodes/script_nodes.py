@@ -211,15 +211,66 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
                 "progress_message": f"Chấm điểm kịch bản (Fast-Pass): {ov_10}/10 (Đạt chuẩn)",
             }
 
+    from concurrent.futures import ThreadPoolExecutor
+    from app.graph.evaluators.hot_channel_script_benchmark import HotChannelScriptBenchmarkEvaluator
+
     critic = ScriptCritic()
-    eval_report = critic.evaluate_script(
-        script_data=script_data,
-        topic=topic,
-        channel_style=channel_style,
-        primary_entity=primary_entity,
-        channel_id=target_channel_id,
-    )
+    hot_bench = HotChannelScriptBenchmarkEvaluator()
+    with ThreadPoolExecutor(max_workers=2) as _pool:
+        _fut_critic = _pool.submit(
+            critic.evaluate_script,
+            script_data=script_data,
+            topic=topic,
+            channel_style=channel_style,
+            primary_entity=primary_entity,
+            channel_id=target_channel_id,
+        )
+        _fut_hot = _pool.submit(
+            hot_bench.evaluate_against_hot_channels,
+            script_data=script_data,
+            topic=topic,
+            channel_style=channel_style,
+            primary_entity=primary_entity,
+        )
+        eval_report = _fut_critic.result()
+        hot_report = _fut_hot.result()
+
     eval_dict = eval_report.model_dump()
+    hot_dict = hot_report.model_dump()
+    # Nếu HotChannelBenchmark đã tự động sửa các câu truy vấn tìm kiếm của cảnh ngay tại chỗ (`repaired_scene_search_map`),
+    # nâng điểm `visual_direction` đã được chữa lành để không phạt lặp lại lỗi truy vấn cũ
+    if hot_report.repaired_scene_search_map and isinstance(eval_dict.get("visual_direction"), dict):
+        cur_vis_s = float(eval_dict["visual_direction"].get("score", 8.5) or 8.5)
+        if cur_vis_s < 8.5:
+            eval_dict["visual_direction"]["score"] = 8.8
+            hk_s = float((eval_dict.get("hook_strength") or {}).get("score", 8.5) or 8.5)
+            pc_s = float((eval_dict.get("story_pacing") or {}).get("score", 8.5) or 8.5)
+            en_s = float((eval_dict.get("entity_coherence") or {}).get("score", 8.5) or 8.5)
+            lp_s = float((eval_dict.get("viral_loop") or {}).get("score", 8.5) or 8.5)
+            eval_report_ov = round((hk_s * 0.30) + (pc_s * 0.25) + (en_s * 0.25) + (8.8 * 0.10) + (lp_s * 0.10), 1)
+            eval_dict["overall_score"] = eval_report_ov
+            if hk_s >= 8.0 and eval_report_ov >= 8.0 and pc_s >= 7.5:
+                eval_dict["passed"] = True
+
+    eval_dict["hot_channel_benchmark"] = hot_dict
+    if hot_report.evaluated_by == "ai":
+        blended_overall = round(float(eval_dict.get("overall_score", eval_report.overall_score)) * 0.65 + float(hot_report.overall_hot_benchmark_score) * 0.35, 1)
+        eval_dict["overall_score"] = blended_overall
+        if not hot_report.passed:
+            eval_dict["passed"] = False
+    if not hot_report.passed and hot_report.gaps_vs_hot_channels:
+        existing_critiques = list(eval_dict.get("actionable_critiques") or [])
+        for gap_msg in hot_report.gaps_vs_hot_channels[:3]:
+            formatted_gap = f"[HOT-CHANNEL BENCHMARK GAP] {gap_msg}"
+            if formatted_gap not in existing_critiques:
+                existing_critiques.append(formatted_gap)
+        eval_dict["actionable_critiques"] = existing_critiques
+
+    logger.info(
+        f"🔥 [HotChannelBenchmark] Parity={hot_report.hot_parity_percent}% ({hot_report.overall_hot_benchmark_score}/10) vs "
+        f"{', '.join(hot_report.benchmark_channels_compared[:2])} | Scene Search Score={hot_report.script_llm_scene_search_score}/10 | "
+        f"Auto-Repaired Scenes={list(hot_report.repaired_scene_search_map.keys()) or 'None'}"
+    )
 
     # Lưu giữ phiên bản kịch bản tốt nhất qua các vòng tinh chỉnh (tránh vòng cuối bị tụt điểm đè mất bản tốt trước đó)
     best_data = state.get("best_script_data")
@@ -277,11 +328,15 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     return {
         "script_data": out_script_data,
         "script_eval": out_eval_dict,
+        "hot_channel_benchmark_eval": out_eval_dict.get("hot_channel_benchmark"),
         "best_script_data": best_data,
         "best_script_eval": best_eval,
         "current_step": "SCRIPT_EVALUATED",
         "progress_percent": 25,
-        "progress_message": f"Chấm điểm kịch bản: {out_eval_dict.get('overall_score', eval_report.overall_score)}/10 ({'Đạt chuẩn' if out_eval_dict.get('passed') else 'Cần tinh chỉnh'})",
+        "progress_message": (
+            f"Chấm điểm kịch bản: {out_eval_dict.get('overall_score', eval_report.overall_score)}/10 | "
+            f"Hot Benchmark: {hot_report.hot_parity_percent:.0f}% ({'Đạt chuẩn' if out_eval_dict.get('passed') else 'Cần tinh chỉnh'})"
+        ),
     }
 
 

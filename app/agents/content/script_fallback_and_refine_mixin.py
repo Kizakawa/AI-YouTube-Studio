@@ -522,8 +522,10 @@ HARD RETENTION & AUTHENTIC VIRAL CREATOR SPOKEN VOICE RULES:
    - Act 2 (Scenes 2-3): Direct action, sharp contrast, or exact real-life spoken quote + plain `$1` mechanism.
    - Act 3 (Scenes 4-5): 15-Second Plot Twist (or `"What If"` counterfactual domino chain if topic asks `"What If"`) + natural assumption-flip.
    - Act 4 (Scenes 6-7): Concrete physical payoff or exact spoken Comeback in quotation marks (`"..."`).
-   - Act 5 (Scene 7 or 8): Fresh, concrete, or ironic main-clause closing realization without copying Scene 1 (ZERO spoken Subscribe CTA).
-3. CONTEXT-ANCHORED, SEARCH-ENGINE-NATIVE `visual_keyword` & `stock_query` (ZERO PRONOUNS, ZERO GENERIC TEXTURES, ZERO METAPHOR PROPS):
+   - Act 5 (Scene 7 or 8): Fresh, concrete physical action or sharpest ironic twist without copying Scene 1 and with ZERO proverb/essay commentary at the end (ZERO spoken Subscribe CTA).
+   - STANDALONE SENTENCE INTEGRITY: Every single scene's `narration` MUST be 100% standalone, grammatically complete sentence(s) with its own subject and main verb—NEVER split one sentence across two consecutive scenes!
+3. CONTEXT-ANCHORED, SEARCH-ENGINE-NATIVE `subject_entity`, `search_queries`, `visual_keyword` & `stock_query` (ZERO PRONOUNS, ZERO GENERIC TEXTURES, ZERO METAPHOR PROPS):
+   - Set `subject_entity` to the exact canonical entity whose body part or action is the main grammatical subject of THAT scene (never a secondary noun in a subordinate clause).
    - Resolve all pronouns ("It", "He", "They") in every scene's `visual_keyword` (3-5 English words formatted like real YouTube Shorts titles, e.g. `"leopard attacking porcupine"`, `"porcupine quills closeup"`, NEVER unsearchable narrative phrases like `"porcupine walking away"`) and `stock_query` (2-3 English words using common canonical noun + habitat for Pexels/Pixabay, e.g. `"porcupine wildlife"`, `"leopard hunting"`, NEVER generic textures like `"sharp needle texture"` or `"microscopic texture"`).
 4. Return ONLY valid JSON with STRICTLY {'16 to 22' if is_long_form else '7 or 8'} scene objects in `"scenes"`:
 {{

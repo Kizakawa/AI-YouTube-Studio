@@ -18,6 +18,7 @@ from app.graph.nodes.media.media_helpers import (
     _scene_audio_duration,
 )
 from app.graph.nodes.media.visual_director_node import node_direct_visual_strategy
+from app.graph.nodes.media.evaluate_tool_calls_node import node_evaluate_llm_tool_calls
 from app.graph.nodes.media.longform_broll_fetcher import _fetch_longform_16x9_broll_clip_sync
 from app.graph.nodes.media.fetch_media_node import node_fetch_media
 from app.graph.nodes.media.post_gather_rescue import run_post_gather_media_rescues
@@ -31,6 +32,7 @@ __all__ = [
     "_collect_active_scene_source_paths",
     "_scene_audio_duration",
     "node_direct_visual_strategy",
+    "node_evaluate_llm_tool_calls",
     "_fetch_longform_16x9_broll_clip_sync",
     "node_fetch_media",
     "run_post_gather_media_rescues",

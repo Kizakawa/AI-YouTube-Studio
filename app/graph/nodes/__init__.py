@@ -11,6 +11,7 @@ from app.graph.nodes.audio_nodes import (
 from app.graph.nodes.media_nodes import (
     node_fetch_media,
     node_direct_visual_strategy,
+    node_evaluate_llm_tool_calls,
     node_evaluate_media,
     node_refine_media,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "node_generate_audio",
     "node_evaluate_audio",
     "node_direct_visual_strategy",
+    "node_evaluate_llm_tool_calls",
     "node_fetch_media",
     "node_evaluate_media",
     "node_refine_media",
