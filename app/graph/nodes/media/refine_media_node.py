@@ -267,6 +267,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             )
 
         existing_mp = str(item.get("media_path") or "")
+        existing_pm = str(item.get("production_method") or "").upper()
 
         if scene_id == 1 and not replaced and not has_semantic_vision_defect:
             for hk_disk_cand in (work_dir / "hook_motion_001_fullpeak.mp4", work_dir / "hook_motion_001.mp4"):
@@ -418,6 +419,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
                 px_ref_ev = _RefineBranchCancelEvent(cancel_event)
                 yt_ref_ev = _RefineBranchCancelEvent(cancel_event)
+                bili_ref_ev = _RefineBranchCancelEvent(cancel_event)
 
                 async def _refine_pexels_branch() -> Optional[Dict[str, Any]]:
                     try:
@@ -579,9 +581,9 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     try:
                         rag_yt_ref = get_video_memory_rag()
                         yt_ref_dl = (
-                            min(deadline_ts - 6.0, time.monotonic() + 52.0)
-                            if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 12.0)
-                            else (deadline_ts or (time.monotonic() + 52.0))
+                            min(deadline_ts - 12.0, time.monotonic() + 50.0)
+                            if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 16.0)
+                            else (deadline_ts or (time.monotonic() + 50.0))
                         )
                         out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak_r{retry_count}.mp4")
                         yt_ref_res = await asyncio.to_thread(
@@ -602,6 +604,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             scene_id=scene_id,
                             channel_id=channel_id_refine,
                             skip_stock_fallback=True,
+                            allow_bili_fallback=False,
                             cancel_event=yt_ref_ev,
                             deadline_ts=yt_ref_dl,
                         )
@@ -641,15 +644,63 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         logger.debug(f"Scene {scene_id}: Parallel YouTube Short refine error: {ex_yt_r}")
                     return None
 
+                async def _refine_bilibili_branch() -> Optional[Dict[str, Any]]:
+                    await asyncio.sleep(2.5)
+                    if bili_ref_ev.is_set():
+                        return None
+                    try:
+                        from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
+                        bili_ref_dl = (
+                            min(deadline_ts - 10.0, time.monotonic() + 50.0)
+                            if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 14.0)
+                            else (deadline_ts or (time.monotonic() + 50.0))
+                        )
+                        out_bili_r = str(media_dir / f"scene_{scene_id:03d}_refined_bili_par_r{retry_count}.mp4")
+                        bili_r_res = await asyncio.to_thread(
+                            _try_bilibili_broll_fallback,
+                            search_phrases=[q_x for q_x in dict.fromkeys([clean_kw_q, critic_broll_q, overall_refine_q]) if q_x][:4],
+                            search_query=clean_kw_q or overall_refine_q,
+                            subject_entity=subj_refine or primary_entity or "",
+                            topic=state.get("topic", ""),
+                            narration=narr or state.get("topic", ""),
+                            overall_script_query=overall_refine_q,
+                            effective_scope="SCRIPT_OVERALL" if retry_count >= 2 else ("SCENE_SPECIFIC" if critic_sug_q else "SCRIPT_OVERALL"),
+                            output_path=out_bili_r,
+                            target_duration_sec=sc_dur_sec,
+                            clip_role="HOOK" if scene_id == 1 else "PEAK",
+                            allow_3d_cgi_monster=False,
+                            used=used_refine_urls,
+                            job_id=job_id_refine,
+                            eff_scene_id=scene_id,
+                            cancel_event=bili_ref_ev,
+                            deadline_ts=bili_ref_dl,
+                        )
+                        if bili_r_res and bili_r_res.get("media_path") and Path(bili_r_res["media_path"]).exists():
+                            src_bili = str(bili_r_res.get("source_url") or bili_r_res["media_path"])
+                            used_refine_urls.add(src_bili)
+                            logger.info(f"Scene {scene_id}: ✅ [Parallel Pexels+YT+Bili] Sửa lỗi bằng Bilibili Documentary 9:16 mới: '{Path(bili_r_res['media_path']).name}'")
+                            return {
+                                "media_path": bili_r_res["media_path"],
+                                "media_type": "hook_ready_video" if scene_id == 1 else "video",
+                                "production_method": "REFINED_BILIBILI_DOCUMENTARY_VIDEO",
+                                "source_url": src_bili,
+                                "vid_id": src_bili,
+                                "title": str(bili_r_res.get("title") or clean_kw_q),
+                            }
+                    except Exception as ex_bili_r:
+                        logger.debug(f"Scene {scene_id}: Parallel Bilibili refine error: {ex_bili_r}")
+                    return None
+
                 t_px_r = asyncio.create_task(_refine_pexels_branch())
                 t_yt_r = asyncio.create_task(_refine_youtube_branch())
-                pending_r = {t_px_r, t_yt_r}
+                t_bili_r = asyncio.create_task(_refine_bilibili_branch())
+                pending_r = {t_px_r, t_yt_r, t_bili_r}
                 win_r: Optional[Dict[str, Any]] = None
                 extra_r: List[Dict[str, Any]] = []
                 race_ref_deadline = (
-                    min(deadline_ts - 18.0, time.monotonic() + 44.0)
-                    if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 24.0)
-                    else (min(deadline_ts - 8.0, time.monotonic() + 44.0) if deadline_ts is not None else (time.monotonic() + 44.0))
+                    min(deadline_ts - 10.0, time.monotonic() + 54.0)
+                    if (deadline_ts is not None and (deadline_ts - time.monotonic()) > 16.0)
+                    else (min(deadline_ts - 6.0, time.monotonic() + 54.0) if deadline_ts is not None else (time.monotonic() + 54.0))
                 )
 
                 while pending_r and win_r is None:
@@ -675,24 +726,27 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 extra_r.append(rv)
 
                 if win_r is None and pending_r:
-                    done_gr, pending_r = await asyncio.wait(
-                        pending_r,
-                        return_when=asyncio.FIRST_COMPLETED,
-                        timeout=12.0,
-                    )
-                    for d_gr in done_gr:
-                        try:
-                            rv_gr = d_gr.result()
-                        except Exception:
-                            rv_gr = None
-                        if rv_gr and rv_gr.get("media_path") and Path(rv_gr["media_path"]).exists():
-                            if win_r is None:
-                                win_r = rv_gr
-                            else:
-                                extra_r.append(rv_gr)
+                    grace_ref_s = max(0.5, min(6.0, (deadline_ts - time.monotonic() - 8.0) if deadline_ts is not None else 6.0))
+                    if grace_ref_s > 0.5:
+                        done_gr, pending_r = await asyncio.wait(
+                            pending_r,
+                            return_when=asyncio.FIRST_COMPLETED,
+                            timeout=grace_ref_s,
+                        )
+                        for d_gr in done_gr:
+                            try:
+                                rv_gr = d_gr.result()
+                            except Exception:
+                                rv_gr = None
+                            if rv_gr and rv_gr.get("media_path") and Path(rv_gr["media_path"]).exists():
+                                if win_r is None:
+                                    win_r = rv_gr
+                                else:
+                                    extra_r.append(rv_gr)
 
                 px_ref_ev.set()
                 yt_ref_ev.set()
+                bili_ref_ev.set()
                 for p_tr in pending_r:
                     p_tr.cancel()
 
@@ -795,7 +849,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     scene_id not in mandatory_video_refine_sids
                     and video_floor_satisfied_without_scene
                 )
-                if not replaced and scene_id not in (1, 2) and (can_downgrade_to_image or is_blank_placeholder):
+                if not replaced and (is_blank_placeholder or (scene_id not in (1, 2) and can_downgrade_to_image)):
                     out_resc_img = str(media_dir / f"scene_{scene_id:03d}_refined_gimg_rescue_r{retry_count}.jpg")
                     g_res = await asyncio.to_thread(
                         execute_google_cinematic_image_sync,
@@ -825,7 +879,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             item.pop("hook_sharpness", None)
 
     refine_sem = asyncio.Semaphore(8 if is_lf_refine else 6)
-    refine_item_timeout = 80.0 if is_lf_refine else 78.0
+    refine_item_timeout = 88.0 if is_lf_refine else 86.0
 
     async def _guarded_refine_single_item(item: Dict[str, Any]) -> None:
         if item.get("scene_id") not in failed_ids:

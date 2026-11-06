@@ -358,12 +358,36 @@ def verify_hook_clip_genuine_motion(
                 top_e = float(ImageStat.Stat(edges_f.crop((16, 8, 164, 52))).mean[0])
                 bot_e = float(ImageStat.Stat(edges_f.crop((16, 268, 164, 312))).mean[0])
                 cen_e = float(ImageStat.Stat(edges_f.crop((16, 88, 164, 232))).mean[0])
-                if cen_e >= 7.5 and top_e < cen_e * 0.22 and bot_e < cen_e * 0.22:
-                    return (
-                        False,
-                        round(cen_e, 2),
-                        f"Video ngang 16:9 có viền mờ/đen trên dưới (top_e={top_e:.1f}, bot_e={bot_e:.1f}, cen_e={cen_e:.1f})",
-                    )
+                if cen_e >= 12.0 and top_e < 1.8 and bot_e < 1.8 and len(full_imgs) >= 4:
+                    f_first, f_last = full_imgs[0], full_imgs[-1]
+                    top_mot = float(ImageStat.Stat(ImageChops.difference(f_first.crop((16, 8, 164, 52)), f_last.crop((16, 8, 164, 52)))).mean[0])
+                    bot_mot = float(ImageStat.Stat(ImageChops.difference(f_first.crop((16, 268, 164, 312)), f_last.crop((16, 268, 164, 312)))).mean[0])
+                    cen_mot = float(ImageStat.Stat(ImageChops.difference(f_first.crop((16, 88, 164, 232)), f_last.crop((16, 88, 164, 232)))).mean[0])
+                    if top_mot < 0.65 and bot_mot < 0.65 and cen_mot >= 2.8:
+                        # Tự động crop vùng trung tâm 16:9/4:3 tràn khung dọc 1080x1920 thay vì vứt bỏ tư liệu lịch sử quý hiếm
+                        tmp_pb_crop = str(p_clip.with_name(f"{p_clip.stem}_autopadcrop{p_clip.suffix}"))
+                        subprocess.run(
+                            [
+                                "ffmpeg", "-nostdin", "-v", "error", "-y",
+                                "-i", str(p_clip),
+                                "-vf", "crop=iw:ih*0.62:0:ih*0.19,scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1",
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-an",
+                                tmp_pb_crop,
+                            ],
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=14,
+                            check=False,
+                        )
+                        if Path(tmp_pb_crop).exists() and Path(tmp_pb_crop).stat().st_size > 15_000:
+                            import shutil as _sh_pb
+                            _sh_pb.move(tmp_pb_crop, str(p_clip))
+                            logger.info(
+                                f"✂️ [AutoPadbarCrop] Đã tự động phóng/cắt bỏ viền trên dưới (top_e={top_e:.1f}, bot_e={bot_e:.1f}, cen_e={cen_e:.1f}) cho '{p_clip.name}'!"
+                            )
+                        else:
+                            Path(tmp_pb_crop).unlink(missing_ok=True)
 
             imgs = [im.crop((20, 30, 160, 210)) for im in full_imgs]
             step = 2 if len(imgs) >= 6 else 1
@@ -514,10 +538,11 @@ def _ensure_hook_clip_sharpness_and_luma(
             return True, sharp_init
 
         cur_best_sharp = sharp_init
-        # Chỉ áp dụng tối đa 1 lượt làm nét vi mô chuẩn Cinema Mastering (tránh re-encode lặp 3 lần gây bệt hạt và tốn thời gian).
+        # Tầng 1: làm nét vi mô chuẩn Cinema Mastering; Tầng 2 (chỉ chạy khi Tầng 1 vẫn < min_sharpness cho phim tư liệu cổ): nâng tương phản cục bộ + CAS + Multi-Scale Unsharp.
         for pass_idx, vf_enhance in enumerate(
             [
                 "eq=brightness=0.02:contrast=1.08:saturation=1.05,unsharp=5:5:0.85:3:3:0.35",
+                "eq=brightness=0.03:contrast=1.14:saturation=1.06,cas=0.45,unsharp=5:5:1.18:3:3:0.55",
             ],
             start=1,
         ):

@@ -15,7 +15,7 @@ class MediaVisionCuratorMixin:
     @staticmethod
     def _fetch_video_thumbnails_for_llm(
         eval_pool: List[Dict[str, Any]],
-        timeout: float = 4.5,
+        timeout: float = 6.5,
     ) -> Tuple[List[Tuple[str, str]], Dict[int, int]]:
         """
         Tải song song ảnh preview (thumbnail) của ứng viên video Pexels/Pixabay
@@ -30,47 +30,53 @@ class MediaVisionCuratorMixin:
         def _dl_one(item_pair: Tuple[int, Dict[str, Any]]) -> Optional[Tuple[int, str, str]]:
             idx, cand = item_pair
             t_url = str(cand.get("thumbnail") or "").strip()
-            if not t_url or not t_url.startswith("http"):
+            alt_t_url = str(cand.get("alt_thumbnail") or "").strip()
+            url_choices = [u for u in (t_url, alt_t_url) if u and u.startswith("http")]
+            if not url_choices:
                 return None
-            try:
-                r = _req.get(
-                    t_url,
-                    timeout=timeout,
-                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-                )
-                if r.status_code != 200 or not r.content or len(r.content) < 800:
-                    return None
-                with Image.open(_io.BytesIO(r.content)) as im:
-                    if im.mode != "RGB":
-                        im = im.convert("RGB")
-                    # Lọc bỏ các thumbnail bị hỏng/đen kịt/cháy trắng hoàn toàn trước khi gửi LLM
-                    # (lưu ý: ảnh preview nén web của cảnh dưới nước/đại dương thường có biên cạnh mềm ~2.5-4.5, không lọc quá gắt như frame gốc 1080p)
-                    g256 = im.convert("L").resize((256, 256), Image.Resampling.BILINEAR)
-                    g_st = ImageStat.Stat(g256)
-                    lum_m = float(g_st.mean[0])
-                    con_s = float(g_st.stddev[0])
-                    sh_m = float(ImageStat.Stat(g256.filter(ImageFilter.FIND_EDGES)).mean[0])
-                    cand["_thumb_sharpness"] = round(sh_m, 2)
-                    cand["_thumb_contrast"] = round(con_s, 2)
-                    if lum_m < 12.0 or lum_m > 246.0 or con_s < 8.5 or sh_m < 2.2:
-                        cand["_thumb_low_quality"] = True
-                        return None
-                    im.thumbnail((320, 320), Image.Resampling.BILINEAR)
-                    try:
-                        draw = ImageDraw.Draw(im)
-                        w_im, _ = im.size
-                        slug_short = str(cand.get("slug") or "")[:28]
-                        label_txt = f"INDEX {idx}: {slug_short}"
-                        draw.rectangle([(0, 0), (w_im, 22)], fill=(0, 0, 0))
-                        draw.text((6, 4), label_txt, fill=(255, 255, 0))
-                    except Exception:
-                        pass
-                    buf = _io.BytesIO()
-                    im.save(buf, format="JPEG", quality=74)
-                    b64_str = _b64.b64encode(buf.getvalue()).decode("utf-8")
-                    return idx, "image/jpeg", b64_str
-            except Exception:
-                return None
+            for cur_u in url_choices:
+                try:
+                    r = _req.get(
+                        cur_u,
+                        timeout=timeout,
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                    )
+                    if r.status_code != 200 or not r.content or len(r.content) < 800:
+                        continue
+                    with Image.open(_io.BytesIO(r.content)) as im:
+                        if im.mode != "RGB":
+                            im = im.convert("RGB")
+                        # Lọc bỏ các thumbnail bị hỏng/đen kịt/cháy trắng hoàn toàn trước khi gửi LLM
+                        g256 = im.convert("L").resize((256, 256), Image.Resampling.BILINEAR)
+                        g_st = ImageStat.Stat(g256)
+                        lum_m = float(g_st.mean[0])
+                        con_s = float(g_st.stddev[0])
+                        sh_m = float(ImageStat.Stat(g256.filter(ImageFilter.FIND_EDGES)).mean[0])
+                        cand["_thumb_sharpness"] = round(sh_m, 2)
+                        cand["_thumb_contrast"] = round(con_s, 2)
+                        if lum_m < 4.5 or lum_m > 250.0 or con_s < 4.5 or sh_m < 1.2:
+                            if cur_u != url_choices[-1]:
+                                continue
+                            cand["_thumb_low_quality"] = True
+                            return None
+                        cand.pop("_thumb_low_quality", None)
+                        im.thumbnail((320, 320), Image.Resampling.BILINEAR)
+                        try:
+                            draw = ImageDraw.Draw(im)
+                            w_im, _ = im.size
+                            slug_short = str(cand.get("slug") or "")[:28]
+                            label_txt = f"INDEX {idx}: {slug_short}"
+                            draw.rectangle([(0, 0), (w_im, 22)], fill=(0, 0, 0))
+                            draw.text((6, 4), label_txt, fill=(255, 255, 0))
+                        except Exception:
+                            pass
+                        buf = _io.BytesIO()
+                        im.save(buf, format="JPEG", quality=74)
+                        b64_str = _b64.b64encode(buf.getvalue()).decode("utf-8")
+                        return idx, "image/jpeg", b64_str
+                except Exception:
+                    continue
+            return None
 
         images_out: List[Tuple[str, str]] = []
         idx_to_order: Dict[int, int] = {}
@@ -228,6 +234,12 @@ class MediaVisionCuratorMixin:
                 continue
             if creator_key:
                 seen_creators_in_pool.add(creator_key)
+            v_pics = v.get("video_pictures") if isinstance(v.get("video_pictures"), list) else []
+            mid_pic = ""
+            if v_pics:
+                mid_obj = v_pics[len(v_pics) // 2]
+                if isinstance(mid_obj, dict):
+                    mid_pic = str(mid_obj.get("picture") or "")
             valid_candidates.append({
                 "raw_video": v,
                 "url": url,
@@ -236,7 +248,8 @@ class MediaVisionCuratorMixin:
                 "height": best_file.get("height", 1080 if is_long_fmt else 1920),
                 "duration": v.get("duration", 0),
                 "slug": slug,
-                "thumbnail": v.get("image", ""),
+                "thumbnail": v.get("image", "") or mid_pic,
+                "alt_thumbnail": mid_pic,
                 "source": "pexels_16x9_video" if is_long_fmt else "pexels_video",
                 "creator_key": creator_key,
             })
@@ -320,8 +333,8 @@ class MediaVisionCuratorMixin:
                 ),
             })
 
-        if not candidates_for_llm:
-            return None, 2.5, "Tất cả ứng viên video kho đều quá mờ hoặc thiếu tương phản (< chuẩn VisualCritic).", True
+        if not candidates_for_llm or not has_any_preview:
+            return None, 2.5, "Tất cả ứng viên video kho đều quá mờ hoặc không tải được ảnh preview (< chuẩn VisualCritic).", True
 
         prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Thẩm Định Ngữ Cảnh Kịch Bản Đa Phương Thức (Multimodal Script-Intent Video Auditor).
 Hãy đọc hiểu sâu Chủ đề kịch bản của người dùng, Tóm tắt cốt truyện tổng thể, Lời thoại phân cảnh, Hàm ý câu chuyện và NHÌN TRỰC TIẾP vào các ảnh preview (`INDEX 0`, `INDEX 1`...) kèm đường link trả về để tự chấm điểm nghiêm ngặt và chọn ra VIDEO truyền tải SÁT Ý NHẤT tinh thần kịch bản.
@@ -344,13 +357,16 @@ QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM ĐA TRỤC (MULTI-AXIS SELF-SCORING 
    - Khi `{narration}` sử dụng đại từ hoặc danh từ chung/ẩn dụ (ví dụ: "the hunter", "its prey", "this creature", "the leader", "the machine"), BẮT BUỘC phải quy chiếu ngược về đúng Thực thể Đích danh trong `{topic_ctx}` và `{subject_req}`.
    - Tuyệt đối KHÔNG chọn một thực thể/chủng loại khác chỉ vì khớp từ khóa danh từ chung trong câu thoại hay URL slug.
 2. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP CHO ỨNG VIÊN TỐT NHẤT (Thang điểm 0.0–10.0) — NGUYÊN TẮC B-ROLL PHIM TÀI LIỆU (DOCUMENTARY B-ROLL):
-   - LƯU Ý CỐT LÕI VỀ KIẾN TRÚC: Hệ thống đang chạy song song nhánh Video Tư Liệu Thực Tế (YouTube/Bilibili Archival & Documentary Footage). Nếu kho Stock (Pexels/Pixabay) không có clip đúng chủ thể hoặc bị lệch niên đại lịch sử / lẫn khách du lịch hiện đại, việc trả về `"winner_index": -1` sẽ nhường quyền thắng cho nhánh Video Tư Liệu Thực Tế! Do đó TUYỆT ĐỐI KHÔNG chấm điểm nương tay cho clip Stock sai loài, sai niên đại lịch sử (như máy bay dân sự hiện đại ở triển lãm hàng không có trẻ em/xe đẩy, tàu bảo tàng neo cạnh chung cư hiện đại khi kịch bản nói về chiến sự lịch sử), hoặc lẫn khách du lịch đứng xem!
-   - `entity_identity_score` (0.0–10.0): Nếu ứng viên có xuất hiện chủ thể, hình thái nhận diện của chủ thể trong ảnh preview có khớp với Thực thể Đích danh của `{subject_req}` hoặc `{topic_ctx}` hay không?
-     + Nếu ứng viên thể hiện đúng `{subject_req}` hoặc đúng MỘT trong các thực thể đích danh của `{topic_ctx}` (hoặc loài cùng họ hình thái sát nhất trên kho Stock như monitor lizard/kỳ đà lớn cho Komodo dragon, water buffalo/trâu rừng cho buffalo) trong tự nhiên: BẮT BUỘC chấm `entity_identity_score` từ `7.8–9.5`.
-     + Nếu ứng viên thể hiện sai sang loài động vật khác họ/khác hình thái (ví dụ: kỳ nhông xanh Iguana/tắc kè/rắn khi kịch bản yêu cầu Rồng Komodo/kỳ đà, hoặc loài chim/thú ngoại lai không có trong `{topic_ctx}`), xuất hiện Quốc kỳ / Quân hiệu / Phù hiệu quân phục của quốc gia khác mâu thuẫn trực tiếp với quốc gia/nhân vật trong `{topic_ctx}` & `{narration}` (ví dụ: phù hiệu `U.S. ARMY` khi lời thoại nói về sĩ quan Liên Xô, hoặc cờ bang/quốc gia khác trên thân máy bay/tàu chiến lịch sử), máy bay/tàu thuyền dân sự hiện đại tại triển lãm/bảo tàng có du khách/nhà cao tầng hiện đại khi kịch bản nói về trận đánh lịch sử, lẫn khách du lịch hiện đại đứng xem trong bối cảnh hoang dã, hoặc không có ảnh preview (`attached_preview_image == None`) để xác minh: BẮT BUỘC chấm `entity_identity_score < 4.0` và `visual_integrity_score < 4.0`.
-   - `narrative_action_score` (0.0–10.0): Trong phim tài liệu (National Geographic / BBC Earth), khi lời thoại `{narration}` mô tả pha giao chiến đa thực thể hiếm, cơ chế giải phẫu/sinh lý bên trong (nọc độc, huyết áp tụt, cơ bắp tê liệt, răng cưa, lực cắn) hoặc hành động rình mồi/di chuyển:
-     + BẤT KỲ cảnh B-Roll tự nhiên nào quay chủ thể `{subject_req}` (hoặc một trong hai thực thể của `{topic_ctx}`) đang di chuyển, bơi, ngâm mình dưới sông/bùn, thở gấp, cận cảnh đầu/hàm/cơ thể hoặc rình mồi ngoài hoang dã ĐỀU minh họa hoàn hảo cho lời thoại và BẮT BUỘC được chấm `narrative_action_score` từ `7.8–9.2`! Tuyệt đối KHÔNG đòi hỏi clip Stock phải quay cảnh giải phẫu bên trong mạch máu hay cảnh hai con vật đang cắn nhau đúng từng chữ mới duyệt!
-   - `visual_integrity_score` (0.0–10.0): Khung hình có nguyên bản, tự nhiên đúng bối cảnh và niên đại lịch sử của kịch bản (không lẫn yếu tố nhân tạo/nuôi nhốt/khách du lịch hiện đại/xe cộ hiện đại lệch niên đại lịch sử, không treo cờ/biểu tượng sai quốc gia, không bị đơn sắc/đen trắng lệch tông, không chứa chữ/watermark/biểu tượng AI `✦`) hay không?
+   - LƯU Ý CỐT LÕI VỀ KIẾN TRÚC:
+     + Đối với chủ đề Động vật hoang dã hoặc Khí tài Quân sự / Trận đánh Lịch sử thế kỷ 20: Hệ thống đang chạy song song nhánh Video Tư Liệu Thực Tế (YouTube/Bilibili). Nếu kho Stock không có đúng loài động vật hoặc đúng loại khí tài quân sự (hoặc bị lẫn khách du lịch hiện đại / triển lãm dân sự), trả về `"winner_index": -1` để nhường cho nhánh Tư liệu!
+     + Đối với chủ đề Tâm lý học, Thần kinh học (Neuroscience), Y khoa, Hiện tượng Khoa học hoặc Giai thoại Tiền Điện Ảnh (trước năm 1900 khi chưa có máy quay phim, hoặc thí nghiệm tâm lý học): Phim tài liệu chuẩn Netflix/BBC/Nova LUÔN minh họa bằng **B-Roll Giải Phẫu / Thần Kinh 3D (hộp sọ, não bộ, mạng nơ-ron, tia X/MRI), B-Roll Biểu Cảm Tâm Lý Con Người Điện Ảnh (Chiaroscuro/Dark Noir), hoặc B-Roll Tái Hiện Bối Cảnh/Đạo Cụ** khớp với `{subject_req}` và `{expected_vis}` của phân cảnh! TUYỆT ĐỐI KHÔNG từ chối clip Stock chỉ vì nó không phải thước phim quay thật nhân vật lịch sử thế kỷ 19 ngoài đời!
+   - `entity_identity_score` (0.0–10.0): Nếu ứng viên có xuất hiện chủ thể, hình thái nhận diện của chủ thể trong ảnh preview có khớp với `{subject_req}`, `{expected_vis}` hoặc `{topic_ctx}` hay không?
+     + Nếu ứng viên thể hiện đúng `{subject_req}` / `{expected_vis}` của phân cảnh (ví dụ: mô hình/quét não bộ, hộp sọ, bác sĩ ghi chép, người đàn ông trầm tư/tức giận trong bóng tối, tia lửa vụ nổ cho phân cảnh tâm lý/thần kinh học; hoặc đúng loài động vật / loài cùng họ hình thái sát nhất trên kho Stock cho phân cảnh thiên nhiên): BẮT BUỘC chấm `entity_identity_score` từ `8.0–9.5`.
+     + CẤM MINH HỌA ẨN DỤ NGHĨA ĐEN CHO CHỦ THỂ VẬT LÝ (ZERO LITERAL METAPHOR FOR ANIMALS/VEHICLES): Khi chủ thể chính là động vật hoặc tàu chiến/máy bay mà `{narration}` dùng từ ẩn dụ/so sánh (ví dụ: `"a floating hunk of steel"`, `"iron trap"`, `"like steel clamps"`), TUYỆT ĐỐI KHÔNG duyệt clip quay ống sắt/đường ống nước trong nhà, lưới thông gió hay bức tường gạch!
+     + Nếu ứng viên thể hiện sai sang loài động vật khác họ/khác hình thái (ví dụ: kỳ nhông xanh Iguana/tắc kè/rắn khi kịch bản yêu cầu Rồng Komodo/kỳ đà, hoặc loài chim/thú ngoại lai không có trong `{topic_ctx}`), xuất hiện Quốc kỳ / Quân hiệu / Phù hiệu quân phục hoặc chữ sơn ngoại ngữ của quốc gia khác mâu thuẫn trực tiếp với quốc gia/nhân vật trong `{topic_ctx}` & `{narration}` (ví dụ: chữ Nga Cyrillic `"НЕ БРАТЬСЯ"`, phù hiệu `U.S. ARMY` khi lời thoại nói về sĩ quan Liên Xô, hoặc cờ bang/quốc gia khác trên thân máy bay/tàu chiến lịch sử), máy bay/tàu thuyền dân sự hiện đại tại triển lãm/bảo tàng có du khách/nhà cao tầng hiện đại khi kịch bản nói về trận đánh lịch sử, lẫn khách du lịch hiện đại đứng xem trong bối cảnh hoang dã, hoặc không có ảnh preview (`attached_preview_image == None`) để xác minh: BẮT BUỘC chấm `entity_identity_score < 3.0`, `visual_integrity_score < 3.0` và trả về `"winner_index": -1`.
+   - `narrative_action_score` (0.0–10.0): Trong phim tài liệu (National Geographic / BBC Earth / Netflix Mind Explained), khi lời thoại `{narration}` mô tả pha giao chiến đa thực thể hiếm, cơ chế giải phẫu/thần kinh/sinh lý bên trong (vỏ não trước trán, nọc độc, huyết áp tụt, cơ bắp tê liệt, xung thần kinh) hoặc trạng thái tâm lý/hành động:
+     + BẤT KỲ cảnh B-Roll điện ảnh nào khớp với `{subject_req}` / `{expected_vis}` của phân cảnh (ví dụ: mô hình 3D não bộ/hộp sọ/xung thần kinh phát sáng, cận cảnh biểu cảm tâm lý con người sắc lạnh, hoặc chủ thể động vật đang di chuyển/bơi/rình mồi ngoài hoang dã) ĐỀU minh họa hoàn hảo cho lời thoại và BẮT BUỘC được chấm `narrative_action_score` từ `8.0–9.2`!
+   - `visual_integrity_score` (0.0–10.0): Khung hình có nguyên bản, sắc nét, đúng tông màu điện ảnh của kịch bản (không lẫn khách du lịch hiện đại/xe đẩy trẻ em tại triển lãm trong bối cảnh chiến sự hay hoang dã, không treo cờ/biểu tượng sai quốc gia, không chứa chữ/watermark/biểu tượng AI `✦`) hay không?
 3. QUYẾT ĐỊNH DUYỆT (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score)`):
    - Duyệt ứng viên tốt nhất khi cả 3 trục đạt `>= 7.5` (`confidence_score >= 7.5`, `should_fallback_to_ai: false`). Đồng thời liệt kê vào `approved_alternate_indices` các ứng viên khác cũng đạt `>= 7.5`.
    - Chỉ trả về `"winner_index": -1`, `"should_fallback_to_ai": true` khi TẤT CẢ ứng viên đều sai loài/sai chủ đề hoàn toàn hoặc vi phạm `visual_integrity_score < 7.5`.
@@ -732,9 +748,9 @@ QUY TRÌNH SUY LUẬN & TỰ CHẤM ĐIỂM 3 TRỤC (MULTI-AXIS SELF-SCORING RU
 2. QUY CHIẾU ĐẠI TỪ / TỪ CHỈ VAI TRÒ / ẨN DỤ VỀ THỰC THỂ ĐÍCH DANH (`resolved_scene_entities`):
    - Khi `{narration}` dùng đại từ ("It", "They"), từ chỉ vai trò ("the hunter", "the predator", "its living prey") hoặc ẩn dụ ("like steel clamps"), BẮT BUỘC quy chiếu ngược về đúng Thực thể Đích danh trong `{topic_ctx}` và `{subject_req}`.
 3. TỰ CHẤM ĐIỂM 3 TRỤC ĐỘC LẬP (Thang điểm 0.0–10.0):
-   - `entity_identity_score`: Chủ thể trong ảnh có đúng loài/thực thể đích danh của `{subject_req}` hoặc một trong hai thực thể chính của `{topic_ctx}` (không chọn loài ngoại lai khác biệt, không chọn đồ chơi/thú nhồi bông/vật thể ẩn dụ nghĩa đen) hay không?
-   - `narrative_action_score`: Hành động, trạng thái và môi trường sinh thái/thời đại trong ảnh có phù hợp để minh họa cho phân cảnh `{narration}` hay không? Khi câu thoại mô tả cơ chế sinh lý bên trong (huyết áp, nọc độc, cơ bắp tê liệt) hoặc pha đối đầu 2 thực thể, ảnh chụp tự nhiên sắc nét của đúng thực thể `{subject_req}` (hoặc một trong hai thực thể của `{topic_ctx}`) ngoài hoang dã BẮT BUỘC được chấm `>= 7.8`.
-   - `visual_integrity_score`: Khung hình có nguyên bản, tự nhiên (không lẫn dây buộc chân/lồng chuồng nuôi nhốt khi kịch bản ở hoang dã, không bị chia đôi màn hình split-screen, KHÔNG có hộp chữ chú thích ở dưới/trên, KHÔNG phải ảnh infographic/sơ đồ có mũi tên hay chữ giải thích, không có watermark/meme/biểu đồ) hay không? CẢNH BÁO CỨNG: Bất kỳ bức ảnh nào có dải chữ chú thích (caption box/article text) ở cạnh dưới/trên hoặc chữ infographic trên nền ảnh BẮT BUỘC bị chấm `visual_integrity_score <= 2.0` và TUYỆT ĐỐI KHÔNG được chọn làm `winner_index` hay `approved_alternate_indices`!
+   - `entity_identity_score`: Chủ thể trong ảnh có đúng loài/thực thể đích danh của `{subject_req}` hoặc một trong hai thực thể chính của `{topic_ctx}` (không chọn loài ngoại lai khác biệt, không chọn đồ chơi/thú nhồi bông/mô hình trưng bày trên đế gỗ, không chọn vật thể ẩn dụ nghĩa đen như ống sắt trong nhà khi lời thoại nói "hunk of steel") hay không?
+   - `narrative_action_score`: Hành động, trạng thái và môi trường sinh thái/thời đại trong ảnh có phù hợp để minh họa cho phân cảnh `{narration}` hay không? Khi câu thoại mô tả cơ chế sinh lý bên trong (huyết áp, nọc độc, cơ bắp tê liệt) hoặc pha đối đầu 2 thực thể, ảnh chụp tự nhiên sắc nét của đúng thực thể `{subject_req}` (hoặc một trong hai thực thể của `{topic_ctx}`) ngoài hoang dã hoặc tư liệu lịch sử thực chiến BẮT BUỘC được chấm `>= 7.8`.
+   - `visual_integrity_score`: Khung hình có nguyên bản, tự nhiên và chuẩn xác về niên đại lịch sử (không lẫn dây buộc chân/lồng chuồng nuôi nhốt khi kịch bản ở hoang dã, KHÔNG chọn ảnh triển lãm hàng không dân sự hiện đại `Airshow` có phi công vẫy cờ/khán giả/nhà bạt hiện đại khi kịch bản nói về trận đánh lịch sử Thế chiến, không xuất hiện cờ/phù hiệu sai quốc gia, không bị chia đôi màn hình split-screen, KHÔNG có hộp chữ chú thích ở dưới/trên, KHÔNG phải ảnh infographic/sơ đồ có mũi tên hay chữ giải thích, không có watermark/meme/biểu đồ) hay không? CẢNH BÁO CỨNG: Bất kỳ bức ảnh nào là ảnh `Airshow` hiện đại hoặc có dải chữ chú thích (caption box/article text) ở cạnh dưới/trên hoặc chữ infographic trên nền ảnh BẮT BUỘC bị chấm `visual_integrity_score <= 2.0` và TUYỆT ĐỐI KHÔNG được chọn làm `winner_index` hay `approved_alternate_indices`!
 4. Nếu ứng viên tốt nhất có bất kỳ trục nào `< 7.0` (`confidence_score = min(entity_identity_score, narrative_action_score, visual_integrity_score) < 7.0`), trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
 
 TRẢ VỀ JSON DUY NHẤT:

@@ -945,10 +945,23 @@ def download_and_crop_bilibili_broll_clip(
             subprocess.run(cmd, check=True, capture_output=True, timeout=45)
             out_p = Path(output_path)
             if out_p.exists() and out_p.stat().st_size > 35_000:
+                if aspect_ratio != "16:9":
+                    try:
+                        from app.graph.evaluators.visual_critic import VisualCritic
+                        VisualCritic.inspect_clip_before_concat(
+                            str(out_p),
+                            min_short_edge=540,
+                            min_sharpness=5.0,
+                            check_watermark=False,
+                            allow_snow=True,
+                            auto_sanitize=True,
+                        )
+                    except Exception:
+                        pass
                 info["clipped_duration"] = round(get_duration_ms(str(out_p)) / 1000.0, 1)
                 return info
         except Exception as exc:
-            logger.warning(f"[BilibiliFetcher] FFmpeg Safe-Crop th?t b?i ({info['bvid']}): {exc}")
+            logger.warning(f"[BilibiliFetcher] FFmpeg Safe-Crop thất bại ({info['bvid']}): {exc}")
 
     return None
 

@@ -695,8 +695,8 @@ async def run_post_gather_media_rescues(
                             f"Đã nâng cấp sang Video chuyển động độc lập ({Path(winner_r['media_path']).name})"
                         )
 
-                # 3. Nếu phân cảnh thân bài (r_sid >= 3) đang bị rỗng/_graphic.png mà chưa tìm được video -> Nạp 1 ảnh Google HD để triệt tiêu 100% _graphic.png
-                if not rescued_ok and r_sid not in (1, 2) and _is_empty_or_graphic(r_sc) and not _rescue_cancelled():
+                # 3. Nếu phân cảnh đang bị rỗng/_graphic.png mà chưa tìm được video -> Nạp 1 ảnh Google HD để triệt tiêu 100% _graphic.png trên mọi cảnh
+                if not rescued_ok and _is_empty_or_graphic(r_sc) and not _rescue_cancelled():
                     try:
                         from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                         out_gimg_fb = str(media_dir / f"scene_{r_sid:03d}_rescue_gsearch.jpg")

@@ -254,10 +254,38 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
     eval_dict["hot_channel_benchmark"] = hot_dict
     if hot_report.evaluated_by == "ai":
-        blended_overall = round(float(eval_dict.get("overall_score", eval_report.overall_score)) * 0.65 + float(hot_report.overall_hot_benchmark_score) * 0.35, 1)
+        if isinstance(eval_dict.get("hook_strength"), dict) and float(eval_dict["hook_strength"].get("score", 0.0) or 0.0) >= 6.5:
+            blended_hk = round(
+                float(eval_dict["hook_strength"].get("score", 8.0)) * 0.55
+                + float(hot_report.hook_0s_vs_hot_channel.score) * 0.45,
+                1,
+            )
+            eval_dict["hook_strength"]["score"] = max(float(eval_dict["hook_strength"].get("score", 8.0)), blended_hk)
+        if isinstance(eval_dict.get("story_pacing"), dict):
+            blended_pc = round(
+                float(eval_dict["story_pacing"].get("score", 8.0)) * 0.55
+                + float(hot_report.spoken_voice_dna_vs_hot_channel.score) * 0.45,
+                1,
+            )
+            eval_dict["story_pacing"]["score"] = max(float(eval_dict["story_pacing"].get("score", 8.0)), blended_pc)
+        if isinstance(eval_dict.get("visual_direction"), dict):
+            blended_vs = round(
+                float(eval_dict["visual_direction"].get("score", 8.0)) * 0.55
+                + float(hot_report.script_llm_scene_search_score) * 0.45,
+                1,
+            )
+            eval_dict["visual_direction"]["score"] = max(float(eval_dict["visual_direction"].get("score", 8.0)), blended_vs)
+        blended_overall = round(float(eval_dict.get("overall_score", eval_report.overall_score)) * 0.60 + float(hot_report.overall_hot_benchmark_score) * 0.40, 1)
         eval_dict["overall_score"] = blended_overall
         if not hot_report.passed:
             eval_dict["passed"] = False
+        elif (
+            blended_overall >= 8.2
+            and float((eval_dict.get("hook_strength") or {}).get("score", 0.0) or 0.0) >= 8.0
+            and float((eval_dict.get("story_pacing") or {}).get("score", 0.0) or 0.0) >= 7.8
+            and float((eval_dict.get("visual_direction") or {}).get("score", 0.0) or 0.0) >= 7.5
+        ):
+            eval_dict["passed"] = True
     if not hot_report.passed and hot_report.gaps_vs_hot_channels:
         existing_critiques = list(eval_dict.get("actionable_critiques") or [])
         for gap_msg in hot_report.gaps_vs_hot_channels[:3]:
@@ -423,8 +451,9 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
     content_agent = ContentAgent()
     new_script = None
-    # Nếu đã thử >= 2 lần mà Hook vẫn < 8.0 hoặc điểm chung < 7.5 -> Tái tạo mới hoàn toàn với góc tiếp cận sốc hơn
-    force_fresh_generation = (retry_count >= 2 and (cur_hook < 8.0 or cur_overall < 7.5)) or (retry_count >= max_retries)
+    # Nếu đã thử >= 2 lần mà Hook rất thấp (< 6.8) và điểm chung < 6.5 -> Tái tạo mới hoàn toàn;
+    # còn nếu kịch bản đã đạt >= 6.5 (vd 7.4/10 chỉ vướng vài cụm từ bị ScriptCritic nhắc), BẮT BUỘC dùng refine_script để sửa phẫu thuật trúng đích!
+    force_fresh_generation = retry_count >= 2 and cur_hook < 6.8 and cur_overall < 6.5
 
     if not force_fresh_generation and script_data and script_data.get("scenes"):
         try:

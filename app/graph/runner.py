@@ -460,10 +460,24 @@ class GraphRunner:
                                     sc_copy["visual_strategy"] = media_map[sc_id].get("visual_strategy")
                                     sc_copy["production_method"] = media_map[sc_id].get("production_method")
                                     sc_copy["tool"] = media_map[sc_id].get("tool")
+                                    sc_copy["media_source"] = (
+                                        media_map[sc_id].get("production_method")
+                                        or media_map[sc_id].get("tool")
+                                        or media_map[sc_id].get("media_source")
+                                    )
+                                    sc_copy["source_url"] = media_map[sc_id].get("source_url")
                                     sc_copy["strategy_rationale"] = media_map[sc_id].get("strategy_rationale")
                                 if sc_id in audio_map:
                                     sc_copy["audio_path"] = audio_map[sc_id].get("audio_path")
-                                    sc_copy["audio_duration_ms"] = audio_map[sc_id].get("duration_ms")
+                                    resolved_dur_ms = (
+                                        audio_map[sc_id].get("duration_ms")
+                                        or audio_map[sc_id].get("audio_duration_ms")
+                                        or (media_map.get(sc_id) or {}).get("audio_duration_ms")
+                                        or sc_copy.get("audio_duration_ms")
+                                        or sc_copy.get("duration_ms")
+                                    )
+                                    sc_copy["audio_duration_ms"] = resolved_dur_ms
+                                    sc_copy["duration_ms"] = resolved_dur_ms
                                     sc_copy["word_timings"] = audio_map[sc_id].get("word_timings")
                                 enriched_scenes_list.append(sc_copy)
                             s_data["scenes"] = enriched_scenes_list

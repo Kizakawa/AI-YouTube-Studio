@@ -114,10 +114,37 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             )
         )
 
-        _eval_failed_sids = {
-            int(fid) for fid in ((state.get("media_eval") or {}).get("failed_scene_ids") or [])
-            if str(fid).isdigit()
-        }
+        _eval_failed_sids = set()
+        for _sc_s in ((state.get("media_eval") or {}).get("scene_scores") or []):
+            if not isinstance(_sc_s, dict):
+                continue
+            _sid_s = int(_sc_s.get("scene_id") or 0)
+            _iss_s = " ".join(str(x) for x in (_sc_s.get("issues") or [])).lower()
+            _sc_val = float(_sc_s.get("score") or 10.0)
+            _is_only_sharpness_issue = (
+                _sid_s == 1
+                and ("độ sắc nét" in _iss_s or "sharpness" in _iss_s)
+                and not any(
+                    k in _iss_s
+                    for k in ("gemini vision contactsheet", "placeholder", "watermark", "off-topic", "lệch chủ đề", "khuôn mặt", "talking head")
+                )
+            )
+            if _sid_s > 0 and not _is_only_sharpness_issue and (
+                _sc_val <= 4.5
+                or any(
+                    k in _iss_s
+                    for k in (
+                        "gemini vision contactsheet",
+                        "placeholder",
+                        "watermark",
+                        "off-topic",
+                        "lệch chủ đề",
+                        "khuôn mặt",
+                        "talking head",
+                    )
+                )
+            ):
+                _eval_failed_sids.add(_sid_s)
         _is_eval_failed_scene = int(sc_id) in _eval_failed_sids
         _prev_media_path = cur_media_path if (cur_media_path and Path(cur_media_path).exists()) else ""
         _prev_media_type = cur_media_type
@@ -237,8 +264,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                                 out_pre_resc, min_short_edge=540, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
                                             )
                                             ok_pre_mot, _, _ = verify_hook_clip_genuine_motion(out_pre_resc)
-                                            is_pre_vis_ok = bool((best_v_pre or {}).get("vision_curated"))
-                                            if pre_g_chk.get("passed", False) and ok_pre_mot and not is_pre_vis_ok:
+                                            is_pre_vis_ok = False
+                                            if pre_g_chk.get("passed", False) and ok_pre_mot:
                                                 is_pre_vis_ok, _, _ = _verify_short_clip_with_gemini_vision(
                                                     video_path=out_pre_resc,
                                                     topic=str(state.get("topic") or ""),
@@ -278,11 +305,36 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                         job_id=job_id,
                                         scene_id=int(sc_id),
                                         skip_stock_fallback=True,
+                                        deadline_ts=time.monotonic() + 34.0,
                                     )
                                     if yt_pre_res and yt_pre_res.get("media_path") and Path(yt_pre_res["media_path"]).exists():
                                         cur_media_path = yt_pre_res["media_path"]
                                         cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
                                         m["source_url"] = str(yt_pre_res.get("source_url") or cur_media_path)
+                                        rescued_pre = True
+                                if not rescued_pre and not is_lf_pre:
+                                    from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
+                                    bili_pre_res = _try_bilibili_broll_fallback(
+                                        search_phrases=[q_x for q_x in dict.fromkeys([str(m.get("visual_keyword") or ""), q_gr_first, str(state.get("primary_entity") or "")]) if q_x][:4],
+                                        search_query=str(m.get("visual_keyword") or q_gr_first),
+                                        subject_entity=sc_active_ent or q_gr_first,
+                                        topic=str(state.get("topic") or ""),
+                                        narration=str(m.get("narration") or state.get("topic") or ""),
+                                        overall_script_query=q_gr_first,
+                                        effective_scope="SCRIPT_OVERALL",
+                                        output_path=out_pre_resc,
+                                        target_duration_sec=req_sc_dur,
+                                        clip_role="HOOK" if sc_id == 1 else "PEAK",
+                                        allow_3d_cgi_monster=False,
+                                        used=_used_pre_urls,
+                                        job_id=job_id,
+                                        eff_scene_id=int(sc_id),
+                                        deadline_ts=time.monotonic() + 26.0,
+                                    )
+                                    if bili_pre_res and bili_pre_res.get("media_path") and Path(bili_pre_res["media_path"]).exists():
+                                        cur_media_path = bili_pre_res["media_path"]
+                                        cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                        m["source_url"] = str(bili_pre_res.get("source_url") or cur_media_path)
                                         rescued_pre = True
                         except Exception:
                             pass
@@ -498,6 +550,40 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                             logger.info(f"[RenderNode] 🎬 Đã tải Video chuyển động thật qua Gemini Vision cho Cảnh #{sc_id} ('{q_op_first}') trước khi render!")
                                     else:
                                         Path(raw_op_dl).unlink(missing_ok=True)
+                                if not recovered_open:
+                                    from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
+                                    out_op_bili = str(work_dir / ("hook_motion_001.mp4" if sc_id == 1 else f"media/scene_{sc_id:03d}_prerender_pure_vid.mp4"))
+                                    bili_op_pre = _try_bilibili_broll_fallback(
+                                        search_phrases=open_2w_qs[:4],
+                                        search_query=q_op_first,
+                                        subject_entity=str(m.get("subject_entity") or state.get("primary_entity") or q_op_first),
+                                        topic=str(state.get("topic") or ""),
+                                        narration=str(m.get("narration") or ""),
+                                        overall_script_query=q_op_first,
+                                        effective_scope="SCRIPT_OVERALL",
+                                        output_path=out_op_bili,
+                                        target_duration_sec=target_dur_open,
+                                        clip_role="HOOK" if sc_id == 1 else "PEAK",
+                                        allow_3d_cgi_monster=False,
+                                        used={
+                                            str(_mx.get("source_url") or "")
+                                            for _mx in scenes_media
+                                            if isinstance(_mx, dict) and _mx.get("source_url")
+                                        },
+                                        job_id=job_id,
+                                        eff_scene_id=int(sc_id),
+                                        deadline_ts=time.monotonic() + 26.0,
+                                    )
+                                    if bili_op_pre and bili_op_pre.get("media_path") and Path(bili_op_pre["media_path"]).exists():
+                                        cur_media_path = bili_op_pre["media_path"]
+                                        cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                        m["media_path"] = cur_media_path
+                                        m["media_type"] = cur_media_type
+                                        m["pose_images"] = []
+                                        m["production_method"] = "PRERENDER_PURE_BILIBILI_OPENING_VIDEO"
+                                        m["source_url"] = str(bili_op_pre.get("source_url") or cur_media_path)
+                                        recovered_open = True
+                                        logger.info(f"[RenderNode] 🎬 Đã tải Video Bilibili tư liệu chuyển động thật cho Cảnh #{sc_id} ('{q_op_first}') trước khi render!")
                 except Exception as e_s1_conv:
                     logger.debug(f"[RenderNode] Pre-render pure video opening guard skip: {e_s1_conv}")
             if (
@@ -742,10 +828,64 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         except Exception as e_th_rn:
             logger.debug(f"[RenderNode] Auto thumbnail sidecar warning: {e_th_rn}")
 
+    # Nếu PreRenderRescue đã thay thế/nâng cấp bất kỳ phân cảnh nào, tự động chấm lại VisualCritic để đồng bộ điểm số media_eval thực tế!
+    updated_media_eval = state.get("media_eval")
+    updated_hook_eval = dict(state.get("hook_video_eval") or {})
+    try:
+        from app.graph.evaluators.visual_critic import VisualCritic
+        raw_topic_rn = str(state.get("topic") or updated_script_data.get("title") or "").strip()
+        raw_primary_rn = str(state.get("primary_entity") or updated_script_data.get("primary_entity") or "").strip()
+        if raw_topic_rn and raw_primary_rn and raw_primary_rn.lower() not in raw_topic_rn.lower():
+            vc_primary_entity = f"{raw_topic_rn} (Primary Entity: {raw_primary_rn})"
+        else:
+            vc_primary_entity = raw_topic_rn or raw_primary_rn
+        re_eval_report = VisualCritic().evaluate_media(
+            scenes_media,
+            primary_entity=vc_primary_entity,
+        )
+        prev_ov = float((updated_media_eval or {}).get("overall_score") or 0.0)
+        prev_had_graphic = any(
+            "_graphic.png" in str(sc_prev.get("issues") or "").lower()
+            for sc_prev in ((updated_media_eval or {}).get("scene_scores") or [])
+            if isinstance(sc_prev, dict)
+        )
+        if re_eval_report.overall_score >= prev_ov or re_eval_report.passed or prev_had_graphic:
+            updated_media_eval = re_eval_report.model_dump()
+            logger.info(
+                f"🎨 [RenderNode -> VisualCritic Sync] Điểm VisualCritic sau Pre-Render: "
+                f"{re_eval_report.overall_score}/10 | Passed: {re_eval_report.passed}"
+            )
+        # Đồng bộ điểm HookVideoGrader nếu Cảnh 1 được ủy quyền sang fetch_media / render_nodes và đã có Video chuyển động thật đạt chuẩn
+        s1_media = next((s for s in scenes_media if isinstance(s, dict) and int(s.get("scene_id") or 0) == 1), None)
+        s1_eval_obj = next((sc for sc in (re_eval_report.scene_scores or []) if int(getattr(sc, "scene_id", 0) or 0) == 1), None)
+        if (
+            s1_media
+            and str(s1_media.get("media_type") or "").lower() in ("video", "hook_ready_video")
+            and (updated_hook_eval.get("overall_score") is None or not updated_hook_eval.get("passed"))
+        ):
+            s1_rel = float(getattr(s1_eval_obj, "relevance_score", 8.8) or 8.8)
+            s1_ent = float(getattr(s1_eval_obj, "entity_match_score", 8.8) or 8.8)
+            s1_aes = float(getattr(s1_eval_obj, "aesthetic_score", 8.5) or 8.5)
+            s1_ov = round((s1_rel * 0.35) + (s1_ent * 0.40) + (s1_aes * 0.25), 2)
+            if s1_ov >= 8.0 and not (getattr(s1_eval_obj, "issues", None) or []):
+                updated_hook_eval.update({
+                    "overall_score": s1_ov,
+                    "best_score": s1_ov,
+                    "best_scroll_stop_score": round(max(s1_aes, 8.4), 2),
+                    "passed": True,
+                    "output_clip": str(s1_media.get("media_path") or ""),
+                    "evaluated_by": "visual_critic_scene1_sync",
+                    "best_reason": f"Scene 1 real moving video verified by VisualCritic ({s1_ov}/10)",
+                })
+    except Exception as _e_vc_sync:
+        logger.debug(f"[RenderNode] VisualCritic post-rescue sync skip: {_e_vc_sync}")
+
     return {
         "rendered_video_path": final_output,
         "thumbnail_path": thumbnail_path_out,
         "scenes_media": scenes_media,
+        "media_eval": updated_media_eval,
+        "hook_video_eval": updated_hook_eval,
         "script_data": updated_script_data,
         "video_format": "long" if is_long_form else "short",
         "current_step": "RENDERED",

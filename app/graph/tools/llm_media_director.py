@@ -290,7 +290,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             d = dict(decisions_by_scene[sid])
             t_chosen = d.get("tool_name", "")
             d.setdefault("scene_id", sid)
-            d.setdefault("subject_entity", default_subj)
+            d.setdefault("subject_entity", str(s.get("subject_entity") or "").strip() or default_subj)
             if not d.get("overall_script_query"):
                 d["overall_script_query"] = default_overall_q
             if not d.get("search_scope"):
@@ -563,15 +563,25 @@ def _restore_full_canonical_entity_in_query(
         return _clean_yt_search_phrase(" ".join(expanded_words), subject_entity=lead_clean, max_words=max_words)
 
     # Trường hợp 2: Câu truy vấn hoàn toàn không chứa bất kỳ token nào của `lead_ent`
-    # (VD: 'bird in tree branches', 'predator talons wood branch', 'steel clamps tendon grip')
+    # Chỉ gắn `lead_clean` vào đầu khi câu truy vấn bị suy thoái về danh từ vai trò/loại chung
+    # (`_GENERIC_ROLE_OR_CLASS_HYPERNYMS` như 'bird in tree branches', 'predator talons wood') hoặc quá ngắn (< 2 từ có nghĩa).
+    # Nếu câu truy vấn đã là một cụm B-Roll cụ thể của phân cảnh (VD: '3d human skull anatomy', 'glowing brain neural network',
+    # 'railroad explosion sparks') mà không chứa danh từ vai trò chung, bảo toàn nguyên vẹn câu truy vấn của LLM!
     if not (q_toks_low & set(lead_toks)):
-        filtered_action_words = [
+        has_generic_hypernym = bool(q_toks_low & _GENERIC_ROLE_OR_CLASS_HYPERNYMS) or ("bird" in q_toks_low and "prey" in q_toks_low)
+        meaningful_non_hypernym = [
             w for w in q_words
-            if w.lower() not in _GENERIC_ROLE_OR_CLASS_HYPERNYMS
-            and w.lower() not in ("bird", "of", "prey")
+            if len(w) >= 3 and w.lower() not in _GENERIC_ROLE_OR_CLASS_HYPERNYMS and w.lower() not in ("the", "and", "for", "with", "from", "into")
         ]
-        merged = f"{lead_clean} {' '.join(filtered_action_words)}".strip()
-        return _clean_yt_search_phrase(merged, subject_entity=lead_clean, max_words=max_words) or lead_clean
+        if has_generic_hypernym or len(meaningful_non_hypernym) < 2:
+            filtered_action_words = [
+                w for w in q_words
+                if w.lower() not in _GENERIC_ROLE_OR_CLASS_HYPERNYMS
+                and w.lower() not in ("bird", "of", "prey")
+            ]
+            merged = f"{lead_clean} {' '.join(filtered_action_words)}".strip()
+            return _clean_yt_search_phrase(merged, subject_entity=lead_clean, max_words=max_words) or lead_clean
+        return q_clean
 
     # Trường hợp 3: Có chứa token thực thể nhưng vẫn dính danh từ vai trò chung ('predator', 'hunter') không nằm trong lead_ent
     _role_only = {"predator", "hunter"} - set(lead_toks)

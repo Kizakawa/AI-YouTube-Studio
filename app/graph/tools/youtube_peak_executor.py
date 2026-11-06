@@ -82,18 +82,18 @@ def execute_youtube_short_peak_clone_sync(
         else (t_fn_start + default_budget_sec)
     )
     # Tách ngân sách Tầng 1 (YouTube) và Tầng 2/3 (Pexels/Pixabay/Bilibili) tỷ lệ thuận theo ngân sách thực tế:
-    # Ngay cả khi caller đã quét Pexels trước đó (skip_stock_fallback=True), vẫn giữ lại 8–12s cho Tầng 3 Bilibili Documentary Safe-Crop!
+    # Ngay cả khi caller đã quét Pexels trước đó (skip_stock_fallback=True), vẫn giữ lại 10–14s cho Tầng 3 Bilibili Documentary Safe-Crop!
     total_avail_sec = max(8.0, deadline_ts - t_fn_start)
-    yt_tier1_budget_sec = 48.0 if (clip_role or "").upper() == "HOOK" else 44.0
+    yt_tier1_budget_sec = 42.0 if (clip_role or "").upper() == "HOOK" else 38.0
     if skip_stock_fallback:
-        reserve_for_tier2_sec = 12.0 if total_avail_sec >= 28.0 else 0.0
+        reserve_for_tier2_sec = 9.0 if total_avail_sec >= 24.0 else max(5.0, total_avail_sec * 0.22)
     elif total_avail_sec >= 42.0:
         reserve_for_tier2_sec = 14.0
     else:
-        reserve_for_tier2_sec = min(6.0, max(3.0, total_avail_sec * 0.20))
+        reserve_for_tier2_sec = min(9.0, max(5.0, total_avail_sec * 0.24))
     yt_tier1_deadline = min(deadline_ts - reserve_for_tier2_sec, t_fn_start + yt_tier1_budget_sec)
     if yt_tier1_deadline <= t_fn_start + 8.0:
-        yt_tier1_deadline = max(t_fn_start + 8.0, deadline_ts - 2.5)
+        yt_tier1_deadline = max(t_fn_start + 8.0, deadline_ts - 4.0)
 
     def _is_cancelled() -> bool:
         return cancel_event is not None and cancel_event.is_set()
@@ -234,9 +234,9 @@ def execute_youtube_short_peak_clone_sync(
                 rem_budget = _yt_remaining_sec()
                 min_tail_sec = max(3.0, reserve_for_tier2_sec)
                 if (
-                    rem_budget <= 3.5
-                    or (_remaining_sec() <= min_tail_sec and claimed_probes >= 1)
-                    or _remaining_sec() <= max(4.5, min_tail_sec - 1.5)
+                    (rem_budget <= 2.5 and claimed_probes >= 2)
+                    or (_remaining_sec() <= min_tail_sec and claimed_probes >= 2)
+                    or _remaining_sec() <= max(5.5, min_tail_sec - 2.5)
                 ):
                     logger.info(
                         f"⏱️ [YouTubePeakTool Budget] Scene=#{eff_scene_id}: Hết ngân sách Tầng 1 YouTube "
@@ -665,7 +665,7 @@ def execute_youtube_short_peak_clone_sync(
             logger.debug(f"[YouTubePeakTool] Lỗi nhánh YouTube video: {e_yt}")
 
 
-    if _is_cancelled() or _remaining_sec() <= 2.5:
+    if _is_cancelled():
         return None
 
     allow_bili_fallback = (
@@ -696,11 +696,11 @@ def execute_youtube_short_peak_clone_sync(
         if bili_res:
             return bili_res
 
-    if _is_cancelled() or _remaining_sec() <= 2.5:
+    if _is_cancelled():
         return None
 
     # ── TẦNG 2 (ƯU TIÊN SỐ 2): PEXELS HD / PIXABAY HD / WIKIMEDIA STOCK VIDEO SẠCH 100% (TẢI SIÊU TỐC, KHÔNG DÍNH SUB TRUNG) ──
-    if not skip_stock_fallback:
+    if not skip_stock_fallback and _remaining_sec() > 2.5:
         stock_res = _try_licensed_stock_video_fallback(
             search_phrases=search_phrases,
             search_query=search_query,
@@ -723,13 +723,14 @@ def execute_youtube_short_peak_clone_sync(
         if stock_res:
             return stock_res
 
-    if _is_cancelled() or _remaining_sec() <= 3.0:
+    if _is_cancelled():
         return None
 
     # ── TẦNG 3 (DỰ PHÒNG NON-YOUTUBE / CGI / CỨU HỘ ĐA NỀN TẢNG): SĂN B-ROLL TRÊN BILIBILI (SAFE-CROP & DUYỆT VISION) ──
     # Lưu ý: `skip_stock_fallback=True` chỉ dùng để bỏ qua Tầng 2 Pexels/Pixabay (do đã chạy song song),
     # TUYỆT ĐỐI KHÔNG tắt Tầng 3 Bilibili để bảo đảm > 85% thời lượng video là clip chuyển động thật!
-    if allow_bili_fallback and not prefer_non_yt and _remaining_sec() >= 10.0:
+    if allow_bili_fallback and not prefer_non_yt:
+        bili_dl = max(deadline_ts, time.monotonic() + 14.0) if deadline_ts is not None else (time.monotonic() + 18.0)
         bili_res = _try_bilibili_broll_fallback(
             search_phrases=search_phrases,
             search_query=search_query,
@@ -746,7 +747,7 @@ def execute_youtube_short_peak_clone_sync(
             job_id=job_id,
             eff_scene_id=eff_scene_id,
             cancel_event=cancel_event,
-            deadline_ts=deadline_ts,
+            deadline_ts=bili_dl,
         )
         if bili_res:
             return bili_res

@@ -758,6 +758,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
                     px_cancel_ev = _BranchCancelEvent(cancel_event)
                     yt_cancel_ev = _BranchCancelEvent(cancel_event)
+                    bili_cancel_ev = _BranchCancelEvent(cancel_event)
 
                     async def _run_pexels_parallel_branch() -> Optional[Dict[str, Any]]:
                         try:
@@ -925,11 +926,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         try:
                             _prefer_non_yt_node = os.getenv("PREFER_NON_YOUTUBE_SOURCES", "false").strip().lower() in ("1", "true", "yes", "on")
                             _yt_budget_sec = (
-                                54.0
+                                50.0
                                 if scene.scene_id == 1
-                                else (46.0 if _prefer_non_yt_node else 52.0)
+                                else (44.0 if _prefer_non_yt_node else 46.0)
                             )
-                            _reserve_tail_sec = 4.0 if scene.scene_id == 1 else 5.0
+                            _reserve_tail_sec = 10.0 if scene.scene_id == 1 else 12.0
                             yt_sub_deadline = (
                                 min(deadline_ts - _reserve_tail_sec, time.monotonic() + _yt_budget_sec)
                                 if deadline_ts is not None
@@ -956,6 +957,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 channel_id=channel_id_val,
                                 skip_youtube_search=False,
                                 skip_stock_fallback=True,
+                                allow_bili_fallback=False,
                                 storyline_queries=story_yt_qs,
                                 cancel_event=yt_cancel_ev,
                                 deadline_ts=yt_sub_deadline,
@@ -982,14 +984,73 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             logger.debug(f"Scene {scene.scene_id}: Parallel YouTube lookup fallback: {yt_p_err}")
                         return None
 
+                    async def _run_bilibili_parallel_branch() -> Optional[Dict[str, Any]]:
+                        await asyncio.sleep(2.5)
+                        if bili_cancel_ev.is_set():
+                            return None
+                        try:
+                            from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
+                            bili_sub_deadline = (
+                                min(deadline_ts - 10.0, time.monotonic() + 50.0)
+                                if deadline_ts is not None
+                                else (time.monotonic() + 50.0)
+                            )
+                            if bili_sub_deadline <= time.monotonic() + 6.0:
+                                return None
+                            out_bili_par = str(
+                                work_dir / "hook_motion_001_bili.mp4"
+                                if scene.scene_id == 1
+                                else media_dir / f"scene_{scene.scene_id:03d}_bili_parallel.mp4"
+                            )
+                            bili_phrases = [
+                                q_x for q_x in dict.fromkeys([yt_q, *story_yt_qs, fb_q, overall_q]) if q_x
+                            ][:4]
+                            bili_res = await asyncio.to_thread(
+                                _try_bilibili_broll_fallback,
+                                search_phrases=bili_phrases,
+                                search_query=yt_q or overall_q,
+                                subject_entity=subj_ent or primary_entity or "",
+                                topic=state.get("topic", ""),
+                                narration=scene.narration,
+                                overall_script_query=overall_q,
+                                effective_scope=sc_scope,
+                                output_path=out_bili_par,
+                                target_duration_sec=dur,
+                                clip_role=clip_role,
+                                allow_3d_cgi_monster=False,
+                                used=used_pool_urls,
+                                job_id=job_id,
+                                eff_scene_id=scene.scene_id,
+                                cancel_event=bili_cancel_ev,
+                                deadline_ts=bili_sub_deadline,
+                            )
+                            if bili_res and bili_res.get("media_path") and Path(bili_res["media_path"]).exists():
+                                return {
+                                    "branch": "bilibili",
+                                    "media_path": bili_res["media_path"],
+                                    "media_type": "hook_ready_video" if scene.scene_id == 1 else "video",
+                                    "full_peak_path": bili_res.get("full_peak_path"),
+                                    "full_peak_duration_sec": float(bili_res.get("full_peak_duration_sec") or dur),
+                                    "source_url": str(bili_res.get("source_url") or bili_res["media_path"]),
+                                    "vid_id": str(bili_res.get("youtube_id") or bili_res.get("source_url") or ""),
+                                    "title": str(bili_res.get("title") or yt_q),
+                                    "prod_method": "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK" if scene.scene_id == 1 else "CLIMAX_PEAK_SHORT_SPLICE",
+                                    "chosen_strategy": "BILIBILI_DOCUMENTARY_PEAK_CLONE",
+                                    "rationale": f"Bilibili Documentary Parallel Video: {str(bili_res.get('title') or yt_q)[:45]}",
+                                }
+                        except Exception as bili_p_err:
+                            logger.debug(f"Scene {scene.scene_id}: Parallel Bilibili lookup fallback: {bili_p_err}")
+                        return None
+
                     t_px = asyncio.create_task(_run_pexels_parallel_branch())
                     t_yt = asyncio.create_task(_run_youtube_parallel_branch())
-                    pending_tasks = {t_px, t_yt}
+                    t_bili = asyncio.create_task(_run_bilibili_parallel_branch())
+                    pending_tasks = {t_px, t_yt, t_bili}
                     win_res: Optional[Dict[str, Any]] = None
                     extra_results: List[Dict[str, Any]] = []
-                    race_max_sec = 56.0 if scene.scene_id == 1 else 54.0
+                    race_max_sec = 56.0 if scene.scene_id == 1 else 52.0
                     race_deadline_ts = (
-                        min(deadline_ts - 4.0, time.monotonic() + race_max_sec)
+                        min(deadline_ts - 14.0, time.monotonic() + race_max_sec)
                         if deadline_ts is not None
                         else (time.monotonic() + race_max_sec)
                     )
@@ -1017,26 +1078,33 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     extra_results.append(r_val)
 
                     # [RULE 2] Không bao giờ bật yt_cancel_ev sớm nếu chưa có nhánh nào trả về video thật (win_res is None)
-                    # — chờ thêm tối đa 14s cho tác vụ đang tải/kiểm duyệt Gemini Vision hoàn tất trên đĩa.
+                    # — chờ thêm tối đa 8s (nhưng luôn chừa 12s trước scene_deadline_ts) cho tác vụ đang tải/kiểm duyệt hoàn tất.
                     if win_res is None and pending_tasks:
-                        done_grace, pending_tasks = await asyncio.wait(
-                            pending_tasks,
-                            return_when=asyncio.FIRST_COMPLETED,
-                            timeout=14.0,
+                        grace_rem = (
+                            max(0.5, min(8.0, deadline_ts - time.monotonic() - 12.0))
+                            if deadline_ts is not None
+                            else 8.0
                         )
-                        for d_g in done_grace:
-                            try:
-                                r_g = d_g.result()
-                            except Exception:
-                                r_g = None
-                            if r_g and r_g.get("media_path") and Path(r_g["media_path"]).exists():
-                                if win_res is None:
-                                    win_res = r_g
-                                else:
-                                    extra_results.append(r_g)
+                        if grace_rem > 0.5:
+                            done_grace, pending_tasks = await asyncio.wait(
+                                pending_tasks,
+                                return_when=asyncio.FIRST_COMPLETED,
+                                timeout=grace_rem,
+                            )
+                            for d_g in done_grace:
+                                try:
+                                    r_g = d_g.result()
+                                except Exception:
+                                    r_g = None
+                                if r_g and r_g.get("media_path") and Path(r_g["media_path"]).exists():
+                                    if win_res is None:
+                                        win_res = r_g
+                                    else:
+                                        extra_results.append(r_g)
 
                     px_cancel_ev.set()
                     yt_cancel_ev.set()
+                    bili_cancel_ev.set()
                     for p_t in pending_tasks:
                         p_t.cancel()
 
@@ -1454,7 +1522,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as fb_ph_e:
                 logger.debug(f"Scene {scene.scene_id}: Fallback photo error: {fb_ph_e}")
 
-        if not media_path and scene.scene_id >= 3:
+        if not media_path:
             try:
                 from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                 out_last_gimg = str(media_dir / f"scene_{scene.scene_id:03d}_gimg_fallback.jpg")
@@ -1464,7 +1532,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     output_path=out_last_gimg,
                     narration=scene.narration,
                     topic=state.get("topic", ""),
-                    is_hook_scene=False,
+                    is_hook_scene=(scene.scene_id == 1),
                     subject_entity=subj_ent,
                     used_urls=used_pool_urls,
                     job_id=job_id,
@@ -1539,10 +1607,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     async def _guarded_fetch(idx: int, scene) -> Dict[str, Any]:
         from app.utils.ffmpeg_helper import is_completed_clean_mp4
         from app.agents.curation.scene_context_analyzer_mixin import bind_scene_cancellation
-        scene_timeout_sec = 105.0 if is_long_form else 65.0
+        scene_timeout_sec = 105.0 if is_long_form else 92.0
         async with sem:
             scene_cancel_ev = threading.Event()
-            scene_deadline_ts = time.monotonic() + (scene_timeout_sec - 2.5)
+            scene_deadline_ts = time.monotonic() + (scene_timeout_sec - 3.0)
             bind_scene_cancellation(scene_cancel_ev, scene_deadline_ts)
             try:
                 res = await asyncio.wait_for(
@@ -1604,7 +1672,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         "strategy_rationale": f"Recovered completed video from disk ({early_vids[0].name})",
                         "source_url": str(early_vids[0]),
                     }
-                elif early_imgs and scene.scene_id not in (1, 2):
+                elif early_imgs:
                     rec_early_poses = [str(p) for p in early_imgs[:2]]
                     res = {
                         "scene_id": scene.scene_id,
@@ -1625,7 +1693,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         "strategy_rationale": f"Recovered completed image(s) from disk ({len(rec_early_poses)} shots)",
                         "source_url": rec_early_poses[0],
                     }
-            if (not res or not isinstance(res, dict) or str(res.get("media_path") or "").endswith("_graphic.png")) and scene.scene_id >= 3:
+            if not res or not isinstance(res, dict) or str(res.get("media_path") or "").endswith("_graphic.png"):
                 try:
                     from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                     out_to_gimg = str(media_dir / f"scene_{scene.scene_id:03d}_timeout_gimg.jpg")
@@ -1636,7 +1704,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             output_path=out_to_gimg,
                             narration=scene.narration,
                             topic=state.get("topic", ""),
-                            is_hook_scene=False,
+                            is_hook_scene=(scene.scene_id == 1),
                             subject_entity=primary_entity,
                             used_urls=used_pool_urls,
                             job_id=job_id,

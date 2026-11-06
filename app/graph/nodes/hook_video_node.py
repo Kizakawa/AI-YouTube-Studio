@@ -1136,7 +1136,7 @@ Return ONLY valid JSON:
                 min_sharpness=5.4,
                 check_watermark=True,
                 allow_snow=True,
-                auto_sanitize=False,
+                auto_sanitize=True,
             )
             if not gate_res.get("passed", False):
                 # Thử cửa sổ Peak thứ 2 (cắt né vùng chữ/intro tại peak_offset_sec) trước khi loại bỏ video Short!
@@ -1172,7 +1172,7 @@ Return ONLY valid JSON:
                             min_sharpness=5.4,
                             check_watermark=True,
                             allow_snow=True,
-                            auto_sanitize=False,
+                            auto_sanitize=True,
                         )
                         if gate_res.get("passed", False):
                             peak_offset_sec, peak_duration_sec = alt_offset, alt_dur
@@ -1282,7 +1282,7 @@ Return ONLY valid JSON:
                 _download_and_extract_single_short,
                 wave2_cands,
                 max_workers=min(2, len(wave2_cands)),
-                stage_timeout=12.0,
+                stage_timeout=22.0,
             )
             for batch in dl_batches2:
                 for _dl_i, v_str, peak_meta in batch:
@@ -1291,6 +1291,22 @@ Return ONLY valid JSON:
                     validated_peaks[v_str] = peak_meta
                     if peak_meta.get("passed") and len(candidate_videos) < 8:
                         candidate_videos.append(v_str)
+            if len(candidate_videos) == 0:
+                for p_disk_yt2 in sorted(hook_cand_dir.glob("hook_peak_clean_yt_*.mp4"), key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True):
+                    p_disk_str2 = str(p_disk_yt2)
+                    if p_disk_str2 not in candidate_videos and is_completed_clean_mp4(p_disk_str2, min_size_bytes=25_000, min_duration_ms=1800):
+                        ok_dm2, dm_val2, _ = verify_hook_clip_genuine_motion(p_disk_str2)
+                        if ok_dm2:
+                            validated_peaks[p_disk_str2] = {
+                                "passed": True,
+                                "motion_score": dm_val2,
+                                "peak_offset_sec": 0.0,
+                                "peak_duration_sec": max(target_hook_duration_sec, 4.5),
+                                "clean_peak_path": p_disk_str2,
+                                "inspect_target": p_disk_str2,
+                                "title": p_disk_yt2.stem,
+                            }
+                            candidate_videos.append(p_disk_str2)
         cand_seq_idx = min(8, len(top_curated_yt_cands)) + 10
 
     # ── THU HOẠCH LUỒNG PEXELS/PIXABAY CHẠY SONG SONG VỚI YOUTUBE ──
@@ -1355,6 +1371,8 @@ Return ONLY valid JSON:
     _early_stop_lock = threading.Lock()
     _strong_passing_count = 0
     _passing_count = 0
+    graded_pairs: List[Optional[tuple[int, Dict[str, Any]]]] = []
+    _graded_idx_set: set = set()
     rejected_cand_tokens: set = set()
 
     def _grade_single_hook_candidate(idx_pair: tuple[int, str]) -> Optional[tuple[int, Dict[str, Any]]]:
@@ -1393,6 +1411,9 @@ Return ONLY valid JSON:
                     _passing_count += 1
                     if score_res_ms["overall_score"] >= 8.2:
                         _strong_passing_count += 1
+                    if idx not in _graded_idx_set:
+                        _graded_idx_set.add(idx)
+                        graded_pairs.append((idx, score_res_ms))
                 logger.info(
                     f"  📊 [HookVideoGrader Fast-Pass] Ứng viên Stock HD #{idx + 1} ({Path(v_path).name}): "
                     f"Overall={score_res_ms['overall_score']}/10 -> ✅ ĐẠT (Đã qua Vision Curation + CV + Motion)"
@@ -1728,6 +1749,11 @@ Return ONLY valid JSON:
                                                             "passed": pass2,
                                                             "reason": f"[Window #2 @{alt_off2:.1f}s] {d2.get('reason', '')}",
                                                         }
+                                                        if pass2:
+                                                            with _early_stop_lock:
+                                                                _passing_count += 1
+                                                                if ov2 >= 8.2:
+                                                                    _strong_passing_count += 1
                                                     break
                                         elif r2.status_code in (429, 403, 404, 500, 502, 503, 504):
                                             rotator.mark_model_rate_limited(k_2, m_n2, status_code=r2.status_code, error_text=r2.text[:300])
@@ -1808,25 +1834,31 @@ Return ONLY valid JSON:
             f"ScrollStop={score_res.get('scroll_stop_score', 0.0)}, Clean={score_res['clean_frame_score']}) "
             f"-> {'✅ ĐẠT (Dùng Video Peak)' if score_res['passed'] else '❌ LOẠI (Chuyển sang Tạo Cảnh)'} ({score_res['reason']})"
         )
+        with _early_stop_lock:
+            if idx not in _graded_idx_set:
+                _graded_idx_set.add(idx)
+                graded_pairs.append((idx, score_res))
         return idx, score_res
 
     if candidate_videos and not _hook_cancelled(4.0):
-        graded_pairs: List[Optional[tuple[int, Dict[str, Any]]]] = []
         grade_pool = ThreadPoolExecutor(max_workers=min(3, len(candidate_videos)))
         try:
             grade_futs = [
                 grade_pool.submit(contextvars.copy_context().run, _grade_single_hook_candidate, pair)
                 for pair in enumerate(candidate_videos)
             ]
-            rem_grade_sec = (hook_deadline_ts - time.monotonic() - 1.5) if hook_deadline_ts is not None else 14.0
-            for g_fut in as_completed(grade_futs, timeout=max(1.5, min(14.0, rem_grade_sec))):
+            rem_grade_sec = (hook_deadline_ts - time.monotonic() - 1.5) if hook_deadline_ts is not None else 24.0
+            for g_fut in as_completed(grade_futs, timeout=max(2.0, min(26.0, rem_grade_sec))):
                 try:
                     g_res = g_fut.result(timeout=0.05)
                 except Exception as e_gf:
                     logger.debug(f"[HookVideoGrader] Worker exception: {e_gf}")
                     g_res = None
                 if g_res:
-                    graded_pairs.append(g_res)
+                    with _early_stop_lock:
+                        if g_res[0] not in _graded_idx_set:
+                            _graded_idx_set.add(g_res[0])
+                            graded_pairs.append(g_res)
                 with _early_stop_lock:
                     should_stop = (_strong_passing_count >= 2) or (_passing_count >= 2)
                 if should_stop or _hook_cancelled(3.5):

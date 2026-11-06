@@ -140,8 +140,8 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                                     vid_out, min_short_edge=720, min_sharpness=5.2, check_watermark=True, allow_snow=True
                                 )
                                 ok_p_mot, _, _ = verify_hook_clip_genuine_motion(vid_out)
-                                is_p_vis_ok = bool(best_stock_v.get("vision_curated"))
-                                if gate_p.get("passed", False) and ok_p_mot and not is_p_vis_ok:
+                                is_p_vis_ok = False
+                                if gate_p.get("passed", False) and ok_p_mot:
                                     is_p_vis_ok, _, _ = _verify_short_clip_with_gemini_vision(
                                         video_path=vid_out,
                                         topic=topic,
@@ -224,9 +224,9 @@ def execute_clean_cinematic_portrait_or_broll_sync(
             ):
                 return None
             yt_sub_deadline = (
-                min(deadline_ts - 14.0, time.monotonic() + 26.0)
+                min(deadline_ts - 6.0, time.monotonic() + 42.0)
                 if deadline_ts is not None
-                else (time.monotonic() + 26.0)
+                else (time.monotonic() + 42.0)
             )
             if yt_sub_deadline - time.monotonic() <= 5.0:
                 return None
@@ -249,6 +249,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                     scene_id=scene_id,
                     storyline_queries=story_q_list,
                     skip_youtube_search=False,
+                    skip_stock_fallback=(pref_norm == "VIDEO_BROLL" and not is_hook_scene),
                     cancel_event=cancel_event,
                     deadline_ts=yt_sub_deadline,
                 )
@@ -278,6 +279,9 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 return st_res
 
     # 2. Nhánh Bộ 3-4 Ảnh Chân Dung Nghệ Thuật Pexels / Pixabay HD Sạch Chữ 100% (`clean_stock_only=True`)
+    # [RULE 2]: Tuyệt đối CẤM hạ cấp Cảnh 1 & Cảnh 2 (5-7s đầu tiên) xuống Ảnh tĩnh!
+    if is_hook_scene or int(scene_id or 0) in (1, 2):
+        return None
     img_out = (
         output_path
         if output_path.lower().endswith((".jpg", ".jpeg", ".png"))

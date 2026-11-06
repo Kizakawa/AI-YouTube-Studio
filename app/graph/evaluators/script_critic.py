@@ -380,7 +380,7 @@ Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for
        - Clinical toxin jargon (`"neurotoxins"`, `"neurotoxin"`), sports/police/machine clichés on wildlife (`"feathery shields"`, `"built-in shin guards"`, `"built-in armor"`, `"riot shield"`, `"body armor"`, `"pile-driver"`, `"prensa de metal"`, `"vira comida"`, `"elemento dele"`), clunky `"acting like"` / `"act like"` / `"acts like"` similes, stage-direction leaks (`"Voiceover:"`, `"Narrator:"`), cellular biochemistry or `$10` anatomy hand-waving (`"gelatinous"`, `"tiny cells"`, `"cell membranes"`, `"flexible fats"`, `"special molecules"`, `"proteins"`, `"chemical buffers"`, `"air bladders"`, `"permeates"`), standalone `"Because "` fragment scenes (`"Because it needs"`), passive endings (`"just stands there"`), or summary platitudes tacked after the twist (`"It's the ultimate survival trick"`, `"It's a perfect natural design"`, `"living its best life"`)
        - Wikipedia calendar date-stamp openers (`"In 19"`, `"Back in "`), unnamed pronoun openers at the start of Scene 1 without naming the animal/subject (`"He wouldn't leave"`, `"She wouldn't leave"`), tense-clashing counterfactuals (`"If he hadn't"` paired with present-tense `"wipes out"`), dry blast units (`"kiloton"`, `"megaton"`), or bureaucratic/literary clichés (`"officers agreeing"`, `"required a "`, `" rules,"`, `"unanimous agreement"`, `"nuclear exchange"`, `"final roadblock"`, `"atomic retaliation"`, `"nuclear retaliation"`, `"nuclear apocalypse"`, `"peered down into"`, `"didn't budge"`, `"exact same"`)
        - Self-help guru slogans, movie-trailer dub clichés, or moralizing proverbs (`"Real social power belongs to"`, `"the hunter becomes the meal"`, `"força brutal"`, `"golpe seco e fatal"`, `"onde o jogo vira"`, `"O Pantanal pune quem falha"`, `"deixando só o silêncio"`), or formal Portuguese enclitics (`"imobilizá-lo"`, `"matá-lo"`).
-     * NEVER copy example phrases from this prompt into `ai_smell_phrases_detected` or `actionable_critiques` if they do NOT appear verbatim in `--- SCRIPT CONTENT ---`! If the script uses natural spoken language and contractions, set `sounds_like_real_youtuber: true`, `ai_smell_phrases_detected: []`, and score `story_pacing >= 8.8`.
+     * NEVER copy example phrases from this prompt into `ai_smell_phrases_detected` or `actionable_critiques` if they do NOT appear verbatim in `--- SCRIPT CONTENT ---`! NEVER flag normal conversational historical dates (`"It's May 1941"`, `"May 1941"`), everyday physical idioms (`"floating fortress"`, `"sitting duck"`), or natural contractions as `ai_smell_phrases_detected`! If the script uses natural spoken language and contractions, set `sounds_like_real_youtuber: true`, `ai_smell_phrases_detected: []`, and score `story_pacing >= 8.8`.
 3. entity_coherence:
    - Deeply characterizes the exact entity/phenomenon's real macroscopic mechanism, concrete anatomy, human room dynamic, or `"What If"` 60-minute physical chain reaction rather than vague hand-waving or generic filler.
 4. visual_direction (Hard gate >= 7.5/10 — Script-LLM Per-Scene `Subject Entity` & `Search Queries` Anti-Off-Topic Audit):
@@ -515,7 +515,19 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
             if len(x.split()) >= 2 and x.lower().strip(".'\"!?,;") in full_script_lower
         ]
         raw_sounds_human = bool(parsed.get("sounds_like_real_youtuber", True))
-        sounds_human = (raw_sounds_human or pace_s >= 8.5) and (len(ai_smells) == 0)
+        spoken_contraction_hits = len(
+            re.findall(
+                r"\b(?:it['’]s|can['’]t|doesn['’]t|don['’]t|didn['’]t|wasn['’]t|weren['’]t|hadn['’]t|wouldn['’]t|couldn['’]t|would['’]ve|you['’]d|he['’]d|they['’]re|that['’]s|here['’]s|there['’]s|isn['’]t|aren['’]t|won['’]t)\b",
+                full_script_lower,
+            )
+        )
+        # Nếu LLM Critic đã xác nhận sounds_like_real_youtuber=True (hoặc kịch bản có >= 2 từ viết tắt khẩu ngữ tự nhiên),
+        # không để một vài cụm từ nhỏ trong ai_smells khóa cứng pace_s xuống 6.8 (chỉ trừ nhẹ 0.15/cụm ở nhánh elif bên dưới).
+        sounds_human = (
+            (raw_sounds_human and (pace_s >= 7.8 or spoken_contraction_hits >= 2) and len(ai_smells) <= 3)
+            or (spoken_contraction_hits >= 3 and len(ai_smells) <= 3)
+            or ((raw_sounds_human or pace_s >= 8.2) and len(ai_smells) == 0)
+        )
         voice_critique = ""
         if not sounds_human:
             pace_s = min(pace_s, 6.8)
@@ -525,7 +537,7 @@ Return ONLY a single valid JSON object (no markdown) with this schema:
                 f"(use natural contractions, $1 everyday words, and end on a concrete physical action/irony with ZERO essay slogans): {smell_str}"
             )
         elif ai_smells:
-            pace_s = round(max(8.2, pace_s - 0.15 * len(ai_smells)), 1)
+            pace_s = round(max(8.5, pace_s - 0.15 * len(ai_smells)), 1)
 
         # Trọng số chuẩn hóa: Hook 30%, Pacing/Voice 25%, Entity 25%, Visual 10%, Loop 10%
         overall = (hook_s * 0.30) + (pace_s * 0.25) + (ent_s * 0.25) + (vis_s * 0.10) + (loop_s * 0.10)

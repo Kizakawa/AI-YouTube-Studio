@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
-_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "14") or 14)))
+_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "24") or 24)))
 
 _SCENE_CANCEL_CTX: _contextvars.ContextVar[Optional[_threading.Event]] = _contextvars.ContextVar(
     "_SCENE_CANCEL_CTX", default=None
@@ -122,12 +122,14 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
     short_subj = " ".join(subject_terms(subject)[:4]) if len(subject.split()) > 4 else subject
     anchor_subj = " ".join(terms[:3]) if terms else short_subj
 
-    # Nếu `subject` bị rút gọn thành danh từ chung ('bird in tree branches', 'predator', 'hunter') trong khi `core_entity` là thực thể cụ thể
+    # Nếu `subject` bị rút gọn thành danh từ chung ('bird in tree branches', 'predator', 'hunter')
+    # hoặc bị cắt cụt từ định danh đầu ('eagle' thay vì 'harpy eagle') trong khi `core_entity` là thực thể cụ thể
     if core_entity:
         subj_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", subject)]
         core_toks = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", core_entity)]
         subj_meaningful = [w for w in subj_toks if w not in _GENERIC_ROLE_OR_CLASS_HYPERNYMS]
-        if not subj_meaningful or (core_toks and not (set(subj_meaningful) & set(core_toks))):
+        is_suffix_truncation = len(core_toks) >= 2 and subj_meaningful == [core_toks[-1]]
+        if not subj_meaningful or is_suffix_truncation:
             subject = _restore_full_canonical_entity_in_query(subject, core_entity, max_words=4) or core_entity
             short_subj = subject
 
@@ -431,7 +433,12 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
         res = self._call_gemini_json(prompt, timeout=22)
         result_map: Dict[int, Dict[str, Any]] = {}
         if res and isinstance(res.get("scenes_analysis"), list):
-            video_core_entity = str(res.get("core_visual_entity") or primary_entity or "").strip()
+            is_psych_niche = "psych" in str(channel_niche or "").lower()
+            raw_v_core = res.get("core_visual_entity")
+            if is_psych_niche or ("core_visual_entity" in res and raw_v_core is not None):
+                video_core_entity = str(raw_v_core or "").strip()
+            else:
+                video_core_entity = str(raw_v_core or primary_entity or "").strip()
             video_paradigm = str(res.get("overall_visual_paradigm") or "").strip()
             holistic_summary = str(res.get("holistic_script_summary") or "").strip()
             used_primary_queries: set = set()
@@ -448,8 +455,9 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
                 item["analysis_source"] = "ai"
                 if holistic_summary:
                     item["holistic_script_summary"] = holistic_summary
-                if not item.get("core_visual_entity") and video_core_entity:
-                    item["core_visual_entity"] = video_core_entity
+                if not item.get("core_visual_entity") and video_core_entity and not is_psych_niche:
+                    if "core_visual_entity" not in item or not str(item.get("subject") or "").strip():
+                        item["core_visual_entity"] = video_core_entity
                 if not item.get("visual_paradigm") and video_paradigm:
                     item["visual_paradigm"] = video_paradigm
                 sc_orig = next((x for x in scenes_payload if x["scene_id"] == sid), {})
