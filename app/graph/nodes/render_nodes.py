@@ -156,8 +156,9 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                 )
             ):
                 _eval_failed_sids.add(_sid_s)
-        _is_eval_failed_scene = int(sc_id) in _eval_failed_sids
-        _prev_media_path = cur_media_path if (cur_media_path and Path(cur_media_path).exists()) else ""
+        _is_placeholder_cur = bool(not cur_media_path or cur_media_path.lower().endswith("_graphic.png"))
+        _is_eval_failed_scene = (int(sc_id) in _eval_failed_sids) and not _is_placeholder_cur
+        _prev_media_path = cur_media_path if (cur_media_path and Path(cur_media_path).exists() and not _is_placeholder_cur) else ""
         _prev_media_type = cur_media_type
         _has_valid_video_on_disk = bool(
             _prev_media_path and _prev_media_path.lower().endswith((".mp4", ".mov", ".webm"))
@@ -350,6 +351,43 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                         rescued_pre = True
                         except Exception:
                             pass
+                    if not rescued_pre and (
+                        cur_media_path.lower().endswith("_graphic.png")
+                        or int(sc_id) in (1, 2)
+                        or _needs_video_for_85pct_floor
+                    ):
+                        raw_master_cands = sorted(
+                            [
+                                p for p in (list(m_dir_pre.glob("*_raw*.mp4")) if m_dir_pre.exists() else [])
+                                if is_completed_clean_mp4(p, min_size_bytes=40_000, min_duration_ms=int((req_sc_dur + 4.5) * 1000))
+                            ],
+                            key=lambda p: p.stat().st_size,
+                            reverse=True,
+                        )
+                        for idx_rm, rm_p in enumerate(raw_master_cands):
+                            rm_dur_s = get_duration_ms(str(rm_p)) / 1000.0
+                            offset_s = min(max(3.8, (int(sc_id) * 2.3) % max(4.0, rm_dur_s - req_sc_dur - 0.5)), max(0.0, rm_dur_s - req_sc_dur - 0.3))
+                            trim_video(
+                                input_path=str(rm_p),
+                                duration_seconds=req_sc_dur,
+                                output_path=out_pre_resc,
+                                width=target_w,
+                                height=target_h,
+                                fps=30,
+                                start_offset_sec=offset_s,
+                                apply_grading=True,
+                                is_hook_scene=(sc_id == 1),
+                                fair_use_transform=True,
+                                preserve_continuous_flow=True,
+                            )
+                            if is_completed_clean_mp4(out_pre_resc, min_size_bytes=18_000, min_duration_ms=1200):
+                                cur_media_path = out_pre_resc
+                                cur_media_type = "hook_ready_video" if sc_id == 1 else "video"
+                                rescued_pre = True
+                                logger.info(
+                                    f"🛡️ [PreRenderRescue] Đã cắt lát Video sạch từ master '{rm_p.name}' (offset={offset_s:.1f}s) cho Cảnh #{sc_id} (triệt tiêu _graphic.png)!"
+                                )
+                                break
                     if not rescued_pre and int(sc_id) not in (1, 2) and not _needs_video_for_85pct_floor and not _is_eval_failed_scene:
                         same_scene_imgs = sorted(
                             [
@@ -457,7 +495,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                         and not _is_eval_failed_scene
                         and Path(cur_media_path).exists()
                         and cur_media_path.lower().endswith((".mp4", ".mov", ".webm"))
-                        and (verify_hook_clip_genuine_motion(cur_media_path)[0] if sc_id == 1 else is_completed_clean_mp4(cur_media_path, min_size_bytes=18_000, min_duration_ms=1200))
+                        and (verify_hook_clip_genuine_motion(cur_media_path)[0] if sc_id in (1, 2) else is_completed_clean_mp4(cur_media_path, min_size_bytes=18_000, min_duration_ms=1200))
                     )
                     if not is_cur_genuine_vid:
                         target_dur_open = max(dur_ms / 1000.0, 2.2) + 0.18

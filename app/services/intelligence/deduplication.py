@@ -37,6 +37,11 @@ def _normalize_text_for_similarity(text: str) -> str:
         return ""
     # Chuyển chữ thường
     clean = text.lower()
+    # Loại bỏ các hashtag định danh kênh/ngách ở cuối tiêu đề (#shorts, #humanbehavior, #mindset, #vidaanimal...)
+    # trước khi xóa dấu '#' để tránh việc 2 video khác hẳn chủ đề bị tính trùng token hashtag chung của kênh.
+    without_hashtags = re.sub(r"#\w+", " ", clean).strip()
+    if without_hashtags:
+        clean = without_hashtags
     # Chuẩn hóa số có dấu phẩy: ví dụ 11,000 -> 11000
     clean = re.sub(r"(\d+)\s*,\s*(\d+)", r"\1\2", clean)
     # Chuẩn hóa đơn vị đo lường: ví dụ 11000 meters / 11000 meter -> 11000m
@@ -46,7 +51,7 @@ def _normalize_text_for_similarity(text: str) -> str:
     # Loại bỏ các từ dừng thông dụng trong tiêu đề Shorts (EN / PT-BR / VI)
     stop_words = {
         "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
-        "is", "are", "this", "that", "why", "how", "what", "signs", "sign",
+        "vs", "versus", "is", "are", "this", "that", "why", "how", "what", "signs", "sign",
         "video", "shorts", "viral", "psychology", "mystery", "history",
         "they", "them", "their", "you", "your", "when", "into", "from",
         "was", "were", "been", "have", "has", "had", "will", "would", "could",
@@ -349,6 +354,16 @@ def check_idea_similarity(
         prefix_inter = cand_prefix_tokens.intersection(item_prefix_tokens)
         prefix_min = min(len(cand_prefix_tokens), len(item_prefix_tokens))
         prefix_containment = (len(prefix_inter) / prefix_min) if (prefix_min > 0 and len(prefix_inter) >= 2) else 0.0
+        if " vs " in cand_prefix_raw.lower() and " vs " in item_prefix_raw.lower():
+            c_parts = [set(_normalize_text_for_similarity(p).split()) for p in re.split(r"\bvs\.?\b", cand_prefix_raw, maxsplit=1, flags=re.IGNORECASE)]
+            i_parts = [set(_normalize_text_for_similarity(p).split()) for p in re.split(r"\bvs\.?\b", item_prefix_raw, maxsplit=1, flags=re.IGNORECASE)]
+            if len(c_parts) == 2 and len(i_parts) == 2 and all(c_parts) and all(i_parts):
+                both_sides_match = (
+                    (bool(c_parts[0] & i_parts[0]) and bool(c_parts[1] & i_parts[1]))
+                    or (bool(c_parts[0] & i_parts[1]) and bool(c_parts[1] & i_parts[0]))
+                )
+                if not both_sides_match:
+                    prefix_containment = min(prefix_containment, 0.35)
 
         # Nếu chỉ trùng đúng 1 từ đơn lẻ (vd: 'oceano', 'metros', 'shark'), không được phép vọt điểm containment ảo
         if len(intersection) == 1 and min_len >= 3:

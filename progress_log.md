@@ -21,3 +21,12 @@
 
 - **`[2026-11-06 | External Memory System Setup]` — `TASK-006`**:
   - Tổ chức Workspace thành **Bộ Nhớ Ngoài (`External Memory`)** gồm `AGENTS.md` (Bộ điều phối), `MEMORY.md` (Bản đồ kiến trúc & 6 Bất biến chống lặp lỗi), `working_memory.md` (RAM trạng thái hiện tại), `todo.md` (Danh sách task có checkbox & DoD) và `progress_log.md` (Nhật ký append-only).
+
+- **`[2026-11-06 | Commits b45b567, 4faaa33, c61ec52, c2e0b22, 3d19310, 8900842, 3d51ac9]` — `TASK-007` to `TASK-011` (Parallel Sessions Consolidation)**:
+  - Chuyển đổi 100% cấu hình ngách và kho chủ đề về `config/niches/*.yaml` qua `niche_manager.py` (xóa bỏ hoàn toàn `topics` và `director_notes` cứng trong `batch_producer.py`).
+  - Nâng cấp luồng Long-Form `16:9` lên 10 Chương / 30–40 Cảnh (`>= 9m15s` Mid-Roll Ads) dùng single-pass `-f concat`, lên lịch 2 phim tài liệu 10 phút (`iTVOTK0IKso`, `L-5xCei7MDU`) ở khung `22:30 UTC`, và tự động gắn link Long-Form vào bình luận Shorts (`8900842`).
+  - Bắt buộc kiểm định 3-Frame Gemini Vision trên cả nhánh Pexels (`dd3d124`), sửa lỗi header Contact-Sheet che khung hình (`3d19310`), kích hoạt GPU `h264_qsv` fallback + `KeyRotator` 30s/30m isolation (`b45b567`, `4faaa33`).
+
+- **`[2026-11-06 | Cross-Session Master Synthesis]` — `TASK-012`**:
+  - Tổng hợp toàn bộ các kế hoạch và **Sổ Đen 14 Lỗi Cấm Lặp Lại** từ tất cả các kênh chat (`861ab3b5`, `40c844d4`, `7cfb8e13`, `1b893567`, `b6af5c48`, `a9b608a3`) vào hệ thống Bộ Nhớ Ngoài (`AGENTS.md`, `MEMORY.md`, `working_memory.md`, `todo.md`, `progress_log.md`).
+  - Hợp nhất và kiểm định cú pháp (`py_compile`) cho `render_nodes.py` (Pre-Render Zero-Graphic Rescue & Hook motion verification), `deduplication.py` và `video_library.py` (lọc `#hashtags` và so khớp 2 vế `A vs B`).

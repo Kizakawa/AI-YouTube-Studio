@@ -33,7 +33,11 @@ _STOPWORDS = {
 # Tiện ích
 # ─────────────────────────────────────────────────────────────
 def _tokens(text: str) -> set:
-    words = re.findall(r"[a-zA-ZÀ-ỹ0-9]{3,}", (text or "").lower())
+    clean = (text or "").lower()
+    without_hashtags = re.sub(r"#\w+", " ", clean).strip()
+    if without_hashtags:
+        clean = without_hashtags
+    words = re.findall(r"[a-zA-ZÀ-ỹ0-9]{3,}", clean)
     return {w for w in words if w not in _STOPWORDS}
 
 
