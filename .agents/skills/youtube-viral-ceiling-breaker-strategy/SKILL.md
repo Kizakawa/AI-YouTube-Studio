@@ -137,6 +137,18 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ---
 
+### Quy Tắc 8: Luật Chống Nhân Bản Chủ Đề, Xoay Vòng Model Khi Timeout & Kiểm Định Quốc Kỳ / Niên Đại Lịch Sử (`Zero Repetitive-Content & Anti-Anachronism Law`)
+1. **Chống Nhân Bản Chủ Đề Đa Tầng (`Zero Topic-Cloning`)**:
+   - Mọi hàm truy vấn lịch sử kênh (`list_videos`, `check_duplicate`, `check_idea_similarity`) **BẮT BUỘC** gọi `normalize_channel_id(channel_id)` để không bao giờ bỏ sót lịch sử đăng bài khi truyền alias (`ch_alternate_history` vs `@alternatehistorywhatif-e2x`).
+   - `check_idea_similarity` phải so khớp cả toàn câu lẫn **cụm Thực thể cốt lõi đứng trước dấu `:` (`Subject-Prefix Containment`)** với ngưỡng `<= 0.40` để chặn triệt để việc một câu prompt dài 18 từ trùng sự kiện với tiêu đề ngắn 6 từ đã đăng trên YouTube.
+   - **TUYỆT ĐỐI CẤM** lấy lại `remaining[0]` khi danh sách tĩnh đã dùng hết, và **TUYỆT ĐỐI CẤM** để hàm dự phòng `_build_curated_5act_script_fallback` ghi đè tiêu đề tĩnh (*Vasili Arkhipov*, *Stanislav Petrov*, *Benjamin Franklin*) lên một chủ đề khác (vì đăng trùng 2–4 lần cùng một sự kiện sẽ kích hoạt bộ lọc **Spam / Repetitive Content** của YouTube, khóa cứng video ở `0 views`).
+2. **Hạ Bậc Ngay Model Bị Treo `Read timed out` (`Immediate Timeout Demotion`)**:
+   - Trong `script_json_parser_mixin.py`, khi bất kỳ model Gemini nào gặp `Read timed out`, bắt buộc gọi ngay `self.rotator.mark_model_rate_limited(key, model, status_code=504, error_text=err_s)` để giáng hạng model đó 30 giây và nhảy sang model khỏe mạnh kế tiếp trong `0ms`, không bao giờ để treo dây chuyền dẫn tới kịch bản fallback.
+3. **Cổng Thị Giác Chống Sai Quốc Kỳ & Lệch Niên Đại Lịch Sử (`Historical & Geopolitical Flag Integrity`)**:
+   - Trong `media_vision_curator_mixin.py`, Gemini Vision bắt buộc chấm `entity_identity_score < 5.0` và `visual_integrity_score < 5.0` (từ chối ngay) đối với bất kỳ clip Stock nào xuất hiện **Quốc kỳ / Quân hiệu của quốc gia ngoại lai mâu thuẫn với chủ thể lịch sử trong kịch bản** (ví dụ: kịch bản tàu ngầm Liên Xô/Mỹ nhưng clip Pexels treo cờ Thổ Nhĩ Kỳ/Kyrgyzstan) hoặc lẫn khách du lịch/xe hơi hiện đại vào bối cảnh cổ đại/thế chiến.
+
+---
+
 ## Workflow Áp Dụng Cho Agent Trong Mọi Phiên Làm Việc
 
 ### 1. Khi Lên Ý Tưởng Chủ Đề & Đặt Tiêu Đề (`Ideation & Title Generation`)
