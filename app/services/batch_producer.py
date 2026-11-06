@@ -44,309 +44,113 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ProduceEnglishChannels")
 
-CHANNELS_CONFIG = {
-    "ch_the_mysteries_of_the_world": {
-        "id": "ch_the_mysteries_of_the_world",
-        "name": "The mysteries of the world",
-        "niche": "deep_sea_earth_mysteries",
-        "language": "en",
-        "google_account": "acount_2",
-        "preferred_voice": "en-US-BrianNeural",
-        "handle": "@themysteriesoftheworld-f3w",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 21,
-        "director_notes": (
-            "Target channel The mysteries of the world (US English). Deep 5-Act Dual-Peak abyssal showdown & lethal ocean/earth physics arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor — '[Entity A] vs [Entity B]: [Extreme Physical Metric]'): Explicitly name both high-search-volume entities + a concrete extreme physical metric (e.g. 'Colossal Squid vs Sperm Whale: Battle at 6,500 Feet', 'Mariana Trench 15,750 PSI vs Titanium Submarine'). NEVER hide the entity behind vague pronouns! "
-            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — 4 Psychological-Visual Hook Archetypes): Open right at 0.0s with (1) Visual Micro-Observation, (2) The Fatal Mistake, (3) 2nd-Person Survival Simulation, or (4) Role Reversal naming the exact entities without repeating the title word-for-word! "
-            "ACT 2 (Scenes 2-3): Reveal the first physical reason or lethal weapon translated into a vivid everyday physical analogy anyone can picture. "
-            "ACT 3 (Scene 4 - 15s Twist): Second explosive peak / deeper counter-mechanism translated into a visceral sensory image that flips the viewer's assumption. "
-            "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
-            "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict English only."
-        ),
-        "topics": [
-            "Why Nobody Can Survive Inside Mexico's Giant Cave Of Crystals For More Than 15 Minutes Without Drowning In Air",
-            "Why Giant Sperm Whales Dive 7,000 Feet Into Pitch-Black Ocean Trenches To Hunt Giant Squid",
-            "Why Blue-Ringed Octopus Venom Paralyzes Giant Moray Eels In Seconds Without A Single Pain Signal",
-            "Orca Pod vs 4,000-Pound Great White Shark: How Killer Whales Flip Ocean Apex Predators Into Tonic Immobility in 3 Seconds",
-            "Box Jellyfish 60 Venomous Tentacles vs Sea Turtle: Why Venom That Stops a Human Heart in 120 Seconds Can't Stop This Armored Reptile",
-            "Portuguese Man O' War vs Loggerhead Sea Turtle: How a 400-Pound Armored Reptile Devours 165-Foot Venomous Tentacles",
-            "400°C Black Smoker Hydrothermal Vent vs Giant Tube Worms: How Deep-Sea Creatures Survive Boiling Acid at 8,000 Feet Without Sunlight",
-            "Blue-Ringed Octopus vs Giant Moray Eel: How a 5-Inch Ocean Creature Carries Tetrodotoxin Venom 1,200 Times Deadlier Than Cyanide",
-            "Naica Cave of the Crystals vs 136°F Steam at 1,000 Feet Deep: Why Human Lungs Drown Inside Mexico Giant Crystal Chamber",
-            "Sharks vs Kavachi Underwater Volcano: Why Hammerheads Hunt Inside a 212°F Acidic Ocean Crater",
-            "400-Year-Old Greenland Shark vs Giant Squid: The Blind Apex Predator Hunting at 6,500 Feet in the Arctic Abyss",
-            "Brine Pool at 3,300 Feet: The Underwater Toxic Lake That Paralyzes Deep-Sea Sharks in 3 Seconds",
-            "Goblin Shark vs Black Dragonfish: The Slingshot Jaw That Strikes in 0.02 Seconds at 4,000 Feet",
-            "Lake Vostok: The Secret Prehistoric Ocean Sealed Under 13,000 Feet of Antarctic Ice for 15 Million Years",
-            "Challenger Deep at 35,876 Feet: What Crushed the Nereus Submarine Like an Empty Soda Can Under 50 Passenger Jets",
-            "Skeleton Coast Namibia: Why 1,000 Shipwrecks Rotted in the World's Oldest Desert Fog",
-            "Lake Nyos 1986: The Silent 1.6-Million-Ton CO2 Cloud That Erased 1,746 Lives",
-            "Why Deep Sea Divers Never Look Up At The Surface At Night",
-            "The Terrifying Reason Scientists Sealed The Kola Superdeep Borehole At 40,230 Feet",
-            "Inside Movile Cave: Sealed From Earth's Atmosphere For 5.5 Million Years",
-            "The 52-Hertz Whale Anomaly And What Submarines Recorded Beneath Point Nemo",
-            "Why Military Submarines Turn Off All Lights Passing Below 3,000 Meters in the Midnight Zone",
-        ],
-        "default_tags": [
+def _load_channels_config_from_yaml() -> dict[str, dict]:
+    """
+    Nạp cấu hình 7 kênh trực tiếp từ `config/channels.yaml` kết hợp `config/niches/*.yaml` (100% YAML SSOT).
+    Tuyệt đối không hardcode `director_notes` hay `topics` trong code Python.
+    """
+    import yaml as _yaml
+    from app.services.niche_manager import get_niche, build_script_prompt_instructions
+
+    channels_yaml_path = project_root / "config" / "channels.yaml"
+    raw_data = {}
+    if channels_yaml_path.exists():
+        try:
+            raw_data = _yaml.safe_load(channels_yaml_path.read_text(encoding="utf-8")) or {}
+        except Exception as e:
+            logger.warning(f"[BatchProducer] Không thể đọc config/channels.yaml: {e}")
+
+    default_tags_by_niche = {
+        "deep_sea_earth_mysteries": [
             "shorts", "mystery", "deepocean", "unexplained", "thalassophobia",
             "deepsea", "science", "creepy", "oceanmysteries", "mariana", "viral",
         ],
-    },
-    "ch_psychology_of_the_world": {
-        "id": "ch_psychology_of_the_world",
-        "name": "Psychology of the world",
-        "niche": "psychology",
-        "language": "en",
-        "google_account": "accout3",
-        "preferred_voice": "en-US-AndrewNeural",
-        "handle": "@vv1n-oe9gs",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 17,
-        "director_notes": (
-            "Target channel Psychology of the world (US English). Deep 5-Act Dual-Peak Forensic Interrogation, Famous Brain Experiments & Behavioral Traps arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "STRICT NICHE PIVOT: Focus ONLY on (1) Forensic Courtroom & Detective Interrogation Psychology, (2) Famous University Brain & Obedience Experiments, and (3) Casino/Billionaire Behavioral Traps. "
-            "TITLE (YT_SEARCH Anchor — '[Entity A] vs [Entity B]: [Extreme Metric/Test]'): Explicitly name the forensic test/experiment vs the human brain/suspect + concrete metric (e.g. 'Polygraph vs FBI Interrogation: The 0.4-Second Lie', 'FBI Cognitive Load Test vs Rehearsed Alibis: 8-Second Breakdown', 'Orfield Labs -24.9 dB Room vs Human Brain: 45-Minute Limit'). NEVER hide the core subject! "
-            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — 4 Psychological-Visual Hook Archetypes): Open right at 0.0s with (1) Visual Micro-Observation, (2) The Fatal Mistake, (3) 2nd-Person Interrogation Simulation, or (4) Role Reversal naming the exact test or behavior without repeating the title verbatim! "
-            "ACT 2 (Scenes 2-3): Real courtroom/experiment setup and first behavioral reaction. "
-            "ACT 3 (Scene 4 - 15s Twist): The hidden second psychological mechanism that flips expectations. "
-            "ACT 4-5 (Scenes 6-8): Practical counter-move and Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
-            "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology style). Strict English only."
-        ),
-        "topics": [
-            "FBI Cognitive Load Reverse-Order Test vs Rehearsed Alibis: Why Telling a Story Backward Collapses a Liar's Brain in 8 Seconds",
-            "Orfield Labs -24.9 dB Quietest Room vs Human Brain: Why Hearing Your Own Blood Rushing Drives Test Subjects Out in 45 Minutes",
-            "1972 Stanford Marshmallow Delay Test vs Dopamine Impulse: How Prefrontal Cortex Self-Control Predicts Wealth 40 Years Later",
-            "1961 Yale Milgram Experiment vs 450-Volt Authority Switch: Why 65% of Ordinary People Obeyed the Final Lethal Command",
-            "FBI Foot-Freeze Interrogation Test vs Trained Liars: Why Guilty Suspects Control Their Face But Betray Deception Below the Desk",
-            "FBI Hostage Negotiator 8-Second Late-Night FM Voice vs Armed Suspects: How Low-Frequency Speech Drops Cortisol in 30 Seconds",
-            "1951 Asch Conformity Experiment vs Group Pressure: Why 75% of Intelligent Adults Denied What Their Own Eyes Saw",
-            "Split-Brain Corpus Callosum Surgery vs Two Independent Minds: Why One Hand Buttons a Shirt While the Other Unbuttons It",
-            "Phineas Gage Iron Rod Skull Injury vs Prefrontal Cortex: How One 1848 Railroad Explosion Rewrote Human Personality Science",
-            "1971 Stanford Prison Experiment vs 6-Day Authority Collapse: How 24 Honor Students Turned Into Ruthless Guards in 144 Hours",
-            "Rubber Hand Illusion vs Human Somatosensory Cortex: How 60 Seconds of Synchronized Brush Strokes Trick Your Brain Into Feeling a Fake Limb",
-            "1939 Iowa Monster Study vs 22 Orphans: The Forbidden Speech Experiment That Triggered Permanent Stuttering in 4 Months",
-            "Capgras Delusion vs Fusiform Face Area: The Rare Brain Disconnect That Makes Patients Believe Loved Ones Are Impostors",
-            "Darley and Latané Bystander Effect vs 38 Witnesses: Why Adding More People to an Emergency Drops Rescue Odds by 70%",
+        "psychology": [
+            "shorts", "psychology", "darkpsychology", "humanbehavior", "bodylanguage",
+            "microexpressions", "mindset", "subconsciousmind", "socialdynamics", "viral",
         ],
-        "default_tags": [
-            "shorts", "psychology", "forensicpsychology", "brainscience", "interrogation",
-            "fbi", "humanbehavior", "neuroscience", "mindtraps", "viral",
-        ],
-    },
-    "ch_wild_odyssey": {
-        "id": "ch_wild_odyssey",
-        "name": "Wild Odyssey",
-        "niche": "wildlife_predators",
-        "language": "en",
-        "google_account": "acount_2",
-        "preferred_voice": "en-US-ChristopherNeural",
-        "handle": "@wildodysseyhq",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 18,
-        "director_notes": (
-            "Target channel Wild Odyssey (US English). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor — '[Entity A] vs [Entity B]: [Extreme Physical Metric]'): Explicitly name both high-search-volume animals + a concrete physical metric (e.g. 'Jaguar vs Black Caiman: 1,500 PSI Skull Bite', 'Black Mamba vs Mongoose: 15ms Reflex'). NEVER hide the species name! "
-            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — 4 Psychological-Visual Hook Archetypes): Open right at 0.0s with (1) Visual Micro-Observation, (2) The Fatal Mistake, (3) 2nd-Person Survival Simulation, or (4) Role Reversal naming both animals without repeating the title verbatim! "
-            "ACT 2 (Scenes 2-3): Animal A's offensive weapon translated into a vivid everyday physical analogy anyone can picture. "
-            "ACT 3 (Scene 4 - 15s Twist): Animal B's counter-mechanism or the unexpected biomechanical twist painted as a mental movie. "
-            "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
-            "Tone: cinematic, adrenaline-pumping, National Geographic documentary style. Strict English only."
-        ),
-        "topics": [
-            "Hippopotamus vs Nile Crocodile: How a 4,000-Pound River Titan Snaps 16-Foot Reptiles in Half With Foot-Long Ivory Tusks",
-            "Goliath Tigerfish vs Nile Crocodile: Why River Predators Fear This 70-Pound Congo Monster's 32 Interlocking Razor Teeth",
-            "Honey Badger vs Lion Pride: Why 6 Hungry Apex Cats Back Down From a 25-Pound Armored Rebel in the Savanna",
-            "Golden Eagle vs 150-Pound Mountain Goat: How a 14-Pound Raptor Uses a 200 MPH Cliff Dive to Hurl Prey Off Ledges",
-            "Honey Badger vs Puff Adder Venom: How Loose 6mm Skin Armor and Mutated Receptors Shrug Off a Lethal Snake Bite",
-            "Spotted Hyena Clan vs African Leopard: How Bone-Splintering Jaws Steal Kills From a 150-Pound Stealth Cat",
-            "Siberian Tiger vs 1,000-Pound Brown Bear: How a 660-Pound Big Cat Ambushes Giants Twice Its Size in the Frozen Taiga",
-            "Electric Eel vs Caiman: How an 860-Volt Biological Taser Stops a River Predator",
-            "African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop a 150-Pound Ambush",
-            "Cassowary: Why Nothing in the Jungle Messes With This 130-Pound Dinosaur Bird's 5-Inch Dagger Kick",
-            "Cape Buffalo vs Lion Pride: Why the 2,000-Pound Black Death Hunts Its Own Predators",
-            "Mongoose vs Black Mamba: The 0.03-Second Reflex and Venom-Proof Receptors That Beat Africa's Deadliest Snake",
-            "Tasmanian Devil vs 60-Pound Kangaroo Carcass: How a 26-Pound Marsupial Crushes Thick Bone With the Strongest Bite Per Pound on Earth",
-            "Wild Boar vs Tiger: Why 400 Pounds of Armored Cartilage and Razor Tusks Can Gore an Apex Cat",
-            "Giant Horned Lizard vs Coyote: The Desert Reptile That Shoots Pressurized Blood From Its Eyes",
-            "Jaguar vs Green Anaconda: When Skull-Piercing Fangs Meet 500 Pounds of Bone-Crushing Coils",
-        ],
-        "default_tags": [
+        "wildlife_predators": [
             "shorts", "wildlife", "predators", "bigcats", "nature",
             "apexpredator", "jaguar", "animals", "documentary", "viral",
         ],
-    },
-    "@alternatehistorywhatif-e2x": {
-        "id": "@alternatehistorywhatif-e2x",
-        "name": "Alternate History & \"What If?\"",
-        "niche": "alternate_history",
-        "language": "en",
-        "google_account": "accout3",
-        "preferred_voice": "en-US-GuyNeural",
-        "handle": "@alternatehistorywhatif-e2x",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 17,
-        "director_notes": (
-            "Target channel Alternate History & What If (US English). Deep 5-Act Dual-Peak historical showdown & butterfly-effect arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor — '[Historical Entity/Force A] vs [Rival Force/Crisis B]: [Extreme Physical Metric]'): Explicitly name the famous historical empire/leader/weapon + concrete physical metric (e.g. '300 Spartans vs 100,000 Persians: The 50-Foot Gate', 'Bismarck 50,000-Ton Battleship vs Swordfish Biplane: 1 Torpedo', '1914 Christmas Truce vs WW1 Trenches: The 24-Hour Ceasefire'). NEVER hide the historical subject! "
-            "SCENE 1 HOOK (0.0s-2.5s, 6-12 words — 4 Psychological-Visual Hook Archetypes): Open right at 0.0s with (1) Visual Micro-Observation, (2) The Fatal Tactical Mistake, (3) 2nd-Person Battlefield Simulation, or (4) Role Reversal naming the historical crisis without repeating the title verbatim. "
-            "ACT 2 (Scenes 2-3): Documented historical scale and vivid physical/tactical stakes. "
-            "ACT 3 (Scene 4 - 15s Twist): The hidden tactical blunder or physical chain-reaction twist at second 15 that sealed the outcome. "
-            "ACT 5 (Scene 7/8): Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
-            "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin documentary style. Strict English only."
-        ),
-        "topics": [
-            "Bismarck 50,000-Ton Battleship vs Canvas Swordfish Biplane: How One 85-MPH Torpedo Jammed Hitler's Deadliest Warship Rudder in 1941",
-            "300 Spartans vs 100,000 Persian Troops at Thermopylae: How a 50-Foot Coastal Bottleneck Neutralized Xerxes's Empire for 3 Days",
-            "1944 Operation Fortitude Inflatable Ghost Army vs German Reconnaissance: How Rubber Tanks Tricked Hitler Before D-Day",
-            "1915 Attack of the Dead Men at Osowiec Fortress vs Chlorine Gas: How 100 Russian Soldiers Routed 7,000 German Troops",
-            "1961 Tsar Bomba 50-Megaton Shockwave vs Tu-95 Bomber: How the Largest Explosion in History Nearly Vaporized Its Own Crew",
-            "Hannibal's 37 War Elephants vs Freezing Alps: How Crossing 9,000-Foot Ice Peaks Caught the Roman Republic Off Guard",
-            "1942 Battle of Midway 5-Minute Dive Bomber Strike vs 4 Japanese Carriers: How One Decoded Cipher Flipped the Pacific War",
-            "1914 WW1 Christmas Truce vs Western Front Trenches: Why 100,000 Enemy Soldiers Dropped Their Rifles on December 25",
-            "1815 Battle of Waterloo Rainstorm vs Napoleon's Grand Battery: How 3 Hours of Mud Delayed Artillery and Ended an Empire",
-            "1940 Dunkirk Evacuation 850 Little Ships vs Luftwaffe: How Civilian Fishing Boats Rescued 338,000 Allied Soldiers in 9 Days",
-            "1970 Apollo 13 Oxygen Tank Explosion vs 200,000 Miles of Deep Space: How Duct Tape and a Cardboard Sock Saved 3 Astronauts",
-            "1941 Simo Häyhä White Death vs Red Army Divisions: How One Finnish Sniper With Iron Sights Survived -40°C Winter Warfare",
-            "79 AD Mount Vesuvius 1,000°F Pyroclastic Surge vs Pompeii: Why 2,000 Romans Froze in Ash Within 15 Minutes",
-            "1986 Chernobyl 3 Suicide Squad Divers vs 20-Megaton Radioactive Steam Explosion: How Draining One Flooded Basement Saved Europe",
-        ],
-        "default_tags": [
+        "alternate_history": [
             "shorts", "alternatehistory", "whatif", "history", "empires",
             "timeline", "documentary", "historicalfacts", "viral",
         ],
-    },
-    "ch_odisseia_selvagem": {
-        "id": "ch_odisseia_selvagem",
-        "name": "Odisseia Selvagem",
-        "niche": "wildlife_predators",
-        "language": "pt-BR",
-        "google_account": "account_1",
-        "preferred_voice": "pt-BR-AntonioNeural",
-        "handle": "@odisseiaselvagemoficial",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 21,
-        "director_notes": (
-            "Target channel Odisseia Selvagem (Brazilian Portuguese). Deep 5-Act Dual-Peak wildlife showdown (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TÍTULO (Âncora YT_SEARCH — '[Animal A] vs [Animal B]: [Métrica Extrema]'): Nomeie claramente os dois animais de alto volume de busca + métrica física impactante (ex: 'Mamba-Negra vs Mangusto: O Reflexo de 15ms!', 'Onça-Pintada vs Jacaré: Mordida de 1.500 PSI', 'Dragão-de-Komodo vs Búfalo: Veneno Letal'). NUNCA esconda o nome do animal! "
-            "HOOK DA CENA 1 (0,0s-2,5s, 6-12 palavras — 4 Arquétipos de Hook Visual-Psicológico): Abra o segundo 0,0s com (1) Micro-Observação Visual, (2) O Erro Fatal, (3) Simulação de Sobrevivência em 2ª Pessoa, ou (4) Inversão de Papel nomeando os animais sem repetir o título palavra por palavra! "
-            "ATO 2 (Cenas 2-3): Arma biomecânica do Animal A explicada de forma visual e simples. "
-            "ATO 3 (Cena 4 - Twist de 15s): Contra-ataque ou mecanismo oculto do Animal B que vira o jogo. "
-            "ATO 5 (Cena 7/8): Frase completa conectando em loop infinito de volta à Cena 1 (ZERO CTA falado de Inscreva-se). "
-            "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
-        ),
-        "topics": [
-            "Por Que o Dragão-de-Komodo Consegue Derrubar um Búfalo Gigante com Uma Única Mordida?",
-            "Por Que uma Alcateia de Lobos-Cinzentos Recua Diante de um Único Alce Gigante na Neve?",
-            "Por Que um Leopardo Faminto Desiste de Atacar Esse Porco-Espinho Cheio de Espinhos Farpados?",
-            "Onça-Pintada vs Bando de 100 Queixadas: Como Mandíbulas Batendo em Sincronia Fazem o Maior Felino das Américas Subir nas Árvores",
-            "Guepardo a 110 km/h vs Avestruz de 140 Quilos: Como um Único Chute de 2.000 Quilos de Força Pode Virar a Caçada na Savana",
-            "Dragão-de-Komodo de 130 Quilos vs Búfalo-Asiático de 500 Quilos: Como Glândulas de Veneno Anticoagulante Derrubam um Gigante",
-            "Casuar de 60 Quilos vs Predadores da Selva: Como uma Garra-Adaga de 12 Centímetros Rasga Qualquer Rival na Floresta",
-            "Águia-Real vs Cabra-da-Montanha de 70 Quilos: Como um Mergulho a 240 km/h Derruba Gigantes de Penhascos Verticais",
-            "Porco-Espinho-Africano vs Leopardo: Como 30.000 Espinhos Farpados de Queratina Param um Felino de 70 Quilos na Savana",
-            "Carcaju de 16 Quilos vs Urso-Pardo de 350 Quilos: Como o Demônio da Neve Usa Mandíbulas Quebradoras de Ossos no Ártico",
-            "Mamba-Negra vs Mangusto: O Reflexo de 15 Milissegundos Que Humilha a Cobra Mais Letal da África",
-            "Crocodilo-do-Nilo vs Búfalo-Africano: Como a Manada Inteira Vira o Jogo Contra o Monstro do Rio",
-            "Casuar: Por Que Nenhum Predador Ousa Enfrentar a Ave-Dinossauro Mais Perigosa do Mundo",
-            "Cachalote vs Lula-Colossal: O Duelo Secreto a 2.000 Metros de Profundidade no Oceano",
-            "Onça-Pintada vs Bando de Queixadas: Por Que 100 Porcos Selvagens Fazem o Maior Felino Subir nas Árvores",
-            "Guepardo vs Avestruz: O Chute Que Estraçalha Costelas e Pode Matar o Felino Mais Rápido da Terra",
-            "Lobo-Cinzento vs Alce Gigante: A Estratégia de Caça na Neve Profunda Onde Um Coice É Fatal",
-            "Hipopótamo vs Alcateia de Leões: Por Que 6 Leões Famintos Recuam Diante Deste Gigante nos Rios Africanos",
-        ],
-        "default_tags": [
-            "shorts", "animais", "natureza", "vidaanimal", "pantanal",
-            "amazonia", "predadores", "curiosidades", "mundoanimal", "viral",
-        ],
-    },
-    "ch_misterios_do_mundo": {
-        "id": "ch_misterios_do_mundo",
-        "name": "Mistérios do Mundo",
-        "niche": "deep_sea_earth_mysteries",
-        "language": "pt-BR",
-        "google_account": "account_1",
-        "preferred_voice": "pt-BR-AntonioNeural",
-        "handle": "@misteriosdomundo-tv",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 21,
-        "director_notes": (
-            "Target channel Mistérios do Mundo (Brazilian Portuguese). Deep 5-Act Dual-Peak abyssal showdown & extreme ocean/earth mystery arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TÍTULO (Âncora YT_SEARCH — '[Entidade A] vs [Entidade B]: [Métrica Extrema]'): Nomeie claramente a criatura/fenômeno real + métrica física impactante (ex: 'Lula-Colossal vs Cachalote: Batalha a 2.000m!', 'Fossa das Marianas 1.086 Atm vs Submarino', 'Polvo-de-Anéis-Azuis vs Moreia: Veneno 1.200x Mais Letal'). NUNCA esconda a entidade! "
-            "HOOK DA CENA 1 (0,0s-2,5s, 6-12 palavras — 4 Arquétipos de Hook Visual-Psicológico): Abra o segundo 0,0s com (1) Micro-Observação Visual, (2) O Erro Fatal, (3) Simulação de Sobrevivência em 2ª Pessoa, ou (4) Inversão de Papel nomeando a criatura ou fenômeno real sem repetir o título palavra por palavra! "
-            "ATO 2 (Cenas 2-3): Profundidade real ou perigo explicado com comparação do dia a dia. "
-            "ATO 3 (Cena 4 - Twist de 15s): Segundo pico explosivo / mecanismo reverso no segundo 15 que muda tudo. "
-            "ATO 5 (Cena 7/8): Frase 100% completa fechando o Loop Infinito com a Cena 1 (ZERO CTA falado de Inscreva-se). "
-            "Tone: suspenseful, dark, adrenaline-pumping documentary style. Strict Brazilian Portuguese (pt-BR) only."
-        ),
-        "topics": [
-            "Por Que Tubarões do Fundo do Mar Ficam Paralisados ao Nadar Dentro Desse Lago Submarino no Golfo do México?",
-            "Por Que um Único Esqueleto de Baleia a 4.000 Metros Alimenta Criaturas do Abismo Por 50 Anos?",
-            "Por Que Essa Água-Viva Invisível da Austrália Para um Coração Humano em 2 Minutos?",
-            "Fossa das Marianas a 11.000 Metros vs Submarino de Titânio: Como 1.086 Atmosferas de Pressão Esmagam Aço no Ponto Mais Profundo do Mar",
-            "Dedo Gélido da Morte (Brinicle) a -2°C vs Fundo do Mar da Antártida: Como um Tornado de Gelo Submarino Congela Estrelas-do-Mar em Segundos",
-            "Polvo-de-Anéis-Azuis de 12 Centímetros vs Moreia-Gigante: Como a Tetrodotoxina 1.200 Vezes Mais Letal Que Cianeto Paralisa em Segundos",
-            "Chaminés Hidrotermais Negras a 400°C vs Vermes-Tubulares Gigantes: Como Criaturas Abissais Sobrevivem Sem Sol a 2.500 Metros no Mar",
-            "Caravela-Portuguesa vs Tartaruga-de-Couro: Como uma Gigante de 700 Quilos Devora Tentáculos Venenosos de 50 Metros no Mar",
-            "Dedo Gélido da Morte (Brinicle) a -2°C vs Fundo do Mar da Antártida: O Tornado de Gelo Submarino Que Congela Tudo",
-            # [1-1 VISUAL CONTRAST INTERLEAVED QUEUE — Đan xen Dị thường Địa chất/Nhiệt độ/Hóa học <-> Đại chiến Sinh vật Đa dạng Họ]
-            "Enguia-Pelicano vs Lula-Vampiro: Como Monstros a 2.500 Metros Caçam Sem Oxigênio na Zona da Meia-Noite",
-            "Fossa de Porto Rico a 8.376 Metros: A Anomalia Gravitacional no Fundo do Oceano Atlântico",
-            "Lago Nyos: A Nuvem Invisível de 1,6 Milhão de Toneladas de CO2 Que Sufocou um Vale Inteiro",
-            "Peixe-Dragão Negro a 2.000 Metros: O Predador Invisível Que Produz Luz Infravermelha no Abismo",
-            "O Cemitério de Baleias a 4.000 Metros: Como um Único Esqueleto Alimenta Monstros Cegos Por 50 Anos",
-            "Por Que Submarinos Militares Apagam Todas as Luzes Ao Cruzar 3.000 Metros na Zona Abissal",
-            "Vespa-do-Mar: A Água-Viva Invisível Cujo Veneno Para o Coração Humano em 2 Minutos",
-            "Tubarão-da-Groenlândia vs Lula-Gigante: O Predador Cego de 400 Anos nas Profundezas do Ártico",
-            "Vulcão Submarino Kavachi: A Cratera em Ebulição a 100°C no Fundo do Oceano Pacífico",
-            "Orca vs Tubarão-Branco de 2 Toneladas: O Golpe Cirúrgico Que Faz o Maior Predador Fugir do Oceano",
-            "Tubarão-Duende vs Peixe-Diabo Negro: A Mandíbula Que Dispara em 0,02 Segundo a 3.000 Metros no Mar",
-        ],
-        "default_tags": [
-            "shorts", "misterios", "oceano", "curiosidades", "bizarro",
-            "ciencia", "fatosdesconhecidos", "fundodomar", "misteriosdomundo", "viral",
-        ],
-    },
-    "ch_paws_hearts_rescue": {
-        "id": "ch_paws_hearts_rescue",
-        "name": "Paws & Hearts Rescue",
-        "niche": "animal_rescue",
-        "language": "en",
-        "google_account": "acount_2",
-        "preferred_voice": "en-US-ChristopherNeural",
-        "handle": "@pawsandheartsrescue",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 18,
-        "prefer_non_youtube_sources": True,
-        "director_notes": (
-            "Target channel Paws & Hearts Rescue (US English, Category 15 Pets & Animals). Deep 5-Act Dual-Peak Heroic Rescue Dogs & Canine Survival Science arc (34-40s golden runtime, 7-8 scenes, 92-118 words): "
-            "TITLE (YT_SEARCH Anchor): Explicitly name the heroic rescue dog breed/animal vs the extreme survival hazard or physical feat ('[Rescue Dog Breed / Animal A] vs [Extreme Hazard B]: [Visceral Survival Mechanism]'). NEVER hide the breed name behind vague pronouns! "
-            "SCENE 1 HOOK (0.0s-2.2s, 6-10 words): Use 1 of the 4 Psychological-Visual Hook Archetypes (1. Visual Micro-Observation 'Look closely at this dog\'s paws...', 2. The Fatal Mistake, 3. 2nd-Person Survival Simulation 'If you are trapped under...', 4. Role Reversal). NEVER repeat the title verbatim at 0.0s! "
-            "ACT 2 (Scenes 2-3): Explain the breed\'s extraordinary biological rescue adaptation (webbed paws, 300-million scent receptors, double thermal coat, 700-PSI bite or towing power) translated into a vivid everyday physical analogy. "
-            "ACT 3 (Scene 4 - 15s Twist): The hidden second survival mechanism or real-world rescue turning point that saves human/animal lives in extreme conditions. "
-            "ACT 5 (Scene 7/8): Complete sentence forming a Seamless Infinite Loop Bridge back into Scene 1 (ZERO spoken Subscribe CTA). "
-            "Tone: gripping, heroic, awe-inspiring National Geographic / Canine Survival Documentary style. Strict English only."
-        ),
-        "topics": [
-            "Newfoundland Rescue Dog vs Ocean Rip Current: How Webbed Paws and a 150-Pound Lung Capacity Pull Drowning Swimmers From Freezing Waves",
-            "Saint Bernard Rescue Dog vs 15-Foot Alpine Avalanche: How 300 Million Scent Receptors Detect Human Heartbeats Beneath Solid Snow",
-            "Belgian Malinois K9 vs 12-Foot Vertical Wall: How Military Rescue Dogs Parachute From 10,000 Feet to Track Missing Survivors",
-            "Kangal Shepherd Dog vs Wolf Pack: How a 140-Pound Livestock Guardian Protects Entire Mountain Flocks at Night",
-            "Bloodhound Scent Tracker vs 130-Hour Rain Trail: How Loose Facial Skin Traps Microscopic Human Scent Particles Across 100 Miles",
-            "Alaskan Malamute Sled Team vs -50°F Arctic Blizzard: How Double Thermal Coats and Counter-Current Paw Veins Stop Frostbite",
-            "German Shepherd Search Dog vs Collapsed Concrete Rubble: How Ultrasonic Hearing Pinpoints Trapped Survivors After an Earthquake",
-            "Golden Retriever Water Rescue Dog vs Capsized Boat: Why Coast Guard Squads Trust This Soft-Mouthed Breed to Tow Two Adults at Once",
-        ],
-        "default_tags": [
+        "animal_rescue": [
             "shorts", "rescuedog", "dogs", "animalrescue", "workingdogs",
             "k9", "newfoundlanddog", "saintbernard", "germanshepherd", "pets", "animals", "viral",
         ],
-    },
-}
+    }
 
-# Aliases để tương thích ngược
-CHANNELS_CONFIG["channel_maya"] = CHANNELS_CONFIG["ch_psychology_of_the_world"]
-CHANNELS_CONFIG["ucsrjiil67qxidtxt70z-iwa"] = CHANNELS_CONFIG["ch_the_mysteries_of_the_world"]
+    cfg_map: dict[str, dict] = {}
+    channels_list = raw_data.get("channels") or []
+    if not channels_list:
+        for acc in (raw_data.get("google_accounts") or []):
+            for bch in (acc.get("brand_channels") or []):
+                bch_copy = dict(bch)
+                bch_copy.setdefault("google_account", acc.get("id", "account_1"))
+                channels_list.append(bch_copy)
+
+    for ch in channels_list:
+        ch_id = str(ch.get("id") or "").strip()
+        if not ch_id:
+            continue
+        niche_id = str(ch.get("niche") or "general").strip()
+        lang = str(ch.get("language") or "en").strip()
+        niche_prof = get_niche(niche_id)
+        yaml_topics = [
+            str(t).strip()
+            for t in ((niche_prof.get("script_blueprint") or {}).get("viral_topic_bank_2026") or [])
+            if str(t).strip()
+        ]
+        sched = ch.get("schedule") or {}
+        pub_hour = int(sched.get("publish_hour_utc", 17))
+        kw_tags = [str(k).replace(" ", "") for k in (ch.get("channel_keywords") or [])[:10] if str(k).strip()]
+        def_tags = list(dict.fromkeys((default_tags_by_niche.get(niche_id) or ["shorts", "viral"]) + kw_tags))
+
+        entry = {
+            "id": ch_id,
+            "name": str(ch.get("name") or ch_id),
+            "niche": niche_id,
+            "language": lang,
+            "google_account": str(ch.get("google_account") or "account_1"),
+            "preferred_voice": str(ch.get("preferred_voice") or ("pt-BR-AntonioNeural" if lang.lower().startswith("pt") else "en-US-ChristopherNeural")),
+            "handle": str(ch.get("handle") or ""),
+            "amazon_tag": str(ch.get("amazon_tag") or "kizakawa-20"),
+            "publish_hour_utc": pub_hour,
+            "prefer_non_youtube_sources": bool(ch.get("prefer_non_youtube_sources", ch_id == "ch_paws_hearts_rescue")),
+            "director_notes": build_script_prompt_instructions(niche_prof),
+            "topics": yaml_topics,
+            "default_tags": def_tags,
+        }
+        cfg_map[ch_id] = entry
+        if entry["handle"]:
+            cfg_map[entry["handle"]] = entry
+            cfg_map[entry["handle"].lower()] = entry
+
+    # Aliases để tương thích ngược toàn hệ thống
+    alias_pairs = {
+        "channel_maya": "ch_psychology_of_the_world",
+        "ch_psychology": "ch_psychology_of_the_world",
+        "psychology": "ch_psychology_of_the_world",
+        "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+        "ch_mysteries": "ch_the_mysteries_of_the_world",
+        "ch_alternate_history": "@alternatehistorywhatif-e2x",
+        "alternate_history": "@alternatehistorywhatif-e2x",
+        "wild_odyssey": "ch_wild_odyssey",
+        "odisseia_selvagem": "ch_odisseia_selvagem",
+        "misterios_do_mundo": "ch_misterios_do_mundo",
+        "paws_hearts_rescue": "ch_paws_hearts_rescue",
+    }
+    for alias_k, target_k in alias_pairs.items():
+        if target_k in cfg_map:
+            cfg_map[alias_k] = cfg_map[target_k]
+
+    return cfg_map
+
+
+CHANNELS_CONFIG = _load_channels_config_from_yaml()
 
 SIX_ACTIVE_CHANNELS = [
     "ch_the_mysteries_of_the_world",

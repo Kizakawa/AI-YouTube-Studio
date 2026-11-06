@@ -331,7 +331,7 @@ Return ONLY valid JSON:
   "angle_b_paradox": "1-sentence pitch for Angle B",
   "angle_c_visceral": "1-sentence pitch for Angle C",
   "winning_angle": "Angle A | Angle B | Angle C — plus 1-sentence reason why it sounds most gripping",
-  "primary_entity": "Bare 1-2 word English name of the primary subject/entity",
+  "primary_entity": "Bare 1-2 word English name of the primary species/historical figure/phenomenon, or null for psychology/interpersonal scenarios (NEVER use a blanket 'Human Brain' across human social scenes)",
   "winning_title": "High-CTR Searchable Title in {target_lang_display} (28-55 chars naming exact entities + visceral stakes or Power-Reversal 'Why / Por Que', 1-2 emojis, ZERO hashtags, ZERO PSI/Newtons/N/kPa/kilotons, ZERO pronoun-blind 'He/She...')",
   "selected_hook_archetype": "1. Instant Lethal Action / Micro-Mechanism Strike | 2. Direct Spoken Paradox / Clash | 3. In-Medias-Res Human Crisis / Staged Social Line | 4. Counter-Intuitive 'Why / Por Que' Hook (ONLY if Title is not a Why question)",
   "scene_1_hook_0s": "6-12 word spoken creator hook in {target_lang_display} delivering an immediate physical shock or life-or-death paradox at 0.0s (STRICTLY FORBIDDEN from repeating the 'Why / Por que' question if `winning_title` already starts with 'Why / Por que'; ZERO passive 'X sat in a...', ZERO 'Look closely at...', ZERO weak Yes/No questions)",
@@ -355,8 +355,12 @@ Return ONLY valid JSON:
             end = raw_bp.rfind("}")
             if start != -1 and end != -1 and end > start:
                 bp_data = json.loads(raw_bp[start : end + 1])
-                if bp_data.get("primary_entity"):
-                    self._last_primary_entity = str(bp_data.get("primary_entity")).strip()
+                raw_bp_pe = str(bp_data.get("primary_entity") or "").strip()
+                if raw_bp_pe.lower() in ("null", "none", "human brain", "brain", "human mind", "mind", "psychology") and str(channel_niche or "").strip().lower() == "psychology":
+                    bp_data["primary_entity"] = None
+                    raw_bp_pe = ""
+                if raw_bp_pe:
+                    self._last_primary_entity = raw_bp_pe
                 logger.info(
                     f"🧠 [ContentAgent Stage-1 Deep Blueprint] Winning Angle: {bp_data.get('winning_angle', '')[:80]} | "
                     f"Archetype: {bp_data.get('selected_hook_archetype', '')} | "
@@ -456,8 +460,8 @@ YOUR EXECUTIVE VIRAL VOICE & RETENTION PUNCH-UP MANDATE (UPGRADE EVERY STIFF OR 
    - Provide 5 distinct, concrete English search queries (3–5 words each): at most 1–2 real-camera encounter queries (`"[Entity A] attacking [Entity B]"`) ONLY if the script is a 2-entity duel, and 3–5 **100% CLEAN SINGLE-ENTITY REAL-ACTION QUERIES** (`"[Single Entity] + [Real Physical Action / Environment]"`, ZERO `"vs"`).
 6. SELF-CONTAINED, CANONICAL-ENTITY-LOCKED BODY VISUAL QUERIES (`subject_entity`, `visual_keyword`, `stock_query`, `search_queries`, `visual_prompt`):
    - As the Script Showrunner LLM, YOU are directly responsible for preventing off-topic visuals on every single scene! For each scene in `scenes`, explicitly output:
-     * `subject_entity`: The exact canonical English name of the entity/subject acting in THAT scene (e.g., `"Komodo Dragon"` on dragon scenes, `"Water Buffalo"` on buffalo scenes — NEVER leave blank or write generic `"predator"`/`"prey"`).
-     * `visual_keyword` (3–5 everyday English words) and `stock_query` (2–4 everyday English words, ZERO `"vs"`): 100% self-contained and including the **COMPLETE CANONICAL SPECIFIC NAME** of `subject_entity` (e.g., `"harpy eagle talons closeup"`, `"three toed sloth hanging"`).
+     * `subject_entity`: The exact canonical English name of the camera-visible entity/subject acting in THAT specific scene (e.g., `"Komodo Dragon"` on dragon scenes, `"Water Buffalo"` on buffalo scenes; for Psychology/Social scenes, write the concrete camera-visible subject of THAT scene such as `"man intense eye contact"`, `"barista in coffee shop"`, `"couple on couch"`, or `"3d glowing brain neurons"` ONLY on the neural scene — NEVER set a blanket `"Human Brain"` across human social scenes and NEVER leave blank or write generic `"predator"`/`"prey"`).
+     * `visual_keyword` (3–5 everyday English words) and `stock_query` (2–4 everyday English words, ZERO `"vs"`): 100% self-contained and matching `subject_entity` of THAT scene (e.g., `"harpy eagle talons closeup"`, `"three toed sloth hanging"`, `"barista working coffee shop"`).
      * `search_queries`: A list of 3–4 progressive, anti-off-topic English search queries for THAT scene:
        1. Primary action query (`"[Scene Subject] + [Scene Action]"`, 3–4 words)
        2. Natural documentary B-Roll query (`"[Scene Subject] + [Natural Pose/Habitat]"`, 2–4 words)

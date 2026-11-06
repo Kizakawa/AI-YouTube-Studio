@@ -89,8 +89,20 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 deadline_ts is not None and (deadline_ts - time.monotonic()) <= 2.5
             ):
                 return None
+            subj_norm_low = str(subject_entity or "").strip().lower()
+            eff_scene_subj = (
+                clean_act_q
+                if (
+                    not subject_entity
+                    or subj_norm_low in ("human brain", "brain", "human mind", "mind", "psychology")
+                    or (search_scope == "SCENE_SPECIFIC" and clean_act_q and subj_norm_low not in clean_act_q.lower())
+                )
+                else subject_entity
+            )
+            eff_topic_ctx = topic or overall_script_query or clean_act_q
             va_clean_vid = {
-                "subject": subject_entity or clean_act_q,
+                "subject": eff_scene_subj,
+                "expected_visual_content": clean_act_q,
                 "search_queries": story_q_list[:4] if story_q_list else [clean_act_q],
                 "clean_stock_only": True,
                 "is_hook_scene": is_hook_scene,
@@ -100,7 +112,9 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 used_urls=used,
                 visual_analysis=va_clean_vid,
                 narration=narration,
-                topic=overall_script_query or topic,
+                topic=eff_topic_ctx,
+                cancel_event=cancel_event,
+                deadline_ts=deadline_ts,
             )
             if best_stock_v and best_stock_v.get("url"):
                 v_url = best_stock_v["url"]
@@ -140,13 +154,13 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                                     vid_out, min_short_edge=720, min_sharpness=5.2, check_watermark=True, allow_snow=True
                                 )
                                 ok_p_mot, _, _ = verify_hook_clip_genuine_motion(vid_out)
-                                is_p_vis_ok = False
-                                if gate_p.get("passed", False) and ok_p_mot:
+                                is_p_vis_ok = bool(best_stock_v.get("vision_curated"))
+                                if gate_p.get("passed", False) and ok_p_mot and not is_p_vis_ok:
                                     is_p_vis_ok, _, _ = _verify_short_clip_with_gemini_vision(
                                         video_path=vid_out,
-                                        topic=topic,
+                                        topic=eff_topic_ctx,
                                         narration=narration,
-                                        subject_entity=subject_entity or clean_act_q,
+                                        subject_entity=eff_scene_subj,
                                         overall_script_query=overall_script_query or clean_act_q,
                                         target_visual_query=clean_act_q,
                                         search_scope=search_scope,
@@ -239,9 +253,9 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                     clip_role="HOOK" if is_hook_scene else "PEAK",
                     used_urls=used,
                     fallback_query=eff_fb_q,
-                    subject_entity=subject_entity or clean_act_q,
+                    subject_entity=clean_act_q if (not subject_entity or str(subject_entity).strip().lower() in ("human brain", "brain", "human mind", "mind", "psychology")) else subject_entity,
                     narration=narration,
-                    topic=overall_script_query or topic,
+                    topic=topic or overall_script_query,
                     search_scope=search_scope,
                     overall_script_query=overall_script_query,
                     max_peak_duration_sec=14.0,
@@ -249,7 +263,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                     scene_id=scene_id,
                     storyline_queries=story_q_list,
                     skip_youtube_search=False,
-                    skip_stock_fallback=(pref_norm == "VIDEO_BROLL" and not is_hook_scene),
+                    skip_stock_fallback=not is_hook_scene,
                     cancel_event=cancel_event,
                     deadline_ts=yt_sub_deadline,
                 )
@@ -263,7 +277,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 logger.debug(f"[CleanPortraitTool] YouTube Shorts priority skip on scene {scene_id}: {e_yt_f}")
             return None
 
-        if pref_norm == "VIDEO_BROLL" and not is_hook_scene:
+        if not is_hook_scene:
             st_res = _try_stock_video_broll()
             if st_res:
                 return st_res

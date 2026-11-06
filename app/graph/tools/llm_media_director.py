@@ -40,6 +40,9 @@ def plan_media_tools_with_llm_sync(
     if total_scenes == 0:
         return []
 
+    if str(primary_entity or "").strip().lower() in ("human brain", "brain", "human mind", "mind", "psychology", "null", "none") or str(channel_niche or "").strip().lower() in ("psychology", "satirical_psychology_animation", "philosophy"):
+        primary_entity = None
+
     full_script_text = " ".join(str(s.get("narration") or "").strip() for s in scenes if s.get("narration"))
     scenes_brief = [
         {
@@ -464,15 +467,22 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             })
 
     # Kênh Tâm lý học / Triết học: Dùng 100% Video B-Roll điện ảnh người thật (tuyệt đối không dùng hoạt họa người que / Doodle 2D)
+    # và định tuyến các cảnh thân bài (scene_id >= 2) sang `fetch_clean_cinematic_portrait_or_broll` (VIDEO_BROLL) để ưu tiên kho Pexels/Pixabay sạch chữ trước khi fallback sang YouTube Shorts.
     if str(channel_niche or "").lower() in ("psychology", "satirical_psychology_animation", "doodle", "philosophy"):
+        primary_entity = None
         for d_it in final_plan:
-            if d_it.get("tool_name") in ("render_doodle_2d_explainer_scene", "search_google_cinematic_image"):
+            sid_it = int(d_it.get("scene_id") or 0)
+            if d_it.get("tool_name") in ("render_doodle_2d_explainer_scene", "search_google_cinematic_image") or (
+                sid_it >= 2 and d_it.get("tool_name") == "clone_youtube_short_peak_clip"
+            ):
                 d_it["tool_name"] = "fetch_clean_cinematic_portrait_or_broll"
+                d_it["media_preference"] = "VIDEO_BROLL"
                 if not d_it.get("human_action_query"):
                     d_it["human_action_query"] = (
-                        d_it.get("scene_concept_summary")
+                        d_it.get("youtube_search_query")
+                        or d_it.get("primary_stock_query")
+                        or d_it.get("scene_concept_summary")
                         or d_it.get("smart_image_query")
-                        or d_it.get("youtube_search_query")
                         or "person intense eye contact closeup"
                     )
 
@@ -716,6 +726,9 @@ def audit_and_decide_search_scopes_with_llm_sync(
     """
     if not scenes or not proposed_decisions:
         return proposed_decisions
+
+    if str(primary_entity or "").strip().lower() in ("human brain", "brain", "human mind", "mind", "psychology", "null", "none") or str(channel_niche or "").strip().lower() in ("psychology", "satirical_psychology_animation", "philosophy"):
+        primary_entity = None
 
     if (
         not kwargs.get("force_reaudit")

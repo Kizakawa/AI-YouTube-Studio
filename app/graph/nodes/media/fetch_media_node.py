@@ -682,7 +682,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     if scene.scene_id == 1
                     else (
                         sc_strat.get("media_preference")
-                        or ("YOUTUBE_FORENSIC_OR_CHARACTER_SHORT" if scene.scene_id in (2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO")
+                        or ("VIDEO_BROLL" if scene.scene_id in (2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO")
                     )
                 )
                 out_clean = str(

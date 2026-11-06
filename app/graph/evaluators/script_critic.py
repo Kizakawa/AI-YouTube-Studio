@@ -307,11 +307,17 @@ class ScriptCritic:
             for s in scenes
         ])
 
+        is_psych_style = str(channel_style or "").strip().lower() in ("psychology", "satirical_psychology_animation", "philosophy")
         entity_instruction = ""
-        if primary_entity:
+        if primary_entity and not is_psych_style:
             entity_instruction = (
                 f"- Primary Entity/Subject is '{primary_entity}'. "
                 f"The script and visual keywords MUST stay anchored to this exact entity."
+            )
+        elif is_psych_style:
+            entity_instruction = (
+                "- Psychology / Human Behavior Niche Rule: Psychological effect/syndrome names (e.g. 'Hyperthymesia', 'Spotlight Effect', 'Bystander Effect') "
+                "are abstract concepts that cameras cannot film directly. NEVER require abstract condition names in `Subject Entity`, `Search Queries`, `Visual Keyword`, or `Stock Query`—instead, reward concrete camera-visible human actions, facial micro-expressions, eyes, hands, and 3D brain neuron visuals!"
             )
 
         winners_block = ""

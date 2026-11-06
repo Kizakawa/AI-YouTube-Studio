@@ -54,7 +54,7 @@ class MediaVisionCuratorMixin:
                         sh_m = float(ImageStat.Stat(g256.filter(ImageFilter.FIND_EDGES)).mean[0])
                         cand["_thumb_sharpness"] = round(sh_m, 2)
                         cand["_thumb_contrast"] = round(con_s, 2)
-                        if lum_m < 4.5 or lum_m > 250.0 or con_s < 4.5 or sh_m < 1.2:
+                        if lum_m < 2.5 or lum_m > 252.0 or con_s < 3.0 or sh_m < 0.85:
                             if cur_u != url_choices[-1]:
                                 continue
                             cand["_thumb_low_quality"] = True
@@ -88,7 +88,7 @@ class MediaVisionCuratorMixin:
         results: List[Optional[Tuple[int, str, str]]] = []
         try:
             futs = [ex.submit(_dl_one, item) for item in enumerate(eval_pool)]
-            for fut in as_completed(futs, timeout=max(2.5, timeout + 1.2)):
+            for fut in as_completed(futs, timeout=max(4.0, timeout + 2.5)):
                 try:
                     r_val = fut.result()
                     if r_val is not None:
@@ -333,8 +333,8 @@ class MediaVisionCuratorMixin:
                 ),
             })
 
-        if not candidates_for_llm or not has_any_preview:
-            return None, 2.5, "Tất cả ứng viên video kho đều quá mờ hoặc không tải được ảnh preview (< chuẩn VisualCritic).", True
+        if not candidates_for_llm:
+            return None, 2.5, "Tất cả ứng viên video kho đều quá mờ (< chuẩn VisualCritic).", True
 
         niche_yaml_ctx = ""
         try:
@@ -393,7 +393,7 @@ TRẢ VỀ JSON DUY NHẤT:
   "rationale": "Giải thích điểm 3 trục của ứng viên và lý do duyệt hoặc từ chối",
   "should_fallback_to_ai": false
 }}"""
-        agent_dec = self._call_gemini_json(prompt, images=thumb_images if thumb_images else None)
+        agent_dec = self._call_gemini_json(prompt, images=thumb_images) if (has_any_preview and thumb_images) else None
         if agent_dec is not None:
             w_idx = int(agent_dec.get("winner_index", -1))
             w_url = str(agent_dec.get("winner_url") or "").strip()

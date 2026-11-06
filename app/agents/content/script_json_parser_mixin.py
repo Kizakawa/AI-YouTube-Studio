@@ -295,7 +295,18 @@ class ScriptJsonParserMixin:
                     sq = " ".join(vk.split()[:4])
 
             # Tôn trọng `subject_entity` và `search_queries` do chính LLM viết kịch bản chỉ định cho từng phân cảnh (chống lạc đề từ gốc kịch bản)
-            if str(channel_niche or "").strip().lower() != "psychology":
+            if str(channel_niche or "").strip().lower() == "psychology":
+                # Trong ngách Tâm lý học (Psychology), tên hội chứng/hiệu ứng tâm lý (vd: Hyperthymesia, Bystander Effect)
+                # là khái niệm trừu tượng không thể quay bằng máy ảnh, nên xóa primary_entity cấp kịch bản để mỗi cảnh tự giữ subject_entity vật lý riêng.
+                raw_data["primary_entity"] = None
+                sc_se_low = str(sc.get("subject_entity") or "").strip().lower()
+                if sc_se_low in ("human brain", "brain", "human mind", "mind", "psychology", "null", "none") or (
+                    sc_se_low and sc_se_low == str(topic or "").strip().lower()
+                ):
+                    sc_narr_low = str(sc.get("narration") or "").lower()
+                    if "brain" not in vk.lower() and "brain" not in sq.lower() and "brain" not in sc_narr_low:
+                        sc["subject_entity"] = sq or vk
+            else:
                 raw_pe = str(
                     sc.get("subject_entity")
                     or raw_data.get("primary_entity")
@@ -748,7 +759,13 @@ class ScriptJsonParserMixin:
                     if cleaned_q:
                         sc1[q_field] = cleaned_q
 
-            prim_ent_s1 = str(raw_data.get("primary_entity") or _vs_side_a_raw or "").strip()
+            prim_ent_s1 = (
+                ""
+                if str(channel_niche or "").strip().lower() == "psychology"
+                else str(raw_data.get("primary_entity") or _vs_side_a_raw or "").strip()
+            )
+            if prim_ent_s1.lower() in {"human brain", "brain", "human mind", "mind", "psychology", "null", "none"}:
+                prim_ent_s1 = ""
             prim_s1_toks = [
                 w.lower().rstrip("s")
                 for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", prim_ent_s1)

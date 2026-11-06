@@ -615,22 +615,33 @@ def _is_incongruent_stock_heuristic(title_or_alt: str, topic: str = "", narratio
     if not title_or_alt:
         return False
 
-    t_lower = title_or_alt.lower()
-    context_lower = f"{topic} {narration}".lower()
+    import unicodedata
+
+    def _strip_accents(s: str) -> str:
+        return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+
+    t_lower = f"{title_or_alt.lower()} {_strip_accents(title_or_alt.lower())}"
+    raw_ctx = f"{topic} {narration}".lower()
+    context_lower = f"{raw_ctx} {_strip_accents(raw_ctx)}"
 
     is_modern_human_topic = any(
         w in context_lower
-        for w in ("manipulat", "psycholog", "narcissist", "silence", "finance", "money", "career", "relationship", "negotiation", "corporate", "empathy")
+        for w in (
+            "manipulat", "psycholog", "narcissist", "silence", "finance", "money",
+            "career", "relationship", "negotiation", "corporate", "empathy", "thought",
+            "social", "conversation", "stranger", "partner", "friend", "barista", "cafe",
+            "coffee", "office", "interrogat", "lie", "emotion", "behavior",
+        )
     )
     for group_name, bad_words in _INCONGRUENT_TAG_GROUPS.items():
-        if group_name == "office_corporate" and is_modern_human_topic:
+        if group_name in ("office_corporate", "cafe_fastfood") and is_modern_human_topic:
             continue
         matched_bad = [
             bw for bw in bad_words
             if re.search(rf"\b{re.escape(bw)}\b", t_lower)
         ]
         if matched_bad:
-            is_legit = any(re.search(rf"\b{re.escape(bw)}\b", context_lower) for bw in matched_bad)
+            is_legit = any(re.search(rf"\b{re.escape(bw)}\b", context_lower) for bw in bad_words)
             if not is_legit:
                 logger.info(f"🚫 [EntityDetector:Heuristic] Từ chối ảnh stock lạc đề ('{title_or_alt[:45]}...') do chứa từ khóa: {matched_bad}")
                 return True
