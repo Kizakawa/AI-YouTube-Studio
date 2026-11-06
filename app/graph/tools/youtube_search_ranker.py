@@ -126,8 +126,6 @@ def _verify_short_clip_with_gemini_vision(
     """
     if cancel_event is not None and cancel_event.is_set():
         return False, 0.0, "Cancelled by parent task"
-    if deadline_ts is not None and (deadline_ts - time.monotonic()) <= 1.5:
-        return False, 0.0, "Deadline exceeded before vision check"
     if not Path(video_path).exists():
         return False, 0.0, "File không tồn tại"
 

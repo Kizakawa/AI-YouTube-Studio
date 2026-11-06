@@ -674,6 +674,23 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             else:
                                 extra_r.append(rv)
 
+                if win_r is None and pending_r:
+                    done_gr, pending_r = await asyncio.wait(
+                        pending_r,
+                        return_when=asyncio.FIRST_COMPLETED,
+                        timeout=12.0,
+                    )
+                    for d_gr in done_gr:
+                        try:
+                            rv_gr = d_gr.result()
+                        except Exception:
+                            rv_gr = None
+                        if rv_gr and rv_gr.get("media_path") and Path(rv_gr["media_path"]).exists():
+                            if win_r is None:
+                                win_r = rv_gr
+                            else:
+                                extra_r.append(rv_gr)
+
                 px_ref_ev.set()
                 yt_ref_ev.set()
                 for p_tr in pending_r:

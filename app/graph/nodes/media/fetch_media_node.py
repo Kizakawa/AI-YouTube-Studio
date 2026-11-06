@@ -1016,6 +1016,25 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 else:
                                     extra_results.append(r_val)
 
+                    # [RULE 2] Không bao giờ bật yt_cancel_ev sớm nếu chưa có nhánh nào trả về video thật (win_res is None)
+                    # — chờ thêm tối đa 14s cho tác vụ đang tải/kiểm duyệt Gemini Vision hoàn tất trên đĩa.
+                    if win_res is None and pending_tasks:
+                        done_grace, pending_tasks = await asyncio.wait(
+                            pending_tasks,
+                            return_when=asyncio.FIRST_COMPLETED,
+                            timeout=14.0,
+                        )
+                        for d_g in done_grace:
+                            try:
+                                r_g = d_g.result()
+                            except Exception:
+                                r_g = None
+                            if r_g and r_g.get("media_path") and Path(r_g["media_path"]).exists():
+                                if win_res is None:
+                                    win_res = r_g
+                                else:
+                                    extra_results.append(r_g)
+
                     px_cancel_ev.set()
                     yt_cancel_ev.set()
                     for p_t in pending_tasks:

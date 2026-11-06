@@ -658,6 +658,20 @@ async def run_post_gather_media_rescues(
                                         Path(res_r["media_path"]).unlink(missing_ok=True)
                                     except Exception:
                                         pass
+                    if winner_r is None and pending_r:
+                        done_gr, pending_r = await asyncio.wait(
+                            pending_r,
+                            return_when=asyncio.FIRST_COMPLETED,
+                            timeout=12.0,
+                        )
+                        for d_gr in done_gr:
+                            try:
+                                res_gr = d_gr.result()
+                            except Exception:
+                                res_gr = None
+                            if res_gr and res_gr.get("media_path") and Path(res_gr["media_path"]).exists():
+                                if winner_r is None:
+                                    winner_r = res_gr
                     px_rescue_cancel_ev.set()
                     yt_rescue_cancel_ev.set()
                     for p_r in pending_r:
