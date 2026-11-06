@@ -19,6 +19,21 @@ logger = logging.getLogger(__name__)
 
 
 class EngagementCommentsMixin:
+    @staticmethod
+    def _has_external_non_youtube_link(text: Optional[str]) -> bool:
+        """Kiểm tra xem chuỗi có chứa URL ngoài YouTube (affiliate/spam) hay không. Cho phép link nội bộ youtu.be / youtube.com."""
+        raw = str(text or "").strip()
+        if not raw:
+            return False
+        if any(k in raw.lower() for k in ("amazon.com", "paypal.me", "amzn.to", "bit.ly")):
+            return True
+        urls = re.findall(r'https?://[^\s\)\]>]+', raw, flags=re.IGNORECASE)
+        for u in urls:
+            u_low = u.lower()
+            if not any(yt_dom in u_low for yt_dom in ("youtu.be/", "youtube.com/watch", "youtube.com/shorts")):
+                return True
+        return False
+
     def sanitize_engagement_comment(self, comment_text: Optional[str]) -> str:
         """Khử sạch đuôi quảng cáo công nghiệp ('🔔 INSCREVA-SE...', '🔔 SUBSCRIBE...', '🔔 ĐĂNG KÝ...') khỏi bình luận."""
         raw_c = str(comment_text or "").strip()
@@ -248,7 +263,7 @@ class EngagementCommentsMixin:
 
         try:
             # 1. Kiểm tra trạng thái video
-            v_res = self.service.videos().list(part="status,snippet", id=video_id).execute()
+            v_res = self.service.videos().list(part="status,snippet,contentDetails", id=video_id).execute()
             items = v_res.get("items", [])
             if not items:
                 logger.warning(f"💬 [PublisherAgent] Video {video_id} không tồn tại trên YouTube.")
@@ -285,7 +300,7 @@ class EngagementCommentsMixin:
                     author_cid = top_c.get("authorChannelId", {}).get("value")
                     if my_channel_id and author_cid == my_channel_id:
                         c_text = str(top_c.get("textOriginal") or top_c.get("textDisplay") or "").lower()
-                        if not allow_affiliate and any(k in c_text for k in ("http://", "https://", "amazon.com", "paypal.me")):
+                        if not allow_affiliate and self._has_external_non_youtube_link(c_text):
                             try:
                                 self.service.comments().delete(id=top_obj.get("id")).execute()
                                 logger.info(f"🧹 [PublisherAgent] Đã xóa bình luận dính link ngoài ({top_obj.get('id')}) trên video {video_id} để thay bằng bình luận tương tác sạch.")
@@ -325,17 +340,74 @@ class EngagementCommentsMixin:
                             effective_comment = cand_c
                             break
 
-            if effective_comment and not allow_affiliate and any(k in str(effective_comment).lower() for k in ("http://", "https://", "amazon.com", "paypal.me")):
+            if effective_comment and not allow_affiliate and self._has_external_non_youtube_link(effective_comment):
                 effective_comment = None
 
             if not effective_comment:
                 v_title = v_item.get("snippet", {}).get("title", "")
                 effective_comment = self.build_default_engagement_comment(title=v_title)
 
+            dur_iso = v_item.get("contentDetails", {}).get("duration", "")
+            m_dur = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", dur_iso or "")
+            dur_sec = (int(m_dur.group(1) or 0) * 3600 + int(m_dur.group(2) or 0) * 60 + int(m_dur.group(3) or 0)) if m_dur else 0
+            clean_comment = self.sanitize_engagement_comment(effective_comment)
+            if 0 < dur_sec <= 65 and "youtu.be/" not in clean_comment:
+                long_promo = self._build_long_form_cross_promo_line(exclude_video_id=video_id)
+                if long_promo:
+                    clean_comment = f"{clean_comment}\n\n{long_promo}"
+
             # 5. Đăng bình luận tác giả
-            return self.add_pinned_comment(video_id, self.sanitize_engagement_comment(effective_comment), retry_on_spam=True, retry_delay_sec=4)
+            return self.add_pinned_comment(video_id, clean_comment, retry_on_spam=True, retry_delay_sec=4)
         except Exception as e:
             logger.warning(f"💬 [PublisherAgent] Lỗi khi ensure_pinned_comment cho {video_id}: {e}")
+            return None
+
+    def _build_long_form_cross_promo_line(self, exclude_video_id: str = "") -> Optional[str]:
+        """Tìm video dài 16:9 (dur >= 90s) đang PUBLIC mới nhất trên kênh để chèn link điều hướng từ Shorts."""
+        if not self.service:
+            return None
+        try:
+            cached = getattr(self, "_cached_public_long_video", None)
+            if cached is None:
+                ch_res = self.service.channels().list(part="contentDetails", mine=True).execute()
+                ch_items = ch_res.get("items") or []
+                if not ch_items:
+                    self._cached_public_long_video = False
+                    return None
+                upl_id = ch_items[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
+                pl_res = self.service.playlistItems().list(part="contentDetails,status", playlistId=upl_id, maxResults=35).execute()
+                cand_ids = [
+                    it["contentDetails"]["videoId"]
+                    for it in (pl_res.get("items") or [])
+                    if (it.get("status", {}).get("privacyStatus") or "").lower() == "public"
+                ]
+                found_long = False
+                if cand_ids:
+                    v_res = self.service.videos().list(part="snippet,contentDetails,status", id=",".join(cand_ids[:35])).execute()
+                    for v in v_res.get("items") or []:
+                        if (v.get("status", {}).get("privacyStatus") or "").lower() != "public":
+                            continue
+                        m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", v.get("contentDetails", {}).get("duration", "") or "")
+                        ds = (int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + int(m.group(3) or 0)) if m else 0
+                        if ds >= 90:
+                            found_long = {"id": v["id"], "title": v.get("snippet", {}).get("title", ""), "duration_sec": ds}
+                            break
+                self._cached_public_long_video = found_long
+                cached = found_long
+            if not cached or not isinstance(cached, dict):
+                return None
+            if cached.get("id") == exclude_video_id:
+                return None
+            l_id = cached["id"]
+            l_title = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', str(cached.get("title") or "")).strip()
+            cfg_lang = str(self.channel_config.get("language") or "en-US").lower().strip()
+            if cfg_lang.startswith("pt"):
+                return f"🎬 Assista ao Documentário Completo em 1080p ({l_title}): https://youtu.be/{l_id}"
+            if cfg_lang.startswith("vi"):
+                return f"🎬 Xem trọn bộ Phim Tài Liệu 1080p ({l_title}): https://youtu.be/{l_id}"
+            return f"🎬 Watch the Full 1080p Documentary ({l_title}): https://youtu.be/{l_id}"
+        except Exception as e:
+            logger.debug(f"_build_long_form_cross_promo_line err: {e}")
             return None
 
     def sync_channel_pinned_comments(
