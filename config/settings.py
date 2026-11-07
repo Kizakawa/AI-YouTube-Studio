@@ -81,9 +81,10 @@ class Settings:
     LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "") or os.getenv("LANGCHAIN_PROJECT", "AI-YouTube-Studio")
     LANGSMITH_TRACING: bool = os.getenv("LANGSMITH_TRACING", os.getenv("LANGCHAIN_TRACING_V2", "true")).lower() in ("true", "1", "yes")
     
-    # Tự động hóa sản xuất & đăng bài (Mặc định FALSE để tránh bot tự ý sinh video linh tinh)
+    # Tự động hóa sản xuất & đăng bài (Mặc định FALSE / TẠM NGƯNG để tránh bot tự ý sinh video khi trống lịch)
     ENABLE_OVERDUE_AUTO_PRODUCTION: bool = os.getenv("ENABLE_OVERDUE_AUTO_PRODUCTION", "false").lower() in ("true", "1", "yes")
     ENABLE_FALLBACK_AUTO_PUBLISH: bool = os.getenv("ENABLE_FALLBACK_AUTO_PUBLISH", "false").lower() in ("true", "1", "yes")
+    PAUSE_EMPTY_SCHEDULE_AUTO_VIDEO: bool = os.getenv("PAUSE_EMPTY_SCHEDULE_AUTO_VIDEO", "true").lower() in ("true", "1", "yes")
     AUTO_ROTATE_CHANNELS_ON_QUOTA: bool = os.getenv("AUTO_ROTATE_CHANNELS_ON_QUOTA", "false").lower() in ("true", "1", "yes")
     AUTOPILOT_ENABLED_CHANNELS: str = os.getenv("AUTOPILOT_ENABLED_CHANNELS", "")
     

@@ -943,6 +943,19 @@ async def ensure_minimum_channel_queue(
     3. Báo Telegram ngay khi phát hiện một kênh bị TRỐNG LỊCH (`scheduled_queue_count == 0`).
     4. Bảo đảm mỗi kênh luôn có ít nhất `min_queue` (mặc định = 3) video trong lịch đăng (`SCHEDULED`).
     """
+    if getattr(settings, "PAUSE_EMPTY_SCHEDULE_AUTO_VIDEO", True) or not auto_produce:
+        logger.info("[QueueGuard] Đang tạm ngưng tự động tạo & đăng video khi trống lịch (PAUSE_EMPTY_SCHEDULE_AUTO_VIDEO=True).")
+        return {
+            "success": True,
+            "paused": True,
+            "min_queue_target": min_queue,
+            "auto_published_rendered_count": 0,
+            "empty_schedule_channels": [],
+            "deficit_tasks_count": 0,
+            "produced_count": 0,
+            "produced_results": [],
+        }
+
     # Bước 1: Tự động đăng các video đã dựng xong (RENDERED)
     published_rendered = await asyncio.to_thread(auto_publish_rendered_jobs, notify_telegram)
 

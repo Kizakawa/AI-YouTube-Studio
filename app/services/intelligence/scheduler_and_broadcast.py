@@ -292,6 +292,14 @@ def trigger_auto_generation_for_overdue_channel(
     6. Gửi cảnh báo thúc giục người dùng kiểm tra trên Telegram và Web Dashboard!
     """
     kpi = calculate_channel_kpi(channel_id)
+    if getattr(settings, "PAUSE_EMPTY_SCHEDULE_AUTO_VIDEO", True) and not force:
+        logger.info(f"[AutoGeneration] Đang tạm ngưng tạo video khi trống lịch (PAUSE_EMPTY_SCHEDULE_AUTO_VIDEO=True). Bỏ qua kênh '{channel_id}'.")
+        return {
+            "success": False,
+            "paused": True,
+            "message": "Đã tạm ngưng việc tự động tạo video khi kênh bị trống lịch.",
+            "kpi": kpi,
+        }
     if not force and not getattr(settings, "ENABLE_OVERDUE_AUTO_PRODUCTION", False):
         logger.info(f"[AutoGeneration] Kênh '{channel_id}' trễ hạn nhưng ENABLE_OVERDUE_AUTO_PRODUCTION đang tắt (False). Không tự ý sinh video.")
         return {
@@ -527,30 +535,31 @@ class ChannelIntelligenceWorker:
                     except Exception as ex_bf:
                         logger.debug(f"[ChannelIntelligence] Đồng bộ retention metrics / Mini-RAG định kỳ warning: {ex_bf}")
 
-                    # 1. Xử lý đăng tạm cho các video hết hạn duyệt (nếu người dùng bật)
-                    if getattr(settings, "ENABLE_FALLBACK_AUTO_PUBLISH", False):
+                    # 1. Xử lý đăng tạm cho các video hết hạn duyệt (chỉ khi không tạm ngưng và người dùng bật)
+                    is_paused = bool(getattr(settings, "PAUSE_EMPTY_SCHEDULE_AUTO_VIDEO", True))
+                    auto_prod_enabled = (not is_paused) and bool(getattr(settings, "ENABLE_OVERDUE_AUTO_PRODUCTION", False))
+                    if not is_paused and getattr(settings, "ENABLE_FALLBACK_AUTO_PUBLISH", False):
                         process_fallback_publishing()
 
-                    # 2. Tự động đăng các video đã dựng xong (RENDERED), báo Telegram nếu kênh trống lịch,
-                    # và duy trì tối thiểu 3 video trong lịch đăng cho mỗi kênh
-                    try:
-                        from app.services.autopilot_service import ensure_minimum_channel_queue
-                        auto_prod_enabled = bool(getattr(settings, "ENABLE_OVERDUE_AUTO_PRODUCTION", True))
-                        asyncio.run(
-                            ensure_minimum_channel_queue(
-                                min_queue=3,
-                                notify_telegram=True,
-                                auto_produce=auto_prod_enabled,
+                    # 2. Chỉ kiểm tra & tự động sản xuất lấp lịch trống khi auto_prod_enabled = True
+                    if auto_prod_enabled:
+                        try:
+                            from app.services.autopilot_service import ensure_minimum_channel_queue
+                            asyncio.run(
+                                ensure_minimum_channel_queue(
+                                    min_queue=3,
+                                    notify_telegram=True,
+                                    auto_produce=True,
+                                )
                             )
-                        )
-                    except Exception as ex_q:
-                        logger.warning(f"[ChannelIntelligence] Lỗi kiểm tra hàng đợi 3 video/kênh: {ex_q}")
+                        except Exception as ex_q:
+                            logger.warning(f"[ChannelIntelligence] Lỗi kiểm tra hàng đợi 3 video/kênh: {ex_q}")
 
-                    # 3. Quét KPI toàn mạng lưới kênh
+                    # 3. Quét KPI toàn mạng lưới kênh (chỉ tự sinh video khi auto_prod_enabled = True)
                     audit = run_network_kpi_audit()
                     overdue_channels = [c for c in audit.get("channels", []) if c.get("kpi_status") == "OVERDUE_CRITICAL"]
 
-                    if getattr(settings, "ENABLE_OVERDUE_AUTO_PRODUCTION", False):
+                    if auto_prod_enabled:
                         for ch in overdue_channels:
                             cid = ch["channel_id"]
                             try:
@@ -561,7 +570,7 @@ class ChannelIntelligenceWorker:
                                 logger.error(f"[ChannelIntelligence] Lỗi tự động sản xuất cho kênh '{cid}': {e_ch}")
                     else:
                         if overdue_channels:
-                            logger.info(f"[ChannelIntelligence] Có {len(overdue_channels)} kênh trễ hạn nhưng ENABLE_OVERDUE_AUTO_PRODUCTION đang tắt (False). Không tự sinh video.")
+                            logger.debug(f"[ChannelIntelligence] Đang tạm ngưng tự động tạo video khi trống lịch ({len(overdue_channels)} kênh trống lịch).")
 
                 except Exception as ex:
                     logger.error(f"[ChannelIntelligence] Lỗi chu kỳ worker: {ex}")
