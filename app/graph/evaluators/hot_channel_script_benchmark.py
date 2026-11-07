@@ -298,7 +298,7 @@ Compare our generated script directly against the top million-view competitor ch
 STRICT HEAD-TO-HEAD REAL HOT SCRIPT COMPARISON RULES (PENALIZE `< 7.5` IF VIOLATED!):
 1. ZERO TEXTBOOK DATE / WIKIPEDIA THROAT-CLEARING IN SCENE 1–2: Real viral scripts (`Zack D. Films`, `Dark Skies`, `Fern`, `Você Sabia?`, and our own 63.1%-Stayed winners) NEVER waste Scene 2 (3.5s–8.0s) on a textbook date/calendar introduction (e.g., `"It's May 1941..."`, `"In 1912..."`, `"Back in the 18th century..."`). Scene 2 MUST jump straight into a visceral physical action, collision analogy, or impossible mechanical paradox! If Scene 2 opens with a textbook date/history lesson instead of physical escalation, score `spoken_voice_dna_vs_hot_channel <= 7.4` and list the exact rewrite in `gaps_vs_hot_channels`.
 2. ZERO ADJACENT SCENE REDUNDANCY (NO REPEATING THE SAME POINT IN SCENE N AND SCENE N+1): In a 35-second Short (7 scenes), every scene must introduce a NEW physical beat or contrasting comparison (like contrasting the air-filled Titan submersible vs. the water-flooded Titanic). If two adjacent scenes (e.g. Scene 4 and Scene 5) repeat the exact same physical explanation in slightly different words, score `dual_peak_5act_arc_vs_hot_channel <= 7.4` and demand replacing the duplicate scene with a concrete contrasting comparison or physical consequence.
-3. PUNCHY SPOKEN CADENCE (`<= 24 WORDS` PER SHORT SCENE): For 9:16 Shorts, if any scene exceeds 25 words of dense multi-clause prose that forces rushed TTS delivery, penalize `spoken_voice_dna_vs_hot_channel` and flag the exact scene to trim.
+3. PUNCHY SPOKEN CADENCE (`<= 24 WORDS` PER SHORT SCENE) & NON-PASSIVE SCENE 1 HOOK: For 9:16 Shorts, if any scene exceeds 25 words of dense multi-clause prose that forces rushed TTS delivery, score `spoken_voice_dna_vs_hot_channel <= 7.4` and flag the exact scene to trim. If Scene 1 merely describes passive walking/stalking (e.g., `"A jaguar stalks a caiman at the river's edge"`) or hides the 2nd combatant in an `A vs B` duel behind a vague phrase (`"maior predador sem ossos"` instead of naming `lula-colossal`), score `hook_0s_vs_hot_channel <= 7.5` and provide the exact rewrite in `gaps_vs_hot_channels`.
 
 CRITICAL DUAL-PILLAR VIRAL EVALUATION RULE (REWARD BOTH CO-EQUAL MILLION-VIEW ARCHETYPES!):
 Top million-view channels (`Zack D. Films`, `Você Sabia?`, `Casual Geographic`, `Fern`, `FossilVideos`, `Charisma on Command`, `IFinity What`) dominate YouTube Shorts using TWO co-equal viral pillars. Identify which pillar our script uses (`detected_viral_archetype`) and evaluate it by that pillar's exact million-view standard:
@@ -318,9 +318,9 @@ Top million-view channels (`Zack D. Films`, `Você Sabia?`, `Casual Geographic`,
 
 PART B — AUDIT THE SCRIPT LLM'S PER-SCENE `subject_entity` AND `search_queries` (ANTI-OFF-TOPIC SCENE SEARCH CHECK):
 Because the Script LLM that writes the narration is the primary authority that understands what each scene is actually about, verify that for EVERY scene (`scene_id` 1 to {len(scenes_payload)}):
-1. `subject_entity` explicitly names the exact canonical entity/species/person physically acting in that scene (resolving any pronouns like "It", "He", "They", "This creature" or role epithets like "the predator", "the prey" back to the real canonical name; in an "Entity A vs Entity B" duel, when a scene describes Entity B's reaction/defense, `subject_entity` MUST be Entity B!).
-2. `search_queries` contains 3–4 concrete, literal camera-visible English search queries (2–5 words each) that real YouTube/Pexels/Pixabay videographers actually use in titles — NEVER literal metaphor objects from similes, NEVER secondary side-props, and NEVER textbook/clinical jargon.
-3. Whenever any scene has an empty `subject_entity`, fewer than 2 `search_queries`, or a query that drifts off-topic / translates a metaphor literally, mark `is_on_topic: false` for that scene and provide the repaired `subject_entity` and 3–4 concrete `search_queries` inside `repaired_scene_search_map`!
+1. `subject_entity` explicitly names the exact canonical entity/species/person/warship physically acting in that scene (resolving any pronouns like "It", "He", "They", "This creature" or role epithets like "the predator", "the prey" back to the real canonical name; in an "Entity A vs Entity B" duel, when a scene describes Entity B's reaction/defense, `subject_entity` MUST be Entity B; NEVER set `subject_entity` to an internal mechanical part like `"Targeting Computer"` or `"Gears"` that pulls unrelated clockwork stock videos during a naval battle!).
+2. `search_queries` contains 3–4 concrete, literal camera-visible English search queries (2–5 words each) that real YouTube/Pexels/Pixabay videographers actually use in titles — NEVER literal metaphor objects from similes (`"wet concrete"`, `"brass gears"`), NEVER secondary side-props, and NEVER textbook/clinical jargon.
+3. Whenever any scene has an empty `subject_entity`, fewer than 2 `search_queries`, or a query that drifts off-topic / translates a metaphor or internal gear literally, mark `is_on_topic: false` for that scene and provide the repaired `subject_entity` and 3–4 concrete `search_queries` inside `repaired_scene_search_map`!
 
 --- OUR GENERATED SCRIPT TO AUDIT ---
 Topic: "{topic}"
@@ -331,31 +331,36 @@ Hook Variants: {json.dumps((script_data or {}).get("hook_variants") or [], ensur
 Scenes ({len(scenes_payload)} scenes):
 {json.dumps(scenes_payload, ensure_ascii=False, indent=2)}
 
+CALIBRATED SCORING SCALE (DO NOT RUBBER-STAMP 9.0+ IF ANY SCENE HAS A FLAW!):
+- `6.5 - 7.4`: Fails a strict rule (e.g., passive Scene 1 stalking caption, Scene 2 textbook date opener, adjacent scenes repeating the same point, or any Short scene > 25 words).
+- `7.8 - 8.4`: Solid script, minor room for sharper spoken punch.
+- `8.6 - 9.5`: True million-view showrunner quality across every single scene.
+
 Return ONLY a single valid JSON object (no markdown fences) matching this exact schema:
 {{
   "detected_viral_archetype": "pillar_1_direct_matchup | pillar_2_why_mystery_explainer",
   "benchmark_channels_compared": ["Name of Hot Channel 1", "Name of Hot Channel 2"],
   "title_vs_hot_channel": {{
-    "score": 9.0,
+    "score": 8.2,
     "hot_channel_reference": "Exact hot channel title pattern compared against (e.g. 'Entity A vs Entity B' OR 'Why [Named Entity/Place] [Counter-Intuitive Mystery]')",
     "comparison_notes": "How our title compares on explicit entity naming (YT_SEARCH discovery) and curiosity trigger"
   }},
   "hook_0s_vs_hot_channel": {{
-    "score": 9.0,
+    "score": 8.2,
     "hot_channel_reference": "Exact hot channel 0.0s hook pattern compared against",
     "comparison_notes": "How Scene 1 (0.0s) compares on immediate physical shock/paradox and zero title-question echo"
   }},
   "spoken_voice_dna_vs_hot_channel": {{
-    "score": 9.0,
+    "score": 8.2,
     "hot_channel_reference": "Casual Geographic / Zack D. Films / Charisma on Command / Você Sabia? spoken cadence",
-    "comparison_notes": "Evaluation of natural spoken contractions, plain everyday words, and absence of stiff AI essay phrasing"
+    "comparison_notes": "Evaluation of natural spoken contractions, plain everyday words, <=24 words/scene, and absence of stiff AI essay phrasing"
   }},
   "dual_peak_5act_arc_vs_hot_channel": {{
-    "score": 9.0,
+    "score": 8.2,
     "hot_channel_reference": "5-Act Dual-Peak 34s-40s retention curve (2-Way Duel OR Mystery-to-Hidden-Mechanism Reveal)",
-    "comparison_notes": "Evaluation of Act 3 mid-video twist/mechanism reveal (14s-18s) and Act 5 concrete physical mic-drop ending"
+    "comparison_notes": "Evaluation of Act 3 mid-video twist/mechanism reveal (14s-18s), zero Scene 4-5 redundancy, and Act 5 concrete physical mic-drop ending"
   }},
-  "script_llm_scene_search_score": 9.0,
+  "script_llm_scene_search_score": 8.5,
   "scene_search_audits": [
     {{
       "scene_id": 1,

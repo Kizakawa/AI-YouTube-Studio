@@ -217,6 +217,15 @@ class ScriptValidationLinter:
                 f"Too many scenes ({scene_count}). Keep between {min_scenes} and {max_scenes} complete-sentence scenes."
             )
 
+        if not is_long_form:
+            for sc in script.scenes:
+                sc_w = len(re.findall(r"\b[\w'-]+\b", str(sc.narration or ""), flags=re.UNICODE))
+                if sc_w > 25:
+                    issues.append(
+                        f"Scene {sc.scene_id} is too wordy for a Short ({sc_w} words > 25 max: '{str(sc.narration or '')[:55]}...'). "
+                        f"Keep every Short scene between 10 and 22 spoken words (1 crisp sentence) so TTS delivery never rushes!"
+                    )
+
         return issues, total_words
 
     @classmethod

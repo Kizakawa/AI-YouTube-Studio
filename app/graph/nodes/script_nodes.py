@@ -254,28 +254,24 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
     eval_dict["hot_channel_benchmark"] = hot_dict
     if hot_report.evaluated_by == "ai":
-        if isinstance(eval_dict.get("hook_strength"), dict) and float(eval_dict["hook_strength"].get("score", 0.0) or 0.0) >= 6.5:
-            blended_hk = round(
-                float(eval_dict["hook_strength"].get("score", 8.0)) * 0.55
-                + float(hot_report.hook_0s_vs_hot_channel.score) * 0.45,
-                1,
-            )
-            eval_dict["hook_strength"]["score"] = max(float(eval_dict["hook_strength"].get("score", 8.0)), blended_hk)
+        if isinstance(eval_dict.get("hook_strength"), dict):
+            cur_hk = float(eval_dict["hook_strength"].get("score", 8.0) or 8.0)
+            hot_hk = float(hot_report.hook_0s_vs_hot_channel.score)
+            blended_hk = round(cur_hk * 0.50 + hot_hk * 0.50, 1)
+            eval_dict["hook_strength"]["score"] = min(cur_hk, hot_hk) if hot_hk < 7.8 else blended_hk
         if isinstance(eval_dict.get("story_pacing"), dict):
-            blended_pc = round(
-                float(eval_dict["story_pacing"].get("score", 8.0)) * 0.55
-                + float(hot_report.spoken_voice_dna_vs_hot_channel.score) * 0.45,
-                1,
-            )
-            eval_dict["story_pacing"]["score"] = max(float(eval_dict["story_pacing"].get("score", 8.0)), blended_pc)
+            cur_pc = float(eval_dict["story_pacing"].get("score", 8.0) or 8.0)
+            hot_vc = float(hot_report.spoken_voice_dna_vs_hot_channel.score)
+            hot_ac = float(hot_report.dual_peak_5act_arc_vs_hot_channel.score)
+            hot_body = min(hot_vc, hot_ac)
+            blended_pc = round(cur_pc * 0.50 + ((hot_vc + hot_ac) / 2.0) * 0.50, 1)
+            eval_dict["story_pacing"]["score"] = hot_body if hot_body < 7.8 else blended_pc
         if isinstance(eval_dict.get("visual_direction"), dict):
-            blended_vs = round(
-                float(eval_dict["visual_direction"].get("score", 8.0)) * 0.55
-                + float(hot_report.script_llm_scene_search_score) * 0.45,
-                1,
-            )
-            eval_dict["visual_direction"]["score"] = max(float(eval_dict["visual_direction"].get("score", 8.0)), blended_vs)
-        blended_overall = round(float(eval_dict.get("overall_score", eval_report.overall_score)) * 0.60 + float(hot_report.overall_hot_benchmark_score) * 0.40, 1)
+            cur_vs = float(eval_dict["visual_direction"].get("score", 8.0) or 8.0)
+            hot_ss = float(hot_report.script_llm_scene_search_score)
+            blended_vs = round(cur_vs * 0.50 + hot_ss * 0.50, 1)
+            eval_dict["visual_direction"]["score"] = blended_vs
+        blended_overall = round(float(eval_dict.get("overall_score", eval_report.overall_score)) * 0.50 + float(hot_report.overall_hot_benchmark_score) * 0.50, 1)
         eval_dict["overall_score"] = blended_overall
         if not hot_report.passed:
             eval_dict["passed"] = False
@@ -286,7 +282,7 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
             and float((eval_dict.get("visual_direction") or {}).get("score", 0.0) or 0.0) >= 7.5
         ):
             eval_dict["passed"] = True
-    if not hot_report.passed and hot_report.gaps_vs_hot_channels:
+    if hot_report.gaps_vs_hot_channels:
         existing_critiques = list(eval_dict.get("actionable_critiques") or [])
         for gap_msg in hot_report.gaps_vs_hot_channels[:3]:
             formatted_gap = f"[HOT-CHANNEL BENCHMARK GAP] {gap_msg}"
