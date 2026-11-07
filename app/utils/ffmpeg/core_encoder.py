@@ -65,6 +65,13 @@ def _ensure_ffmpeg_in_path():
                 merged_dirs.append(d)
 
         os.environ["PATH"] = os.pathsep.join(merged_dirs)
+    else:
+        # Trên Linux / WSL2: Tự động nạp /usr/lib/wsl/lib vào LD_LIBRARY_PATH để mở khóa NVIDIA GPU (h264_nvenc)
+        wsl_lib = "/usr/lib/wsl/lib"
+        if os.path.isdir(wsl_lib):
+            ld_paths = [p for p in os.environ.get("LD_LIBRARY_PATH", "").split(os.pathsep) if p.strip()]
+            if wsl_lib not in ld_paths:
+                os.environ["LD_LIBRARY_PATH"] = os.pathsep.join([wsl_lib] + ld_paths)
 
     # Fallback cho cả Linux (Render Native) và Windows nếu chưa có ffmpeg trong PATH
     if not shutil.which("ffmpeg"):

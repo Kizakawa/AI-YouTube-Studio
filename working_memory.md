@@ -6,10 +6,11 @@
 
 ---
 
-## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-07 09:41 +07:00`)
+## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-07 10:38 +07:00`)
 
-- **Nhánh Git hiện tại**: `main` (đồng bộ sạch với `origin/main`).
+- **Nhánh Git hiện tại**: `main` (đồng bộ sạch với `origin/main` và `/home/vv1nc/Youtube` trên WSL2).
 - **Tác vụ vừa hoàn thành**:
+  - `TASK-019`: **Chuyển toàn bộ ổ đĩa ảo `ext4.vhdx` của Ubuntu 26.04 LTS (WSL2) sang `D:\WSL\Ubuntu` và thiết lập Không Gian Dự Án Gốc `/home/vv1nc/Youtube` bên trong WSL2** (cài đặt `ms-vscode-remote.remote-wsl`, VS Code Server `~/.vscode-server`, `uv`, `.venv` Python 3.12, và tự động nạp `/usr/lib/wsl/lib` trong [`core_encoder.py`](file:///d:/Python/Youtube/app/utils/ffmpeg/core_encoder.py) để mở khóa trực tiếp card đồ họa rời **`NVIDIA GeForce RTX 3050 (`h264_nvenc`)`** bên trong WSL2).
   - Nâng cấp toàn diện **System Prompt sinh kịch bản (`ContentAgent` 3 tầng trong [`app/agents/content/script_generator_mixin.py`](file:///d:/Python/Youtube/app/agents/content/script_generator_mixin.py))**, **Bộ quy tắc Prose DNA ([`app/services/niche_manager.py`](file:///d:/Python/Youtube/app/services/niche_manager.py))**, và **Hồ sơ Ngách YAML ([`config/niches/alternate_history.yaml`](file:///d:/Python/Youtube/config/niches/alternate_history.yaml), [`config/niches/deep_sea_earth_mysteries.yaml`](file:///d:/Python/Youtube/config/niches/deep_sea_earth_mysteries.yaml))** kết hợp với **`HotChannelScriptBenchmarkEvaluator` ([`app/graph/evaluators/hot_channel_script_benchmark.py`](file:///d:/Python/Youtube/app/graph/evaluators/hot_channel_script_benchmark.py))**:
     1. Tự động bơm trực tiếp nguyên văn phụ đề thật của các video Hot trên YouTube cùng chủ đề (`_fetch_live_hot_scripts_for_topic`) vào thẳng **System Prompt của `ContentAgent` ngay từ bước viết kịch bản (Stage 1 & Stage 2)**.
     2. Loại bỏ tận gốc chỉ dẫn cũ trong `alternate_history.yaml` từng bảo LLM viết ngày tháng lịch sử ở Cảnh 2 (`Act 2: Exact Historical Date`), thay bằng hành động vật lý trực diện ở thì hiện tại (như *Dark Skies 105K views*).
