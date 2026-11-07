@@ -505,7 +505,7 @@ Return ONLY a single valid JSON object (no markdown fences) matching this exact 
             scene_search_audits=scene_audits,
             overall_hot_benchmark_score=overall,
             hot_parity_percent=parity_pct,
-            passed=bool(overall >= 8.0 and h_dim.score >= 8.0),
+            passed=bool(overall >= 8.0 and h_dim.score >= 8.0 and v_dim.score >= 7.8 and a_dim.score >= 7.8),
             winning_strengths_vs_hot_channels=strengths,
             gaps_vs_hot_channels=gaps,
             repaired_scene_search_map=repaired_map,
