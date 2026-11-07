@@ -94,7 +94,7 @@ def _resolve_and_load_client_secret(base_dir: Path, preferred_acc_ids: List[str]
     đảm bảo mỗi Google Cloud Project trong Quota Pool giữ nguyên client_id độc lập.
     """
     search_order: List[str] = []
-    for acc in list(preferred_acc_ids) + ["acount_2", "account_1", "accout3", "acccount4", "account_2", "account_3", "project_pool_2"]:
+    for acc in list(preferred_acc_ids) + ["project_pool_7", "acount_2", "account_1", "accout3", "acccount4", "account_2", "account_3", "project_pool_2", "project_pool_6"]:
         acc_clean = (acc or "").strip()
         if acc_clean and acc_clean not in search_order:
             search_order.append(acc_clean)

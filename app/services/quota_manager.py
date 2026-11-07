@@ -93,6 +93,7 @@ class QuotaManager:
         "ai-youtube-studio-509521": "YT-Pool-04-Brazil (Gmail T)",
         "effective-cacao-511414-q3": "YT-Pool-05-Wildlife-Rescue (Gmail T)",
         "yt-pool-06-backup-br": "YT-Pool-06-Backup-BR (Gmail T)",
+        "astute-impulse-514019-q3": "YT-Pool-07-Music-Flow (Gmail V)",
     }
 
     @classmethod
@@ -102,6 +103,8 @@ class QuotaManager:
             return cls.PROJECT_FRIENDLY_LABELS[pid]
         if "pool-06" in pid.lower() or "pool6" in pid.lower():
             return f"YT-Pool-06-Backup-BR ({pid})"
+        if "pool-07" in pid.lower() or "pool7" in pid.lower():
+            return f"YT-Pool-07-Music-Flow ({pid})"
         return pid or "default_project"
 
     @staticmethod
