@@ -115,19 +115,77 @@ class HotChannelScriptBenchmarkEvaluator:
             "video_search_strategy": vss,
         }
 
-    @staticmethod
+    _LIVE_HOT_SCRIPT_CACHE: Dict[str, List[Dict[str, Any]]] = {}
+
+    @classmethod
     def _fetch_live_hot_scripts_for_topic(
+        cls,
         topic: str,
         primary_entity: str = "",
         channel_style: str = "general",
     ) -> List[Dict[str, Any]]:
         """
-        Truy xuất trực tiếp 2–3 kịch bản Hot thực tế để đặt lên bàn cân so sánh 1-đối-1:
+        Truy xuất trực tiếp 2–4 kịch bản Hot thực tế để đặt lên bàn cân so sánh 1-đối-1:
         1) Kịch bản thật từ các video có lượt xem cao nhất trên YouTube cùng chủ đề (`yt-dlp` + `YouTubeTranscriptApi`).
-        2) Kịch bản thật từ các video đã nổ view (`views >= 1,000`, `Stayed% >= 50%`) trong Database của hệ thống 7 kênh.
+        2) Kịch bản thật từ các video đã nổ view (`views >= 800`, `Stayed% >= 50%`) trong Database của hệ thống 7 kênh.
+        Có bộ nhớ đệm in-memory theo `topic` để bước Sinh Kịch Bản (`ContentAgent`) và Chấm Điểm (`HotChannelBenchmark`) dùng chung tức thì.
         """
+        cache_key = re.sub(r"\W+", "_", str(topic or primary_entity or channel_style).lower()).strip("_")[:80]
+        if cache_key and cache_key in cls._LIVE_HOT_SCRIPT_CACHE:
+            return list(cls._LIVE_HOT_SCRIPT_CACHE[cache_key])
+
         hot_scripts: List[Dict[str, Any]] = []
-        # 1. Lấy Top Winners thực tế từ DB của hệ thống
+        # 1. Lấy trực tiếp phụ đề video Hot thật trên YouTube cùng chủ đề (ưu tiên số 1 để đối sánh trực tiếp cùng đề tài)
+        try:
+            import subprocess
+            import sys
+            from youtube_transcript_api import YouTubeTranscriptApi
+            _q_stop = {
+                "why", "this", "that", "how", "what", "when", "where", "who",
+                "the", "and", "for", "into", "from", "with", "under", "over",
+                "por", "que", "como", "uma", "com", "dos", "das", "nos", "nas", "esse", "essa",
+            }
+            q_clean = re.sub(r"#\S+", "", str(topic or primary_entity or "")).strip()
+            q_words = [w for w in re.split(r"\W+", q_clean) if len(w) >= 3 and w.lower() not in _q_stop][:6]
+            if q_words:
+                search_q = f"ytsearch6:{' '.join(q_words)}"
+                cmd = [sys.executable, "-m", "yt_dlp", "--dump-json", "--flat-playlist", "--no-warnings", search_q]
+                res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=14.0)
+                cands = []
+                for ln in res.stdout.splitlines():
+                    try:
+                        o = json.loads(ln)
+                        vc = o.get("view_count")
+                        if o.get("id") and (vc is None or int(vc or 0) >= 1000):
+                            cands.append(o)
+                    except Exception:
+                        pass
+                cands.sort(key=lambda x: int(x.get("view_count") or 0), reverse=True)
+                yt_api = YouTubeTranscriptApi()
+                for c in cands[:6]:
+                    vid = c["id"]
+                    try:
+                        tlist = yt_api.list(vid)
+                        tr_obj = next((t for t in tlist if t.language_code.startswith(("en", "pt"))), None)
+                        if tr_obj:
+                            fetched = tr_obj.fetch()
+                            tr_txt = " ".join(s.text.replace("\n", " ") for s in fetched[:22]).strip()
+                            if len(tr_txt) >= 80:
+                                vc_val = int(c.get("view_count") or 0)
+                                vc_str = f"{vc_val:,} views" if vc_val > 0 else "Top YouTube Search Hit"
+                                hot_scripts.append({
+                                    "source": f"YouTube Live Hot Video ({vid} | {c.get('uploader') or c.get('channel') or 'Creator'} | {vc_str})",
+                                    "title": str(c.get("title") or ""),
+                                    "transcript": tr_txt[:650],
+                                })
+                                if len(hot_scripts) >= 2:
+                                    break
+                    except Exception:
+                        continue
+        except Exception as yt_e:
+            logger.debug(f"[HotChannelBenchmark] Live YouTube transcript fetch skip: {yt_e}")
+
+        # 2. Lấy Top Winners thực tế từ DB của hệ thống (cả EN & pt-BR)
         try:
             import sqlite3
             from pathlib import Path
@@ -143,67 +201,36 @@ class HotChannelScriptBenchmarkEvaluator:
                     INNER JOIN video_jobs j ON p.job_id = j.id
                     WHERE p.views >= 800 AND (j.script IS NOT NULL OR j.scenes_json IS NOT NULL)
                     ORDER BY p.views DESC
-                    LIMIT 2
+                    LIMIT 6
                     """
                 )
-                for row in cur.fetchall():
+                rows = cur.fetchall()
+                # Chọn 1 bản EN winner và 1 bản PT winner có đủ kịch bản
+                added_db = 0
+                for row in rows:
                     sc_txt = str(row["script"] or "").strip()
                     if not sc_txt and row["scenes_json"]:
                         sj = json.loads(row["scenes_json"] or "[]")
                         scs = sj if isinstance(sj, list) else (sj.get("scenes", []) if isinstance(sj, dict) else [])
                         sc_txt = " ".join(str(x.get("narration") or "") for x in scs if isinstance(x, dict)).strip()
                     if len(sc_txt) >= 80:
+                        stayed_info = f" | Stayed={row['stayed_to_watch_pct']:.1f}%" if row["stayed_to_watch_pct"] else ""
                         hot_scripts.append({
-                            "source": f"Our Verified Viral Winner ({row['youtube_video_id']} | {row['views']:,} views)",
+                            "source": f"Our Verified Viral Winner ({row['youtube_video_id']} | {row['views']:,} views{stayed_info})",
                             "title": str(row["title"] or ""),
                             "transcript": sc_txt[:650],
                         })
+                        added_db += 1
+                        if added_db >= 2:
+                            break
                 conn.close()
         except Exception as db_e:
             logger.debug(f"[HotChannelBenchmark] DB winner fetch skip: {db_e}")
 
-        # 2. Lấy trực tiếp phụ đề video Hot thật trên YouTube cùng chủ đề (giới hạn thời gian nhanh <= 8.0s)
-        try:
-            import subprocess
-            import sys
-            from youtube_transcript_api import YouTubeTranscriptApi
-            q_clean = re.sub(r"#\S+", "", str(primary_entity or topic or "")).strip()
-            q_words = [w for w in re.split(r"\W+", q_clean) if len(w) >= 3][:6]
-            if q_words:
-                search_q = f"ytsearch5:{' '.join(q_words)}"
-                cmd = [sys.executable, "-m", "yt_dlp", "--dump-json", "--flat-playlist", "--no-warnings", search_q]
-                res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=8.0)
-                cands = []
-                for ln in res.stdout.splitlines():
-                    try:
-                        o = json.loads(ln)
-                        if (o.get("view_count") or 0) >= 5000 and o.get("id"):
-                            cands.append(o)
-                    except Exception:
-                        pass
-                cands.sort(key=lambda x: x.get("view_count") or 0, reverse=True)
-                yt_api = YouTubeTranscriptApi()
-                for c in cands[:2]:
-                    vid = c["id"]
-                    try:
-                        tlist = yt_api.list(vid)
-                        tr_obj = next((t for t in tlist if t.language_code.startswith(("en", "pt"))), None)
-                        if tr_obj:
-                            fetched = tr_obj.fetch()
-                            tr_txt = " ".join(s.text.replace("\n", " ") for s in fetched[:22]).strip()
-                            if len(tr_txt) >= 80:
-                                hot_scripts.append({
-                                    "source": f"YouTube Live Hot Video ({vid} | {c.get('uploader') or 'Creator'} | {int(c.get('view_count') or 0):,} views)",
-                                    "title": str(c.get("title") or ""),
-                                    "transcript": tr_txt[:650],
-                                })
-                                break
-                    except Exception:
-                        continue
-        except Exception as yt_e:
-            logger.debug(f"[HotChannelBenchmark] Live YouTube transcript fetch skip: {yt_e}")
-
-        return hot_scripts[:4]
+        out_list = hot_scripts[:4]
+        if cache_key and out_list:
+            cls._LIVE_HOT_SCRIPT_CACHE[cache_key] = out_list
+        return out_list
 
     @trace_custom_span("HotChannelScriptBenchmarkEvaluator.evaluate_against_hot_channels", run_type="llm")
     def evaluate_against_hot_channels(
@@ -386,6 +413,9 @@ Return ONLY a single valid JSON object (no markdown fences) matching this exact 
                         parsed, script_data, ref_pack, eff_entity, live_hot_scripts=live_hot_scripts
                     )
             except Exception as ex:
+                err_s = str(ex)
+                if "timed out" in err_s.lower() or "timeout" in err_s.lower():
+                    self.rotator.mark_model_rate_limited(key, model, status_code=504, error_text=err_s[:200])
                 logger.warning(f"[HotChannelBenchmark] ({model}) error: {ex}")
                 continue
 
