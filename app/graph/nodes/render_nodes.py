@@ -988,6 +988,20 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
         combined_passed = False
         combined_issues.append(f"Còn sót thẻ chữ placeholder (_graphic.png) ở cảnh {graphic_scenes}")
 
+    # Hard-block nếu VisualCritic (media_eval) vẫn chưa đạt chuẩn (passed == False hoặc còn failed_scene_ids)
+    media_eval_state = state.get("media_eval") or {}
+    if isinstance(media_eval_state, dict) and media_eval_state:
+        vc_failed_ids = list(media_eval_state.get("failed_scene_ids") or [])
+        vc_passed = bool(media_eval_state.get("passed", True))
+        vc_ov_score = float(media_eval_state.get("overall_score") or 0.0)
+        if not vc_passed or vc_failed_ids or (0.0 < vc_ov_score < 8.0):
+            video_score = max(0, video_score - 25)
+            combined_passed = False
+            vc_summary = str(media_eval_state.get("summary") or f"failed_scene_ids={vc_failed_ids}")[:180]
+            combined_issues.append(
+                f"VisualCritic chưa đạt chuẩn (score={vc_ov_score:.1f}/10, failed_scenes={vc_failed_ids}): {vc_summary}"
+            )
+
     # Hard-block bất kỳ video Shorts nào có 5-7s đầu tiên là ảnh tĩnh hoặc bị khựng khung hình (freeze_max_sec > 0)
     if video_format != "long" and rendered_video_path and Path(rendered_video_path).exists():
         try:
