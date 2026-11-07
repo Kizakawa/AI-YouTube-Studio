@@ -6,10 +6,11 @@
 
 ---
 
-## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-07 00:36 +07:00`)
+## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-07 09:16 +07:00`)
 
 - **Nhánh Git hiện tại**: `main` (đồng bộ sạch với `origin/main`).
 - **Tác vụ vừa hoàn thành**:
+  - Kiểm toán hiệu suất thực tế (`YouTube Data API v3` + `YouTube Analytics API v2`) của toàn bộ 7 kênh, đồng bộ tự động bình luận ghim kèm link điều hướng sang Video dài 10 phút (`engagement_comments_mixin.py`), chuyển `DcN_wEKF-Ek` (`Job #776`, bị trượt `VisualCritic` ở Cảnh 2) về `PRIVATE` để dồn luồng Seed Wave cho `jOXGfmsc0w4` (`Job #773` — *Bismarck Battleship vs Swordfish*, đạt `9.1/10` 5 Graders & `100%` video chuyển động), và khóa cứng cổng kiểm duyệt `VisualCritic` trong `node_evaluate_video` (`render_nodes.py`).
   - `TASK-013` & Kiểm toán/Tự chữa lành SEO Tags (`seo_tags_mixin.py` & `metadata_healer_mixin.py`): Kiểm toán trực tiếp qua YouTube Data API v3 toàn bộ **7 kênh** và **12 video Shorts vừa xuất bản (`#773`–`#784`)**, nâng cấp thuật toán bóc tách thực thể cấu trúc từ tiêu đề (`Pillar A Matchup` + `Pillar B Named Entity / Question NP`), phân tách thông minh `deep_sea_earth_mysteries` (Biển sâu vs Địa chất trên cạn như *Lake Natron*), và đồng bộ (`videos().update`) 100% bộ Tags + Hashtags thực thể lên cả 12 video trên YouTube mà giữ nguyên tuyệt đối giờ hẹn `publishAt`.
   - `TASK-007`: Hoàn tất nghiệm thu thực tế (`End-to-End Video QA`) cho cả 2 trụ cột Viral (`pillar_1_direct_matchup` và `pillar_2_why_mystery_explainer`).
 
