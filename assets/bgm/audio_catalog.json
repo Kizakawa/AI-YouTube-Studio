@@ -18,7 +18,11 @@
     "psychology": "04_dark_psychology",
     "@alternatehistorywhatif-e2x": "05_alternate_history",
     "alternate_history": "05_alternate_history",
-    "history": "05_alternate_history"
+    "history": "05_alternate_history",
+    "ch_study_music_lofi": "06_study_music_lofi",
+    "study_music": "06_study_music_lofi",
+    "pomodoro_study": "06_study_music_lofi",
+    "lofi_study": "06_study_music_lofi"
   },
   "niches": {
     "01_animal_rescue_paws": {
@@ -129,6 +133,48 @@
         }
       },
       "sfx_tracks": {}
+    },
+    "06_study_music_lofi": {
+      "prefix": "STUDY",
+      "default_bgm": "06_study_music_lofi/STUDY_BGM_01_lofi_warm_rain.wav",
+      "master_library_dir": "D:/AI_YouTube_Project_Ready/Music/06_study_music_lofi/bgm",
+      "bgm_tracks": {
+        "lofi_warm_rain": {
+          "file": "06_study_music_lofi/STUDY_BGM_01_lofi_warm_rain.wav",
+          "instrument": "Warm Lofi Upright Piano, Jazz Brush Drums & Vinyl Rain",
+          "bpm": 72,
+          "semantic_triggers": ["study", "lofi", "focus", "pomodoro", "coding", "homework", "late night", "rain"]
+        },
+        "piano_rain_library": {
+          "file": "06_study_music_lofi/STUDY_BGM_09_piano_rain_library.wav",
+          "instrument": "Neo-Classical Felt Piano & Rainy Library Reverb",
+          "bpm": 60,
+          "semantic_triggers": ["reading", "book", "library", "piano", "journaling", "writing", "quiet", "calm"]
+        },
+        "ambient_deep_focus": {
+          "file": "06_study_music_lofi/STUDY_BGM_16_ambient_deep_focus.wav",
+          "instrument": "Warm Analog Synth Drone & Sparse Binaural Piano",
+          "bpm": 48,
+          "semantic_triggers": ["exam", "deep focus", "ambient", "binaural", "theta", "concentration", "revision"]
+        },
+        "jazz_autumn_cafe": {
+          "file": "06_study_music_lofi/STUDY_BGM_20_jazz_autumn_cafe.wav",
+          "instrument": "Cozy Cafe Acoustic Guitar, Upright Bass & Rhodes",
+          "bpm": 82,
+          "semantic_triggers": ["jazz", "cafe", "coffee", "autumn", "cozy", "fireplace", "morning"]
+        },
+        "break_acoustic_sun": {
+          "file": "06_study_music_lofi/STUDY_BRK_23_break_acoustic_sun.wav",
+          "instrument": "Bright Fingerpicked Acoustic Guitar & Ukulele",
+          "bpm": 88,
+          "semantic_triggers": ["break", "rest", "relax", "stretch", "refresh", "intermission"]
+        }
+      },
+      "sfx_tracks": {
+        "bell_session_start": "06_study_music_lofi/STUDY_SFX_28_bell_session_start.wav",
+        "bell_break_chime": "06_study_music_lofi/STUDY_SFX_29_bell_break_chime.wav",
+        "bell_session_complete": "06_study_music_lofi/STUDY_SFX_30_bell_session_complete.wav"
+      }
     }
   }
 }
