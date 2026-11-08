@@ -1,0 +1,12 @@
+{
+  "id": "summer_breeze",
+  "display_name": "Summer Starry Night ☀️",
+  "season": "summer",
+  "particle_type": "fireflies",
+  "particle_color_rgba": [255, 240, 150, 170],
+  "accent_hex": "#5DADE2",
+  "break_accent_hex": "#76D7C4",
+  "color_tint_rgb": [0.96, 1.0, 1.03],
+  "lamp_glow_rgba": [255, 215, 110, 22],
+  "subtitle_tag": "Summer Night Fireflies • Ocean Breeze • Flow State"
+}

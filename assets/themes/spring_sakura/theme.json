@@ -1,0 +1,12 @@
+{
+  "id": "spring_sakura",
+  "display_name": "Spring Sakura Breeze 🌸",
+  "season": "spring",
+  "particle_type": "sakura",
+  "particle_color_rgba": [255, 183, 197, 165],
+  "accent_hex": "#F1948A",
+  "break_accent_hex": "#82E0AA",
+  "color_tint_rgb": [1.03, 0.97, 1.01],
+  "lamp_glow_rgba": [255, 210, 150, 22],
+  "subtitle_tag": "Sakura Petals • Gentle Breeze • Peaceful Reading"
+}

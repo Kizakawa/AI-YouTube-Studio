@@ -1,0 +1,64 @@
+{
+  "id": "corgi_puppy",
+  "display_name": "Corgi Puppy 🐶",
+  "species": "dog",
+  "companion_title": "Fluffy Pembroke Corgi Companion",
+  "description": "Bé Corgi chân ngắn tai to đáng yêu nằm canh bàn học, đôi tai dựng lớn giật nhẹ theo tiếng mưa và mông tròn lắc lư.",
+  "background_image": "corgi_puppy_study_bg.jpg",
+  "placement": {
+    "x": 220,
+    "y": 630,
+    "width": 620,
+    "height": 330
+  },
+  "zones": {
+    "body_breath": { "x1": 310, "y1": 640, "x2": 680, "y2": 875 },
+    "ear": { "x1": 575, "y1": 655, "x2": 735, "y2": 795, "pivot_x": 650, "pivot_y": 725 },
+    "tail": { "x1": 215, "y1": 775, "x2": 450, "y2": 945, "pivot_x": 260, "pivot_y": 830 },
+    "head": { "x1": 580, "y1": 665, "x2": 835, "y2": 895, "eye_left": [700, 785], "eye_right": [775, 780], "nose": [785, 840] },
+    "front_paw": { "x1": 765, "y1": 805, "x2": 845, "y2": 865 }
+  },
+  "animations": {
+    "idle_breathing": {
+      "enabled": true,
+      "amplitude_px": 9.0,
+      "expand_px": 4.5,
+      "cycle_sec": 3.33
+    },
+    "ear_twitch": {
+      "enabled": true,
+      "windows_sec": [[1.0, 1.9], [4.8, 5.7], [7.9, 8.7]],
+      "shift_y_px": -16.0,
+      "shift_x_px": 6.5
+    },
+    "tail_wag": {
+      "enabled": true,
+      "windows_sec": [[2.2, 4.4], [6.2, 8.8]],
+      "amplitude_px": 17.0,
+      "freq_hz": 3.0
+    },
+    "sleep_shift": {
+      "enabled": true,
+      "windows_sec": [[4.3, 5.5]],
+      "shift_x_px": 7.5,
+      "shift_y_px": -6.0
+    },
+    "yawn_stretch": {
+      "enabled": true,
+      "windows_sec": [[8.1, 9.6]],
+      "scale_factor": 1.045
+    },
+    "break_wakeup": {
+      "enabled": true,
+      "head_lift_px": -15.0,
+      "ear_perk_px": -14.0,
+      "tail_continuous_wag": true
+    }
+  },
+  "speech_bubble": {
+    "box": [185, 445, 910, 595],
+    "tail_tip": [705, 670],
+    "tail_base_left": [625, 595],
+    "tail_base_right": [690, 595]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "winter_cabin",
+  "display_name": "Winter Snowy Cabin ❄️",
+  "season": "winter",
+  "particle_type": "snow",
+  "particle_color_rgba": [240, 248, 255, 175],
+  "accent_hex": "#85C1E9",
+  "break_accent_hex": "#A3E4D7",
+  "color_tint_rgb": [0.95, 0.98, 1.04],
+  "lamp_glow_rgba": [255, 205, 120, 28],
+  "subtitle_tag": "Snowfall Outside • Warm Cabin Fireplace • Deep Focus"
+}

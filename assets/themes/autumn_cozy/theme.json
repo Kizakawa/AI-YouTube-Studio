@@ -1,0 +1,12 @@
+{
+  "id": "autumn_cozy",
+  "display_name": "Autumn Rainy Study 🍂",
+  "season": "autumn",
+  "particle_type": "rain",
+  "particle_color_rgba": [200, 225, 255, 110],
+  "accent_hex": "#F5B041",
+  "break_accent_hex": "#82E0AA",
+  "color_tint_rgb": [1.0, 0.98, 0.94],
+  "lamp_glow_rgba": [255, 195, 95, 24],
+  "subtitle_tag": "Autumn Rain • Warm Study Lamp • Cozy Companion"
+}

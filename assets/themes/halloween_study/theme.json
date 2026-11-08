@@ -1,0 +1,12 @@
+{
+  "id": "halloween_study",
+  "display_name": "Spooky Candlelight Study 🎃",
+  "season": "holiday",
+  "particle_type": "embers",
+  "particle_color_rgba": [255, 165, 60, 160],
+  "accent_hex": "#EB984E",
+  "break_accent_hex": "#BB8FCE",
+  "color_tint_rgb": [1.05, 0.94, 0.98],
+  "lamp_glow_rgba": [255, 150, 55, 32],
+  "subtitle_tag": "Warm Candlelight • Mystic Night Rain • Deep Focus"
+}

@@ -1,0 +1,64 @@
+{
+  "id": "calico_cat",
+  "display_name": "Calico Cat 🐱",
+  "species": "cat",
+  "companion_title": "Cozy Purring Calico Cat",
+  "description": "Bé mèo Tam Thể cuộn tròn ấm áp bên cửa sổ mưa, đôi tai nhọn thi thoảng giật nhẹ và chiếc đuôi bông đung đưa theo nhạc.",
+  "background_image": "calico_cat_study_bg.jpg",
+  "placement": {
+    "x": 220,
+    "y": 620,
+    "width": 620,
+    "height": 330
+  },
+  "zones": {
+    "body_breath": { "x1": 310, "y1": 640, "x2": 680, "y2": 880 },
+    "ear": { "x1": 570, "y1": 660, "x2": 730, "y2": 790, "pivot_x": 640, "pivot_y": 730 },
+    "tail": { "x1": 215, "y1": 790, "x2": 490, "y2": 955, "pivot_x": 265, "pivot_y": 840 },
+    "head": { "x1": 565, "y1": 665, "x2": 825, "y2": 895, "eye_left": [685, 785], "eye_right": [755, 780], "nose": [735, 825] },
+    "front_paw": { "x1": 745, "y1": 810, "x2": 835, "y2": 875 }
+  },
+  "animations": {
+    "idle_breathing": {
+      "enabled": true,
+      "amplitude_px": 8.5,
+      "expand_px": 4.0,
+      "cycle_sec": 3.33
+    },
+    "ear_twitch": {
+      "enabled": true,
+      "windows_sec": [[1.2, 2.0], [5.2, 6.1], [8.2, 8.9]],
+      "shift_y_px": -15.0,
+      "shift_x_px": 6.0
+    },
+    "tail_wag": {
+      "enabled": true,
+      "windows_sec": [[2.0, 4.5], [6.5, 9.2]],
+      "amplitude_px": 18.0,
+      "freq_hz": 1.8
+    },
+    "sleep_shift": {
+      "enabled": true,
+      "windows_sec": [[4.5, 5.8]],
+      "shift_x_px": 6.5,
+      "shift_y_px": -5.5
+    },
+    "yawn_stretch": {
+      "enabled": true,
+      "windows_sec": [[7.8, 9.4]],
+      "scale_factor": 1.05
+    },
+    "break_wakeup": {
+      "enabled": true,
+      "head_lift_px": -15.0,
+      "ear_perk_px": -13.0,
+      "tail_continuous_wag": true
+    }
+  },
+  "speech_bubble": {
+    "box": [185, 445, 910, 595],
+    "tail_tip": [690, 675],
+    "tail_base_left": [610, 595],
+    "tail_base_right": [675, 595]
+  }
+}
