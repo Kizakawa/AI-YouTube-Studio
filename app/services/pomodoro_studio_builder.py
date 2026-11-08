@@ -34,6 +34,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
@@ -648,6 +649,180 @@ def generate_cozy_dog_study_background(out_png: Path, width: int = 1920, height:
     return out_png
 
 
+def ensure_cozy_dog_cinemagraph_loop(
+    work_dir: Path,
+    fps: int = 24,
+    loop_sec: float = 6.0,
+    ffmpeg_exe: str = "ffmpeg",
+) -> Path:
+    """
+    Tạo (hoặc lấy từ cache) đoạn Video Loop Cinemagraph 1920x1080 mượt mà từ bức tranh
+    Cozy Golden Retriever Study Room (`cozy_lofi_study_room_bg.jpg`):
+      1. Hạt mưa rơi chuyển động mượt bên ngoài 2 ô cửa sổ đêm.
+      2. Nhịp thở phập phồng êm dịu (4s/nhịp) trên lưng chú chó Golden Retriever đang ngủ.
+      3. Ánh đèn bàn vàng ấm áp lung linh nhẹ + hạt bụi sáng bay lơ lửng dưới chao đèn.
+      4. Làn khói cà phê bốc lên uốn lượn nhẹ từ chiếc cốc gốm trên bàn.
+    """
+    cached_loop = DEFAULT_CATALOG_BGM_ROOT / "cozy_dog_cinemagraph_loop.mp4"
+    if cached_loop.exists() and cached_loop.stat().st_size > 100_000:
+        return cached_loop
+
+    bg_candidates = [
+        DEFAULT_CATALOG_BGM_ROOT / "cozy_lofi_study_room_bg.jpg",
+        DEFAULT_MASTER_BGM_ROOT.parent / "cozy_lofi_study_room_bg.jpg",
+    ]
+    src_art = next((p for p in bg_candidates if p.exists()), None)
+    if src_art is None:
+        fallback_png = generate_cozy_dog_study_background(work_dir / "fallback_bg.png")
+        return fallback_png
+
+    base_im = Image.open(str(src_art)).convert("RGBA").resize((1920, 1080), Image.Resampling.LANCZOS)
+    base_np = np.array(base_im, dtype=np.uint8)
+
+    # Chuẩn bị vùng ngực/lưng chú chó Golden Retriever (x=230..620, y=635..865) để nội suy nhịp thở
+    dog_x1, dog_y1, dog_x2, dog_y2 = 230, 635, 620, 865
+    dog_h = dog_y2 - dog_y1
+    dog_w = dog_x2 - dog_x1
+    yy, xx = np.mgrid[0:dog_h, 0:dog_w].astype(np.float32)
+    ny = (yy / float(dog_h)) * 2.0 - 1.0
+    nx = (xx / float(dog_w)) * 2.0 - 1.0
+    breath_weight = np.clip(1.0 - (nx * nx + ny * ny), 0.0, 1.0) ** 1.6
+
+    # Khởi tạo hạt mưa trong 2 khung kính cửa sổ (tránh đè lên chậu cây phía dưới y=385)
+    rng = random.Random(2026)
+    rain_drops = []
+    window_panes = [
+        (155, 18, 535, 375),  # Ô cửa kính trái
+        (580, 18, 865, 395),  # Ô cửa kính phải
+    ]
+    for px1, py1, px2, py2 in window_panes:
+        for _ in range(55):
+            rain_drops.append(
+                {
+                    "px1": px1,
+                    "py1": py1,
+                    "px2": px2,
+                    "py2": py2,
+                    "x0": rng.uniform(px1 + 8, px2 - 8),
+                    "y0": rng.uniform(py1, py2),
+                    "speed": rng.choice([1.0, 2.0]),  # Số chu kỳ rơi trọn vẹn trong loop_sec
+                    "len": rng.randint(18, 34),
+                    "alpha": rng.randint(65, 135),
+                }
+            )
+
+    # Hạt bụi vàng (Dust Motes) bay chậm dưới ánh đèn bàn học (x=820..1240, y=260..620)
+    dust_motes = []
+    for _ in range(18):
+        dust_motes.append(
+            {
+                "x": rng.uniform(840, 1220),
+                "y": rng.uniform(280, 610),
+                "amp_x": rng.uniform(6.0, 16.0),
+                "amp_y": rng.uniform(8.0, 20.0),
+                "phase": rng.uniform(0.0, 2.0 * math.pi),
+                "r": rng.choice([2, 3]),
+                "alpha": rng.randint(75, 145),
+            }
+        )
+
+    total_frames = int(round(fps * loop_sec))
+    frames_dir = work_dir / "_cinemagraph_frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+
+    dog_patch_orig = base_np[dog_y1:dog_y2, dog_x1:dog_x2].copy()
+
+    for f_i in range(total_frames):
+        prog = f_i / float(total_frames)
+        theta = 2.0 * math.pi * prog
+
+        frame_np = base_np.copy()
+
+        # 1. Nhịp thở nhẹ nhàng của chú chó Golden Retriever (2 nhịp thở trong 6 giây)
+        breath_shift = 3.2 * math.sin(2.0 * theta)
+        src_y = np.clip(yy + breath_shift * breath_weight, 0, dog_h - 1)
+        y0_idx = np.floor(src_y).astype(np.int32)
+        y1_idx = np.clip(y0_idx + 1, 0, dog_h - 1)
+        wy = (src_y - y0_idx)[..., None]
+        x_idx = np.arange(dog_w, dtype=np.int32)[None, :]
+        warped_dog = (
+            dog_patch_orig[y0_idx, x_idx].astype(np.float32) * (1.0 - wy)
+            + dog_patch_orig[y1_idx, x_idx].astype(np.float32) * wy
+        ).astype(np.uint8)
+        frame_np[dog_y1:dog_y2, dog_x1:dog_x2] = warped_dog
+
+        frame_im = Image.fromarray(frame_np)
+        fx_layer = Image.new("RGBA", (1920, 1080), (0, 0, 0, 0))
+        fdr = ImageDraw.Draw(fx_layer)
+
+        # 2. Vẽ mưa rơi ngoài khung cửa sổ đêm
+        for rd in rain_drops:
+            span_h = rd["py2"] - rd["py1"]
+            cur_y = rd["py1"] + ((rd["y0"] - rd["py1"] + prog * rd["speed"] * span_h) % span_h)
+            cur_x = rd["x0"] - ((cur_y - rd["py1"]) * 0.08)
+            y_end = min(rd["py2"], cur_y + rd["len"])
+            x_end = cur_x - (y_end - cur_y) * 0.08
+            if cur_y < rd["py2"] - 4:
+                fdr.line(
+                    [(cur_x, cur_y), (x_end, y_end)],
+                    fill=(200, 225, 255, rd["alpha"]),
+                    width=2,
+                )
+
+        # 3. Ánh đèn bàn vàng ấm áp thở nhẹ + hạt bụi sáng
+        lamp_alpha = int(18 + 10 * math.sin(theta))
+        fdr.ellipse([(830, 290), (1140, 610)], fill=(255, 195, 95, lamp_alpha))
+        for dm in dust_motes:
+            dx = dm["x"] + dm["amp_x"] * math.sin(theta + dm["phase"])
+            dy = dm["y"] + dm["amp_y"] * math.cos(theta + dm["phase"])
+            r = dm["r"]
+            a = int(dm["alpha"] * (0.65 + 0.35 * math.sin(2.0 * theta + dm["phase"])))
+            fdr.ellipse([(dx - r, dy - r), (dx + r, dy + r)], fill=(255, 230, 165, a))
+
+        # 4. Làn khói cà phê bốc lên mềm mại (x=1362, y=450..595)
+        for s_k in range(3):
+            s_prog = (prog + s_k / 3.0) % 1.0
+            sy = 588.0 - s_prog * 135.0
+            sx = 1364.0 + math.sin(theta + s_k * 2.1 + s_prog * 4.0) * (10.0 * s_prog + 3.0)
+            sr_x = int(10 + 14 * s_prog)
+            sr_y = int(14 + 18 * s_prog)
+            s_alpha = int(52 * math.sin(math.pi * s_prog))
+            if s_alpha > 2:
+                fdr.ellipse(
+                    [(sx - sr_x, sy - sr_y), (sx + sr_x, sy + sr_y)],
+                    fill=(245, 240, 232, s_alpha),
+                )
+
+        comp = Image.alpha_composite(frame_im, fx_layer).convert("RGB")
+        comp.save(str(frames_dir / f"f_{f_i:04d}.jpg"), quality=93)
+
+    cached_loop.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            ffmpeg_exe,
+            "-y",
+            "-framerate",
+            str(fps),
+            "-i",
+            str(frames_dir / "f_%04d.jpg"),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "17",
+            "-pix_fmt",
+            "yuv420p",
+            str(cached_loop),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    shutil.rmtree(frames_dir, ignore_errors=True)
+    return cached_loop
+
+
 def create_phase_hud_overlay_png(
     out_png: Path,
     phase: PhaseSegment,
@@ -659,8 +834,8 @@ def create_phase_hud_overlay_png(
 ) -> Path:
     """
     Vẽ lớp phủ HUD Kính mờ (Frosted Glass Card `1920x1080` RGBA) cho từng Phase.
-    Vùng giữa của Card được chừa trống chính xác để FFmpeg `drawtext` vẽ Đồng hồ đếm ngược `MM:SS`
-    biến thiên theo từng giây với tốc độ render cực đại.
+    Toàn bộ HUD được bố trí gọn bên cánh phải (`x=1185..1855`) để KHÔNG CHE chú chó Golden Retriever,
+    cửa sổ mưa đêm, đèn bàn học và tách cà phê ở bên trái - giữa!
     """
     ov = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     dr = ImageDraw.Draw(ov)
@@ -669,42 +844,42 @@ def create_phase_hud_overlay_png(
     is_break = phase.phase_type == "BREAK"
     is_prep = phase.phase_type == "PREP"
 
-    # Khung HUD chính góc phải trên (x=1180..1840, y=75..645) để không che chú chó & cửa sổ bên trái
-    cx1, cy1, cx2, cy2 = 1170, 75, 1845, 650
-    border_col = (130, 224, 170, 215) if is_break else (245, 176, 65, 220)
+    # 1. Khung HUD Pomodoro chính góc phải trên (x=1185..1855, y=55..625)
+    cx1, cy1, cx2, cy2 = 1185, 55, 1855, 625
+    border_col = (130, 224, 170, 220) if is_break else (245, 176, 65, 225)
     if is_prep:
-        border_col = (133, 193, 233, 215)
+        border_col = (133, 193, 233, 220)
 
     dr.rounded_rectangle(
         [(cx1, cy1), (cx2, cy2)],
         radius=34,
-        fill=(14, 18, 28, 222),
+        fill=(12, 16, 26, 218),
         outline=border_col,
         width=3,
     )
 
     font_bold = r"C:\Windows\Fonts\arialbd.ttf"
     font_reg = r"C:\Windows\Fonts\arial.ttf"
-    f_badge = ImageFont.truetype(font_bold, 22)
-    f_phase = ImageFont.truetype(font_bold, 34)
-    f_sub = ImageFont.truetype(font_reg, 22)
-    f_small = ImageFont.truetype(font_bold, 20)
+    f_badge = ImageFont.truetype(font_bold, 21)
+    f_phase = ImageFont.truetype(font_bold, 33)
+    f_sub = ImageFont.truetype(font_reg, 20)
+    f_small = ImageFont.truetype(font_bold, 19)
 
-    # 1. Top Pill Badge (POMODORO 50/10 • NO MID-ROLL ADS)
-    pill_x1, pill_y1, pill_x2, pill_y2 = cx1 + 36, cy1 + 28, cx2 - 36, cy1 + 74
-    dr.rounded_rectangle([(pill_x1, pill_y1), (pill_x2, pill_y2)], radius=22, fill=(28, 36, 54, 240))
+    # Top Pill Badge (POMODORO 50/10 • NO MID-ROLL ADS)
+    pill_x1, pill_y1, pill_x2, pill_y2 = cx1 + 34, cy1 + 26, cx2 - 34, cy1 + 70
+    dr.rounded_rectangle([(pill_x1, pill_y1), (pill_x2, pill_y2)], radius=22, fill=(26, 34, 52, 240))
     top_text = f"POMODORO {focus_min:g}/{break_min:g}  •  NO MID-ROLL ADS"
     tb = dr.textbbox((0, 0), top_text, font=f_badge)
     dr.text(
-        ((pill_x1 + pill_x2 - (tb[2] - tb[0])) // 2, pill_y1 + 11),
+        ((pill_x1 + pill_x2 - (tb[2] - tb[0])) // 2, pill_y1 + 10),
         top_text,
         font=f_badge,
         fill=(255, 225, 150, 255),
     )
 
-    # 2. Nhãn trạng thái Phase (FOCUS SESSION / BREAK TIME / PREP TIME)
+    # Nhãn trạng thái Phase (FOCUS SESSION / BREAK TIME / PREP TIME)
     if is_prep:
-        status_title = "PREP TIME • GET READY"
+        status_title = "PREP TIME  •  GET READY"
         status_col = (133, 193, 233, 255)
     elif is_break:
         status_title = f"BREAK TIME  •  REST {phase.session_num}/{phase.total_sessions}"
@@ -715,27 +890,27 @@ def create_phase_hud_overlay_png(
 
     sb = dr.textbbox((0, 0), status_title, font=f_phase)
     dr.text(
-        ((cx1 + cx2 - (sb[2] - sb[0])) // 2, cy1 + 100),
+        ((cx1 + cx2 - (sb[2] - sb[0])) // 2, cy1 + 94),
         status_title,
         font=f_phase,
         fill=status_col,
     )
 
-    # 3. Hộp chứa Đồng Hồ Đếm Ngược `MM:SS` (Tọa độ trung tâm hộp: x=1507, y=312)
-    clk_x1, clk_y1, clk_x2, clk_y2 = cx1 + 45, cy1 + 160, cx2 - 45, cy1 + 375
+    # Hộp chứa Đồng Hồ Đếm Ngược `MM:SS` (Tâm: x=1520, y=258)
+    clk_x1, clk_y1, clk_x2, clk_y2 = cx1 + 42, cy1 + 150, cx2 - 42, cy1 + 365
     dr.rounded_rectangle(
         [(clk_x1, clk_y1), (clk_x2, clk_y2)],
         radius=26,
-        fill=(8, 11, 18, 235),
-        outline=(255, 255, 255, 48),
+        fill=(7, 10, 16, 238),
+        outline=(255, 255, 255, 52),
         width=2,
     )
 
-    # 4. Thanh Tiến Trình Các Hiệp (Session Dots)
-    dots_y = cy1 + 405
+    # Thanh Tiến Trình Các Hiệp (Session Dots)
+    dots_y = cy1 + 392
     total_s = max(1, phase.total_sessions)
-    dot_w = 110
-    gap = 18
+    dot_w = min(115, (cx2 - cx1 - 90 - (total_s - 1) * 14) // total_s)
+    gap = 14
     total_dots_w = total_s * dot_w + (total_s - 1) * gap
     start_dx = (cx1 + cx2 - total_dots_w) // 2
 
@@ -754,17 +929,17 @@ def create_phase_hud_overlay_png(
         dr.rounded_rectangle([(dx1, dots_y), (dx2, dots_y + 38)], radius=12, fill=d_fill)
         lb = dr.textbbox((0, 0), lbl, font=f_small)
         dr.text(
-            ((dx1 + dx2 - (lb[2] - lb[0])) // 2, dots_y + 8),
+            ((dx1 + dx2 - (lb[2] - lb[0])) // 2, dots_y + 9),
             lbl,
             font=f_small,
             fill=(15, 20, 28, 255) if s_i <= phase.session_num and not is_prep else (190, 205, 225, 230),
         )
 
-    # 5. Thông tin Chế độ Nhạc & Companion góc dưới Card
+    # Thông tin Chế độ Nhạc & Companion góc dưới Card chính
     badge_txt = meta["badge"]
     bb = dr.textbbox((0, 0), badge_txt, font=f_badge)
     dr.text(
-        ((cx1 + cx2 - (bb[2] - bb[0])) // 2, cy1 + 468),
+        ((cx1 + cx2 - (bb[2] - bb[0])) // 2, cy1 + 455),
         badge_txt,
         font=f_badge,
         fill=(235, 242, 255, 245),
@@ -777,33 +952,37 @@ def create_phase_hud_overlay_png(
     )
     hb = dr.textbbox((0, 0), hint_txt, font=f_sub)
     dr.text(
-        ((cx1 + cx2 - (hb[2] - hb[0])) // 2, cy1 + 508),
+        ((cx1 + cx2 - (hb[2] - hb[0])) // 2, cy1 + 495),
         hint_txt,
         font=f_sub,
         fill=(175, 192, 215, 235),
     )
 
-    # 6. Thẻ nhỏ góc trái dưới màn hình hiển thị Chú Chó Đồng Hành & Mục tiêu
-    bl_x1, bl_y1, bl_x2, bl_y2 = 90, 895, 920, 995
+    # 2. Khung Sóng Nhạc & Thông tin Phiên (góc phải dưới x=1185..1855, y=655..835)
+    wx1, wy1, wx2, wy2 = 1185, 655, 1855, 835
     dr.rounded_rectangle(
-        [(bl_x1, bl_y1), (bl_x2, bl_y2)],
-        radius=22,
-        fill=(14, 18, 28, 205),
-        outline=(255, 215, 130, 120),
+        [(wx1, wy1), (wx2, wy2)],
+        radius=26,
+        fill=(12, 16, 26, 212),
+        outline=(255, 215, 130, 135),
         width=2,
     )
+    track_names = "  •  ".join(t["display_name"] for t in phase.tracks_used[:2])
+    if len(track_names) > 54:
+        track_names = track_names[:51] + "..."
     dr.text(
-        (bl_x1 + 28, bl_y1 + 18),
-        f"COZY PAWS STUDY LIBRARY  •  {phase.title.upper()}",
-        font=f_badge,
-        fill=(255, 220, 140, 250),
+        (wx1 + 30, wy1 + 18),
+        f"NOW PLAYING  •  {phase.title.upper()}",
+        font=f_small,
+        fill=(255, 215, 120, 250),
     )
     dr.text(
-        (bl_x1 + 28, bl_y1 + 52),
-        meta["subtitle"],
+        (wx1 + 30, wy1 + 46),
+        track_names,
         font=f_sub,
-        fill=(210, 222, 240, 230),
+        fill=(215, 228, 245, 240),
     )
+    # Vùng (x=1215..1825, y=735..815) để FFmpeg vẽ sóng âm trực tiếp `showwaves`
 
     out_png.parent.mkdir(parents=True, exist_ok=True)
     ov.save(str(out_png))
@@ -812,6 +991,7 @@ def create_phase_hud_overlay_png(
 
 def render_phase_video_segment(
     phase: PhaseSegment,
+    phase_wav_path: Path,
     bg_media_path: Path,
     hud_png_path: Path,
     work_dir: Path,
@@ -819,8 +999,11 @@ def render_phase_video_segment(
     ffmpeg_exe: str = "ffmpeg",
 ) -> Path:
     """
-    Render đoạn video hình ảnh (`.mp4`) cho 1 Phase với Đồng hồ đếm ngược `MM:SS`
-    biến thiên chính xác từng giây bằng FFmpeg `drawtext`.
+    Render đoạn video hoàn chỉnh (`.mp4` có cả hình và tiếng) cho 1 Phase:
+      - Nền Cinemagraph chuyển động mượt (Chú chó thở nhẹ + Mưa rơi + Khói cà phê + Đèn bàn ấm)
+      - Lớp phủ HUD Frosted Glass bên phải
+      - Đồng hồ đếm ngược `MM:SS` chính xác từng giây
+      - Sóng nhạc thực tế (`showwaves`) nhảy theo đúng giai điệu nhạc đang phát!
     """
     seg_mp4 = work_dir / f"vseg_{phase.index:02d}.mp4"
     dur = float(phase.duration_sec)
@@ -831,19 +1014,21 @@ def render_phase_video_segment(
     if not os.path.exists(r"C:\Windows\Fonts\consolab.ttf"):
         font_escaped = "C\\:/Windows/Fonts/arialbd.ttf"
 
-    # Biểu thức đếm ngược từng giây `MM:SS` trong FFmpeg drawtext
     countdown_expr = (
         f"%{{eif\\:max(0,{total_int}-t)/60\\:d\\:2}}\\:%{{eif\\:mod(max(0,{total_int}-t),60)\\:d\\:2}}"
     )
     clock_color = "0x82E0AA" if phase.phase_type == "BREAK" else "0xFFFFFF"
+    wave_color = "0x82E0AA@0.85" if phase.phase_type == "BREAK" else "0xF5B041@0.88"
 
     fc = (
         f"[0:v]scale=1920:1080:flags=lanczos,fps={fps},format=yuv420p[bg];"
         f"[1:v]scale=1920:1080[hud];"
-        f"[bg][hud]overlay=0:0:shortest=1,"
+        f"[2:a]showwaves=s=610x64:mode=cline:rate={fps}:colors={wave_color}[sw];"
+        f"[bg][hud]overlay=0:0:shortest=1[v_hud];"
+        f"[v_hud][sw]overlay=1215:742:shortest=1,"
         f"drawtext=fontfile='{font_escaped}':text='{countdown_expr}':"
         f"fontsize=124:fontcolor={clock_color}:borderw=4:bordercolor=0x080B12:"
-        f"x=1507-text_w/2:y=282[outv]"
+        f"x=1520-text_w/2:y=264[outv]"
     )
 
     cmd = [ffmpeg_exe, "-y"]
@@ -859,23 +1044,30 @@ def render_phase_video_segment(
         str(fps),
         "-i",
         str(hud_png_path),
+        "-i",
+        str(phase_wav_path),
         "-filter_complex",
         fc,
         "-map",
         "[outv]",
-        "-an",
+        "-map",
+        "2:a:0",
         "-t",
         f"{dur:.2f}",
         "-c:v",
         "libx264",
         "-preset",
-        "ultrafast",
-        "-tune",
-        "stillimage",
+        "veryfast",
         "-crf",
         "20",
         "-pix_fmt",
         "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-ar",
+        "48000",
         str(seg_mp4),
     ]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -966,15 +1158,16 @@ def build_pomodoro_study_video(
     fps: int = 24,
     seed: int = 42,
     bgm_root: Path = DEFAULT_MASTER_BGM_ROOT,
+    send_telegram: bool = False,
 ) -> Dict[str, Any]:
     """
     Pipeline tổng thể:
       1. Lập lịch Pomodoro (`Prep` -> `Focus 1..N` -> `Break 1..N`) và chọn bài từ 58 file WAV.
-      2. Render file Master Audio 48kHz Stereo WAV (kèm tiếng chuông chuyển phiên).
-      3. Tạo cảnh nền Cozy Dog Study Room (hoặc dùng video/ảnh nền truyền vào) + vẽ HUD Đồng hồ đếm ngược.
-      4. Ghép hoàn chỉnh thành file `.mp4` Full HD 1080p và xuất gói SEO Chapters YouTube.
+      2. Tạo cảnh nền Cinemagraph chuyển động mượt (`cozy_dog_cinemagraph_loop.mp4`) hoặc dùng media truyền vào.
+      3. Render từng Phase với âm thanh 48kHz Stereo + Chuông báo + HUD Đồng hồ đếm ngược + Sóng nhạc `showwaves`.
+      4. Ghép hoàn chỉnh thành file `.mp4` Full HD 1080p, xuất gói SEO Chapters YouTube và gửi Telegram (nếu bật).
     """
-    tag = f"pomodoro_{int(focus_min)}_{int(break_min)}_x{sessions}_{mode}_s{seed}"
+    tag = f"pomodoro_{focus_min:g}_{break_min:g}_x{sessions}_{mode}_s{seed}".replace(".", "_")
     out_dir = Path(output_dir) if output_dir else (DEFAULT_OUTPUT_ROOT / tag)
     out_dir.mkdir(parents=True, exist_ok=True)
     work_dir = out_dir / "_work"
@@ -990,15 +1183,14 @@ def build_pomodoro_study_video(
         bgm_root=bgm_root,
     )
 
-    master_wav = build_master_audio_stream(schedule, work_dir)
-
     if bg_media and os.path.exists(bg_media):
         bg_path = Path(bg_media)
     else:
-        bg_path = generate_cozy_dog_study_background(work_dir / "cozy_dog_study_bg.png")
+        bg_path = ensure_cozy_dog_cinemagraph_loop(work_dir, fps=fps)
 
     video_segments: List[Path] = []
     for ph in schedule:
+        phase_wav = render_phase_audio_clip(ph, work_dir)
         hud_png = create_phase_hud_overlay_png(
             work_dir / f"hud_p{ph.index:02d}.png",
             phase=ph,
@@ -1009,11 +1201,13 @@ def build_pomodoro_study_video(
         ph.hud_png_path = str(hud_png)
         vseg = render_phase_video_segment(
             phase=ph,
+            phase_wav_path=phase_wav,
             bg_media_path=bg_path,
             hud_png_path=hud_png,
             work_dir=work_dir,
             fps=fps,
         )
+        phase_wav.unlink(missing_ok=True)
         video_segments.append(vseg)
 
     vconcat_txt = work_dir / "video_concat.txt"
@@ -1033,21 +1227,8 @@ def build_pomodoro_study_video(
             "0",
             "-i",
             str(vconcat_txt),
-            "-i",
-            str(master_wav),
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0",
-            "-c:v",
+            "-c",
             "copy",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-ar",
-            "48000",
-            "-shortest",
             "-movflags",
             "+faststart",
             str(final_mp4),
@@ -1068,7 +1249,6 @@ def build_pomodoro_study_video(
     manifest["final_video_path"] = str(final_mp4)
     manifest["final_video_size_mb"] = round(final_mp4.stat().st_size / (1024 * 1024), 2)
 
-    # Lưu 1 ảnh Thumbnail / Preview từ khung hình giữa Session 1
     preview_png = out_dir / "preview_frame_session1.jpg"
     sample_sec = min(20.0, max(1.0, prep_sec + 3.0))
     subprocess.run(
@@ -1092,6 +1272,24 @@ def build_pomodoro_study_video(
     manifest["preview_frame_path"] = str(preview_png)
 
     shutil.rmtree(work_dir, ignore_errors=True)
+
+    if send_telegram:
+        proj_root = str(Path(__file__).resolve().parents[2])
+        if proj_root not in sys.path:
+            sys.path.insert(0, proj_root)
+        from app.services.intelligence.scheduler_and_broadcast import send_telegram_video_broadcast
+
+        chap_text = "\n".join(f"• <code>{c['timestamp']}</code> — {c['label']}" for c in manifest["chapters"])
+        caption = (
+            f"🐶 <b>COZY PAWS STUDY LIBRARY — POMODORO DEMO ({round(manifest['total_duration_sec']/60.0, 1):g} PHÚT)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🎧 <b>Chế độ:</b> <code>{mode}</code> ({focus_min:g}/{break_min:g} × {sessions} hiệp)\n"
+            f"🎬 <b>Visual:</b> Cinemagraph Loop (Mưa đêm rơi + Chú chó Golden thở nhẹ + Khói cà phê + Đèn bàn ấm)\n"
+            f"⏱️ <b>HUD:</b> Đồng hồ đếm ngược thực tế + Sóng âm <code>showwaves</code> + Chuông Singing Bowl\n\n"
+            f"📋 <b>Chapters tự động:</b>\n{chap_text}"
+        )
+        manifest["telegram_sent"] = bool(send_telegram_video_broadcast(str(final_mp4), caption=caption))
+
     return manifest
 
 
@@ -1116,6 +1314,7 @@ def main() -> None:
     parser.add_argument("--fps", type=int, default=24)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", default="", help="Optional output folder")
+    parser.add_argument("--send-telegram", action="store_true", help="Send rendered video to Telegram group")
     args = parser.parse_args()
 
     res = build_pomodoro_study_video(
@@ -1128,12 +1327,14 @@ def main() -> None:
         bg_media=args.bg_media or None,
         fps=args.fps,
         seed=args.seed,
+        send_telegram=args.send_telegram,
     )
     print(json.dumps({
         "ok": True,
         "video": res["final_video_path"],
         "size_mb": res["final_video_size_mb"],
         "duration_sec": res["total_duration_sec"],
+        "telegram_sent": res.get("telegram_sent", False),
         "chapters": res["chapters"],
         "seo_file": res["seo_description_file"],
         "preview": res["preview_frame_path"],
