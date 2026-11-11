@@ -216,11 +216,121 @@ class OAuthAndUploadMixin:
             self.init_error = str(e)
             logger.error(f"Lỗi khởi tạo YouTube API cho '{self.channel_name}': {e}")
 
-    def _find_live_duplicate_on_youtube(self, candidate_title: str, max_check: int = 15) -> Optional[str]:
+    def _quarantine_broken_p0d_stub(self, video_id: str, snip: Optional[Dict] = None) -> None:
+        """
+        Chuyển stub upload bị đứt gãy giữa chừng (duration == 'P0D' / failed) về chế độ PRIVATE
+        để không bao giờ treo video 0 giây (0 view) công khai trên kênh.
+        """
+        if not self.service or not video_id:
+            return
+        try:
+            cur_snip = snip or {}
+            if not cur_snip:
+                vr = self.service.videos().list(part="snippet,status", id=video_id).execute()
+                items = vr.get("items") or []
+                if not items:
+                    return
+                cur_snip = items[0].get("snippet") or {}
+                cur_priv = str((items[0].get("status") or {}).get("privacyStatus") or "")
+                cur_title_chk = str(cur_snip.get("title") or "")
+                if cur_priv == "private" and cur_title_chk.startswith("[PRIVATE-"):
+                    return
+            old_title = str(cur_snip.get("title") or "Broken Stub").strip()
+            new_title = old_title if old_title.startswith("[PRIVATE-") else f"[PRIVATE-P0D] {old_title}"[:100]
+            upd_body = {
+                "id": video_id,
+                "snippet": {
+                    "title": new_title,
+                    "description": str(cur_snip.get("description") or "")[:5000],
+                    "categoryId": str(cur_snip.get("categoryId") or self.resolve_locked_category_id()),
+                },
+                "status": {
+                    "privacyStatus": "private",
+                    "selfDeclaredMadeForKids": False,
+                },
+            }
+            if cur_snip.get("tags"):
+                upd_body["snippet"]["tags"] = list(cur_snip["tags"])[:25]
+            self.service.videos().update(part="snippet,status", body=upd_body).execute()
+            logger.warning(f"🧹 [P0DStubQuarantine] Đã chuyển stub hỏng '{video_id}' sang PRIVATE ('{new_title}').")
+        except Exception as e_q:
+            logger.debug(f"[P0DStubQuarantine] Warning ({video_id}): {e_q}")
+
+    def _is_live_youtube_video_playable(
+        self,
+        video_id: str,
+        quarantine_if_broken: bool = True,
+        allow_recent_transcoding: bool = True,
+    ) -> bool:
+        """
+        Kiểm tra trực tiếp trên YouTube Data API v3 xem video_id có thực sự phát được hay không:
+        - Loại trừ video đã xóa, uploadStatus in ('failed', 'rejected', 'deleted'), tiêu đề '[PRIVATE-*',
+          hoặc stub bị đứt kết nối giữa chừng có contentDetails.duration == 'P0D'.
+        - Nếu allow_recent_transcoding=True (dùng khi đối chiếu DB trước lượt upload mới), cho phép video vừa
+          upload thành công trong vòng < 10 phút đang ở trạng thái processingStatus == 'processing'.
+          Nếu allow_recent_transcoding=False (dùng trong UploadRetryRecovery ngay sau khi đứt mạng giữa chừng),
+          bắt buộc duration != 'P0D' mới được coi là đã hoàn tất trên máy chủ YouTube.
+        """
+        if not self.service or not video_id:
+            return True
+        try:
+            vr = self.service.videos().list(
+                part="snippet,status,contentDetails,processingDetails",
+                id=video_id,
+            ).execute()
+            items = vr.get("items") or []
+            if not items:
+                return False
+            it = items[0]
+            snip = it.get("snippet") or {}
+            st = it.get("status") or {}
+            cd = it.get("contentDetails") or {}
+            pd = it.get("processingDetails") or {}
+            v_title = str(snip.get("title") or "").strip()
+            if v_title.startswith("[PRIVATE-"):
+                return False
+            up_status = str(st.get("uploadStatus") or "").lower()
+            proc_status = str(pd.get("processingStatus") or "").lower()
+            if up_status in ("failed", "rejected", "deleted") or proc_status in ("failed", "terminated"):
+                if quarantine_if_broken:
+                    self._quarantine_broken_p0d_stub(video_id, snip=snip)
+                return False
+            dur = str(cd.get("duration") or "").strip()
+            if dur in ("", "P0D", "PT0S"):
+                age_sec = 999999.0
+                pub_raw = str(snip.get("publishedAt") or "").strip()
+                if pub_raw:
+                    try:
+                        from datetime import timezone
+                        pub_dt = datetime.fromisoformat(pub_raw.replace("Z", "+00:00"))
+                        age_sec = (datetime.now(timezone.utc) - pub_dt).total_seconds()
+                    except Exception:
+                        pass
+                if allow_recent_transcoding and up_status == "uploaded" and proc_status in ("processing", "succeeded") and age_sec < 600:
+                    return True
+                logger.warning(
+                    f"🛡️ [P0DIntegrityCheck] Phát hiện stub YouTube rỗng/chưa hoàn tất '{video_id}' "
+                    f"(duration='{dur}', uploadStatus='{up_status}', proc='{proc_status}', age={int(age_sec)}s)!"
+                )
+                if quarantine_if_broken and age_sec >= 600:
+                    self._quarantine_broken_p0d_stub(video_id, snip=snip)
+                return False
+            return True
+        except Exception as e_chk:
+            logger.debug(f"[P0DIntegrityCheck] Check warning ({video_id}): {e_chk}")
+            return True
+
+    def _find_live_duplicate_on_youtube(
+        self,
+        candidate_title: str,
+        max_check: int = 15,
+        is_retry_recovery: bool = False,
+    ) -> Optional[str]:
         """
         Kiểm tra trực tiếp danh sách video vừa tải lên trên kênh YouTube thật (uploads playlist)
         để phát hiện bản trùng lặp kể cả khi DB nội bộ chưa kịp ghi youtube_video_id hoặc khi
         lần thử upload_attempt=1 đã hoàn tất trên máy chủ YouTube ngay trước lúc đứt kết nối SSL.
+        BẮT BUỘC xác minh duration != 'P0D' để không bao giờ nhận nhầm stub upload bị đứt giữa chừng!
         """
         if not self.service or not candidate_title:
             return None
@@ -244,7 +354,7 @@ class OAuthAndUploadMixin:
             for item in (pl_res.get("items") or []):
                 snip = item.get("snippet") or {}
                 ex_title = str(snip.get("title") or "").strip()
-                if not ex_title or ex_title.startswith("[PRIVATE-DUP]"):
+                if not ex_title or ex_title.startswith("[PRIVATE-"):
                     continue
                 vid_id = (item.get("contentDetails") or {}).get("videoId")
                 if not vid_id:
@@ -252,8 +362,16 @@ class OAuthAndUploadMixin:
                 ex_norm = re.sub(r'#shorts\b|\W+', '', ex_title.lower())
                 is_sim, sim_score, _ = check_idea_similarity(candidate_title, [ex_title], similarity_threshold=0.58)
                 if ex_norm == norm_cand or is_sim:
+                    if not self._is_live_youtube_video_playable(
+                        vid_id,
+                        quarantine_if_broken=True,
+                        allow_recent_transcoding=(not is_retry_recovery),
+                    ):
+                        if is_retry_recovery:
+                            self._quarantine_broken_p0d_stub(vid_id, snip=snip)
+                        continue
                     logger.warning(
-                        f"🛡️ [LiveYouTubeDupGuard] Phát hiện video trùng lặp trực tiếp trên kênh YouTube "
+                        f"🛡️ [LiveYouTubeDupGuard] Phát hiện video trùng lặp hợp lệ trực tiếp trên kênh YouTube "
                         f"'{self.channel_name}': '{ex_title}' (ID: {vid_id}, sim={sim_score:.2f}). Tái sử dụng ID, không upload bản thứ 2!"
                     )
                     return vid_id
@@ -428,11 +546,9 @@ class OAuthAndUploadMixin:
             clean_title,
             flags=re.IGNORECASE
         ).strip()
-        # Khử toàn bộ chuỗi hashtag cũ ở cuối tiêu đề để gắn lại bộ Hashtag Chuẩn Ngách + Chủ Đề thông minh
-        clean_title = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', clean_title).strip()
+        # Khử toàn bộ chuỗi hashtag chữ cái ở cuối tiêu đề (KHÔNG xóa nhầm '#735' hay 'O #1')
+        clean_title = re.sub(r'(?:\s+#[a-zA-ZÀ-ỹ_][^\s#]*)+\s*$', '', clean_title).strip()
         clean_title = re.sub(r'#shorts\b', '', clean_title, flags=re.IGNORECASE).strip()
-        if not clean_title:
-            clean_title = (title or "Shorts Video").strip()
 
         is_long_form_video = bool(
             (locals().get("vid_dur_ms") and vid_dur_ms > 65000)
@@ -446,6 +562,13 @@ class OAuthAndUploadMixin:
             is_long_form=is_long_form_video,
         )
         clean_title = smart_bundle["enriched_title"]
+        if self.is_placeholder_video_title(smart_bundle.get("base_title") or clean_title):
+            err_ph = (
+                f"🛡️ [TitlePlaceholderGuard] CHẶN UPLOAD: Tiêu đề vẫn là placeholder rỗng/vô nghĩa ('{clean_title}') "
+                f"dù đã thử khôi phục từ script/topic. Bắt buộc phải có tiêu đề chứa thực thể cụ thể!"
+            )
+            logger.error(err_ph)
+            return {"status": "failed", "error": err_ph, "message": err_ph, "video_id": None}
 
         # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate & Kêu gọi ủng hộ PayPal
         prod_info = None
@@ -640,9 +763,13 @@ class OAuthAndUploadMixin:
                 ).order_by(VideoJob.id.desc()).limit(40).all()
                 for rj in recent_jobs:
                     rj_title = rj.title or ""
+                    if rj_title.startswith("[PRIVATE-"):
+                        continue
                     rj_norm = re.sub(r'#shorts\b|\W+', '', rj_title.lower())
                     is_sim, sim_score, _ = check_idea_similarity(clean_title, [rj_title], similarity_threshold=0.58)
                     if rj_norm and norm_cand and (rj_norm == norm_cand or rj_title in (title, clean_title) or is_sim):
+                        if not self._is_live_youtube_video_playable(rj.youtube_video_id, quarantine_if_broken=True):
+                            continue
                         logger.warning(
                             f"⚠️ [Publisher] Video '{clean_title}' trùng lặp ({sim_score:.2f}) với video đã đăng '{rj_title}' "
                             f"trên kênh '{self.channel_name}' (ID: {rj.youtube_video_id}). Chặn upload trùng lặp!"
@@ -660,9 +787,13 @@ class OAuthAndUploadMixin:
                 ).order_by(PublishedVideo.id.desc()).limit(30).all()
                 for pv in recent_pvs:
                     pv_title = pv.title or ""
+                    if pv_title.startswith("[PRIVATE-"):
+                        continue
                     pv_norm = re.sub(r'#shorts\b|\W+', '', pv_title.lower())
                     is_sim_pv, sim_pv_score, _ = check_idea_similarity(clean_title, [pv_title], similarity_threshold=0.58)
                     if pv_norm and norm_cand and (pv_norm == norm_cand or is_sim_pv):
+                        if not self._is_live_youtube_video_playable(pv.youtube_video_id, quarantine_if_broken=True):
+                            continue
                         logger.warning(
                             f"⚠️ [Publisher] Video '{clean_title}' trùng lặp ({sim_pv_score:.2f}) với PublishedVideo '{pv_title}' "
                             f"trên kênh '{self.channel_name}' (ID: {pv.youtube_video_id}). Chặn upload trùng lặp!"
@@ -809,7 +940,11 @@ class OAuthAndUploadMixin:
                                 self._init_service()
                             except Exception:
                                 pass
-                            recovered_vid = self._find_live_duplicate_on_youtube(clean_title, max_check=8)
+                            recovered_vid = self._find_live_duplicate_on_youtube(
+                                clean_title,
+                                max_check=8,
+                                is_retry_recovery=True,
+                            )
                             if recovered_vid:
                                 logger.info(
                                     f"✅ [UploadRetryRecovery] Video '{clean_title}' thực tế đã tạo thành công trên YouTube (ID: {recovered_vid}) "

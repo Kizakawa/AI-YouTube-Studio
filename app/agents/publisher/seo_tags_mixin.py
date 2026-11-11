@@ -44,6 +44,29 @@ class SeoTagsMixin:
             return "15"
         return "22"
 
+    @staticmethod
+    def is_placeholder_video_title(raw_title: str) -> bool:
+        """
+        Kiểm tra tiêu đề rỗng hoặc mang chuỗi placeholder nội bộ (vd: 'Video #735', 'Video', 'Shorts Video', 'Untitled')
+        để tự động khôi phục từ script/topic hoặc chặn tuyệt đối việc lọt tiêu đề rác lên YouTube.
+        """
+        if not raw_title:
+            return True
+        stripped = re.sub(r'(?:\s+#[a-zA-ZÀ-ỹ_][^\s#]*)+\s*$', '', str(raw_title).strip()).strip()
+        stripped = re.sub(r'#shorts\b', '', stripped, flags=re.IGNORECASE).strip()
+        stripped_no_sym = re.sub(r'[^\w\sÀ-ỹ#\-]', ' ', stripped).strip()
+        stripped_no_sym = re.sub(r'\s+', ' ', stripped_no_sym)
+        if not stripped_no_sym:
+            return True
+        if re.match(
+            r'^(?:video|short|shorts|shorts?\s+video|documentary|documentary\s+video|untitled|job|draft|output|clip)(?:\s*#?\d+)?$',
+            stripped_no_sym,
+            flags=re.IGNORECASE,
+        ):
+            return True
+        alpha_only = re.sub(r'[^a-zA-ZÀ-ỹ]', '', stripped_no_sym)
+        return len(alpha_only) < 5
+
     def build_smart_video_tags_and_hashtags(
         self,
         title: str,
@@ -64,13 +87,40 @@ class SeoTagsMixin:
         cfg_lang = str(self.channel_config.get("language") or "").strip().lower()
         is_br = cfg_lang.startswith("pt")
 
-        # Làm sạch tiêu đề gốc (bỏ mọi chuỗi #hashtag ở cuối)
-        base_title = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', (title or "").strip()).strip()
+        # Làm sạch tiêu đề gốc (chỉ bỏ #hashtag chữ cái ở cuối, KHÔNG xóa nhầm số '#735' hay 'O #1')
+        base_title = re.sub(r'(?:\s+#[a-zA-ZÀ-ỹ_][^\s#]*)+\s*$', '', (title or "").strip()).strip()
         base_title = re.sub(r'#shorts\b', '', base_title, flags=re.IGNORECASE).strip()
-        clean_topic = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', (topic or "").strip()).strip()
+        clean_topic = re.sub(r'(?:\s+#[a-zA-ZÀ-ỹ_][^\s#]*)+\s*$', '', (topic or "").strip()).strip()
         clean_topic = re.sub(r'#shorts\b', '', clean_topic, flags=re.IGNORECASE).strip()
-        if not base_title:
-            base_title = (clean_topic or ("Documentary Video" if is_long_form else "Shorts Video")).strip()
+
+        # Khôi phục tiêu đề thực thể nếu base_title bị rỗng hoặc dính chuỗi nội bộ ('Video #735', 'Video', 'Shorts Video')
+        if self.is_placeholder_video_title(base_title):
+            recovered_title = ""
+            if script:
+                try:
+                    s_dict = json.loads(script) if isinstance(script, str) and script.strip().startswith("{") else (script if isinstance(script, dict) else {})
+                    if isinstance(s_dict, dict):
+                        for k_cand in ("viral_title", "title", "youtube_title"):
+                            cand_v = str(s_dict.get(k_cand) or "").strip()
+                            cand_v = re.sub(r'(?:\s+#[a-zA-ZÀ-ỹ_][^\s#]*)+\s*$', '', cand_v).strip()
+                            cand_v = re.sub(r'#shorts\b', '', cand_v, flags=re.IGNORECASE).strip()
+                            if cand_v and not self.is_placeholder_video_title(cand_v):
+                                recovered_title = cand_v
+                                break
+                except Exception:
+                    pass
+            if not recovered_title and clean_topic and not self.is_placeholder_video_title(clean_topic):
+                recovered_title = clean_topic
+                if len(recovered_title) > 82:
+                    trimmed = recovered_title[:82].rsplit(" ", 1)[0].rstrip(" ,;:-–—")
+                    recovered_title = trimmed if len(trimmed) >= 20 else recovered_title[:82].strip()
+            if recovered_title:
+                logger.warning(
+                    f"🛡️ [TitlePlaceholderGuard] Thay thế tiêu đề placeholder '{title}' bằng tiêu đề thực thể chuẩn: '{recovered_title}'"
+                )
+                base_title = recovered_title
+            elif not base_title:
+                base_title = ("Documentary Video" if is_long_form else "Shorts Video")
 
         # Danh sách từ khóa cấm / sai chính tả / từ đơn lẻ vô nghĩa bị tách từ tiêu đề
         BLACKLIST_TAGS = {
