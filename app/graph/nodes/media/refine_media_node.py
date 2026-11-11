@@ -312,12 +312,13 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 try:
                     out_lf_ref = str(media_dir / f"scene_{scene_id:03d}_refined_16x9_r{retry_count}.mp4")
                     lf_ref_res = None
+                    lf_spc_ref = max(3, round(len(scenes_media) / 10))
                     tainted_masters: set = set()
                     if has_semantic_vision_defect:
                         src_u_prev = str(item.get("source_url") or "")
                         if src_u_prev:
                             tainted_masters.add(Path(src_u_prev.split("#", 1)[0]).name.lower())
-                        tainted_masters.add(f"chapter_{((int(scene_id) - 1) // 3) + 1:02d}_master.mp4")
+                        tainted_masters.add(f"chapter_{((int(scene_id) - 1) // lf_spc_ref) + 1:02d}_master.mp4")
                         for m_tok in re.findall(r"chapter_\d+_master\.mp4", str(item.get("strategy_rationale") or "").lower()):
                             tainted_masters.add(m_tok)
 
@@ -332,6 +333,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             output_override_path=out_lf_ref,
                             exclude_masters=tainted_masters if tainted_masters else None,
                             max_master_uses_override=5,
+                            preferred_entity=subj_refine or primary_entity or "",
+                            strict_entity_match=True,
                         )
                         if lf_local_res and lf_local_res.get("media_path") and Path(lf_local_res["media_path"]).exists():
                             ok_loc_clean, _ = await asyncio.to_thread(
@@ -354,7 +357,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             _fetch_longform_16x9_broll_clip_sync,
                             scene_id=scene_id,
                             query=clean_kw_q or overall_refine_q,
-                            primary_entity=primary_entity or subj_refine,
+                            primary_entity=subj_refine or primary_entity or state.get("topic", ""),
                             topic=state.get("topic", ""),
                             narration=narr or state.get("topic", ""),
                             target_duration_sec=sc_dur_sec,
@@ -368,6 +371,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             output_override_path=out_lf_ref,
                             cancel_event=cancel_event,
                             deadline_ts=lf_vid_dl,
+                            scenes_per_chapter=lf_spc_ref,
                         )
                     if not lf_ref_res and has_semantic_vision_defect and not _refine_cancelled():
                         lf_local_fb = await asyncio.to_thread(
@@ -779,6 +783,11 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # 3. Tầng 3: Ưu tiên tuyệt đối đạt > 85% thời lượng là Video chuyển động thật (5-7 đoạn video tải về).
         if not replaced and not _refine_cancelled():
             try:
+                get_video_memory_rag().clear_scene_commitments(
+                    job_id=job_id_refine,
+                    scene_id=scene_id,
+                    old_paths=list(item.get("pose_images") or []) + ([str(item.get("media_path") or "")] if item.get("media_path") else []),
+                )
                 from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                 from app.graph.tools.video_fallback_executors import _try_bilibili_broll_fallback
 
@@ -809,34 +818,64 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 )
 
                 if is_mandatory_vid or not video_floor_satisfied_without_scene:
-                    out_bili_open = str(media_dir / f"scene_{scene_id:03d}_refined_bili_open_r{retry_count}.mp4")
-                    bili_open_res = await asyncio.to_thread(
-                        _try_bilibili_broll_fallback,
-                        search_phrases=[q_x for q_x in dict.fromkeys([clean_kw_q, critic_broll_q, overall_refine_q]) if q_x][:4],
-                        search_query=clean_kw_q or overall_refine_q,
-                        subject_entity=subj_refine or primary_entity or "",
-                        topic=state.get("topic", ""),
-                        narration=narr or state.get("topic", ""),
-                        overall_script_query=overall_refine_q,
-                        effective_scope="SCRIPT_OVERALL" if retry_count >= 2 else ("SCENE_SPECIFIC" if critic_sug_q else "SCRIPT_OVERALL"),
-                        output_path=out_bili_open,
-                        target_duration_sec=sc_dur_sec,
-                        clip_role="HOOK" if scene_id == 1 else "PEAK",
-                        allow_3d_cgi_monster=False,
-                        used=used_refine_urls,
-                        job_id=job_id_refine,
-                        eff_scene_id=scene_id,
-                        cancel_event=cancel_event,
-                        deadline_ts=deadline_ts,
-                    )
-                    if bili_open_res and bili_open_res.get("media_path") and Path(bili_open_res["media_path"]).exists():
-                        item["media_path"] = bili_open_res["media_path"]
-                        item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
-                        item["pose_images"] = []
-                        item["production_method"] = "REFINED_BILIBILI_DOCUMENTARY_VIDEO"
-                        item["source_url"] = str(bili_open_res.get("source_url") or bili_open_res["media_path"])
-                        replaced = True
-                        logger.info(f"Scene {scene_id}: 🎬 [Mandatory >85% Video Bilibili Documentary] Đã nạp Video tư liệu kiểm định Vision cho '{clean_kw_q}'")
+                    if is_lf_refine:
+                        try:
+                            from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
+                            out_cp_ref = str(media_dir / f"scene_{scene_id:03d}_refined_cp_slice_r{retry_count}.mp4")
+                            for _strict_cp in (True, False):
+                                cp_ref_res = await asyncio.to_thread(
+                                    slice_any_available_chapter_master_for_scene,
+                                    media_dir=media_dir,
+                                    scene_id=scene_id,
+                                    target_duration_sec=sc_dur_sec,
+                                    job_id=job_id_refine,
+                                    output_override_path=out_cp_ref,
+                                    max_master_uses_override=14,
+                                    preferred_entity=str(subj_refine or primary_entity or ""),
+                                    strict_entity_match=_strict_cp,
+                                )
+                                if cp_ref_res and cp_ref_res.get("media_path") and Path(cp_ref_res["media_path"]).exists():
+                                    item["media_path"] = cp_ref_res["media_path"]
+                                    item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
+                                    item["pose_images"] = []
+                                    item["production_method"] = cp_ref_res.get("production_method") or "REFINED_CHAPTER_MASTER_SLICE_16X9"
+                                    item["source_url"] = str(cp_ref_res.get("source_url") or cp_ref_res["media_path"])
+                                    replaced = True
+                                    logger.info(
+                                        f"Scene {scene_id}: 🎬 [RefineMedia LongForm >85% Floor] Đã cắt lát Video 16:9 sạch từ ChapterPool (strict={_strict_cp})"
+                                    )
+                                    break
+                        except Exception as _e_cp_ref:
+                            logger.debug(f"Scene {scene_id}: LongForm ChapterPool refine slice skip: {_e_cp_ref}")
+                    if not replaced:
+                        out_bili_open = str(media_dir / f"scene_{scene_id:03d}_refined_bili_open_r{retry_count}.mp4")
+                        bili_open_res = await asyncio.to_thread(
+                            _try_bilibili_broll_fallback,
+                            search_phrases=[q_x for q_x in dict.fromkeys([clean_kw_q, critic_broll_q, overall_refine_q]) if q_x][:4],
+                            search_query=clean_kw_q or overall_refine_q,
+                            subject_entity=subj_refine or primary_entity or "",
+                            topic=state.get("topic", ""),
+                            narration=narr or state.get("topic", ""),
+                            overall_script_query=overall_refine_q,
+                            effective_scope="SCRIPT_OVERALL" if retry_count >= 2 else ("SCENE_SPECIFIC" if critic_sug_q else "SCRIPT_OVERALL"),
+                            output_path=out_bili_open,
+                            target_duration_sec=sc_dur_sec,
+                            clip_role="HOOK" if scene_id == 1 else "PEAK",
+                            allow_3d_cgi_monster=False,
+                            used=used_refine_urls,
+                            job_id=job_id_refine,
+                            eff_scene_id=scene_id,
+                            cancel_event=cancel_event,
+                            deadline_ts=deadline_ts,
+                        )
+                        if bili_open_res and bili_open_res.get("media_path") and Path(bili_open_res["media_path"]).exists():
+                            item["media_path"] = bili_open_res["media_path"]
+                            item["media_type"] = "hook_ready_video" if scene_id == 1 else "video"
+                            item["pose_images"] = []
+                            item["production_method"] = "REFINED_BILIBILI_DOCUMENTARY_VIDEO"
+                            item["source_url"] = str(bili_open_res.get("source_url") or bili_open_res["media_path"])
+                            replaced = True
+                            logger.info(f"Scene {scene_id}: 🎬 [Mandatory >85% Video Bilibili Documentary] Đã nạp Video tư liệu kiểm định Vision cho '{clean_kw_q}'")
 
                 # LUẬT THÉP > 85% THỜI LƯỢNG VIDEO:
                 # Tuyệt đối CẤM hạ cấp một cảnh ĐANG LÀ VIDEO xuống Ảnh tĩnh Google nếu tổng thời lượng các cảnh Video thật còn lại <= 85.0%.

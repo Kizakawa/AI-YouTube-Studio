@@ -803,6 +803,7 @@ class SubtitleHelper:
             )
 
         dialogue_lines = []
+        karaoke_events: List[Tuple[int, int, str]] = []
         current_offset_ms = 0
         max_w_lim = 7 if is_long_form else 4
         max_c_lim = 42 if is_long_form else 22
@@ -888,12 +889,7 @@ class SubtitleHelper:
                         is_long_form=is_long_form,
                     )
 
-                    start_str = cls._ms_to_ass_time(chunk_start_ms)
-                    end_str = cls._ms_to_ass_time(chunk_end_ms)
-
-                    dialogue_lines.append(
-                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
-                    )
+                    karaoke_events.append((chunk_start_ms, chunk_end_ms, karaoke_text))
             else:
                 # ── CHẾ ĐỘ 2: FALLBACK PHÂN BỔ KÝ TỰ (Khi không có word_timings) ──
                 chunks = cls.split_text_to_chunks(
@@ -951,12 +947,7 @@ class SubtitleHelper:
                         is_long_form=is_long_form,
                     )
 
-                    start_str = cls._ms_to_ass_time(chunk_start_ms)
-                    end_str = cls._ms_to_ass_time(chunk_end_ms)
-
-                    dialogue_lines.append(
-                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
-                    )
+                    karaoke_events.append((chunk_start_ms, chunk_end_ms, karaoke_text))
 
                     chunk_start_ms = chunk_end_ms
 
@@ -966,22 +957,51 @@ class SubtitleHelper:
                 current_offset_ms += scene_duration_ms
 
         # ── Auto-Thumbnail Moving Title Banner tại 50% & 75% (gần cuối video) + 25% (Long-Form) ──
-        # Tuyệt đối KHÔNG chèn ở 0.0s đầu để bảo vệ 100% Retention. Hiển thị trên nền video đang chạy
-        # để khi kênh chưa xác thực SĐT, máy chủ YouTube tự chụp ảnh ở 50% / 75% sẽ bắt trúng tiêu đề nổi.
+        # Tuyệt đối KHÔNG chèn ở 0.0s đầu để bảo vệ 100% Retention.
+        # Với Long-Form 16:9, cả Karaoke (MarginV=68) lẫn AutoThumbBanner (MarginV=48) đều căn đáy (Alignment=2),
+        # nên bắt buộc cắt gọn khoảng thời gian Karaoke quanh cửa sổ AutoThumbBanner (±1.4s quanh IDR keyframe 25%/50%/75%)
+        # để ảnh chụp 1.jpg / 2.jpg / 3.jpg hiển thị DUY NHẤT tiêu đề lớn 88px sắc nét, 0% đè chữ phụ đề nhỏ phía sau!
+        auto_banner_windows: List[Tuple[int, int]] = []
+        auto_banner_lines: List[str] = []
         if hook_title and current_offset_ms >= 15000:
             auto_banner_txt = cls.format_auto_thumb_banner_text(hook_title)
             if auto_banner_txt:
                 pct_targets = (0.25, 0.50, 0.75) if (is_long_form or current_offset_ms >= 120000) else (0.50, 0.75)
-                half_win_ms = 3200 if is_long_form else 2200
+                half_win_ms = 1400 if is_long_form else 2200
                 for pct in pct_targets:
                     center_ms = int(current_offset_ms * pct)
                     b_st_ms = max(5500, center_ms - half_win_ms)
                     b_en_ms = min(current_offset_ms - 500, center_ms + half_win_ms)
                     if b_en_ms > b_st_ms + 800:
-                        dialogue_lines.append(
+                        auto_banner_windows.append((b_st_ms, b_en_ms))
+                        auto_banner_lines.append(
                             f"Dialogue: 3,{cls._ms_to_ass_time(b_st_ms)},{cls._ms_to_ass_time(b_en_ms)},"
                             f"AutoThumbBanner,,0,0,0,,{{\\fad(150,150)}}{auto_banner_txt}"
                         )
+
+        for k_st_ms, k_en_ms, k_txt in karaoke_events:
+            segments = [(k_st_ms, k_en_ms)]
+            if is_long_form and auto_banner_windows:
+                for b_st_ms, b_en_ms in auto_banner_windows:
+                    guard_st = b_st_ms - 80
+                    guard_en = b_en_ms + 80
+                    next_segments: List[Tuple[int, int]] = []
+                    for seg_st, seg_en in segments:
+                        if seg_en <= guard_st or seg_st >= guard_en:
+                            next_segments.append((seg_st, seg_en))
+                        else:
+                            if seg_st < guard_st and (guard_st - seg_st) >= 260:
+                                next_segments.append((seg_st, guard_st))
+                            if seg_en > guard_en and (seg_en - guard_en) >= 260:
+                                next_segments.append((guard_en, seg_en))
+                    segments = next_segments
+            for seg_st, seg_en in segments:
+                if seg_en > seg_st + 80:
+                    dialogue_lines.append(
+                        f"Dialogue: 0,{cls._ms_to_ass_time(seg_st)},{cls._ms_to_ass_time(seg_en)},Karaoke,,0,0,0,,{k_txt}"
+                    )
+
+        dialogue_lines.extend(auto_banner_lines)
 
         # ── Watermark / Credit tác giả gọn nhẹ trên đỉnh video (nếu có yêu cầu ghi nguồn) ──
         if credit_text and credit_text.strip():

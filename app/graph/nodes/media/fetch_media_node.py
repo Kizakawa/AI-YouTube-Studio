@@ -127,6 +127,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     completed_lock = asyncio.Lock()
     completed_count = 0
     total_scenes = len(script.scenes)
+    lf_scenes_per_chapter = max(3, round(total_scenes / 10)) if is_long_form else 3
 
     from app.graph.runner import report_job_progress
     if job_id:
@@ -333,24 +334,32 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # Kết hợp Chapter-Pool 16:9 Multi-Segment Jump-Cut + Hỗ trợ @tool Doodle 2D 16:9
         # ══════════════════════════════════════════════════════════════════════
         if not media_path and is_long_form and tool_name != "render_doodle_2d_explainer_scene":
+            scene_lf_entity = str(
+                sc_strat.get("subject_entity")
+                or getattr(scene, "subject_entity", "")
+                or primary_entity
+                or state.get("topic", "")
+            ).strip()
             lf_parts = [
                 p for p in (
                     sc_strat.get("youtube_search_query"),
                     sc_strat.get("action_or_concept_query"),
+                    *(getattr(scene, "search_queries", None) or []),
                     sq,
                     kw,
                     sc_strat.get("human_action_query"),
                     sc_strat.get("smart_image_query"),
-                    state.get("topic", ""),
                 )
                 if p
             ]
+            if not lf_parts:
+                lf_parts = [scene_lf_entity or state.get("topic", "")]
             lf_q = "|||".join(dict.fromkeys(str(p).strip() for p in lf_parts if str(p).strip()))
             lf_res = await asyncio.to_thread(
                 _fetch_longform_16x9_broll_clip_sync,
                 scene_id=scene.scene_id,
                 query=lf_q,
-                primary_entity=primary_entity or state.get("topic", ""),
+                primary_entity=scene_lf_entity,
                 topic=state.get("topic", ""),
                 narration=scene.narration,
                 target_duration_sec=dur,
@@ -363,6 +372,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 job_id=job_id,
                 cancel_event=cancel_event,
                 deadline_ts=deadline_ts,
+                scenes_per_chapter=lf_scenes_per_chapter,
             )
             if not (lf_res and lf_res.get("media_path")):
                 from app.services.media.longform_chapter_pool import (
@@ -376,6 +386,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     scene_id=scene.scene_id,
                     target_duration_sec=dur,
                     job_id=job_id,
+                    preferred_entity=scene_lf_entity,
+                    strict_entity_match=True,
                 )
                 # Nếu ChapterMaster chưa sẵn sàng, tìm nhanh 1 clip Video Stock/Archive 16:9 trực tiếp (14s timeout)
                 # để có ngay Video chuyển động thật, tránh tải Ảnh tĩnh rồi lại phải chạy Step B Motion Floor!
@@ -383,17 +395,17 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     try:
                         _check_fetch_deadline()
                         fb_vid_q = clean_scene_search_query(
-                            sc_strat.get("action_or_concept_query") or sq or kw or primary_entity or state.get("topic", ""),
+                            sc_strat.get("action_or_concept_query") or sq or kw or scene_lf_entity or state.get("topic", ""),
                             max_words=4,
                         )
                         with longform_bvid_lock:
                             snap_lf_u = set(used_pool_urls)
                         va_lf_fb = {
                             "video_format": "long",
-                            "subject": str(primary_entity or state.get("topic", "")),
-                            "core_visual_entity": str(primary_entity or state.get("topic", "")),
+                            "subject": scene_lf_entity,
+                            "core_visual_entity": scene_lf_entity,
                             "topic": state.get("topic", ""),
-                            "search_queries": [fb_vid_q, clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=3)],
+                            "search_queries": [fb_vid_q, clean_scene_search_query(scene_lf_entity or state.get("topic", ""), max_words=3)],
                         }
                         fb_v_hit = await asyncio.wait_for(
                             asyncio.to_thread(
@@ -474,9 +486,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             topic=state.get("topic", ""),
                             used_urls=used_pool_urls,
                             is_hook_scene=(scene.scene_id == 1),
-                            subject_entity=primary_entity or state.get("topic", ""),
+                            subject_entity=scene_lf_entity,
                             search_scope="SCENE_SPECIFIC",
-                            overall_script_query=primary_entity or state.get("topic", ""),
+                            overall_script_query=scene_lf_entity,
                             job_id=job_id,
                             scene_id=scene.scene_id,
                             target_image_count=1,
@@ -1707,20 +1719,57 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         "strategy_rationale": f"Recovered completed image(s) from disk ({len(rec_early_poses)} shots)",
                         "source_url": rec_early_poses[0],
                     }
+            if (not res or not isinstance(res, dict) or str(res.get("media_path") or "").endswith("_graphic.png")) and is_long_form:
+                try:
+                    from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
+                    _to_sc_st = strategy_map.get(scene.scene_id, {})
+                    _to_lf_ent = str(_to_sc_st.get("subject_entity") or getattr(scene, "subject_entity", "") or primary_entity or "").strip()
+                    _to_dur = _scene_audio_duration(scene, state.get("scenes_audio", []))
+                    _to_slice = await asyncio.to_thread(
+                        slice_any_available_chapter_master_for_scene,
+                        media_dir=media_dir,
+                        scene_id=scene.scene_id,
+                        target_duration_sec=max(3.0, float(_to_dur)),
+                        job_id=job_id,
+                        preferred_entity=_to_lf_ent,
+                        strict_entity_match=False,
+                    )
+                    if _to_slice and _to_slice.get("media_path") and Path(_to_slice["media_path"]).exists():
+                        res = {
+                            "scene_id": scene.scene_id,
+                            "media_path": _to_slice["media_path"],
+                            "media_type": "video",
+                            "vision_curated": True,
+                            "visual_keyword": getattr(scene, "visual_keyword", "") or _to_lf_ent,
+                            "visual_prompt": getattr(scene, "visual_prompt", None),
+                            "narration": scene.narration,
+                            "camera_motion": getattr(scene, "camera_motion", None) or "zoom_in",
+                            "sfx_cue": getattr(scene, "sfx_cue", None) or "none",
+                            "highlight_words": getattr(scene, "highlight_words", None),
+                            "overlay_badge": getattr(scene, "overlay_badge", None),
+                            "visual_strategy": "LONGFORM_16X9_DOCUMENTARY_VIDEO",
+                            "production_method": "CHAPTER_POOL_16X9_TIMEOUT_RESCUE",
+                            "tool": "longform_chapter_pool_16x9",
+                            "strategy_rationale": str(_to_slice.get("rationale") or "Timeout 16:9 Chapter-Pool Slice Rescue"),
+                            "source_url": str(_to_slice.get("source_url") or _to_slice["media_path"]),
+                        }
+                except Exception as _e_to_lf:
+                    logger.debug(f"Scene {scene.scene_id}: Timeout LongForm master slice skip: {_e_to_lf}")
             if not res or not isinstance(res, dict) or str(res.get("media_path") or "").endswith("_graphic.png"):
                 try:
                     from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                     bind_scene_cancellation(threading.Event(), time.monotonic() + 20.0)
                     out_to_gimg = str(media_dir / f"scene_{scene.scene_id:03d}_timeout_gimg.jpg")
+                    _to_sc_subj = str((strategy_map.get(scene.scene_id) or {}).get("subject_entity") or getattr(scene, "subject_entity", "") or primary_entity or "").strip()
                     g_to_res = await asyncio.wait_for(
                         asyncio.to_thread(
                             execute_google_cinematic_image_sync,
-                            smart_query=getattr(scene, "visual_keyword", "") or primary_entity or state.get("topic", ""),
+                            smart_query=getattr(scene, "visual_keyword", "") or _to_sc_subj or state.get("topic", ""),
                             output_path=out_to_gimg,
                             narration=scene.narration,
                             topic=state.get("topic", ""),
                             is_hook_scene=(scene.scene_id == 1),
-                            subject_entity=primary_entity,
+                            subject_entity=_to_sc_subj,
                             used_urls=used_pool_urls,
                             job_id=job_id,
                             scene_id=scene.scene_id,
@@ -1817,23 +1866,32 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             pass
     if is_long_form and str(current_niche or "").lower() not in ("psychology", "satirical_psychology_animation", "doodle", "philosophy"):
         from app.services.media.longform_chapter_pool import fetch_or_slice_longform_chapter_clip_sync
-        prewarm_sem = asyncio.Semaphore(10)
+        # Giới hạn 4 luồng tiền tải đồng thời (chia 2.5 đợt sạch) + timeout 75s/đợt để tránh nghẽn băng thông/FFmpeg/Vision khi tải 10 Chapter Masters 16:9
+        prewarm_sem = asyncio.Semaphore(4)
         scenes_audio_pw = state.get("scenes_audio", [])
 
         async def _prewarm_one_chapter(lead_scene) -> None:
             sc_st = strategy_map.get(lead_scene.scene_id, {})
             if sc_st.get("tool_name") == "render_doodle_2d_explainer_scene":
                 return
+            pw_entity = str(
+                sc_st.get("subject_entity")
+                or getattr(lead_scene, "subject_entity", "")
+                or primary_entity
+                or state.get("topic", "")
+            ).strip()
             pw_parts = [
                 p for p in (
                     sc_st.get("youtube_search_query"),
                     sc_st.get("action_or_concept_query"),
+                    *(getattr(lead_scene, "search_queries", None) or []),
                     getattr(lead_scene, "stock_query", None),
                     getattr(lead_scene, "visual_keyword", None),
-                    state.get("topic", ""),
                 )
                 if p
             ]
+            if not pw_parts:
+                pw_parts = [pw_entity or state.get("topic", "")]
             pw_q = "|||".join(dict.fromkeys(str(p).strip() for p in pw_parts if str(p).strip()))
             pw_dur = float(getattr(lead_scene, "estimated_seconds", 8.0) or 8.0)
             if scenes_audio_pw:
@@ -1842,7 +1900,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     pw_dur = max(float(sa_m["audio_duration_ms"]) / 1000.0, 2.5)
             async with prewarm_sem:
                 pw_cancel = threading.Event()
-                pw_dl = time.monotonic() + 46.0
+                pw_dl = time.monotonic() + 72.0
                 try:
                     await asyncio.wait_for(
                         asyncio.to_thread(
@@ -1850,7 +1908,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             job_id=job_id,
                             scene_id=lead_scene.scene_id,
                             query=pw_q,
-                            primary_entity=primary_entity or state.get("topic", ""),
+                            primary_entity=pw_entity,
                             topic=state.get("topic", ""),
                             narration=lead_scene.narration,
                             target_duration_sec=pw_dur,
@@ -1860,22 +1918,22 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             bvid_lock=longform_bvid_lock,
                             media_agent=media_agent,
                             is_scifi=is_scifi_val,
-                            scenes_per_chapter=3,
+                            scenes_per_chapter=lf_scenes_per_chapter,
                             cancel_event=pw_cancel,
                             deadline_ts=pw_dl,
                             chapter_key_prefix="chapter",
                         ),
-                        timeout=48.0,
+                        timeout=75.0,
                     )
                 except Exception as e_pw:
                     pw_cancel.set()
                     logger.debug(f"[ChapterPool Prewarm] Chapter lead scene {lead_scene.scene_id} skip: {e_pw}")
 
-        # Tiền tải trọn vẹn tối đa 10 Chapter Masters (5 Bilibili 16:9 + 5 YouTube 16:9) trong 1 đợt song song duy nhất (<= 48s)
-        all_lead_scenes = [s for s in script.scenes if ((int(s.scene_id) - 1) % 3) == 0]
+        # Tiền tải trọn vẹn tối đa 10 Chapter Masters 16:9 theo đợt 4 luồng không nghẽn cổ chai (<= 75s/đợt)
+        all_lead_scenes = [s for s in script.scenes if ((int(s.scene_id) - 1) % lf_scenes_per_chapter) == 0]
         chapter_lead_scenes = all_lead_scenes[:10]
         if chapter_lead_scenes:
-            logger.info(f"🎬 [LongForm Phase-A] Đang tiền tải {len(chapter_lead_scenes)} Chapter Masters 16:9 (Bilibili + YouTube song song <= 48s)...")
+            logger.info(f"🎬 [LongForm Phase-A] Đang tiền tải {len(chapter_lead_scenes)} Chapter Masters 16:9 (4 luồng/đợt <= 75s)...")
             await asyncio.gather(*[_prewarm_one_chapter(ls) for ls in chapter_lead_scenes])
 
     tasks = [_guarded_fetch(i, s) for i, s in enumerate(script.scenes)]

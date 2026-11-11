@@ -849,22 +849,33 @@ def download_and_crop_bilibili_broll_clip(
                 str(output_path),
             ]
         elif is_16x9:
+            # Cắt bỏ triệt để 12.5% mép trên (nơi đặt watermark logo Bilibili/TV ở góc trên) + 13.5% mép dưới (phụ đề chữ Hán)
             crop_expr_16x9 = (
-                "crop=iw*0.92:ih*0.86:iw*0.04:ih*0.07"
+                "crop=iw*0.86:ih*0.80:iw*0.07:ih*0.12"
                 if is_verified_nosub
-                else "crop=iw*0.82:ih*0.70:iw*0.09:ih*0.08"
+                else "crop=iw*0.84:ih*0.74:iw*0.08:ih*0.125"
             )
-            base_16x9_vf = (
-                f"{crop_expr_16x9},"
-                "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
-                "crop=1920:1080,"
-                "unsharp=5:5:0.85:5:5:0.0,"
-                "eq=contrast=1.04:saturation=1.05,"
-                "setsar=1,fps=30,format=yuv420p"
-            )
+            if preserve_continuous_master:
+                # Với Chapter Master dài (72s–86s), dùng bicubic + 4 threads để hoàn tất Safe-Crop trong ~6–10s (Lanczos + Unsharp sẽ chạy ở bước cắt từng cảnh 12s)
+                base_16x9_vf = (
+                    f"{crop_expr_16x9},"
+                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=bicubic,"
+                    "crop=1920:1080,"
+                    "setsar=1,fps=30,format=yuv420p"
+                )
+            else:
+                base_16x9_vf = (
+                    f"{crop_expr_16x9},"
+                    "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,"
+                    "crop=1920:1080,"
+                    "unsharp=5:5:0.85:5:5:0.0,"
+                    "eq=contrast=1.04:saturation=1.05,"
+                    "setsar=1,fps=30,format=yuv420p"
+                )
             half_d = round(clip_dur * 0.5, 2)
             rem_d = round(clip_dur - half_d, 2)
             second_start = round(peak_start + half_d + 3.0, 2)
+            enc_threads = "4" if preserve_continuous_master else "2"
             if (not preserve_continuous_master) and clip_dur >= 9.0 and avail_dur_s >= (second_start + rem_d + 0.4):
                 fc = (
                     f"[0:v]setpts=PTS-STARTPTS,{base_16x9_vf}[v1];"
@@ -880,7 +891,7 @@ def download_and_crop_bilibili_broll_clip(
                     "-map", "[vout]",
                     "-t", f"{clip_dur:.2f}",
                     "-an",
-                    "-threads", "2",
+                    "-threads", enc_threads,
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19",
                     *BT709_COLOR_ARGS,
                     str(output_path),
@@ -893,7 +904,7 @@ def download_and_crop_bilibili_broll_clip(
                     "-i", str(raw_m4s),
                     "-vf", base_16x9_vf,
                     "-an",
-                    "-threads", "2",
+                    "-threads", enc_threads,
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19",
                     *BT709_COLOR_ARGS,
                     str(output_path),
@@ -943,7 +954,8 @@ def download_and_crop_bilibili_broll_clip(
                     str(output_path),
                 ]
         try:
-            subprocess.run(cmd, check=True, capture_output=True, timeout=45)
+            crop_timeout_s = 70 if (preserve_continuous_master and aspect_ratio == "16:9") else 45
+            subprocess.run(cmd, check=True, capture_output=True, timeout=crop_timeout_s)
             out_p = Path(output_path)
             if out_p.exists() and out_p.stat().st_size > 35_000:
                 if aspect_ratio != "16:9":

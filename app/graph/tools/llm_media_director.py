@@ -65,11 +65,12 @@ def plan_media_tools_with_llm_sync(
     )
 
     is_long_form_dir = bool(is_long_form) or (total_scenes >= 12)
+    lf_spc_dir = max(3, round(total_scenes / 10)) if is_long_form_dir else 3
     longform_chapter_note = (
-        "\n- LONG-FORM 16:9 WIDESCREEN DOCUMENTARY MODE ACTIVE (14–24 SCENES ACROSS 5 CHAPTERS):\n"
-        "  * Scenes are grouped into Chapter Clusters (4 consecutive scenes per Chapter Master video: Scenes 1-4 = Ch.1, 5-8 = Ch.2, 9-12 = Ch.3, 13-16 = Ch.4, etc.).\n"
-        "  * For the first scene of each Chapter Cluster (Scenes 1, 5, 9, 13, 17), write a crisp 3–5 word 16:9 documentary search query (`youtube_search_query` / `action_or_concept_query` / `human_action_query`) that captures the entire Chapter's visual theme so our Chapter-Pool engine downloads ONE rich 16:9 master video and slices multiple non-contiguous angles locally!\n"
-        "  * Interleave ~75%–80% real 16:9 documentary video tools (`clone_youtube_short_peak_clip`, `summon_epic_monster_cinematic_media`, `fetch_clean_cinematic_portrait_or_broll`) with ~20%–25% analytical visual metaphors (`render_doodle_2d_explainer_scene` at 1920x1080 for psychology/mechanisms on 1 scene per chapter).\n"
+        f"\n- LONG-FORM 16:9 WIDESCREEN DOCUMENTARY MODE ACTIVE ({total_scenes} SCENES ACROSS 10 CHAPTERS, {lf_spc_dir} CONSECUTIVE SCENES PER CHAPTER):\n"
+        f"  * Scenes are grouped into 10 Chapter Clusters ({lf_spc_dir} scenes per Chapter Master video: Ch.1 = Scenes 1-{lf_spc_dir}, Ch.2 = Scenes {lf_spc_dir+1}-{lf_spc_dir*2}, ..., Ch.10).\n"
+        "  * CRITICAL PER-CHAPTER ENTITY ISOLATION: Each Chapter in a 10-chapter documentary/gauntlet/compendium often features its OWN distinct species, challenger, historical case, or setting (already provided in each scene's `subject_entity` and `search_queries`). Preserve each Chapter's own canonical English `subject_entity` — NEVER overwrite Chapters 2–10 with Chapter 1's entity!\n"
+        "  * Use 100% real 16:9 widescreen video tools (`clone_youtube_short_peak_clip`, `summon_epic_monster_cinematic_media`, `fetch_clean_cinematic_portrait_or_broll`) — NEVER route real wildlife, ocean mystery, history, or rescue chapters to `render_doodle_2d_explainer_scene`!\n"
         if is_long_form_dir
         else ""
     )
@@ -760,11 +761,14 @@ def audit_and_decide_search_scopes_with_llm_sync(
         )
         fb_cur = d.get("fallback_broad_query") or d.get("secondary_stock_query") or s.get("stock_query") or ""
         if is_large_batch and anchor_toks:
+            sc_own_subj = str(d.get("subject_entity") or s.get("subject_entity") or "").strip()
+            sc_own_toks = _extract_subject_anchor_tokens(sc_own_subj, "", "") if sc_own_subj else set()
+            eff_anchor_toks = sc_own_toks if sc_own_toks else anchor_toks
             q_toks = set(re.findall(r"[a-zA-Z]{3,}", str(q_cur).lower()))
             fb_toks = set(re.findall(r"[a-zA-Z]{3,}", str(fb_cur).lower()))
             needs_llm_audit = (
-                not (q_toks & anchor_toks)
-                or not (fb_toks & anchor_toks)
+                not (q_toks & eff_anchor_toks)
+                or not (fb_toks & eff_anchor_toks)
                 or bool(_ANALOGY_SYNTAX_RE.search(narr_txt))
             )
             if not needs_llm_audit:

@@ -23,7 +23,7 @@ class AudioQA:
     """Kiểm tra và chấm điểm chất lượng giọng đọc AI."""
 
     @staticmethod
-    def _detect_silence(audio_path: str, min_silence_sec: float = 1.5) -> bool:
+    def _detect_silence(audio_path: str, min_silence_sec: float = 1.5, timeout_sec: int = 20) -> bool:
         """
         Dùng ffmpeg silencedetect filter để phát hiện khoảng im lặng bất thường.
         Trả về True nếu phát hiện silence > min_silence_sec trong file audio.
@@ -40,7 +40,7 @@ class AudioQA:
                     "-af", f"silencedetect=noise=-40dB:d={min_silence_sec}",
                     "-f", "null", "-"
                 ],
-                capture_output=True, text=True, timeout=20
+                capture_output=True, text=True, timeout=timeout_sec
             )
             return "silence_start" in result.stderr
         except FileNotFoundError:
@@ -94,10 +94,14 @@ class AudioQA:
             passed = False
             feedback_items.append(f"Audio bị thiếu cho cảnh: {', '.join(missing_scenes)}")
 
-        if is_long_form or len(scenes_audio) >= 14:
-            if duration_sec < 75.0:
+        is_lf_mode = bool(is_long_form or len(scenes_audio) >= 14)
+        if is_lf_mode:
+            if duration_sec < 510.0:
                 pacing_rating = "TOO_SHORT"
-                feedback_items.append(f"Thời lượng hơi ngắn cho Video Dài 16:9 ({duration_sec:.1f}s, chuẩn 120s - 360s)")
+                passed = False
+                feedback_items.append(
+                    f"Thời lượng Video Dài 16:9 ({duration_sec:.1f}s) chưa đạt sàn Mid-Roll Ads an toàn (>= 510s / mục tiêu 555s+)"
+                )
             elif duration_sec > 960.0:
                 pacing_rating = "TOO_LONG"
                 passed = False
@@ -120,8 +124,9 @@ class AudioQA:
             passed = False
             feedback_items.append(f"Tốc độ đọc quá nhanh ({wpm:.0f} WPM > 195 WPM), người xem không kịp nghe -> dễ vuốt bỏ")
 
-        # Phát hiện khoảng im lặng thật bằng ffmpeg (không ghi đè nhãn TOO_FAST / TOO_LONG nếu đã vi phạm tốc độ)
-        has_silence = AudioQA._detect_silence(full_audio_path)
+        # Phát hiện khoảng im lặng thật bằng ffmpeg (Long-Form cho phép nhịp nghỉ chương <= 2.4s và timeout 45s)
+        sil_thresh = 2.4 if is_lf_mode else 1.5
+        has_silence = AudioQA._detect_silence(full_audio_path, min_silence_sec=sil_thresh, timeout_sec=45 if is_lf_mode else 20)
         if has_silence:
             if pacing_rating == "PERFECT":
                 pacing_rating = "HAS_SILENCE"

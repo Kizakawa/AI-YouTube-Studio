@@ -257,7 +257,7 @@ async def run_post_gather_media_rescues(
                             _fetch_longform_16x9_broll_clip_sync,
                             scene_id=r_sid,
                             query=r_kw,
-                            primary_entity=primary_entity or state.get("topic", ""),
+                            primary_entity=r_subj or primary_entity or state.get("topic", ""),
                             topic=state.get("topic", ""),
                             narration=str(r_sc.get("narration") or state.get("topic", "")),
                             target_duration_sec=r_dur,
@@ -271,6 +271,7 @@ async def run_post_gather_media_rescues(
                             output_override_path=r_out_mp4,
                             cancel_event=cancel_event,
                             deadline_ts=deadline_ts,
+                            scenes_per_chapter=max(3, round(len(scenes_media) / 10)),
                         )
                         if not (lf_resc and lf_resc.get("media_path") and Path(lf_resc["media_path"]).exists()):
                             from app.services.media.longform_chapter_pool import slice_any_available_chapter_master_for_scene
@@ -436,8 +437,8 @@ async def run_post_gather_media_rescues(
                                 va_resc = {
                                     "video_format": "long" if is_long_form else "short",
                                     "search_queries": stock_queries[:3],
-                                    "subject": (primary_entity or r_subj or sq_try) if is_long_form else (r_subj or primary_entity or sq_try),
-                                    "core_visual_entity": (primary_entity or r_subj or sq_try) if is_long_form else (r_subj or primary_entity or sq_try),
+                                    "subject": (r_subj or primary_entity or sq_try),
+                                    "core_visual_entity": (r_subj or primary_entity or sq_try),
                                     "topic": state.get("topic", ""),
                                     "skip_establishing_pass": (r_sid == 1),
                                 }

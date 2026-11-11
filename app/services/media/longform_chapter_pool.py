@@ -256,6 +256,63 @@ def is_clip_visually_unique_in_job(
     return True
 
 
+def sync_and_detect_duplicate_or_missing_scenes(
+    job_id: int,
+    scenes_media: List[Dict[str, Any]],
+) -> List[int]:
+    """
+    Đồng bộ 100% chữ ký `VisualCritic._media_signature` của toàn bộ `scenes_media` vào `_JOB_SCENE_SIGNATURES[job_id]`
+    và trả về danh sách `scene_id` bị thiếu file, là thẻ placeholder `_graphic.png`, hoặc bị trùng lặp khung hình
+    (`VisualCritic._find_duplicate`) với một cảnh đứng trước trong cùng Job.
+    """
+    if not scenes_media:
+        return []
+    jid = int(job_id or 0)
+    from app.graph.evaluators.visual_critic import VisualCritic
+
+    accepted_sigs: Dict[int, List[str]] = {}
+    bad_sids: List[int] = []
+    for item in scenes_media:
+        if not isinstance(item, dict):
+            continue
+        sid = int(item.get("scene_id") or 0)
+        if sid <= 0:
+            continue
+        mp = str(item.get("media_path") or "").strip()
+        p = Path(mp) if mp else None
+        if (
+            not p
+            or not p.exists()
+            or p.name.lower().endswith("_graphic.png")
+            or p.stat().st_size < 3_000
+        ):
+            bad_sids.append(sid)
+            continue
+        if p.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv") and not is_completed_clean_mp4(p, min_size_bytes=12_000, min_duration_ms=800):
+            bad_sids.append(sid)
+            continue
+        is_long_cont = str(item.get("production_method") or "") == "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK_CONT"
+        if is_long_cont:
+            continue
+        sig = VisualCritic._media_signature(str(p))
+        if sig and accepted_sigs and VisualCritic._find_duplicate(sig, accepted_sigs) is not None:
+            bad_sids.append(sid)
+            continue
+        if sig:
+            accepted_sigs[sid] = sig
+
+    if jid > 0:
+        with _job_dhash_lock:
+            sig_map = _JOB_SCENE_SIGNATURES.setdefault(jid, {})
+            dhash_map = _JOB_SCENE_DHASHES.setdefault(jid, {})
+            for bad_s in bad_sids:
+                sig_map.pop(bad_s, None)
+                dhash_map.pop(bad_s, None)
+            for ok_s, ok_sig in accepted_sigs.items():
+                sig_map[ok_s] = ok_sig
+    return bad_sids
+
+
 def stitch_two_16x9_clips_no_loop(
     clip_a: str,
     clip_b: str,
@@ -374,27 +431,29 @@ def _search_youtube_16x9_documentary_candidates(
     q_first = [p.strip() for p in str(query or "").split("|||") if p.strip()]
     base_phrase = q_first[0] if q_first else (query or primary_entity or topic)
     clean_q = _clean_yt_search_phrase(base_phrase, max_words=6) or _clean_yt_search_phrase(primary_entity or topic, max_words=5) or topic
-    # Chỉ bổ sung 1 từ khóa thực thể gốc nếu truy vấn chương chưa nhắc tới bất kỳ thực thể nào trong chủ đề (giữ tính đa dạng 14 chương!)
+    # Chỉ bổ sung từ khóa thực thể TIẾNG ANH của riêng Chương (`primary_entity`), TUYỆT ĐỐI KHÔNG ghép từ tiếng Bồ Đào Nha / tiêu đề chung (`topic`) sang các Chương khác!
+    eng_primary_only = "" if re.search(r"[ãõçêôáéíóúàươđ]", str(primary_entity or "").lower()) else str(primary_entity or "")
     topic_anchor_words = [
-        w for w in (_clean_yt_search_phrase(f"{primary_entity} {topic}", max_words=7) or "").split()
-        if len(w) >= 3 and w.lower() not in {"the", "and", "for", "with", "inside", "from", "into", "vs"}
+        w for w in re.findall(r"[a-zA-Z]{3,}", _clean_yt_search_phrase(eng_primary_only, max_words=4) or "")
+        if w.lower() not in {"the", "and", "for", "with", "inside", "from", "into", "vs", "why", "how"}
     ]
-    if topic_anchor_words and not any(w.lower() in clean_q.lower() for w in topic_anchor_words[:4]):
-        clean_q = _clean_yt_search_phrase(f"{topic_anchor_words[0]} {clean_q}", max_words=7) or clean_q
+    if topic_anchor_words and not any(w.lower() in clean_q.lower() for w in topic_anchor_words[:3]):
+        clean_q = _clean_yt_search_phrase(f"{' '.join(topic_anchor_words[:2])} {clean_q}", max_words=7) or clean_q
 
-    alt_phrase = q_first[1] if len(q_first) > 1 else (primary_entity or topic)
+    alt_phrase = q_first[1] if len(q_first) > 1 else (eng_primary_only or clean_q)
     clean_alt = _clean_yt_search_phrase(alt_phrase, max_words=6) or clean_q
-    if topic_anchor_words and not any(w.lower() in clean_alt.lower() for w in topic_anchor_words[:4]):
-        clean_alt = _clean_yt_search_phrase(f"{topic_anchor_words[0]} {clean_alt}", max_words=7) or clean_alt
+    if topic_anchor_words and not any(w.lower() in clean_alt.lower() for w in topic_anchor_words[:3]):
+        clean_alt = _clean_yt_search_phrase(f"{' '.join(topic_anchor_words[:2])} {clean_alt}", max_words=7) or clean_alt
 
     search_queries = [
         f"{clean_q} 4k documentary",
     ]
     if clean_alt and clean_alt.lower() != clean_q.lower():
-        search_queries.append(f"{clean_alt} 4k wildlife documentary" if "wild" in topic.lower() else f"{clean_alt} 4k documentary footage")
-    else:
-        topic_doc_q = _clean_yt_search_phrase(f"{primary_entity} {topic}", max_words=6) or clean_q
-        search_queries.append(f"{topic_doc_q} 4k documentary footage")
+        search_queries.append(f"{clean_alt} 4k documentary footage")
+    elif eng_primary_only:
+        ent_doc_q = _clean_yt_search_phrase(eng_primary_only, max_words=4) or clean_q
+        if ent_doc_q.lower() != clean_q.lower():
+            search_queries.append(f"{ent_doc_q} 4k documentary footage")
     flat_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -408,14 +467,16 @@ def _search_youtube_16x9_documentary_candidates(
     seen_ids: Set[str] = set()
     entity_tokens = {
         w.lower()
-        for w in re.findall(r"[a-zA-Z]{3,}", f"{primary_entity} {clean_q}".lower())
-        if w.lower() not in {"the", "and", "for", "with", "what", "how", "why", "from", "into"}
+        for w in re.findall(r"[a-zA-Z]{3,}", f"{eng_primary_only} {clean_q}".lower())
+        if w.lower() not in {"the", "and", "for", "with", "what", "how", "why", "from", "into", "documentary", "footage", "close", "wide", "action"}
     }
-    topic_tokens = {
-        w.lower()
-        for w in re.findall(r"[a-zA-Z]{4,}", f"{primary_entity} {topic}".lower())
-        if w.lower() not in {"the", "and", "for", "with", "what", "how", "why", "from", "into", "inside", "outside", "versus"}
-    }
+    topic_tokens = set(entity_tokens)
+    if not topic_tokens:
+        topic_tokens = {
+            w.lower()
+            for w in re.findall(r"[a-zA-Z]{4,}", str(topic or "").lower())
+            if w.lower() not in {"the", "and", "for", "with", "what", "how", "why", "from", "into", "inside", "outside", "versus"}
+        }
 
     for sq in search_queries:
         yt_target = f"ytsearch{max_results}:{sq}"
@@ -434,8 +495,8 @@ def _search_youtube_16x9_documentary_candidates(
                     continue
 
                 dur = float(entry.get("duration") or 0.0)
-                # Yêu cầu >= 34s để mỗi Master tạo đủ 3-4 phân đoạn 11s độc lập (và <= 420s kết hợp download_ranges tải 54s siêu nhanh)
-                if dur < 34.0 or dur > 420.0:
+                # Yêu cầu >= 28s để mỗi Master tạo đủ 3-4 phân đoạn độc lập (và <= 480s kết hợp download_ranges tải nhanh)
+                if dur < 28.0 or dur > 480.0:
                     continue
 
                 title = str(entry.get("title") or "")
@@ -566,20 +627,20 @@ def _verify_16x9_master_with_gemini_vision(
         return False, 0.0
 
     prompt = f"""You are a Strict Widescreen 16:9 Documentary Quality, Species/Subject & Copyright Inspector.
-Look at the 4 horizontal 16:9 frames (2x2 grid: Frame 1 top-left, Frame 2 top-right, Frame 3 bottom-left, Frame 4 bottom-right) sampled from a candidate 16:9 master video:
-- Documentary Topic: "{topic}"
-- Primary Subject(s): "{primary_entity or topic}"
-- Chapter Query: "{query}"
+Look at the 4 horizontal 16:9 frames (2x2 grid: Frame 1 top-left, Frame 2 top-right, Frame 3 bottom-left, Frame 4 bottom-right) sampled from a candidate 16:9 master video for THIS SPECIFIC CHAPTER:
+- Overarching Documentary Topic: "{topic}"
+- Target Chapter Subject (PRIMARY MATCH TARGET): "{primary_entity or query}"
+- Target Chapter Query: "{query}"
 - Source Title: "{video_title}"
 
 REJECT IMMEDIATELY (`"passed": false`) IF ANY OF THESE VIOLATIONS APPEAR IN THE USABLE FRAMES:
-1. WRONG SPECIES / WRONG BIOME / WRONG CLIMATE / UNRELATED SUBJECT: Any frame shows animal species, prey, landscapes, seasons, or objects from a contradictory ecosystem, climate, continent, or era that do NOT belong to "{topic}" / "{primary_entity}" (for example: snow/ice/polar creatures in a tropical/desert/temperate topic, African savanna animals/prey not named in a South American rainforest topic, domestic pets/livestock instead of wild species, or modern city/cars/tourists in a wild nature or ancient history story).
+1. WRONG CHAPTER SUBJECT / WRONG BIOME / ERA OR FLAG ANACHRONISM: Any frame contradicts THIS CHAPTER's subject ("{primary_entity or query}") and query ("{query}") — e.g., showing a completely unrelated species/climate/continent, modern tourists/cars in a wild nature or ancient history chapter, OR displaying a foreign national flag/military insignia that contradicts the country/empire of the story. (Note: In a multi-chapter gauntlet/compendium documentary, validate frames against THIS CHAPTER's subject "{primary_entity or query}", even if other chapters feature different challengers.)
 2. BLACK BARS / COLLAGE / PILLARBOX / LETTERBOX: Any frame has horizontal black letterbox bars at top/bottom, vertical pillarbox sidebars/blurred borders, split-screen collages, or template text ("SUBSCRIBE", "DAILY VIRAL VIDEOS").
-3. HUMAN HANDLERS / CAPTIVE ENCLOSURES / TALKING HEAD / CARTOON: When the topic is wild nature/animals, REJECT IMMEDIATELY if ANY human, wildlife handler, zookeeper, tourist, swimmer, or human hands/body appear holding, touching, petting, feeding, posing with, or standing near an animal, OR if ANY wire/chain-link fence, cage bars, concrete enclosure wall, or aquarium glass tank is visible! Also reject any YouTuber/presenter speaking to camera, cartoon/whiteboard/infographic slides, or video game UI.
-4. WATERMARKS / UPLOADER CREDITS / SUBTITLES: ANY visible watermark, creator tag (e.g. "By: ...", "@...", Chinese/foreign uploader text at the top/corners/center), TV channel bug, or burned-in subtitles.
+3. HUMAN HANDLERS / CAPTIVE ENCLOSURES / TALKING HEAD / CARTOON: When the chapter subject is wild nature/animals, REJECT IMMEDIATELY if ANY human, wildlife handler, zookeeper, tourist, swimmer, or human hands/body appear holding, touching, petting, feeding, posing with, or standing near an animal, OR if ANY wire/chain-link fence, cage bars, concrete enclosure wall, or aquarium glass tank is visible! Also reject any YouTuber/presenter speaking to camera, cartoon/whiteboard/infographic slides, or video game UI.
+4. WATERMARKS / UPLOADER CREDITS / BURNED-IN SUBTITLES: ANY visible watermark, creator tag ("By: ...", "@...", TikTok/Douyin/Chinese uploader text at top/corners/center), TV channel bug, or burned-in subtitles in any language.
 
-IF Frame 1 (top-left) shows a brief intro card, BUT ALL THREE of Frames 2, 3, and 4 show 100% CLEAN, FULL-BLEED 16:9 WIDESCREEN footage strictly matching "{topic}" with ZERO black bars, ZERO watermarks, ZERO human handlers/fences/cages, and ZERO wrong species/biomes:
-Set `"passed": true` and `"clean_start_frame": 2`. If ALL FOUR frames (1, 2, 3, and 4) are 100% clean full-bleed 16:9 footage matching "{topic}", set `"passed": true` and `"clean_start_frame": 1`. If ANY of Frames 2, 3, or 4 violates Rules 1–4, you MUST set `"passed": false`!
+IF Frame 1 (top-left) shows a brief intro card, BUT ALL THREE of Frames 2, 3, and 4 show 100% CLEAN, FULL-BLEED 16:9 WIDESCREEN footage strictly matching "{primary_entity or query}" with ZERO black bars, ZERO watermarks/subtitles, ZERO human handlers/fences/cages, and ZERO wrong species/flags/biomes:
+Set `"passed": true` and `"clean_start_frame": 2`. If ALL FOUR frames (1, 2, 3, and 4) are 100% clean full-bleed 16:9 footage matching "{primary_entity or query}", set `"passed": true` and `"clean_start_frame": 1`. If ANY of Frames 2, 3, or 4 violates Rules 1–4, you MUST set `"passed": false`!
 
 Return ONLY valid JSON:
 {{"passed": false, "clean_start_frame": 1, "reason": "short explanation"}}"""
@@ -1282,9 +1343,9 @@ def fetch_or_slice_longform_chapter_clip_sync(
             with bvid_lock:
                 snap_used_urls = set(used_urls)
             req_master_max = (
-                max(18.0, min(28.0, float(target_duration_sec) + 8.0))
+                max(18.0, min(32.0, float(target_duration_sec) + 10.0))
                 if int(scenes_per_chapter) <= 1
-                else (72.0 if int(scenes_per_chapter) >= 3 else 56.0)
+                else (86.0 if int(scenes_per_chapter) >= 4 else (72.0 if int(scenes_per_chapter) >= 3 else 56.0))
             )
 
             def _try_yt_master() -> Optional[Dict[str, Any]]:
@@ -1296,27 +1357,33 @@ def fetch_or_slice_longform_chapter_clip_sync(
                     topic=topic,
                     used_urls=snap_used_urls,
                 )
-                res_yt = _download_youtube_chapter_master(
-                    candidates=yt_cands_local,
-                    master_out_path=master_file,
-                    used_urls=used_urls,
-                    url_lock=bvid_lock,
-                    max_master_dur_sec=req_master_max,
-                    topic=topic,
-                    primary_entity=primary_entity,
-                    query=query,
-                    cancel_event=cancel_event,
-                    deadline_ts=deadline_ts,
-                )
-                if res_yt:
-                    lbl = f"YT 16:9 Chapter #{chapter_idx} ({str(res_yt.get('title') or '')[:38]})"
-                    u_str = str(res_yt.get("source_url") or "")
-                    meta_file.write_text(f"{lbl}|||{u_str}", encoding="utf-8")
-                    logger.info(
-                        f"🎬 [LongForm ChapterPool] Đã tải Master Chương #{chapter_idx} từ YouTube 16:9 "
-                        f"({res_yt.get('duration_sec', 0):.1f}s) dùng chung cho {scenes_per_chapter} cảnh!"
+                stage_yt_file = str(chapter_dir / f"_staging_yt_{chapter_key_prefix}_{chapter_idx:02d}_{int(time.monotonic()*1000)%100000}.mp4")
+                try:
+                    res_yt = _download_youtube_chapter_master(
+                        candidates=yt_cands_local,
+                        master_out_path=stage_yt_file,
+                        used_urls=used_urls,
+                        url_lock=bvid_lock,
+                        max_master_dur_sec=req_master_max,
+                        topic=topic,
+                        primary_entity=primary_entity,
+                        query=query,
+                        cancel_event=cancel_event,
+                        deadline_ts=deadline_ts,
                     )
-                return res_yt
+                    if res_yt and is_completed_clean_mp4(stage_yt_file, min_size_bytes=60_000, min_duration_ms=5000):
+                        os.replace(stage_yt_file, master_file)
+                        lbl = f"YT 16:9 Chapter #{chapter_idx} ({str(res_yt.get('title') or '')[:38]})"
+                        u_str = str(res_yt.get("source_url") or "")
+                        meta_file.write_text(f"{lbl}|||{u_str}|||{primary_entity}|||{query}", encoding="utf-8")
+                        logger.info(
+                            f"🎬 [LongForm ChapterPool] Đã tải Master Chương #{chapter_idx} từ YouTube 16:9 "
+                            f"({res_yt.get('duration_sec', 0):.1f}s) dùng chung cho {scenes_per_chapter} cảnh!"
+                        )
+                        return res_yt
+                finally:
+                    Path(stage_yt_file).unlink(missing_ok=True)
+                return None
 
             def _try_bili_master() -> Optional[Dict[str, Any]]:
                 if _is_cancelled():
@@ -1357,102 +1424,76 @@ def fetch_or_slice_longform_chapter_clip_sync(
                             if bvid in used_bvids:
                                 continue
                             used_bvids.add(bvid)
-                        b_info = download_and_crop_bilibili_broll_clip(
-                            url_or_id=bvid,
-                            output_path=master_file,
-                            target_duration_sec=72.0 if int(scenes_per_chapter) >= 3 else 48.0,
-                            max_range_bytes=28 * 1024 * 1024,
-                            aspect_ratio="16:9",
-                            preserve_continuous_master=True,
-                        )
-                        if (
-                            b_info
-                            and is_completed_clean_mp4(master_file, min_size_bytes=60_000, min_duration_ms=5000)
-                            and _is_clip_window_clean(master_file, [1.5, 12.0, 24.0])
-                        ):
-                            cand_title_str = f"{cand.get('title', '')} {cand.get('description', '')}"
-                            is_nosub_cand = any(k in cand_title_str for k in ("无字幕", "纯享", "原片", "無字幕"))
-                            if not is_nosub_cand:
-                                # Nếu không phải bản 无字幕, cắt gọt thêm lề trên/dưới để loại bỏ triệt để phụ đề chữ Hán ở đáy
-                                b_tmp_crop = str(Path(master_file).with_name(f"_fftmp_bcrop_{Path(master_file).name}"))
-                                try:
-                                    subprocess.run(
-                                        [
-                                            "ffmpeg", "-y", "-v", "error",
-                                            "-i", master_file,
-                                            "-vf",
-                                            "crop=iw*0.86:ih*0.76:iw*0.07:ih*0.10,"
-                                            "scale=1920:1080:force_original_aspect_ratio=increase,"
-                                            "crop=1920:1080,fps=30,format=yuv420p",
-                                            "-c:v", "libx264", "-preset", "superfast", "-crf", "20",
-                                            "-maxrate", "5.5M", "-bufsize", "11M", "-an",
-                                            b_tmp_crop,
-                                        ],
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL,
-                                        timeout=35,
-                                        check=False,
+                        stage_bili_file = str(chapter_dir / f"_staging_bili_{chapter_key_prefix}_{chapter_idx:02d}_{bvid}.mp4")
+                        try:
+                            b_info = download_and_crop_bilibili_broll_clip(
+                                url_or_id=bvid,
+                                output_path=stage_bili_file,
+                                target_duration_sec=86.0 if int(scenes_per_chapter) >= 4 else (72.0 if int(scenes_per_chapter) >= 3 else 48.0),
+                                max_range_bytes=32 * 1024 * 1024,
+                                aspect_ratio="16:9",
+                                preserve_continuous_master=True,
+                            )
+                            if (
+                                b_info
+                                and is_completed_clean_mp4(stage_bili_file, min_size_bytes=60_000, min_duration_ms=5000)
+                                and _is_clip_window_clean(stage_bili_file, [1.5, 12.0, 24.0])
+                            ):
+                                cand_title_str = f"{cand.get('title', '')} {cand.get('description', '')}"
+                                is_nosub_cand = any(k in cand_title_str for k in ("无字幕", "纯享", "原片", "無字幕"))
+                                # Safe-Crop 12.5% mép trên + 13.5% mép dưới đã được thực hiện trực tiếp 1-pass trong `bilibili_fetcher.py`!
+                                from app.graph.evaluators.visual_critic import VisualCritic
+                                b_gate = VisualCritic().inspect_clip_before_concat(
+                                    stage_bili_file,
+                                    min_short_edge=720,
+                                    min_sharpness=4.8,
+                                    check_watermark=True,
+                                    allow_snow=True,
+                                    auto_sanitize=True,
+                                )
+                                b_v_ok, b_trim_off = (
+                                    _verify_16x9_master_with_gemini_vision(
+                                        master_path=stage_bili_file,
+                                        topic=topic,
+                                        primary_entity=primary_entity,
+                                        query=query,
+                                        video_title=str(cand.get("title") or bvid),
                                     )
-                                    if is_completed_clean_mp4(b_tmp_crop, min_size_bytes=60_000, min_duration_ms=5000):
-                                        Path(b_tmp_crop).replace(master_file)
-                                except Exception:
-                                    pass
-                                finally:
-                                    Path(b_tmp_crop).unlink(missing_ok=True)
-
-                            from app.graph.evaluators.visual_critic import VisualCritic
-                            b_gate = VisualCritic().inspect_clip_before_concat(
-                                master_file,
-                                min_short_edge=720,
-                                min_sharpness=4.8,
-                                check_watermark=True,
-                                allow_snow=True,
-                                auto_sanitize=True,
-                            )
-                            b_v_ok, b_trim_off = (
-                                _verify_16x9_master_with_gemini_vision(
-                                    master_path=master_file,
-                                    topic=topic,
-                                    primary_entity=primary_entity,
-                                    query=query,
-                                    video_title=str(cand.get("title") or bvid),
+                                    if b_gate.get("passed", False)
+                                    else (False, 0.0)
                                 )
-                                if b_gate.get("passed", False)
-                                else (False, 0.0)
-                            )
-                            if b_v_ok:
-                                if b_trim_off > 0.5 and (get_duration_ms(master_file) / 1000.0 - b_trim_off) >= 8.0:
-                                    b_tr_tmp = str(Path(master_file).with_name(f"_fftmp_btr_{Path(master_file).name}"))
-                                    try:
-                                        subprocess.run(
-                                            [
-                                                "ffmpeg", "-y", "-v", "error",
-                                                "-ss", f"{b_trim_off:.2f}", "-i", master_file,
-                                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-an",
-                                                b_tr_tmp,
-                                            ],
-                                            stdout=subprocess.DEVNULL,
-                                            stderr=subprocess.DEVNULL,
-                                            timeout=25,
-                                            check=False,
-                                        )
-                                        if is_completed_clean_mp4(b_tr_tmp, min_size_bytes=45_000, min_duration_ms=5000):
-                                            Path(b_tr_tmp).replace(master_file)
-                                    except Exception:
-                                        pass
-                                    finally:
-                                        Path(b_tr_tmp).unlink(missing_ok=True)
-                                lbl_b = f"Bilibili 16:9 Chapter #{chapter_idx} ({bvid})"
-                                url_b = f"https://www.bilibili.com/video/{bvid}"
-                                meta_file.write_text(f"{lbl_b}|||{url_b}", encoding="utf-8")
-                                logger.info(
-                                    f"🎬 [LongForm ChapterPool] Đã tải & duyệt Vision Master Chương #{chapter_idx} từ Bilibili 16:9 ({bvid}, nosub={is_nosub_cand})!"
-                                )
-                                return b_info
-                            else:
-                                Path(master_file).unlink(missing_ok=True)
-                        else:
-                            Path(master_file).unlink(missing_ok=True)
+                                if b_v_ok:
+                                    if b_trim_off > 0.5 and (get_duration_ms(stage_bili_file) / 1000.0 - b_trim_off) >= 8.0:
+                                        b_tr_tmp = str(Path(stage_bili_file).with_name(f"_fftmp_btr_{Path(stage_bili_file).name}"))
+                                        try:
+                                            subprocess.run(
+                                                [
+                                                    "ffmpeg", "-y", "-v", "error",
+                                                    "-ss", f"{b_trim_off:.2f}", "-i", stage_bili_file,
+                                                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-an",
+                                                    b_tr_tmp,
+                                                ],
+                                                stdout=subprocess.DEVNULL,
+                                                stderr=subprocess.DEVNULL,
+                                                timeout=25,
+                                                check=False,
+                                            )
+                                            if is_completed_clean_mp4(b_tr_tmp, min_size_bytes=45_000, min_duration_ms=5000):
+                                                os.replace(b_tr_tmp, stage_bili_file)
+                                        except Exception:
+                                            pass
+                                        finally:
+                                            Path(b_tr_tmp).unlink(missing_ok=True)
+                                    os.replace(stage_bili_file, master_file)
+                                    lbl_b = f"Bilibili 16:9 Chapter #{chapter_idx} ({bvid})"
+                                    url_b = f"https://www.bilibili.com/video/{bvid}"
+                                    meta_file.write_text(f"{lbl_b}|||{url_b}|||{primary_entity}|||{query}", encoding="utf-8")
+                                    logger.info(
+                                        f"🎬 [LongForm ChapterPool] Đã tải & duyệt Vision Master Chương #{chapter_idx} từ Bilibili 16:9 ({bvid}, nosub={is_nosub_cand})!"
+                                    )
+                                    return b_info
+                        finally:
+                            Path(stage_bili_file).unlink(missing_ok=True)
                 except Exception as e_bili:
                     logger.debug(f"[LongForm ChapterPool] Bilibili master skip: {e_bili}")
                 return None
@@ -1595,11 +1636,13 @@ def slice_any_available_chapter_master_for_scene(
     output_override_path: Optional[str] = None,
     exclude_masters: Optional[Set[str]] = None,
     max_master_uses_override: Optional[int] = None,
+    preferred_entity: str = "",
+    strict_entity_match: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
     Khi một phân cảnh bị giới hạn API mạng (429 / timeout) ở cả nguồn riêng lẫn Stock 16:9,
     tận dụng ngay các file `chapter_*_master.mp4` 16:9 dài (>= 15s) đã được Gemini Vision duyệt sạch trên ổ cứng của chính Job này,
-    cắt một phân đoạn Jump-Cut ở mốc thời gian KHÔNG CHỒNG LẤN (`_find_non_overlapping_master_offset`)
+    ưu tiên tuyệt đối Master cùng thực thể (`preferred_entity`), cắt một phân đoạn Jump-Cut ở mốc thời gian KHÔNG CHỒNG LẤN
     và kiểm tra `is_clip_visually_unique_in_job` (3-frame dHash 64-bit) để đảm bảo 0% trùng khung hình!
     TUYỆT ĐỐI KHÔNG lấy các file phân cảnh ngắn `scene_*16x9*.mp4` của cảnh khác làm Master!
     """
@@ -1620,12 +1663,40 @@ def slice_any_available_chapter_master_for_scene(
     if not masters:
         return None
 
+    def _read_meta_blob(mp: Path) -> str:
+        for m_cand in get_chapter_master_meta_paths(mp):
+            if m_cand.exists():
+                try:
+                    return m_cand.read_text(encoding="utf-8", errors="ignore").lower()
+                except Exception:
+                    pass
+        return ""
+
+    pref_toks = {
+        w.lower()
+        for w in re.findall(r"[a-zA-Z]{3,}", str(preferred_entity or ""))
+        if w.lower() not in {"the", "and", "for", "with", "animal", "creature", "predator", "wildlife", "documentary"}
+    }
+
     out_path = output_override_path or str(media_dir / f"scene_{scene_id:03d}_pool_16x9.mp4")
     req_dur = max(2.5, float(target_duration_sec))
     n_m = len(masters)
     start_idx = (int(scene_id) * 3) % n_m
-    ordered_masters = masters[start_idx:] + masters[:start_idx]
-    max_steps = 6 if max_master_uses_override else (5 if int(scene_id) == 1 else 4)
+    rotated_masters = masters[start_idx:] + masters[:start_idx]
+
+    if pref_toks:
+        matched_masters = [mp for mp in rotated_masters if any(t in _read_meta_blob(mp) for t in pref_toks)]
+        unmatched_masters = [mp for mp in rotated_masters if mp not in matched_masters]
+        if strict_entity_match:
+            ordered_masters = matched_masters
+        else:
+            ordered_masters = matched_masters + unmatched_masters
+    else:
+        ordered_masters = rotated_masters
+
+    if not ordered_masters:
+        return None
+    max_steps = 10 if max_master_uses_override else (5 if int(scene_id) == 1 else 4)
 
     tiered_masters = [(mp, False) for mp in ordered_masters] + [(mp, True) for mp in ordered_masters]
     for m_path, is_rescue_tier in tiered_masters:
@@ -1633,13 +1704,18 @@ def slice_any_available_chapter_master_for_scene(
         usable_span = max(0.0, m_dur - req_dur - 1.0)
         if usable_span <= 0.5:
             continue
+        max_by_dur = max(2, int(m_dur // max(14.0, req_dur + 3.0)))
         eff_max_uses = (
-            min(int(max_master_uses_override or 4), 5)
+            min(int(max_master_uses_override or 5), max(4, max_by_dur))
             if is_rescue_tier
-            else (min(int(max_master_uses_override), 4) if max_master_uses_override else (3 if m_dur >= 34.0 else 2))
+            else (
+                min(int(max_master_uses_override), max(3, max_by_dur))
+                if max_master_uses_override
+                else (min(4, max_by_dur) if m_dur >= 34.0 else 2)
+            )
         )
-        # Giữ ngưỡng Hamming >= 8 ngay cả ở tầng rescue để tuyệt đối không cho phép 2 cảnh trùng khung hình!
-        eff_hamming = 8 if is_rescue_tier else 10
+        # Giữ ngưỡng Hamming >= 9 ngay cả ở tầng rescue kết hợp VisualCritic._find_duplicate để cấm tuyệt đối 2 cảnh trùng khung hình!
+        eff_hamming = 9 if is_rescue_tier else 10
         for cand_step in range(max_steps):
             frac = (((int(scene_id) * 37 + cand_step * 23) % 89) / 89.0)
             raw_off_s = round(frac * usable_span, 2)

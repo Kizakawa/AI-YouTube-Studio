@@ -148,7 +148,11 @@ def concat_videos_with_xfade(
     if len(video_paths) == 0:
         raise ValueError("concat_videos_with_xfade: video_paths rỗng")
 
-    # Lấy thời lượng thực tế từng clip trên đĩa để chống lỗi xfade offset vượt quá độ dài thực của clip (gây cụt video về 9-10s)
+    td = transition_duration  # shorthand
+    # Lấy thời lượng thực tế từng clip trên đĩa:
+    # - Với Shorts (xfade, td > 0.01): chống lỗi xfade offset vượt quá độ dài thực của clip.
+    # - Với Long-Form (td <= 0.01, -f concat): nếu bất kỳ clip đơn lẻ nào bị hụt thời lượng so với `req_dur_s` (lệch > 0.12s),
+    #   tự động bù độ dài tại chỗ bằng `-stream_loop -1` để TUYỆT ĐỐI KHÔNG làm co tổng thời lượng video hay lệch phụ đề!
     durations = []
     for idx_vp, vp in enumerate(video_paths):
         dur_ms = get_duration_ms(vp)
@@ -158,12 +162,37 @@ def concat_videos_with_xfade(
             if (scene_durations_seconds and idx_vp < len(scene_durations_seconds))
             else (real_dur_s if real_dur_s > 0 else 4.0)
         )
+        if td <= 0.01 and 0.4 < real_dur_s < (req_dur_s - 0.12) and Path(vp).exists():
+            pad_tmp = str(Path(vp).with_name(f"_concatpad_{idx_vp:03d}_{Path(vp).name}"))
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y", "-v", "error",
+                        "-stream_loop", "-1", "-i", str(vp),
+                        "-t", f"{req_dur_s:.3f}",
+                        "-vf", f"scale={res_w}:{res_h}:force_original_aspect_ratio=increase,crop={res_w}:{res_h},setsar=1,fps={fps},format=yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-threads", "2", "-an",
+                        pad_tmp,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=60,
+                    check=False,
+                )
+                padded_ms = get_duration_ms(pad_tmp) if Path(pad_tmp).exists() else 0
+                if padded_ms >= int((req_dur_s - 0.15) * 1000):
+                    Path(pad_tmp).replace(Path(vp))
+                    real_dur_s = padded_ms / 1000.0
+                    logger.info(f"⏱️ [ConcatSyncGuard] Bù thời lượng clip #{idx_vp+1} lên {real_dur_s:.2f}s (khớp audio {req_dur_s:.2f}s)")
+                else:
+                    Path(pad_tmp).unlink(missing_ok=True)
+            except Exception:
+                Path(pad_tmp).unlink(missing_ok=True)
         if real_dur_s > 0.5:
             durations.append(min(req_dur_s, real_dur_s))
         else:
             durations.append(req_dur_s)
 
-    td = transition_duration  # shorthand
     n = len(video_paths)
     expected_total_s = max(sum(durations) - (n - 1) * td, 1.0)
 
@@ -171,7 +200,7 @@ def concat_videos_with_xfade(
     t50 = round(expected_total_s * 0.50, 2)
     t75 = round(expected_total_s * 0.75, 2)
     hw = 0.45 if expected_total_s >= 90.0 else 0.18
-    keyframe_args = ["-force_key_frames", f"0.00,{t25:.2f},{t50:.2f},{t75:.2f}"] if has_thumb_ov else []
+    keyframe_args = ["-force_key_frames", f"0.00,{t25:.2f},{t50:.2f},{t75:.2f}"] if (has_thumb_ov or td <= 0.01) else []
 
     # Khi transition_duration <= 0.01 (Long-Form 16:9 dùng J-Cut + Internal Jump-Cut thay cho xfade),
     # dùng trực tiếp bộ giải mã tuần tự `-f concat -safe 0 -i list_file` kết hợp Single-Pass `-vf subtitles=...`

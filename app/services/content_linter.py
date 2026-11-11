@@ -188,11 +188,11 @@ class ScriptValidationLinter:
             min_scenes = 12
             max_scenes = 60
         else:
-            min_words = 80
-            max_words = 158
-            target_range_str = "92 to 120 words (34-44s High-APV Golden Duration across 7-8 smooth, complete scenes)"
-            min_scenes = 6
-            max_scenes = 9
+            min_words = 92
+            max_words = 152
+            target_range_str = "98 to 122 words (35-41s High-APV & High-AVD Golden Duration across 7-8 gripping, complete scenes)"
+            min_scenes = 7
+            max_scenes = 8
 
         if total_words > max_words:
             est_seconds = (total_words / max(target_wpm, 185)) * 60

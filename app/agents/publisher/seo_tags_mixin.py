@@ -498,7 +498,7 @@ class SeoTagsMixin:
         if is_long_form:
             enriched_title = base_title[:100].rstrip()
             built_hashes: List[str] = []
-            desc_hash_tokens: List[str] = ["#documentary"]
+            desc_hash_tokens: List[str] = ["#documentario" if is_br else "#documentary"]
         else:
             title_hash_list: List[str] = ["Shorts"]
             for h_cand in (*topic_hashtag_candidates[:1], *niche_title_hashes):
@@ -807,6 +807,10 @@ def build_youtube_chapters_from_scenes(
         "can", "could", "may", "might", "must", "your", "their", "our", "his", "her", "its", "my",
         "this", "these", "those", "massive", "giant", "huge", "extreme", "ultimate", "deadly", "raw",
         "true", "exact", "single", "pure", "total", "complete", "easily", "instantly", "literally", "nearly",
+        "e", "o", "a", "os", "as", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas",
+        "por", "para", "pra", "pelo", "pela", "pelos", "pelas", "com", "sem", "que", "se", "ou", "mas",
+        "um", "uma", "uns", "umas", "ao", "aos", "num", "numa", "seu", "sua", "seus", "suas", "mais", "muito",
+        "của", "và", "nhưng", "hoặc", "trong", "trên", "dưới", "với", "cho", "từ", "để", "khi", "một", "những",
     }
 
     def _strip_dangling_words(words_list: List[str]) -> List[str]:
@@ -821,23 +825,29 @@ def build_youtube_chapters_from_scenes(
     def _extract_clean_chapter_label(sc: Any, chap_num: int, is_first: bool = False) -> str:
         ch_title_raw = str(_get_field(sc, "chapter_title") or "").strip()
         if ch_title_raw and ch_title_raw.lower() != "null" and len(ch_title_raw) >= 4:
-            clean_ct = re.sub(r"^(?:chapter|capítulo|phần|chương)\s*\d+\s*[:\-–—]\s*", "", ch_title_raw, flags=re.IGNORECASE).strip(" :—–-|")
+            clean_ct = re.sub(r"^(?:chapter|capítulo|capitulo|phần|chương)\s*\d+\s*[:\-–—]\s*", "", ch_title_raw, flags=re.IGNORECASE).strip(" :—–-|")
             if len(clean_ct) >= 4:
                 return f"{intro_prefix} — {clean_ct}" if is_first else (f"Capítulo {chap_num}: {clean_ct}" if is_pt else f"Chapter {chap_num}: {clean_ct}")
 
         for field_name in ("overlay_badge", "visual_reasoning"):
             raw_val = str(_get_field(sc, field_name) or "").strip()
             if raw_val and raw_val.lower() != "null":
-                m_ch = re.search(r"(?:chapter|capítulo|round|phase)\s*\d+\s*[:\-–—]\s*([^—–\-\|]+)", raw_val, flags=re.IGNORECASE)
+                m_ch = re.search(r"(?:chapter|capítulo|capitulo|phần|chương|round|phase)\s*\d+\s*[:\-–—]\s*([^—–\|]+)", raw_val, flags=re.IGNORECASE)
                 if m_ch:
-                    clean_b = m_ch.group(1).strip()
+                    clean_b = re.split(r"\s+-\s+", m_ch.group(1).strip())[0].strip()
                     clean_b = re.sub(r"\b(?:visual intent|documentary beat)\b", "", clean_b, flags=re.IGNORECASE).strip(" :—–-")
-                    if len(clean_b) >= 4 and not (is_pt or is_vi):
-                        title_b = clean_b.title()
-                        return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else f"Chapter {chap_num}: {title_b}")
+                    raw_low = raw_val.lower()
+                    is_native_badge = (
+                        (is_pt and raw_low.startswith(("capítulo", "capitulo")))
+                        or (is_vi and raw_low.startswith(("phần", "chương")))
+                        or (not is_pt and not is_vi)
+                    )
+                    if len(clean_b) >= 4 and is_native_badge:
+                        title_b = clean_b if (is_pt or is_vi) else clean_b.title()
+                        return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else (f"Phần {chap_num}: {title_b}" if is_vi else f"Chapter {chap_num}: {title_b}"))
                 elif field_name == "overlay_badge" and 4 <= len(raw_val) <= 32:
                     title_b = raw_val.strip(" :—–-|").title()
-                    return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else f"Chapter {chap_num}: {title_b}")
+                    return f"{intro_prefix} — {title_b}" if is_first else (f"Capítulo {chap_num}: {title_b}" if is_pt else (f"Phần {chap_num}: {title_b}" if is_vi else f"Chapter {chap_num}: {title_b}"))
 
         # Với kênh Tiếng Anh (không phải PT/VI), có thể dùng visual_keyword làm nhãn chương ngắn gọn
         if not (is_pt or is_vi):
@@ -853,7 +863,7 @@ def build_youtube_chapters_from_scenes(
 
         narration = str(_get_field(sc, "narration") or "").strip()
         if narration:
-            first_clause = re.split(r"[.!?;:—–\-]", narration)[0].strip()
+            first_clause = re.split(r"[.!?;:—–]|\s+-\s+", narration)[0].strip()
             words = [w for w in re.findall(r"[\w'’-]+", first_clause) if w]
             words = _strip_dangling_words(words[:7])
             if words:

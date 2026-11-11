@@ -148,7 +148,31 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         1 for _sc in _lf_scenes
         if isinstance(_sc, dict) and any(m in str(_sc.get("narration") or "").lower() for m in _lf_filler_markers)
     )
-    if is_10min_longform and _lf_scenes and _lf_filler_count <= 2:
+    _lf_total_words = sum(
+        len(str(_sc.get("narration") or "").split())
+        for _sc in _lf_scenes
+        if isinstance(_sc, dict)
+    )
+    _lf_lang = str(state.get("language") or "en").strip().lower()
+    import re as _re_lf_chk
+    _lf_has_vn_leak = (
+        not _lf_lang.startswith("vi")
+        and bool(
+            _re_lf_chk.search(
+                r"[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]",
+                str((script_data or {}).get("title") or "") + " " + " ".join(str(_sc.get("narration") or "") for _sc in _lf_scenes if isinstance(_sc, dict)),
+                flags=_re_lf_chk.IGNORECASE,
+            )
+        )
+    )
+    _lf_min_words_req = 1380 if (_lf_lang.startswith("pt") or _lf_lang.startswith("vi")) else 1480
+    if (
+        is_10min_longform
+        and len(_lf_scenes) >= 30
+        and _lf_total_words >= _lf_min_words_req
+        and not _lf_has_vn_leak
+        and _lf_filler_count <= 2
+    ):
         if pre_score < 85.0:
             pre_score = 92.0
             pre_hook = 9.2

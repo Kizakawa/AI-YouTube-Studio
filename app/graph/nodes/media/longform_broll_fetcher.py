@@ -45,6 +45,7 @@ def _fetch_longform_16x9_broll_clip_sync(
     output_override_path: Optional[str] = None,
     cancel_event: Optional[threading.Event] = None,
     deadline_ts: Optional[float] = None,
+    scenes_per_chapter: int = 4,
 ) -> Optional[Dict[str, Any]]:
     """
     Săn B-Roll 16:9 Widescreen (1920x1080) chuyên biệt cho Video Dài (Long-Form Documentary):
@@ -77,8 +78,9 @@ def _fetch_longform_16x9_broll_clip_sync(
         else:
             Path(out_path).unlink(missing_ok=True)
 
-    slot_in_4 = (int(scene_id) - 1) % 3
-    chapter_num = ((int(scene_id) - 1) // 3) + 1
+    eff_spc = max(1, int(scenes_per_chapter or 4))
+    slot_in_4 = (int(scene_id) - 1) % eff_spc
+    chapter_num = ((int(scene_id) - 1) // eff_spc) + 1
 
     # Khi gọi từ node_refine_media / rescue (có output_override_path), chỉ xóa cache refine tạm của cảnh này
     # (TUYỆT ĐỐI KHÔNG xóa scene_XXX_16x9.mp4 đang dùng hoặc master dùng chung của Chương!)
@@ -302,7 +304,7 @@ def _fetch_longform_16x9_broll_clip_sync(
                 bvid_lock=bvid_lock,
                 media_agent=media_agent,
                 is_scifi=is_scifi,
-                scenes_per_chapter=(1 if output_override_path else 3),
+                scenes_per_chapter=(1 if output_override_path else eff_spc),
                 cancel_event=cancel_event,
                 deadline_ts=eff_dl,
                 chapter_key_prefix=("refine" if output_override_path else "chapter"),
@@ -326,24 +328,24 @@ def _fetch_longform_16x9_broll_clip_sync(
             logger.warning(f"Scene {scene_id}: Long-form ChapterPool 16:9 error: {e_pool_16x9}")
         return None
 
-    # Điều phối Đa Nguồn (Multi-Source Interleaving) trong mỗi Chương (3 cảnh/Chương):
-    # - Slot 0 & 2: Ưu tiên cắt trực tiếp YouTube 16:9 Documentary Chapter Master trên SSD (~1.2s) -> dự phòng Pexels/Pixabay 16:9
+    # Điều phối Đa Nguồn (Multi-Source Interleaving) trong mỗi Chương (`eff_spc` cảnh/Chương):
+    # - Slot 0, 2, 3: Ưu tiên cắt trực tiếp YouTube/Bilibili 16:9 Documentary Chapter Master trên SSD (~1.2s) -> dự phòng Pexels/Pixabay 16:9
     # - Slot 1: Ưu tiên Pexels 16:9 / Pixabay 16:9 HD -> dự phòng YouTube Chapter Pool
     prefer_stock_first = (slot_in_4 == 1)
     prefer_px = (slot_in_4 == 2) or (chapter_num % 2 == 0)
 
     now_ts = time.monotonic()
-    chapter_num_3 = ((int(scene_id) - 1) // 3) + 1
+    chapter_num_cur = chapter_num
     ch_pool_dir = media_dir / "chapter_pool"
-    existing_ch3_master = ch_pool_dir / f"chapter_{chapter_num_3:02d}_master.mp4"
+    existing_ch_master = ch_pool_dir / f"chapter_{chapter_num_cur:02d}_master.mp4"
     from app.services.media.longform_chapter_pool import has_verified_chapter_master_meta as _has_ch_meta
-    has_local_ch3_master = (
-        existing_ch3_master.exists()
-        and _has_ch_meta(existing_ch3_master)
-        and _safe_size(existing_ch3_master) > 80_000
+    has_local_ch_master = (
+        existing_ch_master.exists()
+        and _has_ch_meta(existing_ch_master)
+        and _safe_size(existing_ch_master) > 80_000
     )
 
-    def _try_cross_slice_existing_masters() -> Optional[Dict[str, Any]]:
+    def _try_cross_slice_existing_masters(strict_entity: bool = False, max_uses: int = 6) -> Optional[Dict[str, Any]]:
         if _is_cancelled():
             return None
         try:
@@ -354,7 +356,9 @@ def _fetch_longform_16x9_broll_clip_sync(
                 target_duration_sec=target_duration_sec,
                 job_id=job_id,
                 output_override_path=output_override_path,
-                max_master_uses_override=5,
+                max_master_uses_override=max_uses,
+                preferred_entity=primary_entity,
+                strict_entity_match=strict_entity,
             )
             if cs_res and cs_res.get("media_path") and Path(cs_res["media_path"]).exists():
                 if scene_id == 1:
@@ -372,25 +376,35 @@ def _fetch_longform_16x9_broll_clip_sync(
         return None
 
     # Trường hợp 1: Chương này ĐÃ có sẵn Master 16:9 sạch (Bilibili / YouTube Documentary) tải ở Phase A trên SSD (~1.2s cắt local 4 góc máy!)
-    if not output_override_path and has_local_ch3_master:
+    if not output_override_path and has_local_ch_master:
+        if prefer_stock_first:
+            st_slot1 = _try_stock_16x9_landscape(prefer_pixabay=prefer_px, sub_deadline_ts=min(deadline_ts, now_ts + 16.0) if deadline_ts else (now_ts + 16.0))
+            if st_slot1:
+                return st_slot1
         cp_res = _try_chapter_pool_16x9(sub_deadline_ts=deadline_ts)
         if cp_res:
             return cp_res
         st_res = _try_stock_16x9_landscape(prefer_pixabay=prefer_px, sub_deadline_ts=deadline_ts)
-        return st_res or _try_cross_slice_existing_masters()
+        return (
+            st_res
+            or _try_cross_slice_existing_masters(strict_entity=True, max_uses=6)
+            or _try_cross_slice_existing_masters(strict_entity=False, max_uses=10)
+        )
 
     # Trường hợp 2: Chương chưa có Master sau Phase A (hoặc đang chạy refine):
-    # KHÔNG tải lại yt-dlp 60-90s trên từng cảnh ở Phase B gây nghẽn 40 cảnh!
-    # Ưu tiên Pexels/Pixabay 16:9 HD (~10s) -> Cắt chéo lát độc lập từ kho Chapter Master sẵn có (~1.2s)!
-    st_dl = min(deadline_ts - 14.0, now_ts + 26.0) if (deadline_ts is not None and (deadline_ts - now_ts) > 22.0) else deadline_ts
+    # Ưu tiên Pexels/Pixabay 16:9 HD (~10s) -> Cắt chéo lát CÙNG THỰC THỂ -> Tải mới Chapter Master -> Cắt lát dự phòng từ kho Master 16:9 sạch (đảm bảo > 85% video chuyển động, 0% rơi về ảnh tĩnh)
+    st_dl = min(deadline_ts - 14.0, now_ts + 24.0) if (deadline_ts is not None and (deadline_ts - now_ts) > 22.0) else deadline_ts
     st_res = _try_stock_16x9_landscape(prefer_pixabay=prefer_px, sub_deadline_ts=st_dl)
     if st_res:
         return st_res
-    cs_res = _try_cross_slice_existing_masters()
-    if cs_res:
-        return cs_res
+    cs_same_ent = _try_cross_slice_existing_masters(strict_entity=True, max_uses=6)
+    if cs_same_ent:
+        return cs_same_ent
+    rem_for_cp = (deadline_ts - time.monotonic()) if deadline_ts is not None else 35.0
     total_pool_masters = len(list(ch_pool_dir.glob("chapter_*_master.mp4"))) if ch_pool_dir.exists() else 0
-    if bool(output_override_path) or total_pool_masters < 2:
-        return _try_chapter_pool_16x9(sub_deadline_ts=deadline_ts)
-    return None
+    if rem_for_cp >= 12.0 and (bool(output_override_path) or slot_in_4 in (0, 1) or total_pool_masters < 6):
+        cp_fresh = _try_chapter_pool_16x9(sub_deadline_ts=deadline_ts)
+        if cp_fresh:
+            return cp_fresh
+    return _try_cross_slice_existing_masters(strict_entity=False, max_uses=10)
 

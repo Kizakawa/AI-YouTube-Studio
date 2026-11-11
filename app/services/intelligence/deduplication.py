@@ -452,7 +452,7 @@ def ensure_unique_title(
         from app.utils.key_rotator import KeyRotator
         import requests
         rotator = KeyRotator(keys)
-        prompt = f"""You are an elite YouTube Shorts copywriter.
+        prompt = f"""You are an elite YouTube video copywriter.
 The channel already has a video with this title:
 "{matched}"
 
@@ -462,11 +462,11 @@ Topic: "{topic or clean_cand}"
 Target language: {language}
 
 TASK:
-Write ONE completely new, fresh, high-CTR YouTube Shorts title for this topic.
+Write ONE completely new, fresh, high-CTR YouTube title STRICTLY in `{language}` (100% native `{language}` — ZERO mixed-language English words if `{language}` is Portuguese or Vietnamese!).
 Requirements:
 1. MUST NOT use the same sentence structure or key hook words as "{matched}".
-2. MANDATORY YT_SEARCH ENTITY ANCHOR (Viral Ceiling-Breaker Rule 1): MUST explicitly keep the exact high-search-volume entity name(s) in the title (preferably `[Entity A] vs [Entity B]: [Extreme Physical Metric]`). NEVER hide the primary entity behind vague curiosity gaps ("This 50g Toxin", "This 1,200lb Giant", "This Beast", "This Place").
-3. Under 58 characters, punchy, includes 1-2 impactful emojis and ZERO #hashtags (do NOT include #Shorts).
+2. MANDATORY YT_SEARCH ENTITY ANCHOR (Viral Ceiling-Breaker Rule 1): MUST explicitly keep the exact high-search-volume entity name(s) in `{language}` in the title (preferably `[Entity A] vs [Entity B]: [Extreme Physical Stakes]` or `Por Que / Why [Named Entity] ...`). NEVER hide the primary entity behind vague curiosity gaps ("This 50g Toxin", "This 1,200lb Giant", "This Beast", "This Place").
+3. Strictly 32 to 55 characters MAX (complete grammatical phrase — NEVER end on a dangling article/preposition), ZERO #hashtags (do NOT include #Shorts).
 4. Output ONLY the new title as raw text, no quotes, no markdown, no explanation.
 """
         from app.utils.key_rotator import GEMINI_PRIORITY_MODELS

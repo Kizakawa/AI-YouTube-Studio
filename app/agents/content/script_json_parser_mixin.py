@@ -166,6 +166,7 @@ class ScriptJsonParserMixin:
             raw_data["topic"] = str(topic).strip()
         if "video_format" not in raw_data or not str(raw_data.get("video_format") or "").strip():
             raw_data["video_format"] = str(video_format or "short").strip().lower()
+        is_long_form_parse = str(raw_data.get("video_format") or video_format or "short").strip().lower() == "long"
 
         # Khử sạch các hậu tố kênh hoặc mã quốc gia rò rỉ ở tiêu đề (tránh thuật toán YouTube phân phối nhầm vùng)
         if "title" in raw_data and isinstance(raw_data["title"], str):
@@ -191,22 +192,36 @@ class ScriptJsonParserMixin:
         _vs_side_a_toks: set = set()
         _vs_side_b_toks: set = set()
         if topic:
-            _vs_head_clause = re.split(r"[:\-\u2013\u2014|]", str(topic))[0].strip()
-            _vs_parts = re.split(r"\b(?:vs\.?|versus|contra|contre|gegen)\b", _vs_head_clause, maxsplit=1, flags=re.IGNORECASE)
-            if len(_vs_parts) == 2:
-                _vs_side_a_raw = _vs_parts[0].strip()
-                _vs_side_b_raw = _vs_parts[1].strip()
-                _vs_stop = {"the", "and", "with", "from", "into", "over", "under", "how", "why", "what", "when", "who"}
-                _vs_side_a_toks = {
-                    w.lower().rstrip("s")
-                    for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", _vs_side_a_raw)
-                    if w.lower() not in _vs_stop
-                }
-                _vs_side_b_toks = {
-                    w.lower().rstrip("s")
-                    for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", _vs_side_b_raw)
-                    if w.lower() not in _vs_stop
-                }
+            _topic_low_chk = str(topic).lower()
+            _title_and_sc1_chk = f"{raw_data.get('title', '')} {(raw_data.get('scenes') or [{}])[0].get('narration', '') if isinstance(raw_data.get('scenes'), list) and raw_data.get('scenes') and isinstance(raw_data['scenes'][0], dict) else ''}".lower()
+            _topic_has_non_en = bool(re.search(r"[ãõçêôáéíóúàơưđă]", _topic_low_chk)) or any(
+                w in f" {_topic_low_chk} " for w in (" por que ", " como ", " contra ", " tại sao ")
+            )
+            _script_has_non_en = bool(re.search(r"[ãõçêôáéíóúàơưđă]", _title_and_sc1_chk)) or any(
+                w in f" {_title_and_sc1_chk} " for w in (" por que ", " como ", " contra ", " você ", " não ", " tại sao ")
+            )
+            # Chặn tuyệt đối lỗi ghép tiền tố topic Tiếng Anh ('Giant Anteater vs Jaguar:') lên tiêu đề bản địa pt-BR / vi-VN
+            # khi đầu vào `topic` là Tiếng Anh nhưng kênh xuất bản là ngoại ngữ!
+            _cross_lang_topic_mismatch = (_script_has_non_en and not _topic_has_non_en)
+            if not _cross_lang_topic_mismatch:
+                _vs_head_clause = re.split(r"[:\-\u2013\u2014|]", str(topic))[0].strip()
+                _vs_parts = re.split(r"\b(?:vs\.?|versus|contra|contre|gegen)\b", _vs_head_clause, maxsplit=1, flags=re.IGNORECASE)
+                # Với Long-Form Gauntlet liệt kê nhiều đối thủ ngăn bằng dấu phẩy ("Onça vs Gavião, Jacaré, Poraquê..."),
+                # không ép nhồi cả danh sách dài vào tiêu đề < 58 ký tự của video 16:9.
+                if len(_vs_parts) == 2 and not (is_long_form_parse and "," in _vs_parts[1]):
+                    _vs_side_a_raw = _vs_parts[0].strip()
+                    _vs_side_b_raw = _vs_parts[1].strip()
+                    _vs_stop = {"the", "and", "with", "from", "into", "over", "under", "how", "why", "what", "when", "who"}
+                    _vs_side_a_toks = {
+                        w.lower().rstrip("s")
+                        for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", _vs_side_a_raw)
+                        if w.lower() not in _vs_stop
+                    }
+                    _vs_side_b_toks = {
+                        w.lower().rstrip("s")
+                        for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", _vs_side_b_raw)
+                        if w.lower() not in _vs_stop
+                    }
 
         def _matches_both_vs_sides(cand_t: str) -> bool:
             if not (_vs_side_a_toks and _vs_side_b_toks):
@@ -280,7 +295,8 @@ class ScriptJsonParserMixin:
             # Đảm bảo visual_prompt không bị rỗng
             vp = str(sc.get("visual_prompt") or "").strip()
             if not vp:
-                sc["visual_prompt"] = f"Cinematic 8k photorealistic vertical shot of {vk}"
+                shot_orient = "widescreen 16:9" if is_long_form_parse else "vertical"
+                sc["visual_prompt"] = f"Cinematic 8k photorealistic {shot_orient} shot of {vk}"
 
             # Đảm bảo stock_query không bị rỗng và lọc nhẹ các từ trừu tượng cấm kỵ của Pexels
             sq = str(sc.get("stock_query") or "").strip()
@@ -762,20 +778,28 @@ class ScriptJsonParserMixin:
             prim_ent_s1 = (
                 ""
                 if str(channel_niche or "").strip().lower() == "psychology"
-                else str(raw_data.get("primary_entity") or _vs_side_a_raw or "").strip()
+                else str(sc1.get("subject_entity") or raw_data.get("primary_entity") or _vs_side_a_raw or "").strip()
             )
             if prim_ent_s1.lower() in {"human brain", "brain", "human mind", "mind", "psychology", "null", "none"}:
                 prim_ent_s1 = ""
+            # Chặn tự động chèn tên tiếng Bồ Đào Nha / tiếng Việt có dấu vào truy vấn tìm kiếm tiếng Anh
+            if re.search(r"[ãõçêôáéíóúàươđ]", prim_ent_s1.lower()):
+                prim_ent_s1 = ""
             prim_s1_toks = [
                 w.lower().rstrip("s")
-                for w in re.findall(r"[a-zA-ZÀ-ÿ]{4,}", prim_ent_s1)
+                for w in re.findall(r"[a-zA-Z]{4,}", prim_ent_s1)
                 if w.lower() not in {"animal", "creature", "monster", "predator", "wildlife"}
             ]
             if prim_s1_toks:
                 cur_vk1 = str(sc1.get("visual_keyword") or "").strip()
                 cur_sq1 = str(sc1.get("stock_query") or "").strip()
+                _both_ascii_vs = (
+                    _vs_side_a_raw
+                    and _vs_side_b_raw
+                    and not re.search(r"[^a-zA-Z0-9\s\-]", f"{_vs_side_a_raw} {_vs_side_b_raw}")
+                )
                 if not any(t in cur_vk1.lower() for t in prim_s1_toks):
-                    if _vs_side_a_raw and _vs_side_b_raw:
+                    if _both_ascii_vs and not is_long_form_parse:
                         sc1["visual_keyword"] = f"{_vs_side_a_raw.lower()} attacking {_vs_side_b_raw.lower()}"
                     else:
                         sc1["visual_keyword"] = f"{prim_ent_s1.lower()} closeup action"
@@ -909,7 +933,7 @@ class ScriptJsonParserMixin:
                     current_sc1 = current_sc1 + "?"
                 scenes[0]["narration"] = current_sc1
                 raw_data["hook"] = current_sc1
-            elif _weak_yes_no_q_re.search(current_sc1) or ("?" in current_sc1 and not _open_curiosity_q_re.search(current_sc1)):
+            elif not is_long_form_parse and (_weak_yes_no_q_re.search(current_sc1) or ("?" in current_sc1 and not _open_curiosity_q_re.search(current_sc1))):
                 decl_cand = ""
                 for hv in ([fallback_hook] + list(raw_data.get("hook_variants") or [])):
                     hv_c = _strip_variant_prefix(str(hv or "")).strip()
@@ -1112,31 +1136,43 @@ class ScriptJsonParserMixin:
                     flags=re.IGNORECASE,
                 )
             if _vs_side_a_toks and _vs_side_b_toks and not _matches_both_vs_sides(best_title):
+                max_rep_len = 57 if is_long_form_parse else 68
                 has_a_bt = any(tok in best_title.lower() for tok in _vs_side_a_toks)
                 has_b_bt = any(tok in best_title.lower() for tok in _vs_side_b_toks)
                 if not has_a_bt and has_b_bt and _vs_side_a_raw:
                     repaired_t = f"{_vs_side_a_raw} vs {_vs_side_b_raw}: {best_title}"
-                    if len(repaired_t) > 68:
+                    if len(repaired_t) > max_rep_len:
                         repaired_t = f"{_vs_side_a_raw}: {best_title}"
                     best_title = repaired_t
                 elif has_a_bt and not has_b_bt and _vs_side_b_raw:
                     repaired_t = f"{_vs_side_a_raw} vs {_vs_side_b_raw}: {best_title}"
-                    if len(repaired_t) > 68:
+                    if len(repaired_t) > max_rep_len:
                         repaired_t = f"{best_title} vs {_vs_side_b_raw}"
                     best_title = repaired_t
                 elif _vs_head_clause:
-                    best_title = f"{_vs_head_clause}: {best_title}"[:68].strip()
+                    best_title = f"{_vs_head_clause}: {best_title}"[:max_rep_len].strip()
                 logger.info(
                     f"🎯 [ViralTitle Rule-1 Repair] Khôi phục đủ 2 thực thể đối đầu trên Title: '{best_title}'"
                 )
+            if is_long_form_parse and len(best_title) > 58:
+                best_title = best_title[:57].rsplit(" ", 1)[0].rstrip(" ,;:-–—").strip()
+                best_title = re.sub(
+                    r"\s+\b(?:o|a|os|as|um|uma|de|do|da|dos|das|no|na|nos|nas|em|por|para|com|sem|que|e|ou|"
+                    r"the|an|of|in|to|for|with|on|at|from|by|and|or)\s*$",
+                    "",
+                    best_title,
+                    flags=re.IGNORECASE,
+                ).rstrip(" ,;:-–—").strip()
             if best_title != raw_data.get("title"):
                 logger.info(f"[ContentAgent] 🎯 CTR Title Tournament chọn tiêu đề tối ưu: '{best_title}' (thay cho '{raw_data.get('title')}')")
                 raw_data["title"] = best_title
 
         if "tags" not in raw_data or not raw_data["tags"]:
-            raw_data["tags"] = ["shorts", "viral"]
+            raw_data["tags"] = ["documentary", "viral"] if is_long_form_parse else ["shorts", "viral"]
         elif isinstance(raw_data["tags"], str):
             raw_data["tags"] = [t.strip() for t in raw_data["tags"].split(",") if t.strip()]
+        if is_long_form_parse and isinstance(raw_data.get("tags"), list):
+            raw_data["tags"] = [t for t in raw_data["tags"] if "short" not in str(t).lower()] or ["documentary", "viral"]
         if "total_duration_estimate" not in raw_data or not raw_data["total_duration_estimate"]:
             raw_data["total_duration_estimate"] = round(sum(s.get("estimated_seconds", 3.2) for s in scenes if isinstance(s, dict)) or 35.0, 1)
         if "topic" not in raw_data or not raw_data["topic"]:
@@ -1245,36 +1281,42 @@ class ScriptJsonParserMixin:
             raw_desc = re.sub(r'#(?:psychology|darkpsychology|selfmastery|mindcontrol)\b', '', raw_desc, flags=re.IGNORECASE).strip()
             raw_data["description"] = raw_desc
 
+        if is_long_form_parse and raw_desc:
+            raw_desc = re.sub(r'#shorts\b', '', raw_desc, flags=re.IGNORECASE).strip()
+            raw_data["description"] = raw_desc
+
         if len(raw_desc) < 60 and raw_data.get("scenes"):
             sc_list = raw_data.get("scenes") or []
             hook_str = str(raw_data.get("hook") or (sc_list[0].get("narration", "") if sc_list else "")).strip()
             act2_str = str(sc_list[min(1, len(sc_list) - 1)].get("narration", "")).strip() if len(sc_list) > 1 else ""
 
+            _fmt_lead_tag = ("#documentario" if is_pt_lang else "#documentary") if is_long_form_parse else "#shorts"
             if niche_norm == "alternate_history" or any(k in comb_all for k in ("what if", "alternate history", "empire", "roman", "alexandria")):
-                default_tags = ["#shorts", "#alternatehistory", "#whatif", "#history"]
+                default_tags = [_fmt_lead_tag, "#alternatehistory", "#whatif", "#history"]
             elif niche_norm == "deep_sea_earth_mysteries" or any(k in comb_all for k in ("deep sea", "ocean", "mystery", "caverna", "ilha", "oceano", "abyss")):
                 default_tags = (
-                    ["#shorts", "#misterios", "#oceano", "#ciencia", "#curiosidades"]
+                    [_fmt_lead_tag, "#misterios", "#oceano", "#ciencia", "#curiosidades"]
                     if is_pt_lang else
-                    ["#shorts", "#mysteries", "#deepsea", "#science", "#unexplained"]
+                    [_fmt_lead_tag, "#mysteries", "#deepsea", "#science", "#unexplained"]
                 )
             elif niche_norm == "wildlife_predators" or any(k in comb_all for k in ("predator", "wildlife", "onça", "jacaré", "ratel", "harpia", "hippo", "orca", "leopard", "anaconda")):
                 default_tags = (
-                    ["#shorts", "#vidaanimal", "#natureza", "#predadores", "#curiosidades"]
+                    [_fmt_lead_tag, "#vidaanimal", "#natureza", "#predadores", "#curiosidades"]
                     if is_pt_lang else
-                    ["#shorts", "#wildlife", "#nature", "#animals", "#predators"]
+                    [_fmt_lead_tag, "#wildlife", "#nature", "#animals", "#predators"]
                 )
             elif niche_norm == "animal_rescue" or any(k in comb_all for k in ("rescue", "puppy", "kitten", "stray", "shelter")):
-                default_tags = ["#shorts", "#animalrescue", "#dogrescue", "#wholesome", "#puppies"]
+                default_tags = [_fmt_lead_tag, "#animalrescue", "#dogrescue", "#wholesome", "#puppies"]
             elif is_vn:
-                default_tags = ["#shorts", "#tamlyhoc", "#kynangsong", "#phattrienbanthan"]
+                default_tags = [_fmt_lead_tag, "#tamlyhoc", "#kynangsong", "#phattrienbanthan"]
             else:
-                default_tags = ["#shorts", "#psychology", "#darkpsychology", "#selfmastery"]
+                default_tags = [_fmt_lead_tag, "#psychology", "#darkpsychology", "#selfmastery"]
 
             raw_tags_filtered = [
                 f"#{str(t).lstrip('#').replace(' ', '')}"
-                for t in (raw_data.get("tags") or ["shorts"])
+                for t in (raw_data.get("tags") or [_fmt_lead_tag.lstrip("#")])
                 if str(t).strip()
+                and not (is_long_form_parse and "short" in str(t).lower())
                 and (is_psych_niche or str(t).lstrip('#').lower() not in ("psychology", "darkpsychology", "selfmastery"))
             ]
             tags_line = " ".join(dict.fromkeys(raw_tags_filtered + default_tags))

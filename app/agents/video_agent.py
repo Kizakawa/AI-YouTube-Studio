@@ -259,7 +259,10 @@ class VideoAgent:
                     sc_imgs = sorted(
                         [
                             p for p in m_dir.glob(f"scene_{scene.scene_id:03d}_*.*")
-                            if p.is_file() and p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp") and p.stat().st_size > 3_000
+                            if p.is_file()
+                            and p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
+                            and not p.name.lower().endswith("_graphic.png")
+                            and p.stat().st_size > 3_000
                         ],
                         key=lambda p: p.stat().st_mtime,
                         reverse=True,
@@ -410,6 +413,7 @@ class VideoAgent:
                         preserve_continuous_flow=True,
                     )
             elif raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
+                _handled_16x9_fast = False
                 if is_already_rendered and job.resolution_w == 1920:
                     from app.utils.ffmpeg_helper import get_duration_ms
                     actual_w, actual_h = get_video_dimensions(scene.media_path)
@@ -421,98 +425,100 @@ class VideoAgent:
                             )
                             if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
                                 shutil.copy2(scene.media_path, clip_path)
-                            return (scene.scene_id, clip_path)
-                        import subprocess as _sp_trim
-                        logger.info(
-                            f"  Scene {scene.scene_id}: ⚡ 16:9 Clean Stream Sync ({Path(scene.media_path).name}, {actual_v_sec:.2f}s → {duration:.2f}s)"
-                        )
-                        _sp_trim.run(
-                            [
-                                "ffmpeg", "-y", "-v", "error",
-                                "-i", str(scene.media_path),
-                                "-map", "0:v:0",
-                                "-t", f"{duration:.3f}",
-                                "-vf", "setsar=1,fps=" + str(job.fps) + ",format=yuv420p",
-                                "-threads", "2",
-                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
-                                "-pix_fmt", "yuv420p", "-r", str(job.fps),
-                                "-an", "-dn", "-sn",
-                                str(clip_path),
-                            ],
-                            stdout=_sp_trim.DEVNULL,
-                            stderr=_sp_trim.DEVNULL,
-                            timeout=30,
-                            check=False,
-                        )
-                        if is_completed_clean_mp4(clip_path, min_size_bytes=20_000, min_duration_ms=800):
-                            return (scene.scene_id, clip_path)
-                logger.info(
-                    f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
-                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
-                    f"{' [Already Graded]' if is_already_rendered else f' [{clip_niche} Grading]' if clip_niche else ''}"
-                )
-                try:
-                    trim_video(
-                        input_path=scene.media_path,
-                        duration_seconds=duration,
-                        output_path=clip_path,
-                        width=job.resolution_w,
-                        height=job.resolution_h,
-                        fps=job.fps,
-                        is_scifi=is_scifi_clip,
-                        niche=clip_niche,
-                        apply_grading=(not is_already_rendered),
-                        is_hook_scene=is_hook,
-                        fair_use_transform=False,
-                        preserve_continuous_flow=True,
+                            _handled_16x9_fast = True
+                        else:
+                            import subprocess as _sp_trim
+                            logger.info(
+                                f"  Scene {scene.scene_id}: ⚡ 16:9 Clean Stream Sync ({Path(scene.media_path).name}, {actual_v_sec:.2f}s → {duration:.2f}s)"
+                            )
+                            _sp_trim.run(
+                                [
+                                    "ffmpeg", "-y", "-v", "error",
+                                    "-i", str(scene.media_path),
+                                    "-map", "0:v:0",
+                                    "-t", f"{duration:.3f}",
+                                    "-vf", "setsar=1,fps=" + str(job.fps) + ",format=yuv420p",
+                                    "-threads", "2",
+                                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                                    "-pix_fmt", "yuv420p", "-r", str(job.fps),
+                                    "-an", "-dn", "-sn",
+                                    str(clip_path),
+                                ],
+                                stdout=_sp_trim.DEVNULL,
+                                stderr=_sp_trim.DEVNULL,
+                                timeout=30,
+                                check=False,
+                            )
+                            if is_completed_clean_mp4(clip_path, min_size_bytes=20_000, min_duration_ms=int(max(800, (duration - 0.15) * 1000))):
+                                _handled_16x9_fast = True
+                if not _handled_16x9_fast:
+                    logger.info(
+                        f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
+                        f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
+                        f"{' [Already Graded]' if is_already_rendered else f' [{clip_niche} Grading]' if clip_niche else ''}"
                     )
-                except Exception as e_trim:
-                    logger.warning(f"  Scene {scene.scene_id}: ⚠️ Clip gốc bị lỗi ({e_trim}), tự động phục hồi từ file cùng cảnh hoặc Master dài...")
-                    donor_vid = None
-                    donor_offset = 0.0
-                    fallback_dirs = [Path(work_dir).parent / "media", Path(work_dir) / "media", Path(work_dir)]
-                    for fb_dir in fallback_dirs:
-                        if not fb_dir.exists():
-                            continue
-                        # 1. Chỉ lấy file dự phòng của CHÍNH cảnh hiện tại (scene_{scene.scene_id:03d}_*.mp4),
-                        # hoặc file Master dài (*_master.mp4 >= 14s). Tuyệt đối không lấy clip của cảnh khác!
-                        same_sc_pool = sorted(fb_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4"))
-                        ch_master_pool = sorted((fb_dir / "chapter_pool").glob("*_master.mp4")) if (fb_dir / "chapter_pool").exists() else []
-                        for cand_mp4 in [*same_sc_pool, *ch_master_pool]:
-                            if (
-                                str(cand_mp4.resolve()) != str(Path(scene.media_path).resolve())
-                                and is_completed_clean_mp4(
-                                    cand_mp4,
-                                    min_size_bytes=25_000,
-                                    min_duration_ms=14000 if cand_mp4.name.endswith("_master.mp4") else 1500,
-                                )
-                            ):
-                                donor_vid = str(cand_mp4)
-                                if cand_mp4.name.endswith("_master.mp4"):
-                                    from app.utils.ffmpeg_helper import get_duration_ms as _get_d_ms
-                                    d_dur_s = _get_d_ms(donor_vid) / 1000.0
-                                    donor_offset = round((((scene.scene_id * 41 + 19) % 89) / 89.0) * max(0.0, d_dur_s - duration - 0.5), 2)
-                                break
-                        if donor_vid:
-                            break
-                    if donor_vid:
+                    try:
                         trim_video(
-                            input_path=donor_vid,
+                            input_path=scene.media_path,
                             duration_seconds=duration,
                             output_path=clip_path,
                             width=job.resolution_w,
                             height=job.resolution_h,
                             fps=job.fps,
-                            start_offset_sec=donor_offset,
                             is_scifi=is_scifi_clip,
                             niche=clip_niche,
-                            apply_grading=False,
+                            apply_grading=(not is_already_rendered),
                             is_hook_scene=is_hook,
-                            fair_use_transform=True,
+                            fair_use_transform=False,
                             preserve_continuous_flow=True,
                         )
-                    else:
-                        raise
+                    except Exception as e_trim:
+                        logger.warning(f"  Scene {scene.scene_id}: ⚠️ Clip gốc bị lỗi ({e_trim}), tự động phục hồi từ file cùng cảnh hoặc Master dài...")
+                        donor_vid = None
+                        donor_offset = 0.0
+                        fallback_dirs = [Path(work_dir).parent / "media", Path(work_dir) / "media", Path(work_dir)]
+                        for fb_dir in fallback_dirs:
+                            if not fb_dir.exists():
+                                continue
+                            # 1. Chỉ lấy file dự phòng của CHÍNH cảnh hiện tại (scene_{scene.scene_id:03d}_*.mp4),
+                            # hoặc file Master dài (*_master.mp4 >= 14s). Tuyệt đối không lấy clip của cảnh khác!
+                            same_sc_pool = sorted(fb_dir.glob(f"scene_{scene.scene_id:03d}_*.mp4"))
+                            ch_master_pool = sorted((fb_dir / "chapter_pool").glob("*_master.mp4")) if (fb_dir / "chapter_pool").exists() else []
+                            for cand_mp4 in [*same_sc_pool, *ch_master_pool]:
+                                if (
+                                    str(cand_mp4.resolve()) != str(Path(scene.media_path).resolve())
+                                    and is_completed_clean_mp4(
+                                        cand_mp4,
+                                        min_size_bytes=25_000,
+                                        min_duration_ms=14000 if cand_mp4.name.endswith("_master.mp4") else 1500,
+                                    )
+                                ):
+                                    donor_vid = str(cand_mp4)
+                                    if cand_mp4.name.endswith("_master.mp4"):
+                                        from app.utils.ffmpeg_helper import get_duration_ms as _get_d_ms
+                                        d_dur_s = _get_d_ms(donor_vid) / 1000.0
+                                        donor_offset = round((((scene.scene_id * 41 + 19) % 89) / 89.0) * max(0.0, d_dur_s - duration - 0.5), 2)
+                                    break
+                            if donor_vid:
+                                break
+                        if donor_vid:
+                            trim_video(
+                                input_path=donor_vid,
+                                duration_seconds=duration,
+                                output_path=clip_path,
+                                width=job.resolution_w,
+                                height=job.resolution_h,
+                                fps=job.fps,
+                                start_offset_sec=donor_offset,
+                                is_scifi=is_scifi_clip,
+                                niche=clip_niche,
+                                apply_grading=False,
+                                is_hook_scene=is_hook,
+                                fair_use_transform=True,
+                                preserve_continuous_flow=True,
+                            )
+                        else:
+                            raise
             elif getattr(scene, "pose_images", None) and len(getattr(scene, "pose_images", [])) >= 2:
                 pose_list = list(getattr(scene, "pose_images", None) or [scene.media_path])
                 # Tự động tính số lượng ảnh tối đa khớp với thời lượng câu đọc (tối thiểu 2.0s/ảnh, tối đa 2 ảnh/cảnh để Ken Burns mượt mà, không nháy hình)

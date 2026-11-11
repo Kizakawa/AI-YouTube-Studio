@@ -165,47 +165,67 @@ _SESSION_USED_TOPICS: dict[str, list[str]] = {}
 _SESSION_OCCUPIED_SLOTS: dict[str, list[datetime]] = {}
 
 
-def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> tuple[datetime, str, str]:
+def get_schedule_slot(
+    publish_hour_utc: int,
+    channel_id: str = "",
+    is_long_form: bool = False,
+) -> tuple[datetime, str, str]:
     """
     Tính slot giờ vàng tiếp theo có lệch pha chống trùng lặp.
-    Đảm bảo khi tạo 2 video liên tiếp cho cùng 1 kênh sẽ tự động phân bổ vào 2 khung giờ vàng khác nhau
-    (giãn cách >= 3 giờ và tối đa 2 video/ngày theo múi giờ thị trường mục tiêu US/BR).
+    Đảm bảo khi tạo nhiều video liên tiếp cho cùng 1 kênh sẽ tự động phân bổ vào khung giờ vàng chuẩn định dạng
+    (Shorts 9:16 vs Long-Form 16:9 với Anti-Collision >= 3.0 giờ).
     """
     try:
         from app.services.smart_scheduler import (
             get_next_available_golden_slot,
             get_active_slots_pool,
+            get_longform_slot_for_channel,
             is_brazil_channel,
-            BRAZIL_GOLDEN_SLOTS_UTC,
-            GOLDEN_SLOTS_UTC,
             get_channel_stagger_minutes,
             MIN_SPACING_SECONDS,
+            LONG_SHORT_ANTI_COLLISION_SECONDS,
             MAX_VIDEOS_PER_DAY,
+            MAX_LONG_FORM_PER_DAY,
             BR_TZ,
             US_EASTERN,
             VN_TZ,
             WEEKDAY_VN_MAP,
         )
-        slot_dt, slot_iso, disp_vn, disp_us = get_next_available_golden_slot(channel_id or "ch_psychology_of_the_world")
-        prev_slots = _SESSION_OCCUPIED_SLOTS.get(channel_id, [])
-        if prev_slots and any(abs((slot_dt - ps).total_seconds()) < MIN_SPACING_SECONDS for ps in prev_slots):
+        slot_dt, slot_iso, disp_vn, disp_us = get_next_available_golden_slot(
+            channel_id or "ch_psychology_of_the_world",
+            is_long_form=is_long_form,
+        )
+        session_key = f"{channel_id}::{'long' if is_long_form else 'short'}"
+        cross_key = f"{channel_id}::{'short' if is_long_form else 'long'}"
+        prev_slots = _SESSION_OCCUPIED_SLOTS.get(session_key, [])
+        cross_slots = _SESSION_OCCUPIED_SLOTS.get(cross_key, [])
+        has_same_collision = bool(prev_slots and any(abs((slot_dt - ps).total_seconds()) < MIN_SPACING_SECONDS for ps in prev_slots))
+        has_cross_collision = bool(cross_slots and any(abs((slot_dt - cs).total_seconds()) < LONG_SHORT_ANTI_COLLISION_SECONDS for cs in cross_slots))
+        if has_same_collision or has_cross_collision:
             is_br = is_brazil_channel(channel_id)
-            pool = get_active_slots_pool(channel_id)
+            pool = [get_longform_slot_for_channel(channel_id)] if is_long_form else list(get_active_slots_pool(channel_id))
             target_tz = BR_TZ if is_br else US_EASTERN
             stagger = get_channel_stagger_minutes(channel_id)
-            base_date = max(prev_slots).date()
-            for d_off in range(0, 15):
+            max_per_day = MAX_LONG_FORM_PER_DAY if is_long_form else MAX_VIDEOS_PER_DAY
+            ref_dates = [ps for ps in (prev_slots + cross_slots)]
+            base_date = max(ref_dates).date() if ref_dates else slot_dt.date()
+            for d_off in range(0, 20):
                 t_date = base_date + timedelta(days=d_off)
                 found_new = False
-                for s_cfg in sorted(pool, key=lambda x: (x["hour"], x["minute"])):
+                for s_cfg in sorted(pool, key=lambda x: (x.get("rank", 99), x["hour"], x["minute"])):
+                    eff_stagger = 0 if s_cfg.get("_pre_staggered") else stagger
                     cand = datetime(
                         t_date.year, t_date.month, t_date.day,
                         s_cfg["hour"], s_cfg["minute"], 0, tzinfo=timezone.utc
-                    ) + timedelta(minutes=stagger)
-                    if cand <= max(prev_slots) + timedelta(seconds=MIN_SPACING_SECONDS):
+                    ) + timedelta(minutes=eff_stagger)
+                    if cand <= datetime.now(timezone.utc) + timedelta(minutes=20):
+                        continue
+                    if any(abs((cand - ps).total_seconds()) < MIN_SPACING_SECONDS for ps in prev_slots):
+                        continue
+                    if any(abs((cand - cs).total_seconds()) < LONG_SHORT_ANTI_COLLISION_SECONDS for cs in cross_slots):
                         continue
                     m_date = cand.astimezone(target_tz).date()
-                    if sum(1 for ps in prev_slots if ps.astimezone(target_tz).date() == m_date) >= MAX_VIDEOS_PER_DAY:
+                    if sum(1 for ps in prev_slots if ps.astimezone(target_tz).date() == m_date) >= max_per_day:
                         continue
                     slot_dt = cand
                     slot_iso = slot_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -216,11 +236,11 @@ def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> tuple[date
                     disp_us = s_cfg["label_us"]
                     found_new = True
                     break
-    
+
                 if found_new:
                     break
-    
-        _SESSION_OCCUPIED_SLOTS.setdefault(channel_id, []).append(slot_dt)
+
+        _SESSION_OCCUPIED_SLOTS.setdefault(session_key, []).append(slot_dt)
         return slot_dt, disp_vn, disp_us
     except Exception:
         now_utc = datetime.now(timezone.utc)
@@ -252,11 +272,17 @@ async def produce_channel_video(
     voice = cfg["preferred_voice"]
     amazon_tag = cfg["amazon_tag"]
 
-    SCHEDULE_SLOT_UTC, DISPLAY_VN, DISPLAY_MARKET = get_schedule_slot(cfg["publish_hour_utc"], ch_id)
+    is_long_form = str(video_format or "short").strip().lower() in ("long", "long_form", "longform", "16:9")
+    SCHEDULE_SLOT_UTC, DISPLAY_VN, DISPLAY_MARKET = get_schedule_slot(
+        cfg["publish_hour_utc"],
+        ch_id,
+        is_long_form=is_long_form,
+    )
     SCHEDULE_SLOT_ISO = SCHEDULE_SLOT_UTC.strftime("%Y-%m-%dT%H:%M:%SZ")
+    fmt_header = "PHIM TÀI LIỆU 16:9 (10 CHƯƠNG >= 9M15S)" if is_long_form else "YOUTUBE SHORTS 9:16"
 
     print("\n" + "=" * 80)
-    print(f"🌟 [{video_index}/{total_per_channel}] SẢN XUẤT VIDEO CHO KÊNH: {ch_name} ({ch_id})")
+    print(f"🌟 [{video_index}/{total_per_channel}] SẢN XUẤT {fmt_header} CHO KÊNH: {ch_name} ({ch_id})")
     print(f"🎬 Ngách: {ch_niche} | Ngôn ngữ: {ch_lang} | Giọng: {voice}")
     print(f"⏰ KHUNG GIỜ VÀNG: {DISPLAY_VN} ({SCHEDULE_SLOT_ISO}) | {DISPLAY_MARKET}")
     print("=" * 80)
@@ -334,29 +360,45 @@ async def produce_channel_video(
             for t in ((niche_prof_bp.get("script_blueprint") or {}).get("viral_topic_bank_2026") or [])
             if str(t).strip()
         ]
-        # Đối với kênh Shorts, lọc bỏ các chủ đề dành riêng cho Long-Form ('Every ... Explained', '5-Round Gauntlet', 'Hour 1 to Day 14') nếu đang dựng Shorts
+        # Đối với kênh Shorts, lọc bỏ các chủ đề dành riêng cho Long-Form ('Every ... Explained', '5-Round Gauntlet', 'Hour 1 to Day 14') nếu đang dựng Shorts;
+        # Đối với Long-Form 16:9, ưu tiên các chủ đề đại cảnh nhiều chương lên đầu và khớp ngôn ngữ kênh (pt-BR vs en-US).
         is_lf_mode = str(video_format or "short").strip().lower() in ("long", "long_form", "longform", "16:9")
+        is_pt_ch = ch_lang.lower().startswith("pt")
+        _lf_markers = ("every ", "todos os", "todas as", "5-round gauntlet", "gauntlet", "poderia ", "could a ", "how long you", "quanto tempo", "hour 1 to day 14")
+
+        def _is_pt_topic_str(txt: str) -> bool:
+            low_tx = txt.lower()
+            return any(ch in low_tx for ch in ("ã", "õ", "ç", "ê", "á", "é", "ó", "ú")) or any(
+                w in f" {low_tx} " for w in (" por que ", " como ", " contra ", " dos ", " das ", " uma ", " um ")
+            )
+
+        lang_matched_topics = [t for t in yaml_topics_2026 if _is_pt_topic_str(t) == is_pt_ch]
         if not is_lf_mode:
             yaml_topics_filtered = [
-                t for t in yaml_topics_2026
-                if not any(lf_k in t.lower() for lf_k in ("every ", "todos os recordes", "5-round gauntlet", "hour 1 to day 14"))
+                t for t in lang_matched_topics
+                if not any(lf_k in t.lower() for lf_k in ("every ", "todos os ", "todas as ", "5-round gauntlet", "hour 1 to day 14", "quanto tempo você sobreviveria"))
             ]
         else:
-            yaml_topics_filtered = yaml_topics_2026
+            lf_first = [t for t in lang_matched_topics if any(lf_k in t.lower() for lf_k in _lf_markers)]
+            lf_rest = [t for t in lang_matched_topics if t not in lf_first]
+            yaml_topics_filtered = lf_first + lf_rest
 
         candidate_topics: list[str] = list(yaml_topics_filtered)
         try:
             wb = get_winner_cloner_blueprint(ch_id, niche_id=ch_niche)
             fresh_pool = wb.get("fresh_sequel_topics") or []
             if fresh_pool:
-                candidate_topics.extend(t for t in fresh_pool if t not in candidate_topics)
+                candidate_topics.extend(
+                    t for t in fresh_pool
+                    if t not in candidate_topics and _is_pt_topic_str(t) == is_pt_ch
+                )
                 if wb.get("winner_title"):
                     print(f"   🏆 [Winner Cloner] Tham chiếu công thức quán quân '{wb['winner_title']}' ({wb['winner_views']} views)")
         except Exception:
             pass
-        # Bổ sung danh sách dự phòng của kênh sau danh sách chuẩn từ YAML `config/niches/*.yaml`
+        # Bổ sung danh sách dự phòng của kênh (khớp đúng ngôn ngữ kênh) sau danh sách chuẩn từ YAML `config/niches/*.yaml`
         for fb_t in cfg.get("topics", []):
-            if fb_t not in candidate_topics:
+            if fb_t not in candidate_topics and _is_pt_topic_str(fb_t) == is_pt_ch:
                 candidate_topics.append(fb_t)
 
         topic = None
@@ -479,8 +521,15 @@ async def produce_channel_video(
     except Exception:
         pass
     used_in_session.append(raw_title)
-    base_desc = script.description or f"{script.hook or topic}\n\n#Shorts #{ch_niche}"
-    raw_tags = list(dict.fromkeys([*(script.tags or []), *cfg["default_tags"]]))
+    default_fmt_hash = ("#documentario" if ch_lang.lower().startswith("pt") else "#documentary") if is_long_form else "#Shorts"
+    base_desc = script.description or f"{script.hook or topic}\n\n{default_fmt_hash} #{ch_niche}"
+    if is_long_form:
+        import re as _re_bp
+        base_desc = _re_bp.sub(r"#shorts\b\s*", "", base_desc, flags=_re_bp.IGNORECASE).strip()
+    raw_tags = [
+        t for t in dict.fromkeys([*(script.tags or []), *cfg["default_tags"]])
+        if not (is_long_form and str(t).strip().lower().lstrip("#") in ("shorts", "ytshorts", "youtubeshorts"))
+    ]
     pinned_comment_base = script.pinned_comment or (
         "Qual é a sua opinião sobre isso? Comente abaixo! 👇🔥"
         if ch_lang.lower().startswith("pt")
@@ -506,6 +555,7 @@ async def produce_channel_video(
         topic=topic,
         script=script.full_narration,
         extra_tags=raw_tags,
+        is_long_form=is_long_form,
     )
     title = smart_bundle["enriched_title"]
     tags = smart_bundle["tags"]
@@ -585,8 +635,9 @@ async def produce_channel_video(
         )
     print(f"   -> Job #{job_id} đã được khởi tạo thành công.")
 
-    # ── BƯỚC 4: DỰNG VIDEO CHẤT LƯỢNG CAO NHẤT (1080x1920 @ 30FPS, CRF 18) & CHẤM ĐIỂM QA ──
-    print(f"\n[4/5] 🎬 BƯỚC 4: Dựng video chất lượng cao (1080x1920 @ 30fps, giọng {voice}) & Thẩm định...")
+    # ── BƯỚC 4: DỰNG VIDEO CHẤT LƯỢNG CAO NHẤT (1080x1920 HOẶC 1920x1080 @ 30FPS) & CHẤM ĐIỂM QA ──
+    res_label = "1920x1080 (16:9 Documentary)" if is_long_form else "1080x1920 (9:16 Shorts)"
+    print(f"\n[4/5] 🎬 BƯỚC 4: Dựng video chất lượng cao ({res_label} @ 30fps, giọng {voice}) & Thẩm định...")
 
     async def _progress_cb(stage: str, msg: str, percent: int = 0):
         print(f"   [Job #{job_id}] [{stage}] [{percent}%] {msg}", flush=True)
@@ -628,6 +679,26 @@ async def produce_channel_video(
     print(f"      - Điểm kỹ thuật FFprobe: {video_qa['score']}/100 ({video_qa.get('width')}x{video_qa.get('height')} @ {video_qa.get('fps')} FPS, {video_qa.get('duration_seconds', 0)}s, {video_qa.get('file_size_mb')} MB)")
     print(f"      - Độ sắc nét trung bình: {vc_check.get('sharpness', 0)} | Độ sáng: {vc_check.get('mean_luminance', 0)}")
     print(f"      - Âm thanh: {'Có luồng AAC chuẩn -14 LUFS' if video_qa.get('has_audio') else 'Thiếu'}")
+
+    # Đồng bộ lại scenes_json, bảng Mốc Chương TTS thực tế (`⏱️ Capítulos:` / `⏱️ Chapters:`) & pinned_comment ngay sau Bước 4
+    # để cả chế độ Telegram Preview, `--render-only` lẫn Upload YouTube đều nhận đúng mô tả chuẩn hóa từng giây!
+    try:
+        with get_db() as db_sync:
+            j_sync = db_sync.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j_sync and j_sync.scenes_json:
+                scenes_json_str = j_sync.scenes_json
+                s_refined = json.loads(scenes_json_str) if isinstance(scenes_json_str, str) else scenes_json_str
+                if isinstance(s_refined, dict):
+                    if s_refined.get("pinned_comment"):
+                        final_pinned_comment = pub_agent.sanitize_engagement_comment(str(s_refined["pinned_comment"]).strip())
+                    if s_refined.get("description"):
+                        ref_desc = str(s_refined["description"]).strip()
+                        if smart_bundle["description_hashtags"] not in ref_desc:
+                            ref_desc = f"{ref_desc}\n\n{smart_bundle['description_hashtags']}".strip()
+                        final_description = ref_desc
+                        j_sync.description = final_description
+    except Exception:
+        pass
 
     if send_telegram:
         try:
@@ -788,26 +859,9 @@ async def produce_channel_video(
             "status": "RENDERED_SENT_TELEGRAM",
         }
 
-    # ── BƯỚC 5: UPLOAD YOUTUBE SHORTS, GẮN TAGS SEO & HẸN LỊCH KHUNG GIỜ VÀNG ──
-    # Đồng bộ lại scenes_json & pinned_comment mới nhất sau khi LangGraph tinh chỉnh ở Bước 4
-    try:
-        with get_db() as db_sync:
-            j_sync = db_sync.query(VideoJob).filter(VideoJob.id == job_id).first()
-            if j_sync and j_sync.scenes_json:
-                scenes_json_str = j_sync.scenes_json
-                s_refined = json.loads(scenes_json_str) if isinstance(scenes_json_str, str) else scenes_json_str
-                if isinstance(s_refined, dict):
-                    if s_refined.get("pinned_comment"):
-                        final_pinned_comment = pub_agent.sanitize_engagement_comment(str(s_refined["pinned_comment"]).strip())
-                    if s_refined.get("description"):
-                        ref_desc = str(s_refined["description"]).strip()
-                        if smart_bundle["description_hashtags"] not in ref_desc:
-                            ref_desc = f"{ref_desc}\n\n{smart_bundle['description_hashtags']}".strip()
-                        final_description = ref_desc
-    except Exception:
-        pass
-
-    print(f"\n[5/5] 🚀 BƯỚC 5: Upload YouTube Shorts, Gắn {len(tags)} Tags SEO & Hẹn lịch {DISPLAY_VN}...")
+    # ── BƯỚC 5: UPLOAD YOUTUBE, GẮN TAGS SEO & HẸN LỊCH KHUNG GIỜ VÀNG ──
+    upload_fmt_label = "YouTube 16:9 Documentary" if is_long_form else "YouTube Shorts"
+    print(f"\n[5/5] 🚀 BƯỚC 5: Upload {upload_fmt_label}, Gắn {len(tags)} Tags SEO & Hẹn lịch {DISPLAY_VN}...")
     thumb_to_upload = (
         (getattr(render_result, "thumbnail_path", None) or getattr(render_result, "thumbnail_vertical_path", None))
         if is_long_form
@@ -828,11 +882,15 @@ async def produce_channel_video(
         topic=topic,
         script=scenes_json_str,
         thumbnail_path=thumb_to_upload,
+        job_id=job_id,
     )
 
     pub_status = pub_res.get("status")
     yt_id = pub_res.get("video_id")
-    yt_url = pub_res.get("shorts_url") or (f"https://www.youtube.com/shorts/{yt_id}" if yt_id else None)
+    if is_long_form:
+        yt_url = pub_res.get("youtube_url") or (f"https://youtu.be/{yt_id}" if yt_id else None)
+    else:
+        yt_url = pub_res.get("shorts_url") or (f"https://www.youtube.com/shorts/{yt_id}" if yt_id else None)
     final_tags = pub_res.get("tags") or tags
     final_title = pub_res.get("enriched_title") or title
     final_desc = pub_res.get("enriched_description") or final_description
@@ -841,9 +899,9 @@ async def produce_channel_video(
     if yt_id:
         # Hậu kiểm & khóa chặt Tags SEO, Hashtags, CategoryId & Geo-Lock trực tiếp trên YouTube API
         await asyncio.to_thread(pub_agent.verify_and_heal_video_metadata, yt_id)
-        print(f"   🎉 Upload & Hẹn lịch YouTube Shorts thành công!")
+        print(f"   🎉 Upload & Hẹn lịch {upload_fmt_label} thành công!")
         print(f"   Video ID  : {yt_id}")
-        print(f"   Shorts URL: {yt_url}")
+        print(f"   Video URL : {yt_url}")
         print(f"   Tags đã gắn ({len(final_tags)} thẻ): {', '.join(final_tags[:10])}...")
         print(f"   Lịch phát : {DISPLAY_VN} ({SCHEDULE_SLOT_ISO})")
     elif pub_status == "waiting_quota_reset":
@@ -1090,6 +1148,7 @@ async def main():
                             telegram_chat_id=args.telegram_chat_id,
                             video_index=v_idx,
                             total_per_channel=videos_per_ch,
+                            video_format=args.format,
                         )
                         if res:
                             ch_results.append(res)

@@ -1331,6 +1331,28 @@ class VideoMemoryRAG:
             sess["claimed_video_ids"].update(keys)
             return True
 
+    def clear_scene_commitments(self, job_id: int, scene_id: int, old_paths: Optional[List[str]] = None) -> None:
+        """
+        Xóa chữ ký dHash cũ của `scene_id` khi phân cảnh bị đánh trượt (watermark/lệch chủ đề) và cần tải lại ảnh/clip mới,
+        tránh lỗi MiniRAG tự chặn ứng viên mới do so sánh ngược với dHash của chính cảnh cũ vừa bị loại.
+        """
+        if not job_id or not scene_id:
+            return
+        with _RAG_LOCK:
+            sess = self._job_sessions.get(int(job_id))
+            if not sess:
+                return
+            seen_sigs: Dict[int, List[str]] = sess.get("committed_signatures") or {}
+            seen_sigs.pop(int(scene_id), None)
+            if old_paths:
+                committed_paths: Set[str] = sess.get("committed_image_paths") or set()
+                for op in old_paths:
+                    if op:
+                        try:
+                            committed_paths.discard(str(Path(op).resolve()))
+                        except Exception:
+                            pass
+
 
 _GLOBAL_MINI_RAG: Optional[VideoMemoryRAG] = None
 

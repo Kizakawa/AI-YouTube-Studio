@@ -246,6 +246,67 @@ def get_channel_stagger_minutes(channel_id: str) -> int:
     return 0
 
 
+def get_longform_slot_for_channel(channel_id: str) -> Dict[str, Any]:
+    """
+    Trả về khung giờ vàng chuyên biệt cho Phim tài liệu 16:9 (10-Chapter Long-Form):
+    - US Channels (21:30–22:30 UTC / 04:30–05:30 PM EST): Sóng đẩy (+1.5h–3h) nổ vào đúng Đỉnh Tối TV/Desktop Mỹ (07:00–08:30 PM EST),
+      giãn cách 60 phút giữa 2 kênh cùng Gmail và cách mọi khe Shorts >= 3h15p–5h30p (Luật 3 & Luật 4).
+    - Brazil Channels (23:30 UTC / 20:30 BRT cho Odisseia Selvagem; 00:35 UTC / 21:35 BRT cho Mistérios do Mundo):
+      Giãn cách 65 phút trên cùng Gmail acccount4 và cách mọi khe Shorts >= 3h15p.
+    """
+    fam_low = {f.lower() for f in resolve_channel_family(channel_id)}
+    if channel_id:
+        fam_low.add(channel_id.strip().lower())
+
+    if is_brazil_channel(channel_id):
+        if any(k in fam_low for k in ("ch_misterios_do_mundo", "@misteriosdomundo-tv", "ucvfonq9jcpvvze8e1cgnng", "ucvfonq9jcpvvze8e1cgng")):
+            return {
+                "hour": 0,
+                "minute": 35,
+                "label_vn": "07:35 Sáng",
+                "label_us": "21:35 PM BRT (KHUNG GIỜ VÀNG PHIM TÀI LIỆU 16:9 BRAZIL — CÁCH SHORTS >= 3H15P)",
+                "description": "Khung giờ vàng tối 21:35 BRT dành riêng cho Phim tài liệu 16:9 (cách Odisseia 65p, cách Shorts >= 3h15p).",
+                "tag": "BR_LONGFORM_PRIME",
+                "rank": 0,
+                "_pre_staggered": True,
+            }
+        return {
+            "hour": 23,
+            "minute": 30,
+            "label_vn": "06:30 Sáng",
+            "label_us": "20:30 PM BRT (KHUNG GIỜ VÀNG PHIM TÀI LIỆU 16:9 BRAZIL — CÁCH SHORTS >= 3H15P)",
+            "description": "Khung giờ vàng tối 20:30 BRT dành riêng cho Phim tài liệu 16:9 tích lũy 4.000h xem (cách Shorts >= 3h15p).",
+            "tag": "BR_LONGFORM_PRIME",
+            "rank": 0,
+            "_pre_staggered": True,
+        }
+
+    if any(k in fam_low for k in ("ch_psychology_of_the_world", "channel_maya", "channel_psychology", "@vv1n-oe9gs")):
+        hm = (21, 30)
+    elif any(k in fam_low for k in ("ch_paws_hearts_rescue", "@pawsandheartsrescue")):
+        hm = (21, 30)
+    elif any(k in fam_low for k in ("@alternatehistorywhatif-e2x",)):
+        hm = (21, 45)
+    elif any(k in fam_low for k in ("ch_the_mysteries_of_the_world", "@themysteriesoftheworld-f3w", "ucsrjiil67qxidtxt70z-iwa")):
+        hm = (22, 30)
+    elif any(k in fam_low for k in ("ch_wild_odyssey", "@wildodysseyhq")):
+        hm = (22, 30)
+    else:
+        hm = (22, 0)
+
+    vn_h = (hm[0] + 7) % 24
+    return {
+        "hour": hm[0],
+        "minute": hm[1],
+        "label_vn": f"{vn_h:02d}:{hm[1]:02d} Sáng",
+        "label_us": "KHUNG GIỜ VÀNG PHIM TÀI LIỆU 16:9 MỸ (21:30–22:30 UTC -> ĐÓN SÓNG TỐI TV/DESKTOP 7PM–8:30PM EST, CÁCH SHORTS >= 3H15P)",
+        "description": "Khung giờ vàng chiều-tối Mỹ 21:30–22:30 UTC cho Phim tài liệu 16:9 tích lũy 4.000h xem (cách mọi khe Shorts >= 3h15p).",
+        "tag": "US_LONGFORM_PRIME",
+        "rank": 0,
+        "_pre_staggered": True,
+    }
+
+
 WEEKDAY_VN_MAP = {
     0: "Thứ Hai",
     1: "Thứ Ba",
@@ -537,9 +598,23 @@ def process_waiting_quota_jobs() -> int:
                         is_long_form=is_lf_wait,
                     )
                 sched_iso = sched_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-                thumb_p = str(Path("storage/thumbnails") / f"thumb_{job_id}_9x16.jpg")
-                if not Path(thumb_p).exists():
-                    thumb_p = None
+                thumb_p = None
+                if is_lf_wait:
+                    for cand_th in (
+                        Path("storage/outputs") / f"thumb_{job_id}_16x9.jpg",
+                        Path("storage/thumbnails") / f"thumb_{job_id}_16x9.jpg",
+                    ):
+                        if cand_th.exists():
+                            thumb_p = str(cand_th)
+                            break
+                else:
+                    for cand_th in (
+                        Path("storage/thumbnails") / f"thumb_{job_id}_9x16.jpg",
+                        Path("storage/outputs") / f"thumb_{job_id}_9x16.jpg",
+                    ):
+                        if cand_th.exists():
+                            thumb_p = str(cand_th)
+                            break
 
                 logger.info(
                     f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản & hẹn lịch Video #{job_id} "
@@ -547,7 +622,7 @@ def process_waiting_quota_jobs() -> int:
                 )
                 res = pub_agent.upload_video(
                     video_path=job_data["video_path"],
-                    title=job_data["title"] or f"Shorts #{job_id}",
+                    title=job_data["title"] or (f"Documentary #{job_id}" if is_lf_wait else f"Shorts #{job_id}"),
                     description=job_data["description"] or "",
                     tags=[t.strip() for t in job_data["tags"].split(",") if t.strip()] if job_data.get("tags") else None,
                     privacy_status="private",
@@ -621,31 +696,11 @@ def get_next_available_golden_slot(
     # 1. Tìm tất cả alias của kênh này để quét occupied slots
     channel_family = resolve_channel_family(channel_id)
     is_br = is_brazil_channel(channel_id)
-    active_slots_pool = list(get_active_slots_pool(channel_id))
     if is_long_form:
-        # Thêm khe giờ vàng chuyên biệt cho Long-Form 16:9 Documentary (cách khe Shorts >= 3h20p theo Luật 4 Anti-Collision)
-        lf_slot = (
-            {
-                "hour": 23,
-                "minute": 40,
-                "label_vn": "06:40 Sáng",
-                "label_us": "20:40 PM BRT (KHUNG GIỜ VÀNG PHIM TÀI LIỆU 16:9 BRAZIL — CÁCH SHORTS >= 3H25P)",
-                "description": "Khung giờ vàng tối 20:40 BRT dành riêng cho Phim tài liệu 16:9 tích lũy 4.000h xem (cách khe Shorts >= 3h25p).",
-                "tag": "BR_LONGFORM_PRIME",
-                "rank": 0,
-            }
-            if is_br
-            else {
-                "hour": 20,
-                "minute": 45,
-                "label_vn": "03:45 Sáng",
-                "label_us": "15:45 PM EST / 16:45 PM EDT (KHUNG GIỜ VÀNG PHIM TÀI LIỆU 16:9 MỸ — CÁCH SHORTS >= 3H30P)",
-                "description": "Khung giờ vàng chiều-tối Mỹ dành riêng cho Phim tài liệu 16:9 tích lũy 4.000h xem (cách cả 2 khe Shorts >= 3h30p, 100% VN ngủ say).",
-                "tag": "US_LONGFORM_PRIME",
-                "rank": 0,
-            }
-        )
-        active_slots_pool = [lf_slot] + active_slots_pool
+        # Khóa cứng khe giờ vàng chuyên biệt cho Phim tài liệu 16:9 (KHÔNG rơi về khe Shorts nếu ngày hôm nay đã kín)
+        active_slots_pool = [get_longform_slot_for_channel(channel_id)]
+    else:
+        active_slots_pool = list(get_active_slots_pool(channel_id))
     target_tz = BR_TZ if is_br else US_EASTERN
 
     occupied_slots_utc: List[datetime] = []
@@ -756,7 +811,7 @@ def get_next_available_golden_slot(
     for day_offset in range(45):
         target_date = start_date + timedelta(days=day_offset)
 
-        # Tạo danh sách các khe giờ vàng trong ngày (đã cộng độ lệch pha theo từng kênh)
+        # Tạo danh sách các khe giờ vàng trong ngày (đã cộng độ lệch pha theo từng kênh nếu slot chưa khóa sẵn)
         candidate_slots = []
         for slot in active_slots_pool:
             base_dt = datetime(
@@ -768,7 +823,8 @@ def get_next_available_golden_slot(
                 second=0,
                 tzinfo=timezone.utc
             )
-            candidate_dt = base_dt + timedelta(minutes=stagger_minutes)
+            eff_stagger = 0 if slot.get("_pre_staggered") else stagger_minutes
+            candidate_dt = base_dt + timedelta(minutes=eff_stagger)
             if candidate_dt > min_allowed_time:
                 candidate_slots.append((candidate_dt, slot))
 
