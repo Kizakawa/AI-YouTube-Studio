@@ -93,10 +93,15 @@
   - **File liên quan**: [`app/services/video_processor.py`](file:///d:/Python/Youtube/app/services/video_processor.py).
   - **Tiêu chí hoàn thành**: `ffmpeg -f lavfi -i color=c=black:s=256x256:d=0.1 -c:v h264_nvenc -f null -` trả về exit code `0`.
 
-- [ ] **TASK-017: Làm Mới OAuth Token Cho Kênh `Wild Odyssey` (`account_1_wild_odyssey_token.pickle`) Khi Chạy Đợt Upload Mới**
-  - **Mô tả**: Kiểm tra và xác thực lại OAuth cho kênh `Wild Odyssey` (`ch_wild_odyssey`) nếu token báo hết hạn `invalid_grant`.
-  - **File liên quan**: [`app/services/youtube_uploader.py`](file:///d:/Python/Youtube/app/services/youtube_uploader.py).
-  - **Tiêu chí hoàn thành**: Cả 7/7 kênh đều trả về trạng thái xác thực YouTube Data API v3 thành công.
+- [x] **TASK-017: Làm Mới OAuth Token Cho 3 Kênh (`Wild Odyssey`, `Alternate History & "What If?"`, `Psychology of the world`) & Cân Bằng Tải 3 Dự Án Google Cloud**
+  - **Mô tả**: Kiểm tra và xác thực lại OAuth cho các kênh sang `ai-youtube-studio-509521` và `youtube-pool-02-510505` khi `bionic-client-509515-h2` chạm trần 6 video/ngày.
+  - **File liên quan**: [`app/agents/publisher/oauth_and_upload_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/oauth_and_upload_mixin.py), [`app/services/quota_manager.py`](file:///d:/Python/Youtube/app/services/quota_manager.py).
+  - **Tiêu chí hoàn thành**: Cả 6/6 kênh sản xuất đều xác thực YouTube Data API v3 thành công và chia tải qua 3 Google Cloud Projects.
+
+- [x] **TASK-020: Sản Xuất, Kiểm Duyệt Contact Sheet & Lập Lịch Giờ Vàng Lô 12 Video Shorts Đợt 2 (`#785`–`#796`) + Tối Ưu `ThreadPoolExecutor(48)` & `2-Tier Documentary B-Roll`**
+  - **Mô tả**: Sản xuất và lên lịch 12/12 video chủ đề vàng & hot trend cho 6 kênh (trừ `Paws & Hearts Rescue`); mở rộng ThreadPool lên 48 luồng để triệt tiêu nghẽn khi đua 3 nhánh tải video; đồng bộ luật B-Roll đại diện cùng họ sinh học / bối cảnh địa lý tự nhiên giữa `VisualCurationAgent` và `VisualCritic`.
+  - **File liên quan**: [`app/graph/nodes/media/fetch_media_node.py`](file:///d:/Python/Youtube/app/graph/nodes/media/fetch_media_node.py), [`app/graph/nodes/media/refine_media_node.py`](file:///d:/Python/Youtube/app/graph/nodes/media/refine_media_node.py), [`app/agents/curation/media_vision_curator_mixin.py`](file:///d:/Python/Youtube/app/agents/curation/media_vision_curator_mixin.py), [`app/graph/evaluators/visual_critic.py`](file:///d:/Python/Youtube/app/graph/evaluators/visual_critic.py), [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py).
+  - **Tiêu chí hoàn thành**: 12/12 video (`#785`–`#796`) đạt `VideoQA 97–99/100` (10/12 video đạt `100%` cảnh video chuyển động thật), lên lịch thành công trên YouTube + gửi Telegram; 5/5 video mở `PUBLIC` đầu tiên vượt `1,000–1,381 views` ngay trong đêm đầu.
 
 - [ ] **TASK-018: Kiểm Toán Định Kỳ 14 Ngày Hệ Thống, Agent & Model (`biweekly-system-model-upgrader`)**
   - **Mô tả**: Quét phiên bản model Gemini/LLM/TTS/Video mới nhất và trình báo cáo so sánh Tiếng Việt trước khi nâng cấp.

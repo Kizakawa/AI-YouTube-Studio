@@ -77,10 +77,10 @@ class OAuthAndUploadMixin:
         except Exception as e:
             logger.debug(f"PublisherAgent config check error: {e}")
 
-        if self.channel_config.get("token_file") and os.path.exists(self.channel_config["token_file"]):
-            self.token_file = self.channel_config["token_file"]
-        elif ch_token and os.path.exists(ch_token):
+        if ch_token and os.path.exists(ch_token):
             self.token_file = ch_token
+        elif self.channel_config.get("token_file") and os.path.exists(self.channel_config["token_file"]):
+            self.token_file = self.channel_config["token_file"]
         elif is_first_ch and os.path.exists(acc_token):
             # Chỉ kênh đầu tiên được kế thừa token cấp tài khoản cũ
             self.token_file = acc_token
@@ -176,38 +176,42 @@ class OAuthAndUploadMixin:
                 self.init_error = f"File token rỗng hoặc không giải mã được: {self.token_file}"
                 logger.warning(f"Chưa tìm thấy youtube_token hợp lệ cho '{self.token_file}'")
         except Exception as e:
-            # Nếu đang dùng token phụ mà bị lỗi invalid_grant / expired, cô lập token hỏng và fallback ngay về token chính
-            primary_tok = os.path.join(settings.CREDENTIALS_DIR, "channels", self.channel_id, "youtube_token.json")
-            if self.token_file and os.path.exists(primary_tok) and os.path.abspath(self.token_file) != os.path.abspath(primary_tok):
-                logger.warning(f"⚠️ Token phụ '{self.token_file}' bị lỗi ({e}). Đang tự động fallback về token chính '{primary_tok}'...")
-                if "invalid_grant" in str(e) and os.path.exists(self.token_file):
-                    try:
-                        bak_path = f"{self.token_file}.revoked.bak"
-                        if os.path.exists(bak_path):
-                            os.remove(bak_path)
-                        os.rename(self.token_file, bak_path)
-                        logger.info(f"🧹 Đã cô lập token phụ hết hạn sang '{bak_path}' để tránh xoay nhầm.")
-                    except Exception as ren_err:
-                        logger.debug(f"Không thể đổi tên token phụ hỏng: {ren_err}")
-                self.token_file = primary_tok
+            # Nếu token đang chọn bị lỗi invalid_grant / expired, thử toàn bộ các file token khác trong thư mục của kênh
+            import glob as _glob
+            from app.utils.security import load_encrypted_json, save_encrypted_json
+            from app.services.quota_manager import QuotaManager, get_project_id_from_client_secret
+
+            ch_dir = os.path.join(settings.CREDENTIALS_DIR, "channels", self.channel_id)
+            cand_files = []
+            primary_tok = os.path.join(ch_dir, "youtube_token.json")
+            if os.path.exists(primary_tok):
+                cand_files.append(primary_tok)
+            if os.path.isdir(ch_dir):
+                for gf in sorted(_glob.glob(os.path.join(ch_dir, "youtube_token*.json"))):
+                    if gf not in cand_files:
+                        cand_files.append(gf)
+
+            for fb_tok in cand_files:
+                if self.token_file and os.path.abspath(fb_tok) == os.path.abspath(self.token_file):
+                    continue
                 try:
-                    from app.utils.security import load_encrypted_json, save_encrypted_json
-                    from app.services.quota_manager import QuotaManager
-                    token_data = load_encrypted_json(primary_tok)
-                    if token_data:
-                        creds = Credentials.from_authorized_user_info(token_data)
-                        if creds.expired and creds.refresh_token:
-                            from google.auth.transport.requests import Request
-                            creds.refresh(Request())
-                            save_encrypted_json(primary_tok, json.loads(creds.to_json()))
-                        self.creds = creds
-                        self.service = build("youtube", "v3", credentials=creds)
-                        self.project_id = QuotaManager.get_channel_project_id(self.channel_id)
-                        self.init_error = None
-                        logger.info(f"✅ Đã fallback kết nối thành công qua token chính cho '{self.channel_name}' (Project: {self.project_id})!")
-                        return
+                    token_data = load_encrypted_json(fb_tok)
+                    if not token_data:
+                        continue
+                    creds = Credentials.from_authorized_user_info(token_data)
+                    if creds.expired and creds.refresh_token:
+                        from google.auth.transport.requests import Request
+                        creds.refresh(Request())
+                        save_encrypted_json(fb_tok, json.loads(creds.to_json()))
+                    self.token_file = fb_tok
+                    self.creds = creds
+                    self.service = build("youtube", "v3", credentials=creds)
+                    self.project_id = QuotaManager.get_channel_project_id(self.channel_id)
+                    self.init_error = None
+                    logger.info(f"✅ Đã fallback kết nối thành công qua token '{fb_tok}' cho '{self.channel_name}'!")
+                    return
                 except Exception as fb_err:
-                    logger.error(f"Fallback token chính cũng thất bại: {fb_err}")
+                    logger.debug(f"Fallback token '{fb_tok}' thất bại: {fb_err}")
 
             self.init_error = str(e)
             logger.error(f"Lỗi khởi tạo YouTube API cho '{self.channel_name}': {e}")

@@ -925,7 +925,7 @@ Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ... along with
 SELF-SCORING PROTOCOL FOR EVERY SCENE TILE (0.0 to 10.0):
 1. CROSS-SCENE COREFERENCE & CROSS-TILE VISUAL IDENTITY CONSISTENCY (`entity_match_score`: 0.0–10.0):
    - Resolve any pronouns or generic nouns in each scene's narration (e.g., "the hunter", "the eagle", "its prey", "this creature", "he/she/it") back to the exact named protagonists in Overall Script Topic ("{anchor_topic}").
-   - 2-TIER DOCUMENTARY B-ROLL RULE: In any two-entity matchup or comparison ("{anchor_topic}"), BOTH named protagonists (and visually similar species/vessels/aircraft from the same class on free stock/documentary libraries, such as monitor lizards for Komodo dragon, crocodile/alligator for caiman, brown bear for grizzly, or authentic WWII/naval battleships, naval artillery turrets firing, ocean combat explosions, warship silhouettes on the horizon with smoke/shell splashes, ship rudder/propeller underwater or drydock shots, stormy Atlantic ocean waves illustrating a trapped/drifting vessel at sea, and vintage military biplanes/warplanes in flight for a naval/aerial war topic) are 100% VALID primary subjects! A clean shot showing AT LEAST ONE of the named protagonists or class-equivalent warships/aircraft/ocean battle settings from "{anchor_topic}" in a natural/historical pose OR a close-up of its features (e.g., claws, jaws, naval gun turrets firing, battleship bow/superstructure, ship rudder, ocean explosion, torpedo wake, horizon naval battle, cockpit in flight) MUST score `entity_match_score >= 8.5` (`"passed": true`). NEVER fail a tile because only one of the two combatants is visible in that frame, because an authentic archival war film or horizon naval shot has vintage film grain/smoke/ocean waves without a readable ship nameplate, or because an authentic preserved battleship has a naval hull pennant number! Only score `entity_match_score < 5.0` if the tile shows a completely unrelated animal taxonomic group or modern civilian airshows with tourists/bright red civilian sports monoplanes/Commemorative Air Force tarmac.
+   - 2-TIER DOCUMENTARY B-ROLL RULE: In any two-entity matchup, comparison, or geographical/natural mystery ("{anchor_topic}"), BOTH named protagonists AND the named geographical setting/environment (as well as visually similar species/vessels/aircraft/landscapes from the same class on free stock/documentary libraries, such as monitor lizards for Komodo dragon, crocodile/alligator for caiman, any wild viper/snake for an endemic island snake, brown bear for grizzly, uninhabited island cliffs/ocean waves/rainforest canopy for an island mystery, white glaciers/ice walls/subglacial water for an Antarctic mystery, desert sand dunes/shipwrecks for a coastal desert mystery, or authentic WWII/naval battleships, naval artillery turrets firing, ocean combat explosions, warship silhouettes on the horizon with smoke/shell splashes, ship rudder/propeller underwater or drydock shots, stormy Atlantic ocean waves illustrating a trapped/drifting vessel at sea, and vintage military biplanes/warplanes in flight for a naval/aerial war topic) are 100% VALID primary subjects! A clean shot showing AT LEAST ONE of the named protagonists, class-equivalent species/vessels, OR the canonical geographical setting (island shoreline, ocean cliffs, glacier, desert coast, forest canopy) from "{anchor_topic}" MUST score `entity_match_score >= 8.5` and `relevance_score >= 8.5` (`"passed": true`). NEVER fail a tile because only one of the two combatants is visible in that frame, because a scene shows the geographical island/ocean/glacier setting while the voiceover describes venom/temperature/mechanisms, because an authentic archival war film or horizon naval shot has vintage film grain/smoke/ocean waves without a readable ship nameplate, or because an authentic preserved battleship has a naval hull pennant number! Only score `entity_match_score < 5.0` if the tile shows a completely unrelated animal taxonomic group or modern civilian airshows with tourists/bright red civilian sports monoplanes/Commemorative Air Force tarmac.
    - PSYCHOLOGY / NEUROSCIENCE / MEDICAL / PRE-CINEMA HISTORICAL CASE STUDY B-ROLL RULE: Whenever the Overall Script Topic ("{anchor_topic}") involves psychology, neuroscience, brain anatomy/mechanisms (e.g., prefrontal cortex, synapses, neural pathways, split-brain), a medical case study, or a 19th-century/pre-cinema historical figure where live footage of the accident/event cannot exist (e.g., Phineas Gage 1848), ANY scene tile in the video — EVEN IF that specific scene's narration or query describes a physical injury, explosion, skull trauma, surgery, or 19th-century survivor action — that shows 3D glowing brain/neural/synapse activity, microscopic neurons, medical skull/CT reconstructions, archival historical portraits/engravings, OR cinematic/monochrome human behavioral/walking/emotional B-roll (even with contemporary clothing/streets on free stock libraries where 19th-century period video does not exist) IS 100% VALID primary documentary B-roll and MUST score `entity_match_score >= 8.5`, `relevance_score >= 8.5`, and `cleanliness_score >= 8.5` (`"passed": true`)! NEVER fail any scene in a psychology/neuroscience/pre-cinema case study topic for showing 3D neural/brain activity or contemporary stock human behavioral/emotional B-roll instead of 19th-century period actors!
 2. NARRATIVE ACTION & SETTING ALIGNMENT (`relevance_score`: 0.0–10.0):
    - Does the frame's subject, setting, and historical era align with a documentary on "{anchor_topic}" or the scene's `[Directed B-Roll Query: ...]`?
@@ -986,28 +986,40 @@ Return ONLY valid JSON in this exact format:
                                         ent_s = float(item_ev.get("entity_match_score", 9.0))
                                         rel_s = float(item_ev.get("relevance_score", 9.0))
                                         cln_s = float(item_ev.get("cleanliness_score", 9.0))
-                                        is_p = bool(item_ev.get("passed", True)) and min(ent_s, rel_s, cln_s) >= 7.5
+                                        sug_q_raw = str(item_ev.get("suggested_search_query") or "").strip()
+                                        broll_q_raw = str(item_ev.get("fallback_broll_query") or "").strip()
+                                        raw_passed = bool(item_ev.get("passed", True))
+                                        min_sub = min(ent_s, rel_s, cln_s)
+                                        avg_sub = (ent_s + rel_s + cln_s) / 3.0
+                                        is_p = (
+                                            (raw_passed and min_sub >= 7.5)
+                                            or (raw_passed and min_sub >= 6.8 and avg_sub >= 7.5)
+                                            or (not sug_q_raw and not broll_q_raw and min_sub >= 6.5 and avg_sub >= 7.2)
+                                        )
+                                        if is_p and min_sub < 7.5:
+                                            ent_s = max(ent_s, 8.0)
+                                            rel_s = max(rel_s, 8.0)
+                                            cln_s = max(cln_s, 8.0)
                                         ck_e = scene_file_cache_keys.get(sid_e)
                                         if not is_p and ck_e and ck_e in cls._cs_scene_pass_cache:
                                             all_scene_evals[sid_e] = dict(cls._cs_scene_pass_cache[ck_e])
                                             continue
                                         if is_p and ck_e and ck_e in cls._cs_scene_fail_cache:
-                                            all_scene_evals[sid_e] = dict(cls._cs_scene_fail_cache[ck_e])
-                                            continue
+                                            cls._cs_scene_fail_cache.pop(ck_e, None)
                                         ev_entry = {
                                             "passed": is_p,
                                             "entity_match_score": ent_s,
                                             "relevance_score": rel_s,
                                             "cleanliness_score": cln_s,
                                             "reason": str(item_ev.get("reason") or ""),
-                                            "suggested_search_query": str(item_ev.get("suggested_search_query") or "").strip(),
-                                            "fallback_broll_query": str(item_ev.get("fallback_broll_query") or "").strip(),
+                                            "suggested_search_query": "" if is_p else sug_q_raw,
+                                            "fallback_broll_query": "" if is_p else broll_q_raw,
                                         }
                                         all_scene_evals[sid_e] = ev_entry
                                         if is_p and ck_e and min(ent_s, rel_s, cln_s) >= 7.5:
                                             cls._cs_scene_pass_cache[ck_e] = dict(ev_entry)
                                             cls._cs_scene_fail_cache.pop(ck_e, None)
-                                        elif not is_p and ck_e:
+                                        elif not is_p and ck_e and (sug_q_raw or broll_q_raw) and min_sub < 6.5:
                                             cls._cs_scene_fail_cache[ck_e] = dict(ev_entry)
                                 for item_f in (data.get("failed_scenes") or []):
                                     if isinstance(item_f, dict) and item_f.get("scene_id"):

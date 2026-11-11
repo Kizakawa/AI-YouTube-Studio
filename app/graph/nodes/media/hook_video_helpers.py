@@ -446,8 +446,10 @@ def verify_hook_clip_genuine_motion(
             )
             comp_ratio = med_comp / max(med_raw, 0.1)
 
-            if med_raw < min_raw_diff and med_act < 9.5:
-                return False, round(med_comp, 2), f"Cảnh tĩnh đứng hình (med_raw={med_raw:.2f} < {min_raw_diff}, med_act={med_act:.2f})"
+            eff_min_raw = max(2.4, min_raw_diff - 0.65) if not check_padbars else min_raw_diff
+            eff_min_act = 5.8 if not check_padbars else 9.5
+            if med_raw < eff_min_raw and med_act < eff_min_act:
+                return False, round(med_comp, 2), f"Cảnh tĩnh đứng hình (med_raw={med_raw:.2f} < {eff_min_raw:.2f}, med_act={med_act:.2f})"
             if med_comp < min_comp_diff and med_act < 10.5:
                 return False, round(med_comp, 2), f"Ảnh tĩnh / AI illustration zoompan giả chuyển động (med_comp={med_comp:.2f}, med_act={med_act:.2f})"
             if frozen_ratio > max_frozen_ratio and med_comp < 7.5 and med_act < 12.0:

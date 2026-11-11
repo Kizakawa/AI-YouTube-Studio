@@ -6,71 +6,68 @@
 
 ---
 
-## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-07 10:38 +07:00`)
+## 📌 Snapshot Trạng Thái Hiện Tại (Cập nhật: `2026-11-11 10:52 +07:00`)
 
-- **Nhánh Git hiện tại**: `main` (đồng bộ sạch với `origin/main` và `/home/vv1nc/Youtube` trên WSL2).
+- **Nhánh Git hiện tại**: `main` (đồng bộ sạch với `origin/main`).
 - **Tác vụ vừa hoàn thành**:
-  - `TASK-019`: **Chuyển toàn bộ ổ đĩa ảo `ext4.vhdx` của Ubuntu 26.04 LTS (WSL2) sang `D:\WSL\Ubuntu` và thiết lập Không Gian Dự Án Gốc `/home/vv1nc/Youtube` bên trong WSL2** (cài đặt `ms-vscode-remote.remote-wsl`, VS Code Server `~/.vscode-server`, `uv`, `.venv` Python 3.12, và tự động nạp `/usr/lib/wsl/lib` trong [`core_encoder.py`](file:///d:/Python/Youtube/app/utils/ffmpeg/core_encoder.py) để mở khóa trực tiếp card đồ họa rời **`NVIDIA GeForce RTX 3050 (`h264_nvenc`)`** bên trong WSL2).
-  - Nâng cấp toàn diện **System Prompt sinh kịch bản (`ContentAgent` 3 tầng trong [`app/agents/content/script_generator_mixin.py`](file:///d:/Python/Youtube/app/agents/content/script_generator_mixin.py))**, **Bộ quy tắc Prose DNA ([`app/services/niche_manager.py`](file:///d:/Python/Youtube/app/services/niche_manager.py))**, và **Hồ sơ Ngách YAML ([`config/niches/alternate_history.yaml`](file:///d:/Python/Youtube/config/niches/alternate_history.yaml), [`config/niches/deep_sea_earth_mysteries.yaml`](file:///d:/Python/Youtube/config/niches/deep_sea_earth_mysteries.yaml))** kết hợp với **`HotChannelScriptBenchmarkEvaluator` ([`app/graph/evaluators/hot_channel_script_benchmark.py`](file:///d:/Python/Youtube/app/graph/evaluators/hot_channel_script_benchmark.py))**:
-    1. Tự động bơm trực tiếp nguyên văn phụ đề thật của các video Hot trên YouTube cùng chủ đề (`_fetch_live_hot_scripts_for_topic`) vào thẳng **System Prompt của `ContentAgent` ngay từ bước viết kịch bản (Stage 1 & Stage 2)**.
-    2. Loại bỏ tận gốc chỉ dẫn cũ trong `alternate_history.yaml` từng bảo LLM viết ngày tháng lịch sử ở Cảnh 2 (`Act 2: Exact Historical Date`), thay bằng hành động vật lý trực diện ở thì hiện tại (như *Dark Skies 105K views*).
-    3. Phân tách rạch ròi vai trò của **Cảnh 4 (Vật đối chứng đời thường `$1` — như tàu lặn Titan đóng kín chứa không khí)** và **Cảnh 5 (Mở khóa cơ chế trên chủ thể chính — như nước tràn ngập hành lang Titanic)** để triệt tiêu 100% lỗi lặp ý giữa 2 cảnh liền kề.
-    4. Khóa cú chốt **Cảnh cuối (Scene 7/8)** bằng **hình ảnh vật lý nhìn thấy được bằng mắt** (*bánh lái kẹt cứng khóa con tàu 50.000 tấn chạy vòng tròn bất lực*, *xác sinh vật bị ướp muối nguyên vẹn dọc bờ hồ độc*) thay vì câu tóm tắt trừu tượng.
-  - Kiểm toán hiệu suất thực tế (`YouTube Data API v3` + `YouTube Analytics API v2`) của toàn bộ 7 kênh, đồng bộ tự động bình luận ghim kèm link điều hướng sang Video dài 10 phút (`engagement_comments_mixin.py`), chuyển `DcN_wEKF-Ek` (`Job #776`, bị trượt `VisualCritic` ở Cảnh 2) về `PRIVATE` để dồn luồng Seed Wave cho `jOXGfmsc0w4` (`Job #773` — *Bismarck Battleship vs Swordfish*, đạt `9.1/10` 5 Graders & `100%` video chuyển động), và khóa cứng cổng kiểm duyệt `VisualCritic` trong `node_evaluate_video` (`render_nodes.py`).
-  - `TASK-013` & Kiểm toán/Tự chữa lành SEO Tags (`seo_tags_mixin.py` & `metadata_healer_mixin.py`): Kiểm toán trực tiếp qua YouTube Data API v3 toàn bộ **7 kênh** và **12 video Shorts vừa xuất bản (`#773`–`#784`)**, nâng cấp thuật toán bóc tách thực thể cấu trúc từ tiêu đề (`Pillar A Matchup` + `Pillar B Named Entity / Question NP`), phân tách thông minh `deep_sea_earth_mysteries` (Biển sâu vs Địa chất trên cạn như *Lake Natron*), và đồng bộ (`videos().update`) 100% bộ Tags + Hashtags thực thể lên cả 12 video trên YouTube mà giữ nguyên tuyệt đối giờ hẹn `publishAt`.
-  - `TASK-007`: Hoàn tất nghiệm thu thực tế (`End-to-End Video QA`) cho cả 2 trụ cột Viral (`pillar_1_direct_matchup` và `pillar_2_why_mystery_explainer`).
+  - `TASK-020` & `TASK-017`: **Sản xuất, kiểm duyệt Contact Sheet, làm mới OAuth 3 dự án Google Cloud & lập lịch Giờ Vàng hoàn tất 12/12 Video Shorts (`#785`–`#796`) cho 6 kênh** (trừ `Paws & Hearts Rescue`), gửi đầy đủ 12 file video + bảng tổng kết về Telegram (`-1001234567890`, `message_id=2470..2498`).
+  - **Hiệu suất thực tế vượt trội ngay sau đêm đầu tiên (YouTube Data API v3 lúc `10:50 AM 11/11/2026`)**: **5/5 video đầu tiên vừa mở `PUBLIC` qua đêm đều đã vượt mốc `1,000+ views` chỉ sau 6.5–14 giờ**:
+    - `#786` (`Odisseia Selvagem` — `qPjIurKn31M`): **`1,381 views`, `34 likes` (`2.46%`)**
+    - `#787` (`Odisseia Selvagem` — `kxXGbVg-DaI`): **`1,111 views`, `19 likes` (`1.71%`)**
+    - `#790` (`Mistérios do Mundo` — `Xfu44uwMnzc`): **`1,078 views`, `19 likes` (`1.76%`)**
+    - `#788` (`The mysteries of the world` — `9tGz0HoXvEY`): **`1,056 views`, `7 likes`**
+    - `#791` (`Mistérios do Mundo` — `dJvBwdTaM84`): **`1,008 views`, `12 likes`**
 
 ---
 
 ## ✅ 1. Đã Làm Gì (Completed In Recent Turns)
-1. **Sản xuất, Kiểm định Lưới Hình Ảnh & Lập Lịch Giờ Vàng 12/12 Video Shorts (`#773`–`#784`)**:
+1. **Sản xuất, Kiểm định Lưới Hình Ảnh & Lập Lịch Giờ Vàng 12/12 Video Shorts (`#785`–`#796`)**:
    - **Wild Odyssey (`ch_wild_odyssey`)**:
-     - `#777` (*Shoebill Stork vs Baby Nile Crocodile: The Machine-Gun Beak 🦤🐊 #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/Jsh3Q_0ip04` (`10:00 Sáng T7, 07/11/2026 VN`).
-     - `#778` (*Army Ants vs Giant Scorpion: 500,000 Jaws in the Amazon 🐜🦂 #Shorts*, `6/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/AV4R0W8nCBg` (`01:15 Sáng CN, 08/11/2026 VN`).
+     - `#785` (*Giant Anteater vs Jaguar: Why 4-Inch Claws Make Big Cats Back Off 🐜🐆 #Shorts*, `40.07s`, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/QEkELKDcVYY` (`PUBLIC`).
+     - `#794` (*Why Woodpeckers Slam Their Heads at 1,200 Gs Without Brain Damage 🐦🪵 #Shorts*, `38.27s`, `6/6` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/jyGdt27Xwtg` (`10:00 Sáng T5, 12/11/2026 VN`).
    - **Odisseia Selvagem (`ch_odisseia_selvagem`)**:
-     - `#779` (*Ave-Secretário vs Serpente: O Pisão Mortal de 195 Newtons 🦅🐍 #Shorts*, `7/7` video, `VideoQA 98/100`) $\rightarrow$ `https://www.youtube.com/shorts/ZnzDxKwlrE4` (`03:15 Sáng T7, 07/11/2026 VN`).
-     - `#782` (*Diabo-da-Tasmânia vs Ossos: A Mordida Mais Forte por Quilo 👹🦴 #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/mRDUKrglCOs` (`20:20 Đêm T7, 07/11/2026 VN`).
+     - `#786` (*Bico-de-Sapato vs Crocodilo-do-Nilo: O Bico de Guilhotina no Pântano 🦤🐊 #Shorts*, `36.27s`, `7/8` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/qPjIurKn31M` (`PUBLIC` — `1,381 views`).
+     - `#787` (*Por Que o Pica-Pau Bate o Crânio a 1.200G Sem Desmaiar? 🐦🪵 #Shorts*, `25.83s`, `7/7` video, `VideoQA 97/100`) $\rightarrow$ `https://www.youtube.com/shorts/kxXGbVg-DaI` (`PUBLIC` — `1,111 views`).
    - **The mysteries of the world (`ch_the_mysteries_of_the_world`)**:
-     - `#780` (*Why This Deep-Sea Brine Pool Paralyzes Sharks in Seconds 🌊🦈 #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/1Txbhnr3x5o` (`00:45 Sáng CN, 08/11/2026 VN`).
-     - `#783` (*Lake Natron: Why This 140°F Red Lake Turns Birds Into Stone 🦩🪨 #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/0cQrpF7MM3Y` (`00:45 Sáng T2, 09/11/2026 VN`).
+     - `#788` (*Snake Island Brazil: Why the Navy Forbids Any Human From Entering 🐍🏝️ #Shorts*, `37.87s`, `8/8` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/9tGz0HoXvEY` (`PUBLIC` — `1,056 views`).
+     - `#789` (*Blood Falls Antarctica: Why a White Glacier Bleeds Deep Red Water 🩸🧊 #Shorts*, `31.03s`, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/Bqa3zoWwjyU` (`00:45 Sáng T5, 12/11/2026 VN`).
    - **Mistérios do Mundo (`ch_misterios_do_mundo`)**:
-     - `#781` (*Por Que a Piscina do Titanic Continua Cheia de Água a 3.800m? 🚢🌊 #Shorts*, `6/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/88IxuM46wTI` (`04:20 Sáng T7, 07/11/2026 VN`).
-     - `#784` (*Peixe-Barril (Macropinna): O Peixe Com Cabeça Transparente 🐟👁️ #Shorts*, `6/6` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/YaZReDxYyxE` (`21:25 Đêm T7, 07/11/2026 VN`).
+     - `#790` (*Cachoeira de Sangue na Antártida: Por Que Essa Geleira Sangra a -17°C? 🩸🧊 #Shorts*, `31.53s`, `6/6` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/Xfu44uwMnzc` (`PUBLIC` — `1,078 views`).
+     - `#791` (*Costa dos Esqueletos: Por Que Mil Navios Estão no Meio do Deserto? 🚢🏜️ #Shorts*, `34.03s`, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/dJvBwdTaM84` (`PUBLIC` — `1,008 views`).
    - **Alternate History & "What If?" (`@alternatehistorywhatif-e2x`)**:
-     - `#776` (*1961 Goldsboro B-52 Crash: Two 4-Megaton Nukes vs One Switch ☢️✈️ #Shorts*, `8/8` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/DcN_wEKF-Ek` (`23:15 Đêm T6, 06/11/2026 VN`).
-     - `#773` (*Bismarck Battleship vs Swordfish: 1 Torpedo vs 50,000 Tons 🚢✈️ #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/jOXGfmsc0w4` (`08:00 Sáng T7, 07/11/2026 VN`).
+     - `#795` (*1932 Great Emu War: 10,000 Machine Gun Rounds vs 20,000 Birds 🦤🔫 #Shorts*, `43.90s`, `6/6` video, `VideoQA 98/100`) $\rightarrow$ `https://www.youtube.com/shorts/6mvhSZds13U` (`23:15 Đêm T4, 11/11/2026 VN`).
+     - `#796` (*Project Habakkuk: 2-Million-Ton Ice Aircraft Carrier vs U-Boats 🧊🚢 #Shorts*, `33.43s`, `8/8` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/bFmlknLSTlU` (`08:00 Sáng T5, 12/11/2026 VN`).
    - **Psychology of the world (`ch_psychology_of_the_world`)**:
-     - `#775` (*Hyperthymesia: Why a Perfect Memory Is a Mental Trap 🧠🔒 #Shorts*, `7/8` video, `VideoQA 98/100`) $\rightarrow$ `https://www.youtube.com/shorts/vyz_-KJzUTM` (`23:45 Đêm T7, 07/11/2026 VN`).
-     - `#774` (*Telepathy Paradox: What If You Heard Everyone's Thoughts? 🧠👁️ #Shorts*, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/DbmIZwKK7ik` (`08:30 Sáng CN, 08/11/2026 VN`).
-2. **Sửa tận gốc 5 lỗi hệ thống phát hiện trong quá trình chạy & kiểm toán Batch 12 video**:
-   - [`app/agents/publisher/seo_tags_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/seo_tags_mixin.py) & [`app/agents/publisher/metadata_healer_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/metadata_healer_mixin.py): Nâng cấp bóc tách thực thể cấu trúc trực tiếp từ tiêu đề (`[Entity A] vs [Entity B]`, `[Named Entity]: ...`, `(Parenthetical Entity)`, và câu hỏi `Why / Por Que / How [Subject NP]`), nạp `vj.tags` / `vj.topic` từ DB khi `verify_and_heal_video_metadata`, phân tách thông minh ngách `deep_sea_earth_mysteries` (Biển sâu vs Địa chất trên cạn như *Lake Natron*), và đồng bộ 100% Tags + Hashtags thực thể lên cả 12 video trên YouTube.
-   - [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py) & [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py): Loại bỏ `#hashtags` ở cuối tiêu đề trước khi tính độ tương đồng từ vựng và yêu cầu trùng cả 2 vế khi so khớp tiền tố kèo đấu `A vs B`.
-   - [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py): Mở khóa cứu hộ file `.mp4` trên ổ đĩa khi phân cảnh bị gán `_graphic.png` (`not _is_placeholder_cur`), đồng thời kiểm tra `verify_hook_clip_genuine_motion` cho cả Cảnh 1 và Cảnh 2 (`sc_id in (1, 2)`).
-   - [`app/services/quota_manager.py`](file:///d:/Python/Youtube/app/services/quota_manager.py): Quét đầy đủ cả thư mục alias kênh trong `get_channel_tokens_pool` để xoay dự án Google Cloud dự phòng chính xác.
+     - `#792` (*Cognitive Load Stare: Why Liars Stare Straight Without Blinking 🧠👁️ #Shorts*, `39.17s`, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/e7nfVRO_FRc` (`23:45 Đêm T4, 11/11/2026 VN`).
+     - `#793` (*The Decoy Pricing Trap: How Movie Theaters Trick Your Brain 🍿🧠 #Shorts*, `31.03s`, `7/7` video, `VideoQA 99/100`) $\rightarrow$ `https://www.youtube.com/shorts/9mPfUnGHx0c` (`08:30 Sáng T5, 12/11/2026 VN`).
+2. **Sửa tận gốc 5 điểm nghẽn kiến trúc để đạt tỷ lệ `100%` cảnh video chuyển động thật ở 10/12 video**:
+   - [`app/graph/nodes/media/fetch_media_node.py`](file:///d:/Python/Youtube/app/graph/nodes/media/fetch_media_node.py) & [`app/graph/nodes/media/refine_media_node.py`](file:///d:/Python/Youtube/app/graph/nodes/media/refine_media_node.py): Mở rộng `ThreadPoolExecutor(max_workers=48)` cho toàn bộ Shorts & Long-Form (triệt tiêu nghẽn thread pool mặc định 12 luồng khi đua song song 3 nhánh video), và cấp lại context `bind_scene_cancellation` mới 20s trước khi fallback ảnh để không bao giờ rớt về `_graphic.png`.
+   - [`app/agents/curation/media_vision_curator_mixin.py`](file:///d:/Python/Youtube/app/agents/curation/media_vision_curator_mixin.py) & [`app/graph/evaluators/visual_critic.py`](file:///d:/Python/Youtube/app/graph/evaluators/visual_critic.py): Đồng bộ **Quy tắc B-Roll Phim Tài Liệu 2 Tầng (`2-Tier Documentary B-Roll Rule`)** cho phân loài đặc hữu và địa danh tự nhiên biệt lập (đảo, sông băng, bờ biển sa mạc), đồng thời chặn tuyệt đối ảnh có dán sticker/emoji mặt cười (`visual_integrity_score <= 2.0`).
+   - [`app/graph/checkpoint_store.py`](file:///d:/Python/Youtube/app/graph/checkpoint_store.py): Tự động vô hiệu hóa checkpoint `fetch_media` cũ nếu tỷ lệ cảnh video chuyển động `< 85%`.
+   - [`app/graph/nodes/media/hook_video_helpers.py`](file:///d:/Python/Youtube/app/graph/nodes/media/hook_video_helpers.py) & [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py): Hiệu chuẩn ngưỡng chuyển động sau nén x264 cho cảnh flycam thiên nhiên thật và giữ nguyên kết quả `VisualCritic` đã `passed=True` trước khi render.
 
 ---
 
 ## ❗ 2. Đang Kẹt Ở Đâu / Lưu Ý Quan Trọng (Active Watchpoints & Constraints)
-- **Không có lỗi tồn đọng (Zero Blockers)**: Toàn bộ 7 kênh đã gắn chuẩn Channel Keywords + Country (`US`/`BR`), và toàn bộ 12/12 video mới (`#773`–`#784`) đã được đồng bộ 100% Tags thực thể + Hashtags tiêu đề/mô tả + CategoryId (`15`/`22`) trên YouTube mà giữ nguyên lịch hẹn `publishAt`.
-- **Chốt chặn bắt buộc phải giữ vững**:
-  1. Giữ vững sàn `> 85.0%` thời lượng là video chuyển động thật (`6–7/7` cảnh `.mp4`) và `100%` chuyển động thật ở `5–7s` mở đầu.
-  2. Luôn trích xuất và kiểm tra trực tiếp lưới frame (`job_<id>_sheet.jpg`) trước khi xuất bản lên YouTube.
+- **Không có lỗi tồn đọng (Zero Blockers)**: Toàn bộ 6/6 kênh đang hoạt động (`Wild Odyssey`, `Odisseia Selvagem`, `The mysteries of the world`, `Mistérios do Mundo`, `Alternate History & "What If?"`, `Psychology of the world`) đều đã có Token OAuth sống trên 3 dự án Google Cloud (`bionic-client-509515-h2`, `ai-youtube-studio-509521`, `youtube-pool-02-510505`).
+- Lưu ý: Các token dự án ở chế độ Google Cloud Testing có chu kỳ sống 7 ngày; nếu sang tuần sau gặp `invalid_grant`, chỉ cần bấm `🔑 Cấp Quyền YouTube` trên Web Dashboard (hoặc chuyển OAuth Consent Screen sang `In production`).
 
 ---
 
 ## 📂 3. Các File Vừa Xử Lý (Recently Modified Files)
-- [`app/agents/publisher/seo_tags_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/seo_tags_mixin.py)
-- [`app/agents/publisher/metadata_healer_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/metadata_healer_mixin.py)
-- [`app/services/intelligence/deduplication.py`](file:///d:/Python/Youtube/app/services/intelligence/deduplication.py)
-- [`app/services/video_library.py`](file:///d:/Python/Youtube/app/services/video_library.py)
+- [`app/agents/curation/media_vision_curator_mixin.py`](file:///d:/Python/Youtube/app/agents/curation/media_vision_curator_mixin.py)
+- [`app/agents/publisher/oauth_and_upload_mixin.py`](file:///d:/Python/Youtube/app/agents/publisher/oauth_and_upload_mixin.py)
+- [`app/graph/checkpoint_store.py`](file:///d:/Python/Youtube/app/graph/checkpoint_store.py)
+- [`app/graph/evaluators/visual_critic.py`](file:///d:/Python/Youtube/app/graph/evaluators/visual_critic.py)
+- [`app/graph/nodes/media/fetch_media_node.py`](file:///d:/Python/Youtube/app/graph/nodes/media/fetch_media_node.py)
+- [`app/graph/nodes/media/hook_video_helpers.py`](file:///d:/Python/Youtube/app/graph/nodes/media/hook_video_helpers.py)
+- [`app/graph/nodes/media/refine_media_node.py`](file:///d:/Python/Youtube/app/graph/nodes/media/refine_media_node.py)
 - [`app/graph/nodes/render_nodes.py`](file:///d:/Python/Youtube/app/graph/nodes/render_nodes.py)
-- [`app/services/quota_manager.py`](file:///d:/Python/Youtube/app/services/quota_manager.py)
-- [`working_memory.md`](file:///d:/Python/Youtube/working_memory.md)
-- [`todo.md`](file:///d:/Python/Youtube/todo.md)
-- [`progress_log.md`](file:///d:/Python/Youtube/progress_log.md)
+- [`config/niches/deep_sea_earth_mysteries.yaml`](file:///d:/Python/Youtube/config/niches/deep_sea_earth_mysteries.yaml)
+- [`config/niches/wildlife_predators.yaml`](file:///d:/Python/Youtube/config/niches/wildlife_predators.yaml)
 
 ---
 
 ## ➡️ 4. Bước Tiếp Theo (Immediate Next Steps)
-1. Theo dõi hiệu suất thực tế (`Views`, `Like/View %`, `APV %`, `Stayed to watch %`) của 12 video Shorts vừa lên lịch công chiếu qua YouTube Data API v3 & YouTube Analytics API v2 khi người dùng yêu cầu.
-2. Tự động đính kèm bình luận ghim mồi tranh luận 2 phe + link dẫn sang video Long-Form 10 phút (`sync_channel_pinned_comments`) khi các video chuyển từ `scheduled` sang `public`.
+1. Theo dõi đà vượt trần phân phối (`1.5K–5K+ views`) và chỉ số giữ chân thật (`APV %`, `Stayed to watch %`) từ YouTube Analytics API v2 sau 24–48h cho 12 video `#785`–`#796`.
+2. Đồng bộ bình luận ghim mồi tranh luận 2 phe + link dẫn sang video Long-Form 10 phút (`sync_channel_pinned_comments`) cho 6 video hẹn giờ (`#789`, `#792`–`#796`) sau khi mở `PUBLIC`.

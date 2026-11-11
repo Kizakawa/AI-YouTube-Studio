@@ -881,7 +881,16 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             item["hook_verified"] = False
             item.pop("hook_sharpness", None)
 
-    refine_sem = asyncio.Semaphore(8 if is_lf_refine else 6)
+    try:
+        from concurrent.futures import ThreadPoolExecutor as _RefineThreadPool
+        _cur_loop_r = asyncio.get_running_loop()
+        if not getattr(_cur_loop_r, "_lf_pool_expanded", False):
+            _cur_loop_r.set_default_executor(_RefineThreadPool(max_workers=48, thread_name_prefix="media_io"))
+            setattr(_cur_loop_r, "_lf_pool_expanded", True)
+    except Exception:
+        pass
+
+    refine_sem = asyncio.Semaphore(8 if is_lf_refine else 4)
     refine_item_timeout = 88.0 if is_lf_refine else 86.0
 
     async def _guarded_refine_single_item(item: Dict[str, Any]) -> None:

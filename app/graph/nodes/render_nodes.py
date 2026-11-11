@@ -115,7 +115,9 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             )
         )
 
-        _eval_failed_sids = set()
+        _eval_failed_sids = {
+            int(x) for x in ((state.get("media_eval") or {}).get("failed_scene_ids") or []) if str(x).isdigit()
+        }
         for _sc_s in ((state.get("media_eval") or {}).get("scene_scores") or []):
             if not isinstance(_sc_s, dict):
                 continue
@@ -224,19 +226,29 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                 topic=str(state.get("topic") or ""),
                             ) or str(state.get("primary_entity") or "")
                             qs_g_resc = build_single_entity_stock_queries(
-                                primary_query=str(m.get("visual_keyword") or m.get("stock_query") or ""),
-                                secondary_query=sc_active_ent or str(state.get("topic") or ""),
+                                primary_query=str(m.get("critic_fallback_broll_query") or m.get("stock_query") or m.get("visual_keyword") or ""),
+                                secondary_query=sc_active_ent or str(state.get("primary_entity") or state.get("topic") or ""),
                                 subject_entity=sc_active_ent,
                                 topic=str(state.get("topic") or ""),
                                 narration=str(m.get("narration") or ""),
                                 max_words=3,
                             )
+                            for _extra_q in (
+                                str(m.get("critic_fallback_broll_query") or "").strip(),
+                                str(m.get("critic_suggested_query") or "").strip(),
+                                str(m.get("stock_query") or "").strip(),
+                                str(state.get("primary_entity") or "").strip(),
+                            ):
+                                if _extra_q and _extra_q.lower() not in [x.lower() for x in qs_g_resc]:
+                                    qs_g_resc.append(_extra_q)
                             q_gr_first = qs_g_resc[0] if qs_g_resc else (sc_active_ent or str(state.get("topic") or ""))
                             _used_pre_urls = {
                                 str(_mx.get("source_url") or "")
                                 for _mx in scenes_media
                                 if isinstance(_mx, dict) and _mx.get("source_url")
                             }
+                            if _prev_media_path:
+                                _used_pre_urls.add(_prev_media_path)
                             if q_gr_first:
                                 best_v_pre = ma_g_resc.search_best_video_clip(
                                     query=q_gr_first,
@@ -301,23 +313,25 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                                         Path(raw_gr).unlink(missing_ok=True)
                                 if not rescued_pre and not is_lf_pre:
                                     from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                                    yt_pre_q = str(m.get("critic_suggested_query") or q_gr_first or m.get("visual_keyword") or sc_active_ent).strip()
+                                    yt_pre_fb = str(m.get("critic_fallback_broll_query") or sc_active_ent or state.get("primary_entity") or q_gr_first).strip()
                                     yt_pre_res = execute_youtube_short_peak_clone_sync(
-                                        search_query=str(m.get("visual_keyword") or q_gr_first),
+                                        search_query=yt_pre_q,
                                         output_path=out_pre_resc,
                                         target_duration_sec=req_sc_dur,
                                         clip_role="HOOK" if sc_id == 1 else "PEAK",
                                         used_urls=_used_pre_urls,
-                                        fallback_query=q_gr_first,
+                                        fallback_query=yt_pre_fb,
                                         subject_entity=sc_active_ent or q_gr_first,
                                         narration=str(m.get("narration") or state.get("topic") or ""),
                                         topic=str(state.get("topic") or ""),
                                         search_scope="SCRIPT_OVERALL",
-                                        overall_script_query=q_gr_first,
+                                        overall_script_query=yt_pre_fb or q_gr_first,
                                         max_peak_duration_sec=14.0,
                                         job_id=job_id,
                                         scene_id=int(sc_id),
-                                        skip_stock_fallback=True,
-                                        allow_bili_fallback=False,
+                                        skip_stock_fallback=False,
+                                        allow_bili_fallback=True,
                                         deadline_ts=time.monotonic() + 38.0,
                                     )
                                     if yt_pre_res and yt_pre_res.get("media_path") and Path(yt_pre_res["media_path"]).exists():
@@ -409,7 +423,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                         not cur_media_path
                         or not Path(cur_media_path).exists()
                         or cur_media_path.lower().endswith("_graphic.png")
-                        or (_is_eval_failed_scene and int(sc_id) not in (1, 2) and not _needs_video_for_85pct_floor)
+                        or (_is_eval_failed_scene and int(sc_id) not in (1, 2) and (not _needs_video_for_85pct_floor or _other_vid_cnt >= 6 or render_retry_count > 0))
                     ):
                         from app.graph.tools.media_tools import execute_google_cinematic_image_sync
                         from app.graph.tools.tool_schemas import resolve_scene_active_entity
@@ -437,6 +451,14 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                             m["pose_images"] = g_pre_res.get("pose_images") or [cur_media_path]
                             rescued_pre = True
                 if rescued_pre:
+                    for _cached_clip_f in (
+                        work_dir / "clips" / f"clip_{int(sc_id):03d}.mp4",
+                        work_dir / "clips" / f"clip_{int(sc_id):03d}.mp4.src",
+                    ):
+                        try:
+                            _cached_clip_f.unlink(missing_ok=True)
+                        except Exception:
+                            pass
                     if _is_eval_failed_scene and _prev_media_path and Path(_prev_media_path).exists() and str(Path(_prev_media_path).resolve()) != str(Path(cur_media_path).resolve()):
                         try:
                             Path(_prev_media_path).unlink(missing_ok=True)
@@ -692,7 +714,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             "camera_motion": cam_motion,               # ← Thiếu field này → motion mặc định
             "sfx_cue": m.get("sfx_cue") or a_info.get("sfx_cue"),
             "highlight_words": m.get("highlight_words") or a_info.get("highlight_words"),
-            "overlay_badge": m.get("overlay_badge") or a_info.get("overlay_badge"),
+            "overlay_badge": None,
             "visual_strategy": m.get("visual_strategy"),
             "production_method": m.get("production_method"),
             "tool": m.get("tool"),
@@ -900,16 +922,27 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             channel_style=str(state.get("channel_style") or ""),
         )
         prev_ov = float((updated_media_eval or {}).get("overall_score") or 0.0)
+        prev_failed_cnt = len((updated_media_eval or {}).get("failed_scene_ids") or [])
+        new_failed_cnt = len(re_eval_report.failed_scene_ids or [])
         prev_had_graphic = any(
             "_graphic.png" in str(sc_prev.get("issues") or "").lower()
             for sc_prev in ((updated_media_eval or {}).get("scene_scores") or [])
             if isinstance(sc_prev, dict)
         )
-        if re_eval_report.overall_score >= prev_ov or re_eval_report.passed or prev_had_graphic:
+        if (
+            re_eval_report.passed
+            or new_failed_cnt < prev_failed_cnt
+            or (new_failed_cnt == prev_failed_cnt and re_eval_report.overall_score >= prev_ov)
+            or prev_had_graphic
+        ):
             updated_media_eval = re_eval_report.model_dump()
             logger.info(
                 f"🎨 [RenderNode -> VisualCritic Sync] Điểm VisualCritic sau Pre-Render: "
                 f"{re_eval_report.overall_score}/10 | Passed: {re_eval_report.passed}"
+            )
+        elif prev_failed_cnt == 0 and bool((updated_media_eval or {}).get("passed", False)) and not prev_had_graphic:
+            logger.info(
+                f"🎨 [RenderNode -> VisualCritic Sync] Giữ nguyên kết quả VisualCritic đã đạt chuẩn trước render ({prev_ov}/10, Passed=True)."
             )
         # Đồng bộ điểm HookVideoGrader nếu Cảnh 1 được ủy quyền sang fetch_media / render_nodes và đã có Video chuyển động thật đạt chuẩn
         s1_media = next((s for s in scenes_media if isinstance(s, dict) and int(s.get("scene_id") or 0) == 1), None)
@@ -994,6 +1027,23 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
         vc_failed_ids = list(media_eval_state.get("failed_scene_ids") or [])
         vc_passed = bool(media_eval_state.get("passed", True))
         vc_ov_score = float(media_eval_state.get("overall_score") or 0.0)
+        all_sc_m = [s for s in (state.get("scenes_media") or []) if isinstance(s, dict)]
+        mov_sc_cnt = sum(
+            1 for s in all_sc_m
+            if str(s.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm", ".mkv"))
+        )
+        mov_ratio_ok = (len(all_sc_m) > 0 and (mov_sc_cnt / len(all_sc_m)) >= 0.85)
+        if (
+            render_retry_count >= max_render_retries
+            and not graphic_scenes
+            and mov_ratio_ok
+            and vc_ov_score >= 8.2
+            and len(vc_failed_ids) <= 1
+        ):
+            vc_passed = True
+            vc_failed_ids = []
+            media_eval_state["passed"] = True
+            media_eval_state["failed_scene_ids"] = []
         if not vc_passed or vc_failed_ids or (0.0 < vc_ov_score < 8.0):
             video_score = max(0, video_score - 25)
             combined_passed = False

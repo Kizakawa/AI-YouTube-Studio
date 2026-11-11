@@ -181,6 +181,15 @@ def _can_reuse_cached_node(node_name: str, state: Dict[str, Any], cached_out: Di
                     mp_open = str(sm.get("media_path") or "")
                     if not mp_open.lower().endswith((".mp4", ".mov", ".webm")) or not verify_hook_clip_genuine_motion(mp_open)[0]:
                         return False
+                min_req_vids_cp = max(5, int((len(scenes_media) * 0.85) + 0.999))
+                vid_cnt_cp = sum(
+                    1
+                    for sm in scenes_media
+                    if isinstance(sm, dict)
+                    and str(sm.get("media_path") or "").lower().endswith((".mp4", ".mov", ".webm"))
+                )
+                if vid_cnt_cp < min_req_vids_cp:
+                    return False
             except Exception:
                 return False
         return True

@@ -112,8 +112,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     from app.services.media.media_history import get_recent_media_urls, record_used_media
     used_pool_urls = get_recent_media_urls(limit=150)
 
-    # Điều phối Semaphore 8 luồng song song cho cả Video Dài (30 cảnh) và Shorts (chia tải trên dàn Gemini API Key Pool)
-    sem = asyncio.Semaphore(8)
+    # Mở rộng ThreadPoolExecutor mặc định của asyncio loop lên 48 luồng cho cả Shorts (3 nhánh/cảnh) và Long-Form
+    # để chống nghẽn hàng đợi asyncio.to_thread khi tải/trim/chấm Vision song song.
+    try:
+        from concurrent.futures import ThreadPoolExecutor as _MediaThreadPool
+        _cur_loop = asyncio.get_running_loop()
+        if not getattr(_cur_loop, "_lf_pool_expanded", False):
+            _cur_loop.set_default_executor(_MediaThreadPool(max_workers=48, thread_name_prefix="media_io"))
+            setattr(_cur_loop, "_lf_pool_expanded", True)
+    except Exception:
+        pass
+
+    sem = asyncio.Semaphore(8 if is_long_form else 4)
     completed_lock = asyncio.Lock()
     completed_count = 0
     total_scenes = len(script.scenes)
@@ -273,10 +283,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media có sẵn: {Path(media_path).name}")
                 elif is_vid_pre:
                     Path(pre_m).unlink(missing_ok=True)
-            if not media_path and state.get("edit_request"):
+            if not media_path:
                 cached_files = sorted(
                     media_dir.glob(f"scene_{scene.scene_id:03d}_*"),
-                    key=lambda p: (0 if "_cut" not in p.name else 1, p.name),
+                    key=lambda p: (0 if "_cut" not in p.name else 1, -p.stat().st_mtime if p.exists() else 0),
                 )
                 valid_cached_imgs: List[str] = []
                 for cf in cached_files:
@@ -301,13 +311,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 logger.warning(f"Scene {scene.scene_id}: 🗑️ Xóa file video cache lỗi/thiếu moov atom: {cf.name}")
                                 cf.unlink(missing_ok=True)
                         elif (
-                            scene.scene_id != 1
+                            state.get("edit_request")
+                            and scene.scene_id != 1
                             and cf.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
                             and "_cand" not in cf.name.lower()
                             and "_graphic.png" not in cf.name.lower()
                         ):
                             valid_cached_imgs.append(str(cf.resolve()))
-                if not media_path and valid_cached_imgs and scene.scene_id != 1:
+                if not media_path and valid_cached_imgs and scene.scene_id != 1 and state.get("edit_request"):
                     media_path = valid_cached_imgs[0]
                     media_type = "image"
                     pose_images = valid_cached_imgs
@@ -1219,7 +1230,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         logger.debug(f"Scene {scene.scene_id}: Opening pure video rescue skip: {_e_op_v}")
 
                 if not media_path and scene.scene_id not in (1, 2):
-                    _check_fetch_deadline()
+                    bind_scene_cancellation(threading.Event(), time.monotonic() + 22.0)
                     g_target_cnt = scene_target_imgs
                     logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts & Stock Vision không có clip đạt chuẩn cho '{yt_q}' -> Chuyển sang tìm bộ {g_target_cnt} ảnh Top Google Images theo các chunk LLM!")
                     out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
@@ -1699,6 +1710,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if not res or not isinstance(res, dict) or str(res.get("media_path") or "").endswith("_graphic.png"):
                 try:
                     from app.graph.tools.media_tools import execute_google_cinematic_image_sync
+                    bind_scene_cancellation(threading.Event(), time.monotonic() + 20.0)
                     out_to_gimg = str(media_dir / f"scene_{scene.scene_id:03d}_timeout_gimg.jpg")
                     g_to_res = await asyncio.wait_for(
                         asyncio.to_thread(
