@@ -78,12 +78,13 @@ def generate_youtube_seo_package(
         "#pomodorotimer #studywithme #studymusic #lofistudy #readingmusic #cozystudy #pomodoro5010 #deepfocus",
     ]
 
+    desc_text = "\n".join(desc_lines)
     seo_txt_path = out_dir / "youtube_seo_description.txt"
     seo_txt_path.write_text(
         "=== RECOMMENDED TITLES ===\n"
         + "\n".join(f"{i+1}. {t}" for i, t in enumerate(title_options))
         + "\n\n=== YOUTUBE DESCRIPTION (COPY & PASTE) ===\n"
-        + "\n".join(desc_lines)
+        + desc_text
         + "\n",
         encoding="utf-8",
     )
@@ -95,6 +96,17 @@ def generate_youtube_seo_package(
         "pomodoro_config": f"{f_str}/{b_str} x {sessions}",
         "total_duration_sec": total_sec,
         "recommended_titles": title_options,
+        "youtube_description": desc_text,
+        "youtube_tags": [
+            "pomodoro timer",
+            "study with me",
+            "study music",
+            "lofi study",
+            "cozy study",
+            f"pomodoro {f_str} {b_str}",
+            "deep focus music",
+            "no mid roll ads",
+        ],
         "pinned_comment_ideas": pinned_comment_ideas,
         "chapters": [{"timestamp": format_timestamp(p.start_sec), "label": p.chapter_label} for p in schedule],
         "unique_tracks_count": len(unique_tracks),

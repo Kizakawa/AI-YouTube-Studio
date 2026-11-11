@@ -2,11 +2,88 @@
   "id": "christmas_lofi",
   "display_name": "Christmas Holiday Study 🎄",
   "season": "holiday",
+  "background_image": "background.jpg",
+  "default_ambience": "fireplace",
+  "radio_freq": "92.5 FM",
   "particle_type": "snow_lights",
-  "particle_color_rgba": [255, 250, 250, 185],
+  "particle_color_rgba": [
+    255,
+    250,
+    250,
+    185
+  ],
   "accent_hex": "#E74C3C",
   "break_accent_hex": "#58D68D",
-  "color_tint_rgb": [1.04, 0.97, 0.95],
-  "lamp_glow_rgba": [255, 180, 90, 30],
-  "subtitle_tag": "Cozy Christmas Lights • Snowfall • Warm Cocoa & Lofi"
+  "color_tint_rgb": [
+    1.03,
+    0.98,
+    0.96
+  ],
+  "lamp_glow_rgba": [
+    255,
+    180,
+    90,
+    30
+  ],
+  "subtitle_tag": "Cozy Christmas Lights • Snowfall • Warm Cocoa & Lofi",
+  "scene_anchors": {
+    "window_panes": [
+      [
+        225,
+        125,
+        445,
+        495
+      ],
+      [
+        495,
+        125,
+        710,
+        495
+      ]
+    ],
+    "lamp_box": [
+      815,
+      315,
+      955,
+      525
+    ],
+    "steam_origin": [
+      995,
+      450
+    ]
+  },
+  "dog_zones": {
+    "body_breath": {
+      "x1": 250,
+      "y1": 730,
+      "x2": 665,
+      "y2": 955
+    },
+    "head": {
+      "x1": 465,
+      "y1": 765,
+      "x2": 670,
+      "y2": 940,
+      "eye_left": [
+        550,
+        850
+      ],
+      "eye_right": [
+        610,
+        850
+      ]
+    },
+    "ear": {
+      "x1": 465,
+      "y1": 790,
+      "x2": 545,
+      "y2": 900
+    },
+    "tail": {
+      "x1": 245,
+      "y1": 825,
+      "x2": 425,
+      "y2": 950
+    }
+  }
 }

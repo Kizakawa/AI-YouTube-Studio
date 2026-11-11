@@ -3,62 +3,46 @@
   "display_name": "Chill Capybara 🍊",
   "species": "capybara",
   "companion_title": "Zen Capybara with Mandarin Orange",
-  "description": "Chú Capybara bình thản đội quả quýt nhỏ trên đầu nằm cạnh bàn học, đôi tai tròn vẩy nhẹ và thở nhịp zen thư thái.",
+  "description": "Chú Capybara bình thản đội quả quýt nhỏ trên đầu nằm trên đệm vàng cạnh bàn học, ngồi dậy hiền hòa khi sang giờ nghỉ.",
   "background_image": "capybara_study_bg.jpg",
-  "placement": {
-    "x": 220,
-    "y": 620,
-    "width": 620,
-    "height": 330
+  "waking_image": "capybara_waking_bg.jpg",
+  "scene_anchors": {
+    "window_panes": [[15, 5, 255, 465], [305, 5, 555, 435]],
+    "lamp_box": [525, 235, 715, 515],
+    "steam_origin": [735, 485]
   },
+  "placement": { "x": 405, "y": 635, "width": 425, "height": 260 },
   "zones": {
-    "body_breath": { "x1": 300, "y1": 640, "x2": 690, "y2": 885 },
-    "ear": { "x1": 580, "y1": 650, "x2": 725, "y2": 775, "pivot_x": 645, "pivot_y": 720 },
-    "tail": { "x1": 220, "y1": 780, "x2": 430, "y2": 935, "pivot_x": 270, "pivot_y": 835 },
-    "head": { "x1": 575, "y1": 650, "x2": 845, "y2": 890, "eye_left": [705, 765], "eye_right": [775, 765], "nose": [805, 815] },
-    "front_paw": { "x1": 750, "y1": 815, "x2": 835, "y2": 875 }
+    "body_breath": { "x1": 410, "y1": 675, "x2": 695, "y2": 875 },
+    "ear": { "x1": 625, "y1": 635, "x2": 770, "y2": 740, "pivot_x": 675, "pivot_y": 715 },
+    "tail": { "x1": 405, "y1": 735, "x2": 545, "y2": 865, "pivot_x": 445, "pivot_y": 805 },
+    "head": { "x1": 615, "y1": 645, "x2": 825, "y2": 875, "eye_left": [705, 762], "eye_right": [765, 760], "crown_anchor": [702, 642] },
+    "front_paw": { "x1": 645, "y1": 815, "x2": 785, "y2": 885 }
+  },
+  "waking_zones": {
+    "body_breath": { "x1": 295, "y1": 655, "x2": 575, "y2": 885 },
+    "ear": { "x1": 415, "y1": 515, "x2": 555, "y2": 625 },
+    "tail": { "x1": 285, "y1": 745, "x2": 415, "y2": 875 },
+    "head": { "x1": 415, "y1": 520, "x2": 615, "y2": 735, "eye_left": [490, 622], "eye_right": [545, 620], "crown_anchor": [500, 520] }
   },
   "animations": {
-    "idle_breathing": {
-      "enabled": true,
-      "amplitude_px": 9.0,
-      "expand_px": 4.5,
-      "cycle_sec": 3.33
-    },
-    "ear_twitch": {
-      "enabled": true,
-      "windows_sec": [[1.6, 2.4], [6.0, 6.8]],
-      "shift_y_px": -12.0,
-      "shift_x_px": 5.0
-    },
-    "tail_wag": {
-      "enabled": true,
-      "windows_sec": [[3.0, 5.0], [7.5, 9.2]],
-      "amplitude_px": 11.0,
-      "freq_hz": 2.0
-    },
-    "sleep_shift": {
-      "enabled": true,
-      "windows_sec": [[4.4, 5.7]],
-      "shift_x_px": 6.0,
-      "shift_y_px": -5.0
-    },
-    "yawn_stretch": {
-      "enabled": true,
-      "windows_sec": [[8.0, 9.5]],
-      "scale_factor": 1.04
-    },
-    "break_wakeup": {
-      "enabled": true,
-      "head_lift_px": -12.0,
-      "ear_perk_px": -10.0,
-      "tail_continuous_wag": true
-    }
+    "idle_breathing": { "enabled": true, "amplitude_px": 9.0, "expand_px": 4.5, "cycle_sec": 3.33 },
+    "ear_twitch": { "enabled": true, "windows_sec": [[1.6, 2.4], [6.0, 6.8]], "shift_y_px": -12.0, "shift_x_px": 5.0 },
+    "tail_wag": { "enabled": true, "windows_sec": [[3.0, 5.0], [7.5, 9.2]], "amplitude_px": 11.0, "freq_hz": 2.0 },
+    "sleep_shift": { "enabled": true, "windows_sec": [[4.4, 5.7]], "shift_x_px": 6.0, "shift_y_px": -5.0 },
+    "yawn_stretch": { "enabled": true, "windows_sec": [[8.0, 9.5]], "scale_factor": 1.04 },
+    "break_wakeup": { "enabled": true, "head_lift_px": -12.0, "ear_perk_px": -10.0, "tail_continuous_wag": true }
   },
   "speech_bubble": {
-    "box": [185, 445, 910, 595],
-    "tail_tip": [700, 665],
-    "tail_base_left": [620, 595],
-    "tail_base_right": [685, 595]
+    "box": [185, 445, 925, 595],
+    "tail_tip": [685, 650],
+    "tail_base_left": [625, 595],
+    "tail_base_right": [690, 595]
+  },
+  "speech_bubble_break": {
+    "box": [85, 325, 825, 475],
+    "tail_tip": [500, 522],
+    "tail_base_left": [450, 475],
+    "tail_base_right": [515, 475]
   }
 }

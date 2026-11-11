@@ -2,11 +2,54 @@
   "id": "autumn_cozy",
   "display_name": "Autumn Rainy Study 🍂",
   "season": "autumn",
+  "background_image": "background.jpg",
+  "default_ambience": "rain",
+  "radio_freq": "87.5 FM",
   "particle_type": "rain",
-  "particle_color_rgba": [200, 225, 255, 110],
+  "particle_color_rgba": [
+    200,
+    225,
+    255,
+    110
+  ],
   "accent_hex": "#F5B041",
   "break_accent_hex": "#82E0AA",
-  "color_tint_rgb": [1.0, 0.98, 0.94],
-  "lamp_glow_rgba": [255, 195, 95, 24],
-  "subtitle_tag": "Autumn Rain • Warm Study Lamp • Cozy Companion"
+  "color_tint_rgb": [
+    1.0,
+    0.98,
+    0.94
+  ],
+  "lamp_glow_rgba": [
+    255,
+    195,
+    95,
+    24
+  ],
+  "subtitle_tag": "Autumn Rain • Warm Study Lamp • Cozy Companion",
+  "scene_anchors": {
+    "window_panes": [
+      [
+        155,
+        18,
+        535,
+        375
+      ],
+      [
+        580,
+        18,
+        865,
+        395
+      ]
+    ],
+    "lamp_box": [
+      835,
+      290,
+      1135,
+      625
+    ],
+    "steam_origin": [
+      1115,
+      650
+    ]
+  }
 }

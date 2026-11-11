@@ -2,11 +2,82 @@
   "id": "spring_sakura",
   "display_name": "Spring Sakura Breeze 🌸",
   "season": "spring",
+  "background_image": "background.jpg",
+  "default_ambience": "vinyl",
+  "radio_freq": "89.1 FM",
   "particle_type": "sakura",
-  "particle_color_rgba": [255, 183, 197, 165],
+  "particle_color_rgba": [
+    255,
+    183,
+    197,
+    165
+  ],
   "accent_hex": "#F1948A",
   "break_accent_hex": "#82E0AA",
-  "color_tint_rgb": [1.03, 0.97, 1.01],
-  "lamp_glow_rgba": [255, 210, 150, 22],
-  "subtitle_tag": "Sakura Petals • Gentle Breeze • Peaceful Reading"
+  "color_tint_rgb": [
+    1.02,
+    0.98,
+    1.01
+  ],
+  "lamp_glow_rgba": [
+    255,
+    210,
+    150,
+    22
+  ],
+  "subtitle_tag": "Sakura Petals • Gentle Breeze • Peaceful Reading",
+  "scene_anchors": {
+    "window_panes": [
+      [
+        165,
+        55,
+        895,
+        575
+      ]
+    ],
+    "lamp_box": [
+      1005,
+      375,
+      1215,
+      645
+    ],
+    "steam_origin": [
+      955,
+      585
+    ]
+  },
+  "dog_zones": {
+    "body_breath": {
+      "x1": 265,
+      "y1": 745,
+      "x2": 685,
+      "y2": 955
+    },
+    "head": {
+      "x1": 510,
+      "y1": 780,
+      "x2": 730,
+      "y2": 945,
+      "eye_left": [
+        615,
+        865
+      ],
+      "eye_right": [
+        665,
+        865
+      ]
+    },
+    "ear": {
+      "x1": 515,
+      "y1": 795,
+      "x2": 605,
+      "y2": 915
+    },
+    "tail": {
+      "x1": 255,
+      "y1": 835,
+      "x2": 445,
+      "y2": 945
+    }
+  }
 }

@@ -1,0 +1,43 @@
+{
+  "mascot_id": "golden_retriever",
+  "focus_speech_bubble": {
+    "box": [
+      180,
+      445,
+      915,
+      595
+    ],
+    "tail_tip": [
+      725,
+      680
+    ],
+    "tail_base_left": [
+      640,
+      595
+    ],
+    "tail_base_right": [
+      705,
+      595
+    ]
+  },
+  "break_speech_bubble": {
+    "box": [
+      95,
+      310,
+      835,
+      460
+    ],
+    "tail_tip": [
+      525,
+      502
+    ],
+    "tail_base_left": [
+      465,
+      460
+    ],
+    "tail_base_right": [
+      530,
+      460
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "mascot_id": "anime_lofi_girl",
+  "focus_speech_bubble": {
+    "box": [
+      430,
+      38,
+      1175,
+      188
+    ],
+    "tail_tip": [
+      545,
+      225
+    ],
+    "tail_base_left": [
+      525,
+      188
+    ],
+    "tail_base_right": [
+      590,
+      188
+    ]
+  },
+  "break_speech_bubble": {
+    "box": [
+      445,
+      28,
+      1190,
+      178
+    ],
+    "tail_tip": [
+      615,
+      245
+    ],
+    "tail_base_left": [
+      585,
+      178
+    ],
+    "tail_base_right": [
+      650,
+      178
+    ]
+  }
+}

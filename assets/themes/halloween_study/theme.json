@@ -2,11 +2,88 @@
   "id": "halloween_study",
   "display_name": "Spooky Candlelight Study 🎃",
   "season": "holiday",
+  "background_image": "background.jpg",
+  "default_ambience": "rain",
+  "radio_freq": "94.8 FM",
   "particle_type": "embers",
-  "particle_color_rgba": [255, 165, 60, 160],
+  "particle_color_rgba": [
+    255,
+    165,
+    60,
+    160
+  ],
   "accent_hex": "#EB984E",
   "break_accent_hex": "#BB8FCE",
-  "color_tint_rgb": [1.05, 0.94, 0.98],
-  "lamp_glow_rgba": [255, 150, 55, 32],
-  "subtitle_tag": "Warm Candlelight • Mystic Night Rain • Deep Focus"
+  "color_tint_rgb": [
+    1.03,
+    0.96,
+    0.98
+  ],
+  "lamp_glow_rgba": [
+    255,
+    150,
+    55,
+    32
+  ],
+  "subtitle_tag": "Warm Candlelight • Mystic Night Rain • Deep Focus",
+  "scene_anchors": {
+    "window_panes": [
+      [
+        95,
+        35,
+        385,
+        530
+      ],
+      [
+        435,
+        35,
+        690,
+        505
+      ]
+    ],
+    "lamp_box": [
+      805,
+      230,
+      980,
+      525
+    ],
+    "steam_origin": [
+      1115,
+      545
+    ]
+  },
+  "dog_zones": {
+    "body_breath": {
+      "x1": 265,
+      "y1": 705,
+      "x2": 730,
+      "y2": 955
+    },
+    "head": {
+      "x1": 280,
+      "y1": 760,
+      "x2": 485,
+      "y2": 945,
+      "eye_left": [
+        375,
+        855
+      ],
+      "eye_right": [
+        430,
+        855
+      ]
+    },
+    "ear": {
+      "x1": 280,
+      "y1": 785,
+      "x2": 365,
+      "y2": 905
+    },
+    "tail": {
+      "x1": 505,
+      "y1": 845,
+      "x2": 730,
+      "y2": 955
+    }
+  }
 }

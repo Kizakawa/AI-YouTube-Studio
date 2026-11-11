@@ -2,11 +2,88 @@
   "id": "winter_cabin",
   "display_name": "Winter Snowy Cabin ❄️",
   "season": "winter",
+  "background_image": "background.jpg",
+  "default_ambience": "fireplace",
+  "radio_freq": "88.2 FM",
   "particle_type": "snow",
-  "particle_color_rgba": [240, 248, 255, 175],
+  "particle_color_rgba": [
+    240,
+    248,
+    255,
+    175
+  ],
   "accent_hex": "#85C1E9",
   "break_accent_hex": "#A3E4D7",
-  "color_tint_rgb": [0.95, 0.98, 1.04],
-  "lamp_glow_rgba": [255, 205, 120, 28],
-  "subtitle_tag": "Snowfall Outside • Warm Cabin Fireplace • Deep Focus"
+  "color_tint_rgb": [
+    0.97,
+    0.99,
+    1.03
+  ],
+  "lamp_glow_rgba": [
+    255,
+    205,
+    120,
+    28
+  ],
+  "subtitle_tag": "Snowfall Outside • Warm Cabin Fireplace • Deep Focus",
+  "scene_anchors": {
+    "window_panes": [
+      [
+        220,
+        88,
+        480,
+        575
+      ],
+      [
+        505,
+        110,
+        770,
+        575
+      ]
+    ],
+    "lamp_box": [
+      835,
+      380,
+      995,
+      585
+    ],
+    "steam_origin": [
+      825,
+      550
+    ]
+  },
+  "dog_zones": {
+    "body_breath": {
+      "x1": 280,
+      "y1": 700,
+      "x2": 655,
+      "y2": 935
+    },
+    "head": {
+      "x1": 285,
+      "y1": 745,
+      "x2": 480,
+      "y2": 935,
+      "eye_left": [
+        375,
+        845
+      ],
+      "eye_right": [
+        425,
+        845
+      ]
+    },
+    "ear": {
+      "x1": 285,
+      "y1": 765,
+      "x2": 365,
+      "y2": 885
+    },
+    "tail": {
+      "x1": 525,
+      "y1": 775,
+      "x2": 670,
+      "y2": 910
+    }
+  }
 }

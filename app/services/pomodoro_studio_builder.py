@@ -2,12 +2,7 @@
 Pomodoro Study Music & Living Studio Builder (`app/services/pomodoro_studio_builder.py`)
 ========================================================================================
 Facade tương thích ngược (Backward-Compatible Entrypoint) cho gói mô-đun hóa
-`app.services.pomodoro` (Living Studio v2.0).
-
-Mọi hàm API công khai từ v1.0 (`build_pomodoro_study_video`, `build_pomodoro_schedule`,
-`ensure_cozy_dog_cinemagraph_loop`, ...) và các tính năng mới của v2.0 (`--mascot`,
-`--theme`, `--vfx`, `--glitch-interval`, Speech Bubble `"Cậu chủ đến giờ nghỉ ngơi chút rồi!"`)
-đều được xuất đầy đủ tại đây.
+`app.services.pomodoro` (Living Studio v2.0 — Full 6-Module & 4-Phase Implementation).
 """
 
 import sys
@@ -18,7 +13,10 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from app.services.pomodoro import (
+    ALL_VFX_NAMES,
+    AMBIENCE_FILTER_PRESETS,
     AnimationController,
+    BATCH_PRESETS,
     DEFAULT_CATALOG_BGM_ROOT,
     DEFAULT_MASCOTS_ROOT,
     DEFAULT_MASTER_BGM_ROOT,
@@ -28,6 +26,7 @@ from app.services.pomodoro import (
     MODE_FOLDER_WEIGHTS,
     MascotPack,
     PhaseSegment,
+    SPEECH_BANK,
     ThemePack,
     VFXConfig,
     apply_frame_vfx_numpy,
@@ -39,6 +38,8 @@ from app.services.pomodoro import (
     concat_video_segments,
     create_phase_hud_overlay_png,
     create_speech_bubble_overlay_png,
+    cut_pomodoro_short_teaser,
+    detect_optimal_h264_encoder,
     discover_study_library,
     ensure_cozy_dog_cinemagraph_loop,
     ensure_mascot_cinemagraph_loop,
@@ -56,6 +57,8 @@ from app.services.pomodoro import (
     render_phase_audio_clip,
     render_phase_video_segment,
     resolve_bell_sfx_paths,
+    run_pomodoro_batch,
+    select_scene_artwork,
     select_tracks_for_duration,
 )
 

@@ -1,0 +1,43 @@
+{
+  "mascot_id": "capybara",
+  "focus_speech_bubble": {
+    "box": [
+      185,
+      445,
+      925,
+      595
+    ],
+    "tail_tip": [
+      685,
+      650
+    ],
+    "tail_base_left": [
+      625,
+      595
+    ],
+    "tail_base_right": [
+      690,
+      595
+    ]
+  },
+  "break_speech_bubble": {
+    "box": [
+      85,
+      325,
+      825,
+      475
+    ],
+    "tail_tip": [
+      500,
+      522
+    ],
+    "tail_base_left": [
+      450,
+      475
+    ],
+    "tail_base_right": [
+      515,
+      475
+    ]
+  }
+}

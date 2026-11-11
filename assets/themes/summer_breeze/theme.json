@@ -1,12 +1,83 @@
 {
   "id": "summer_breeze",
-  "display_name": "Summer Starry Night ☀️",
+  "display_name": "Summer Coastal Breeze ☀️",
   "season": "summer",
+  "background_image": "background.jpg",
+  "default_ambience": "vinyl",
+  "radio_freq": "90.4 FM",
   "particle_type": "fireflies",
-  "particle_color_rgba": [255, 240, 150, 170],
+  "particle_color_rgba": [
+    255,
+    240,
+    150,
+    170
+  ],
   "accent_hex": "#5DADE2",
   "break_accent_hex": "#76D7C4",
-  "color_tint_rgb": [0.96, 1.0, 1.03],
-  "lamp_glow_rgba": [255, 215, 110, 22],
-  "subtitle_tag": "Summer Night Fireflies • Ocean Breeze • Flow State"
+  "color_tint_rgb": [
+    0.98,
+    1.0,
+    1.02
+  ],
+  "lamp_glow_rgba": [
+    255,
+    215,
+    110,
+    22
+  ],
+  "subtitle_tag": "Summer Ocean Breeze • Golden Sunlight • Flow State",
+  "scene_anchors": {
+    "window_panes": [
+      [
+        240,
+        55,
+        925,
+        610
+      ]
+    ],
+    "lamp_box": [
+      1045,
+      405,
+      1215,
+      705
+    ],
+    "steam_origin": [
+      1350,
+      710
+    ]
+  },
+  "dog_zones": {
+    "body_breath": {
+      "x1": 205,
+      "y1": 705,
+      "x2": 645,
+      "y2": 925
+    },
+    "head": {
+      "x1": 245,
+      "y1": 755,
+      "x2": 445,
+      "y2": 925,
+      "eye_left": [
+        350,
+        850
+      ],
+      "eye_right": [
+        395,
+        850
+      ]
+    },
+    "ear": {
+      "x1": 245,
+      "y1": 785,
+      "x2": 335,
+      "y2": 895
+    },
+    "tail": {
+      "x1": 495,
+      "y1": 795,
+      "x2": 655,
+      "y2": 905
+    }
+  }
 }

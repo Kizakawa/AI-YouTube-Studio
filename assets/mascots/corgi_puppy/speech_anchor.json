@@ -1,0 +1,43 @@
+{
+  "mascot_id": "corgi_puppy",
+  "focus_speech_bubble": {
+    "box": [
+      95,
+      330,
+      835,
+      480
+    ],
+    "tail_tip": [
+      575,
+      540
+    ],
+    "tail_base_left": [
+      515,
+      480
+    ],
+    "tail_base_right": [
+      580,
+      480
+    ]
+  },
+  "break_speech_bubble": {
+    "box": [
+      85,
+      345,
+      825,
+      495
+    ],
+    "tail_tip": [
+      515,
+      555
+    ],
+    "tail_base_left": [
+      460,
+      495
+    ],
+    "tail_base_right": [
+      525,
+      495
+    ]
+  }
+}

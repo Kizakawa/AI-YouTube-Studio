@@ -1,0 +1,43 @@
+{
+  "mascot_id": "calico_cat",
+  "focus_speech_bubble": {
+    "box": [
+      85,
+      485,
+      825,
+      635
+    ],
+    "tail_tip": [
+      425,
+      705
+    ],
+    "tail_base_left": [
+      395,
+      635
+    ],
+    "tail_base_right": [
+      460,
+      635
+    ]
+  },
+  "break_speech_bubble": {
+    "box": [
+      85,
+      430,
+      825,
+      580
+    ],
+    "tail_tip": [
+      565,
+      635
+    ],
+    "tail_base_left": [
+      500,
+      580
+    ],
+    "tail_base_right": [
+      565,
+      580
+    ]
+  }
+}

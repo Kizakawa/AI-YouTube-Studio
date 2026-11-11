@@ -3,62 +3,46 @@
   "display_name": "Golden Retriever 🐕",
   "species": "dog",
   "companion_title": "Sleeping Golden Retriever Buddy",
-  "description": "Chú chó Golden Retriever nằm ngủ ấm áp trên thảm cạnh bàn học, thi thoảng vẩy tai, vẫy đuôi và ngóc đầu nhắc giờ nghỉ.",
+  "description": "Chú chó Golden Retriever nằm ngủ ấm áp trên thảm cạnh bàn học, thi thoảng vẩy tai, vẫy đuôi và thức dậy tươi cười nhắc giờ nghỉ.",
   "background_image": "cozy_lofi_study_room_bg.jpg",
-  "placement": {
-    "x": 215,
-    "y": 630,
-    "width": 640,
-    "height": 330
+  "waking_image": "golden_retriever_waking_bg.jpg",
+  "scene_anchors": {
+    "window_panes": [[155, 18, 535, 375], [580, 18, 865, 395]],
+    "lamp_box": [820, 275, 1155, 620],
+    "steam_origin": [1364, 588]
   },
+  "placement": { "x": 215, "y": 630, "width": 640, "height": 330 },
   "zones": {
     "body_breath": { "x1": 310, "y1": 635, "x2": 685, "y2": 875 },
     "ear": { "x1": 585, "y1": 700, "x2": 705, "y2": 855, "pivot_x": 645, "pivot_y": 715 },
     "tail": { "x1": 215, "y1": 805, "x2": 480, "y2": 958, "pivot_x": 255, "pivot_y": 845 },
-    "head": { "x1": 595, "y1": 675, "x2": 850, "y2": 900, "eye_left": [720, 792], "eye_right": [796, 785], "nose": [802, 855] },
+    "head": { "x1": 595, "y1": 675, "x2": 850, "y2": 900, "eye_left": [720, 792], "eye_right": [796, 785], "crown_anchor": [745, 682] },
     "front_paw": { "x1": 785, "y1": 795, "x2": 858, "y2": 860 }
   },
+  "waking_zones": {
+    "body_breath": { "x1": 340, "y1": 640, "x2": 625, "y2": 925 },
+    "ear": { "x1": 420, "y1": 515, "x2": 635, "y2": 635 },
+    "tail": { "x1": 165, "y1": 725, "x2": 365, "y2": 885 },
+    "head": { "x1": 425, "y1": 500, "x2": 630, "y2": 685, "eye_left": [495, 550], "eye_right": [565, 545], "crown_anchor": [525, 505] }
+  },
   "animations": {
-    "idle_breathing": {
-      "enabled": true,
-      "amplitude_px": 9.5,
-      "expand_px": 4.5,
-      "cycle_sec": 3.33
-    },
-    "ear_twitch": {
-      "enabled": true,
-      "windows_sec": [[1.4, 2.3], [5.8, 6.7]],
-      "shift_y_px": -14.0,
-      "shift_x_px": 5.0
-    },
-    "tail_wag": {
-      "enabled": true,
-      "windows_sec": [[2.6, 4.8], [7.2, 9.4]],
-      "amplitude_px": 16.0,
-      "freq_hz": 2.5
-    },
-    "sleep_shift": {
-      "enabled": true,
-      "windows_sec": [[4.2, 5.6]],
-      "shift_x_px": 7.0,
-      "shift_y_px": -6.0
-    },
-    "yawn_stretch": {
-      "enabled": true,
-      "windows_sec": [[8.0, 9.6]],
-      "scale_factor": 1.045
-    },
-    "break_wakeup": {
-      "enabled": true,
-      "head_lift_px": -14.0,
-      "ear_perk_px": -12.0,
-      "tail_continuous_wag": true
-    }
+    "idle_breathing": { "enabled": true, "amplitude_px": 9.5, "expand_px": 4.5, "cycle_sec": 3.33 },
+    "ear_twitch": { "enabled": true, "windows_sec": [[1.4, 2.3], [5.8, 6.7]], "shift_y_px": -14.0, "shift_x_px": 5.0 },
+    "tail_wag": { "enabled": true, "windows_sec": [[2.6, 4.8], [7.2, 9.4]], "amplitude_px": 16.0, "freq_hz": 2.5 },
+    "sleep_shift": { "enabled": true, "windows_sec": [[4.2, 5.6]], "shift_x_px": 7.0, "shift_y_px": -6.0 },
+    "yawn_stretch": { "enabled": true, "windows_sec": [[8.0, 9.6]], "scale_factor": 1.045 },
+    "break_wakeup": { "enabled": true, "head_lift_px": -14.0, "ear_perk_px": -12.0, "tail_continuous_wag": true }
   },
   "speech_bubble": {
-    "box": [180, 445, 910, 595],
+    "box": [180, 445, 915, 595],
     "tail_tip": [725, 680],
     "tail_base_left": [640, 595],
     "tail_base_right": [705, 595]
+  },
+  "speech_bubble_break": {
+    "box": [95, 310, 835, 460],
+    "tail_tip": [525, 502],
+    "tail_base_left": [465, 460],
+    "tail_base_right": [530, 460]
   }
 }

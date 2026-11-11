@@ -1,27 +1,47 @@
 """
 Pomodoro 3-Layer Audio Mixer (`app/services/pomodoro/audio_mixer.py`)
 =====================================================================
-Kết xuất âm thanh chuẩn 48kHz Stereo WAV cho từng Phase (`Prep`, `Focus`, `Break`),
-tự động áp dụng fade-in/fade-out mượt giữa các bài nhạc và trộn tiếng Chuông Singing Bowl
-(`STUDY_SFX_28`, `29`, `30`) tại giây 0.0 của mỗi phiên.
+Kết xuất âm thanh chuẩn 48kHz Stereo WAV cho từng Phase (`Prep`, `Focus`, `Break`):
+  - Lớp 1: Nhạc nền Google Flow Music (`48kHz Stereo WAV`, fade-in/fade-out mượt giữa các bài).
+  - Lớp 2: Chuông báo Singing Bowl (`STUDY_SFX_28`, `29`, `30`) vang lên chính xác ở giây 0.0.
+  - Lớp 3: Lớp âm thanh không gian tùy chọn (`--ambience rain | fireplace | vinyl | pure`) ở mức êm dịu `-27dB`,
+    cho phép xuất 3 phiên bản không gian khác nhau từ cùng kho nhạc (Module 6.1 #4).
 """
 
 import os
 import subprocess
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from app.services.pomodoro.scheduler import PhaseSegment
+
+
+AMBIENCE_FILTER_PRESETS: Dict[str, str] = {
+    "rain": (
+        "anoisesrc=color=pink:sample_rate=48000:amplitude=0.032,"
+        "highpass=f=160,lowpass=f=1450,tremolo=f=0.18:d=0.22,pan=stereo|c0=c0|c1=c0"
+    ),
+    "fireplace": (
+        "anoisesrc=color=brown:sample_rate=48000:amplitude=0.048,"
+        "lowpass=f=680,tremolo=f=0.35:d=0.32,pan=stereo|c0=c0|c1=c0"
+    ),
+    "vinyl": (
+        "anoisesrc=color=white:sample_rate=48000:amplitude=0.011,"
+        "bandpass=f=2200:width_type=h:w=1300,pan=stereo|c0=c0|c1=c0"
+    ),
+}
 
 
 def render_phase_audio_clip(
     phase: PhaseSegment,
     work_dir: Path,
+    ambience: str = "pure",
     ffmpeg_exe: str = "ffmpeg",
 ) -> Path:
     """
     Kết xuất âm thanh chuẩn 48kHz Stereo WAV cho 1 Phase (Prep / Focus / Break),
-    tự động áp dụng fade-in/fade-out mượt cho từng bài nhạc và trộn tiếng Chuông báo (Bell SFX) ở giây 0.0.
+    tự động áp dụng fade-in/fade-out mượt cho từng bài nhạc, trộn lớp Ambience (`rain`/`fireplace`/`vinyl`)
+    và tiếng Chuông báo (Bell SFX) ở giây 0.0.
     """
     phase_wav = work_dir / f"phase_{phase.index:02d}_{phase.phase_type.lower()}.wav"
     sub_clips: List[Path] = []
@@ -85,21 +105,42 @@ def render_phase_audio_clip(
         stderr=subprocess.DEVNULL,
     )
 
-    if phase.bell_sfx_path and os.path.exists(phase.bell_sfx_path) and phase.duration_sec >= 4.0:
-        bell_dur = min(6.5, phase.duration_sec)
-        fc = (
-            f"[0:a]volume=1.0[m];"
-            f"[1:a]atrim=0:{bell_dur:.2f},afade=t=out:st={max(0.5, bell_dur-2.0):.2f}:d=1.8,volume=1.25[b];"
-            f"[m][b]amix=inputs=2:duration=first:dropout_transition=0,alimiter=limit=0.95[outa]"
+    amb_key = (ambience or "pure").strip().lower()
+    has_amb = amb_key in AMBIENCE_FILTER_PRESETS
+    has_bell = bool(phase.bell_sfx_path and os.path.exists(phase.bell_sfx_path) and phase.duration_sec >= 4.0)
+
+    if has_bell or has_amb:
+        inputs = ["-i", str(music_only_wav)]
+        mix_labels = ["[m]"]
+        fc_parts = ["[0:a]volume=1.0[m]"]
+        next_in_idx = 1
+
+        if has_bell and phase.bell_sfx_path:
+            bell_dur = min(6.5, phase.duration_sec)
+            inputs += ["-i", phase.bell_sfx_path]
+            fc_parts.append(
+                f"[{next_in_idx}:a]atrim=0:{bell_dur:.2f},"
+                f"afade=t=out:st={max(0.5, bell_dur - 2.0):.2f}:d=1.8,volume=1.25[b]"
+            )
+            mix_labels.append("[b]")
+            next_in_idx += 1
+
+        if has_amb:
+            amb_src = f"{AMBIENCE_FILTER_PRESETS[amb_key]},atrim=0:{phase.duration_sec:.2f}[amb]"
+            fc_parts.append(amb_src)
+            mix_labels.append("[amb]")
+
+        fc_parts.append(
+            f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:duration=first:"
+            f"dropout_transition=0:normalize=0,alimiter=limit=0.95[outa]"
         )
+        fc = ";".join(fc_parts)
+
         subprocess.run(
             [
                 ffmpeg_exe,
                 "-y",
-                "-i",
-                str(music_only_wav),
-                "-i",
-                phase.bell_sfx_path,
+                *inputs,
                 "-filter_complex",
                 fc,
                 "-map",
@@ -131,12 +172,13 @@ def render_phase_audio_clip(
 def build_master_audio_stream(
     schedule: List[PhaseSegment],
     work_dir: Path,
+    ambience: str = "pure",
     ffmpeg_exe: str = "ffmpeg",
 ) -> Path:
     """Ghép toàn bộ các Phase thành 1 file Master Audio WAV 48kHz Stereo duy nhất."""
     phase_wavs: List[Path] = []
     for phase in schedule:
-        pw = render_phase_audio_clip(phase, work_dir, ffmpeg_exe=ffmpeg_exe)
+        pw = render_phase_audio_clip(phase, work_dir, ambience=ambience, ffmpeg_exe=ffmpeg_exe)
         phase_wavs.append(pw)
 
     master_list = work_dir / "master_audio_concat.txt"

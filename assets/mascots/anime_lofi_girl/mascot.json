@@ -2,63 +2,47 @@
   "id": "anime_lofi_girl",
   "display_name": "Anime Study Girl 🎧",
   "species": "anime",
-  "companion_title": "Lofi Anime Study Girl & Cat",
-  "description": "Cô bạn Anime đeo tai nghe Lofi ngồi ghi chép bài bên cửa sổ mưa đêm, nhịp thở đều đặn, gật đầu theo nhịp beat và vươn vai khi đến giờ nghỉ.",
+  "companion_title": "Lofi Anime Study Girl & Desk Cat",
+  "description": "Cô bạn Anime đeo tai nghe Lofi ngồi ghi chép bài cùng chú mèo cam nhỏ bên cửa sổ mưa đêm, vươn vai thư giãn khi đến giờ nghỉ.",
   "background_image": "anime_lofi_girl_study_bg.jpg",
-  "placement": {
-    "x": 180,
-    "y": 360,
-    "width": 720,
-    "height": 640
+  "waking_image": "anime_lofi_girl_waking_bg.jpg",
+  "scene_anchors": {
+    "window_panes": [[290, 5, 995, 480]],
+    "lamp_box": [695, 250, 995, 555],
+    "steam_origin": [1035, 625]
   },
+  "placement": { "x": 180, "y": 195, "width": 720, "height": 780 },
   "zones": {
-    "body_breath": { "x1": 260, "y1": 520, "x2": 720, "y2": 920 },
-    "ear": { "x1": 350, "y1": 360, "x2": 640, "y2": 560, "pivot_x": 495, "pivot_y": 520 },
-    "tail": { "x1": 480, "y1": 620, "x2": 820, "y2": 860, "pivot_x": 540, "pivot_y": 740 },
-    "head": { "x1": 340, "y1": 350, "x2": 660, "y2": 610, "eye_left": [465, 485], "eye_right": [545, 485], "nose": [510, 515] },
-    "front_paw": { "x1": 520, "y1": 650, "x2": 790, "y2": 830 }
+    "body_breath": { "x1": 210, "y1": 425, "x2": 650, "y2": 940 },
+    "ear": { "x1": 235, "y1": 200, "x2": 395, "y2": 435, "pivot_x": 365, "pivot_y": 245 },
+    "tail": { "x1": 545, "y1": 585, "x2": 765, "y2": 745, "pivot_x": 585, "pivot_y": 665 },
+    "head": { "x1": 365, "y1": 195, "x2": 615, "y2": 475, "eye_left": [545, 365], "eye_right": [575, 365], "crown_anchor": [495, 200] },
+    "front_paw": { "x1": 580, "y1": 605, "x2": 775, "y2": 735 }
+  },
+  "waking_zones": {
+    "body_breath": { "x1": 445, "y1": 465, "x2": 825, "y2": 785 },
+    "ear": { "x1": 410, "y1": 75, "x2": 895, "y2": 345 },
+    "tail": { "x1": 655, "y1": 605, "x2": 965, "y2": 915 },
+    "head": { "x1": 475, "y1": 235, "x2": 765, "y2": 515, "eye_left": [555, 420], "eye_right": [635, 412], "crown_anchor": [610, 245] }
   },
   "animations": {
-    "idle_breathing": {
-      "enabled": true,
-      "amplitude_px": 8.0,
-      "expand_px": 3.8,
-      "cycle_sec": 3.33
-    },
-    "ear_twitch": {
-      "enabled": true,
-      "windows_sec": [[1.5, 2.8], [5.5, 6.9]],
-      "shift_y_px": 10.0,
-      "shift_x_px": 5.0
-    },
-    "tail_wag": {
-      "enabled": true,
-      "windows_sec": [[2.0, 4.6], [6.8, 9.2]],
-      "amplitude_px": 12.0,
-      "freq_hz": 2.0
-    },
-    "sleep_shift": {
-      "enabled": true,
-      "windows_sec": [[4.0, 5.5]],
-      "shift_x_px": 6.0,
-      "shift_y_px": -6.0
-    },
-    "yawn_stretch": {
-      "enabled": true,
-      "windows_sec": [[7.8, 9.5]],
-      "scale_factor": 1.04
-    },
-    "break_wakeup": {
-      "enabled": true,
-      "head_lift_px": -12.0,
-      "ear_perk_px": -8.0,
-      "tail_continuous_wag": true
-    }
+    "idle_breathing": { "enabled": true, "amplitude_px": 7.5, "expand_px": 3.5, "cycle_sec": 3.33 },
+    "ear_twitch": { "enabled": true, "windows_sec": [[1.5, 2.8], [5.5, 6.9]], "shift_y_px": 8.0, "shift_x_px": -6.0 },
+    "tail_wag": { "enabled": true, "windows_sec": [[2.0, 4.6], [6.8, 9.2]], "amplitude_px": 9.0, "freq_hz": 2.0 },
+    "sleep_shift": { "enabled": true, "windows_sec": [[4.0, 5.5]], "shift_x_px": 5.5, "shift_y_px": 5.5 },
+    "yawn_stretch": { "enabled": true, "windows_sec": [[7.8, 9.5]], "scale_factor": 1.035 },
+    "break_wakeup": { "enabled": true, "head_lift_px": -10.0, "ear_perk_px": -6.0, "tail_continuous_wag": true }
   },
   "speech_bubble": {
-    "box": [210, 195, 930, 345],
-    "tail_tip": [520, 395],
-    "tail_base_left": [485, 345],
-    "tail_base_right": [550, 345]
+    "box": [430, 38, 1175, 188],
+    "tail_tip": [545, 225],
+    "tail_base_left": [525, 188],
+    "tail_base_right": [590, 188]
+  },
+  "speech_bubble_break": {
+    "box": [445, 28, 1190, 178],
+    "tail_tip": [615, 245],
+    "tail_base_left": [585, 178],
+    "tail_base_right": [650, 178]
   }
 }
