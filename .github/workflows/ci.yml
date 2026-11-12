@@ -9,7 +9,7 @@ on:
 
 jobs:
   verify-and-test:
-    name: Bytecode Compile & Core Test Suite (Python 3.11)
+    name: Bytecode Compile & Core Test Suite (Python 3.12)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -22,16 +22,16 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg libgl1
 
-      - name: 🐍 Set up Python 3.11
+      - name: 🐍 Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
 
       - name: 📦 Install Dependencies
         run: |
           python -m pip install --upgrade pip --quiet
-          pip install --quiet -r requirements.txt pytest pytest-asyncio anyio
+          pip install --quiet -r requirements.txt numpy opencv-python-headless pytest pytest-asyncio anyio
 
       - name: ⚙️ Bootstrap Example Channel Registry
         run: |
