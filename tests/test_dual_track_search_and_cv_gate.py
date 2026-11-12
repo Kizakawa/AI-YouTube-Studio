@@ -139,10 +139,22 @@ def test_cv_natural_ripples_vs_real_captions():
     # 3B. Synthetic burned-in TikTok/Shorts caption frame (white text with black outline at bottom)
     im_cap = im_water.copy()
     draw = ImageDraw.Draw(im_cap)
-    try:
-        font = ImageFont.truetype("arialbd.ttf", 46)
-    except Exception:
-        font = ImageFont.load_default()
+    font = None
+    for font_cand in (
+        "arialbd.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    ):
+        try:
+            font = ImageFont.truetype(font_cand, 46)
+            break
+        except Exception:
+            continue
+    if font is None:
+        try:
+            font = ImageFont.load_default(size=46)
+        except TypeError:
+            font = ImageFont.load_default()
     txt = "WHO WOULD WIN THIS FIGHT?"
     for dx in (-3, -2, 0, 2, 3):
         for dy in (-3, -2, 0, 2, 3):

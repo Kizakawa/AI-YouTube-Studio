@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.agents.publisher_agent import PublisherAgent
+from app.database import init_db
 from app.database.models import CANONICAL_CHANNEL_MAP, normalize_channel_id
 from app.services.autopilot_service import ensure_minimum_channel_queue
 from app.services.niche_manager import (
@@ -82,6 +83,7 @@ def test_o1_audio_catalog_resolves_study_and_gaming_channels():
 
 def test_smart_scheduler_stagger_and_firewall_for_music_channels():
     """Đảm bảo 2 kênh chung project_pool_7 lệch múi giờ đăng và không bị HardNicheFirewall chặn nhầm."""
+    init_db()
     assert CHANNEL_STAGGER_MINUTES["ch_pomodoro_focus_academy"] != CHANNEL_STAGGER_MINUTES["ch_lock_in_gaming_mix"]
     slot_pomo = get_next_available_golden_slot("ch_pomodoro_focus_academy", is_long_form=True)
     slot_game = get_next_available_golden_slot("ch_lock_in_gaming_mix", is_long_form=True)

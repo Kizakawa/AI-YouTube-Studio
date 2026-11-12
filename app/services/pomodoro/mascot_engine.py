@@ -113,8 +113,13 @@ def load_mascot_pack(
     waking_name = data.get("waking_image", "")
     resolved_bg = _resolve_asset_image(bg_name, cfg_path.parent)
     if resolved_bg is None:
-        resolved_bg = _resolve_asset_image("cozy_lofi_study_room_bg.jpg", cfg_path.parent)
+        resolved_bg = (
+            _resolve_asset_image("sleeping.jpg", cfg_path.parent)
+            or _resolve_asset_image("cozy_lofi_study_room_bg.jpg", cfg_path.parent)
+        )
     resolved_waking = _resolve_asset_image(waking_name, cfg_path.parent)
+    if resolved_waking is None:
+        resolved_waking = _resolve_asset_image("waking.jpg", cfg_path.parent)
 
     return MascotPack(
         id=data.get("id", mascot_id),
