@@ -374,3 +374,49 @@ channels:
     - wednesday
     - friday
     - sunday
+- id: ch_pomodoro_focus_academy
+  name: Pomodoro Focus Academy
+  niche: study_pomodoro_music
+  language: en
+  target_timezone: America/New_York
+  google_account: project_pool_7
+  visual_mode: auto
+  preferred_voice: en-US-AndrewNeural
+  video_type: long
+  format: long
+  youtube_category_id: '10'
+  affiliate_enabled: false
+  youtube_title: Pomodoro Focus Academy
+  youtube_channel_id: UCchbsYVxypzr3CAFI1svyMQ
+  handle: '@PomodoroFocusAcademy'
+  channel_url: https://www.youtube.com/@PomodoroFocusAcademy
+  schedule:
+    publish_hour_utc: 12
+    days:
+    - monday
+    - wednesday
+    - friday
+    - sunday
+- id: ch_lock_in_gaming_mix
+  name: LOCK IN // Gaming Mix
+  niche: gaming_lockin_music
+  language: en
+  target_timezone: America/New_York
+  google_account: project_pool_7
+  visual_mode: auto
+  preferred_voice: en-US-BrianNeural
+  video_type: long
+  format: long
+  youtube_category_id: '10'
+  affiliate_enabled: false
+  youtube_title: LOCK IN // Gaming Mix
+  youtube_channel_id: UC83iaowxxjavnGZ107WendQ
+  handle: '@LOCKINGamingMix'
+  channel_url: https://www.youtube.com/@LOCKINGamingMix
+  schedule:
+    publish_hour_utc: 20
+    days:
+    - tuesday
+    - thursday
+    - saturday
+    - sunday

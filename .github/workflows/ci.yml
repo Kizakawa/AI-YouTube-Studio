@@ -1,0 +1,73 @@
+name: ✅ CI Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify-and-test:
+    name: Bytecode Compile & Core Test Suite (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🎬 Install FFmpeg & System Media Libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libgl1
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip --quiet
+          pip install --quiet -r requirements.txt pytest pytest-asyncio anyio
+
+      - name: ⚙️ Bootstrap Example Channel Registry
+        run: |
+          cp config/channels.example.yaml config/channels.yaml
+          cp .env.example .env
+
+      - name: 🔍 Compile-Check All Python Modules
+        run: |
+          python -c "
+          import pathlib, py_compile, sys
+          errors = 0
+          count = 0
+          for p in pathlib.Path('.').rglob('*.py'):
+              if '.venv' in p.parts or 'venv' in p.parts or '__pycache__' in p.parts:
+                  continue
+              count += 1
+              try:
+                  py_compile.compile(str(p), doraise=True)
+              except Exception as e:
+                  print('COMPILE ERROR:', p, e)
+                  errors += 1
+          print(f'Verified {count} Python modules with {errors} syntax errors.')
+          sys.exit(1 if errors else 0)
+          "
+
+      - name: 🧪 Run Core Automated Pytest Suite
+        env:
+          GEMINI_API_KEYS: ""
+          GEMINI_API_KEY: ""
+          PYTHONIOENCODING: utf-8
+        run: |
+          pytest \
+            tests/test_pomodoro_and_channel_sync.py \
+            tests/test_dual_track_search_and_cv_gate.py \
+            tests/test_mpt_enhancements.py \
+            tests/test_quota_scenarios.py \
+            tests/test_database_scenarios.py \
+            tests/test_verification.py \
+            --tb=short -q

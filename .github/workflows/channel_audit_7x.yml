@@ -2,9 +2,6 @@ name: 📊 7x Daily Standalone Channel Audit
 
 on:
   schedule:
-    # 7 khung giờ cố định mỗi ngày theo giờ Việt Nam (UTC+7):
-    # 00:00 VN (17:00 UTC), 06:00 VN (23:00 UTC), 09:00 VN (02:00 UTC),
-    # 12:00 VN (05:00 UTC), 15:00 VN (08:00 UTC), 18:00 VN (11:00 UTC), 21:00 VN (14:00 UTC)
     - cron: '0 2,5,8,11,14,17,23 * * *'
   workflow_dispatch:
 
@@ -17,28 +14,45 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: 🔐 Check Cloud Credentials Availability
+        id: check_secrets
+        env:
+          YT_CLOUD_CREDENTIALS_B64: ${{ secrets.YT_CLOUD_CREDENTIALS_B64 }}
+        run: |
+          if [ -z "$YT_CLOUD_CREDENTIALS_B64" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ YT_CLOUD_CREDENTIALS_B64 not configured on this fork/showcase repo — skipping live cloud audit gracefully."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 📥 Checkout Standalone Auditor
+        if: steps.check_secrets.outputs.configured == 'true'
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
             tools/standalone_auditor
 
-      - name: 🔄 Restore Previous Audit State (from isolated audit-logs branch)
+      - name: 🔄 Restore Previous Audit State
+        if: steps.check_secrets.outputs.configured == 'true'
         run: |
           git fetch origin audit-logs:audit-logs || true
           git checkout audit-logs -- tools/standalone_auditor/.audit_state.json 2>/dev/null || true
 
       - name: 🐍 Set up Python 3.11
+        if: steps.check_secrets.outputs.configured == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
       - name: ⚡ Install Minimal Standalone Dependencies
+        if: steps.check_secrets.outputs.configured == 'true'
         run: |
           pip install --quiet pyyaml requests cryptography google-api-python-client google-auth google-auth-httplib2
 
       - name: 🔐 Unpack Encrypted YouTube Channel Credentials
+        if: steps.check_secrets.outputs.configured == 'true'
         env:
           YT_CLOUD_CREDENTIALS_B64: ${{ secrets.YT_CLOUD_CREDENTIALS_B64 }}
         run: |
@@ -50,6 +64,7 @@ jobs:
           "
 
       - name: 🚀 Run Standalone Audit & Send to Telegram Group
+        if: steps.check_secrets.outputs.configured == 'true'
         env:
           PYTHONIOENCODING: utf-8
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
@@ -60,7 +75,8 @@ jobs:
         run: |
           python tools/standalone_auditor/run_audit.py
 
-      - name: 💾 Save State to Isolated `audit-logs` Branch (Zero impact on `main`)
+      - name: 💾 Save State to Isolated `audit-logs` Branch
+        if: steps.check_secrets.outputs.configured == 'true'
         run: |
           git config user.name "Standalone Auditor"
           git config user.email "actions@github.com"
