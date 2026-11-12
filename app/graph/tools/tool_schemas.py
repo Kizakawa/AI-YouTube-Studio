@@ -499,6 +499,8 @@ def resolve_scene_active_entity(
     clean_subj_en = "" if _is_non_english_or_question_title(subject_entity) else str(subject_entity or "").strip()
 
     candidates: List[str] = []
+    if clean_subj_en and not _MULTI_ENTITY_SEP_RE.search(clean_subj_en):
+        return clean_subj_en
     for src in (clean_topic_en, clean_subj_en):
         s = str(src or "").strip()
         if not s:
@@ -610,18 +612,29 @@ def build_single_entity_stock_queries(
             out.append(final_p)
 
     _multi_entity_sep_re = _MULTI_ENTITY_SEP_RE
+    subj_low = clean_subj_en.lower()
+    is_single_explicit_subj = bool(subj_low and not _multi_entity_sep_re.search(subj_low))
 
-    # 1. Giữ nguyên trước tất cả các câu truy vấn tiếng Anh vốn đã ĐƠN CHỦ THỂ (không chứa 'vs'/'versus', 'A or B' hoặc dấu phẩy ngăn cách 2 thực thể)
+    # 1. Giữ nguyên trước tất cả các câu truy vấn tiếng Anh vốn đã ĐƠN CHỦ THỂ (ưu tiên câu khớp trực tiếp với subject_entity của phân cảnh)
+    single_raw_heads: List[str] = []
     for rq in raw_queries:
         s = str(rq or "").strip()
         if not s or _is_non_english_or_question_title(s):
             continue
         head = re.split(r"[:—–]\s*", s, maxsplit=1)[0].strip()
         if not _multi_entity_sep_re.search(head):
-            _add_clean(head)
+            single_raw_heads.append(head)
+
+    if is_single_explicit_subj and len(single_raw_heads) > 1:
+        subj_toks = [t for t in subj_low.split() if len(t) >= 3]
+        single_raw_heads.sort(
+            key=lambda h: 0 if (subj_toks and any(t in h.lower() for t in subj_toks)) else 1
+        )
+
+    for head in single_raw_heads:
+        _add_clean(head)
 
     # 2. Tách các thực thể độc lập từ subject_entity ('A, B' / 'A or B' / 'A vs B'), các câu truy vấn và topic tiếng Anh
-    subj_low = clean_subj_en.lower()
     first_q_low = str(raw_queries[0] if raw_queries else "").lower()
     split_entities: List[str] = []
     for src in (clean_subj_en, *raw_queries, clean_topic_en):

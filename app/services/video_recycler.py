@@ -344,22 +344,26 @@ PAWS_HEARTS_BGM_ARCHETYPES: Dict[str, str] = {
 }
 
 _AUDIO_CATALOG_CACHE: Optional[Dict[str, Any]] = None
+_AUDIO_CATALOG_MTIME: float = 0.0
 
 
 def _load_audio_catalog() -> Dict[str, Any]:
-    """Nạp bảng băm `audio_catalog.json` vào RAM 1 lần duy nhất (O(1) lookup, 0ms disk scan)."""
-    global _AUDIO_CATALOG_CACHE
-    if _AUDIO_CATALOG_CACHE is not None:
-        return _AUDIO_CATALOG_CACHE
+    """Nạp bảng băm `audio_catalog.json` vào RAM (O(1) lookup, tự cập nhật khi mtime thay đổi)."""
+    global _AUDIO_CATALOG_CACHE, _AUDIO_CATALOG_MTIME
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     catalog_path = os.path.join(base_dir, "assets", "bgm", "audio_catalog.json")
     if os.path.exists(catalog_path):
         try:
+            mtime = os.path.getmtime(catalog_path)
+            if _AUDIO_CATALOG_CACHE is not None and mtime == _AUDIO_CATALOG_MTIME:
+                return _AUDIO_CATALOG_CACHE
             with open(catalog_path, "r", encoding="utf-8") as f:
                 _AUDIO_CATALOG_CACHE = json.load(f)
+                _AUDIO_CATALOG_MTIME = mtime
                 return _AUDIO_CATALOG_CACHE
         except Exception:
-            pass
+            if _AUDIO_CATALOG_CACHE is not None:
+                return _AUDIO_CATALOG_CACHE
     _AUDIO_CATALOG_CACHE = {}
     return _AUDIO_CATALOG_CACHE
 

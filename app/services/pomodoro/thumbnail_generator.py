@@ -25,6 +25,7 @@ def generate_youtube_thumbnail(
     focus_min: float = 50.0,
     break_min: float = 10.0,
     sessions: int = 4,
+    speech_lang: str = "en",
 ) -> Path:
     """Tạo ảnh Thumbnail YouTube `1280x720` chuyên nghiệp có lớp Film Grain nhẹ."""
     src_bg = mascot_pack.resolved_bg_path
@@ -95,7 +96,12 @@ def generate_youtube_thumbnail(
     dr.line([(368, sy2), (412, sy2)], fill=(255, 250, 240, 244), width=6)
 
     _draw_paw_icon(dr, sx1 + 34, sy1 + 43, color=(34, 153, 84, 255))
-    bub_txt = clean_font_text("Cậu chủ đến giờ nghỉ ngơi chút rồi!")
+    raw_bub = (
+        "Cậu chủ đến giờ nghỉ ngơi chút rồi!"
+        if str(speech_lang or "en").lower() == "vi"
+        else "Time for a cozy break, let's rest!"
+    )
+    bub_txt = clean_font_text(raw_bub)
     dr.text((sx1 + 56, sy1 + 28), bub_txt, font=f_bub, fill=(20, 26, 36, 255))
 
     comp = Image.alpha_composite(im, ov).convert("RGB")

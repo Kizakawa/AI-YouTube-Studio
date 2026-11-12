@@ -75,7 +75,7 @@ def run_pomodoro_batch(
     preset: str = "3combo_verify",
     batch_root: Optional[Path] = None,
     cut_shorts: bool = True,
-    speech_lang: str = "vi",
+    speech_lang: str = "en",
 ) -> Dict[str, Any]:
     """Chạy kết xuất tuần tự một lô video theo `preset` và xuất báo cáo tổng hợp `batch_report.json`."""
     from app.services.pomodoro.cli import build_pomodoro_study_video
@@ -146,7 +146,7 @@ def main() -> None:
     parser.add_argument("--preset", choices=list(BATCH_PRESETS.keys()), default="3combo_verify")
     parser.add_argument("--output-dir", default="")
     parser.add_argument("--no-shorts", action="store_true")
-    parser.add_argument("--speech-lang", choices=["vi", "en", "bilingual"], default="vi")
+    parser.add_argument("--speech-lang", choices=["vi", "en", "bilingual"], default="en")
     args = parser.parse_args()
 
     summary = run_pomodoro_batch(

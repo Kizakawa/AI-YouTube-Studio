@@ -231,12 +231,13 @@ class TestGohaCinematicAndIntelUpgrades(unittest.TestCase):
         self.assertEqual(spec["name"], "doodle_2d_animator")
         self.assertTrue(len(spec["when_to_use"]) >= 4)
 
-        # 1. Phải kích hoạt với ngách tâm lý / tài chính hoặc thẻ @TAG
-        use_psych, _ = DoodleAnimationTool.should_activate(
+        # 1. Chính sách 100% B-Roll điện ảnh thật: người que / 2D Doodle đã tắt trên toàn bộ các ngách
+        use_psych, psych_reason = DoodleAnimationTool.should_activate(
             topic="Dark Empathetic vs Narcissist: 3-Second Mirror Trap",
             niche="dark_psychology",
         )
-        self.assertTrue(use_psych)
+        self.assertFalse(use_psych)
+        self.assertIn("100%", psych_reason)
 
         # 2. Phải TỪ CHỐI kích hoạt với ngách Động vật hoang dã (4-Domain Counterfactual Guard)
         use_wildlife, _ = DoodleAnimationTool.should_activate(
@@ -255,15 +256,15 @@ class TestGohaCinematicAndIntelUpgrades(unittest.TestCase):
         self.assertEqual(prop, "puppet_strings")
         self.assertIn("72 HOURS", badge)
 
-        # 4. Kiểm tra VisualToolRouter định tuyến sang `doodle_2d_animator`
+        # 4. Kiểm tra VisualToolRouter chuyển tiếp an toàn từ DOODLE_PSYCHOLOGY_EXPLAINER sang REAL_FILMABLE (footage thật)
         router = VisualToolRouter()
         routed = router.route_scene(
             {"narration": "@MODERNYOU wakes up exhausted in the rat race.", "visual_keyword": "rat race"},
             topic="Modern Worker vs Ancient Hunter",
             channel_niche="satirical_psychology_animation",
         )
-        self.assertEqual(routed["reality_class"], DOODLE_PSYCHOLOGY_EXPLAINER)
-        self.assertEqual(routed["tool"], "doodle_2d_animator")
+        self.assertEqual(routed["reality_class"], "REAL_FILMABLE")
+        self.assertEqual(routed["tool"], "nasa_pexels_footage")
 
 
 if __name__ == "__main__":

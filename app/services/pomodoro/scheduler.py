@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_MASTER_BGM_ROOT = Path(r"D:\AI_YouTube_Project_Ready\Music\06_study_music_lofi\bgm")
+DEFAULT_ALT_MASTER_BGM_ROOT = Path(r"D:\AI_YouTube_Project_Ready\Music\06_study_pomodoro_focus\tracks")
 DEFAULT_CATALOG_BGM_ROOT = PROJECT_ROOT / "assets" / "bgm" / "06_study_music_lofi"
 DEFAULT_MASCOTS_ROOT = PROJECT_ROOT / "assets" / "mascots"
 DEFAULT_THEMES_ROOT = PROJECT_ROOT / "assets" / "themes"
@@ -122,8 +123,17 @@ def discover_study_library(bgm_root: Path = DEFAULT_MASTER_BGM_ROOT) -> Dict[str
     """
     Quét kho nhạc 58 file WAV và phân loại theo thư mục con, ưu tiên bản `PRIMARY`
     từ `audio_audit_report.json` (nếu có) trước bản `ALTERNATE`.
+    Tự động dự phòng sang `DEFAULT_ALT_MASTER_BGM_ROOT` hoặc `DEFAULT_CATALOG_BGM_ROOT`
+    (`assets/bgm/06_study_music_lofi`) để chạy mượt trên mọi máy clone từ GitHub.
     """
-    audit_file = bgm_root.parent / "audio_audit_report.json"
+    active_root = bgm_root
+    if not active_root.exists():
+        for fallback_root in (DEFAULT_ALT_MASTER_BGM_ROOT, DEFAULT_CATALOG_BGM_ROOT):
+            if fallback_root.exists():
+                active_root = fallback_root
+                break
+
+    audit_file = active_root.parent / "audio_audit_report.json"
     role_map: Dict[str, Tuple[str, float]] = {}
     if audit_file.exists():
         try:
@@ -135,10 +145,10 @@ def discover_study_library(bgm_root: Path = DEFAULT_MASTER_BGM_ROOT) -> Dict[str
             pass
 
     pools: Dict[str, List[Dict[str, Any]]] = {}
-    if not bgm_root.exists():
+    if not active_root.exists():
         return pools
 
-    for folder in sorted(bgm_root.iterdir()):
+    for folder in sorted(active_root.iterdir()):
         if not folder.is_dir():
             continue
         items: List[Dict[str, Any]] = []
@@ -162,7 +172,48 @@ def discover_study_library(bgm_root: Path = DEFAULT_MASTER_BGM_ROOT) -> Dict[str
                 }
             )
         items.sort(key=lambda x: (0 if x["role"] == "PRIMARY" else 1, -x["score"]))
-        pools[folder.name] = items
+        if items:
+            pools[folder.name] = items
+
+    # Hỗ trợ thư mục phẳng (ví dụ `assets/bgm/06_study_music_lofi/*.wav` khi clone từ GitHub)
+    has_bgm_subfolders = any(k != "06_bell_sfx" and v for k, v in pools.items())
+    if not has_bgm_subfolders:
+        for wav in sorted(active_root.glob("*.wav")):
+            dur = get_wav_duration(wav)
+            if dur <= 1.0:
+                continue
+            upper_name = wav.name.upper()
+            lower_stem = wav.stem.lower()
+            if upper_name.startswith("STUDY_SFX_") or "bell" in lower_stem:
+                bucket = "06_bell_sfx"
+            elif upper_name.startswith("STUDY_BRK_") or "break" in lower_stem:
+                bucket = "05_break_relax"
+            elif "piano" in lower_stem:
+                bucket = "02_piano_reading"
+            elif "exam" in lower_stem or "ambient" in lower_stem:
+                bucket = "03_exam_ambient"
+            elif "jazz" in lower_stem or "cafe" in lower_stem:
+                bucket = "04_jazz_cozy"
+            else:
+                bucket = "01_lofi_focus"
+
+            role, score = role_map.get(wav.name, ("PRIMARY", 5.0))
+            m = re.match(r"(STUDY_(?:BGM|BRK|SFX)_\d+_[a-z0-9_]+?)(?:_T\d+)?\.wav$", wav.name)
+            base_id = m.group(1) if m else wav.stem
+            pools.setdefault(bucket, []).append(
+                {
+                    "path": str(wav),
+                    "name": wav.name,
+                    "display_name": clean_track_display_name(wav.name),
+                    "base_id": base_id,
+                    "folder": bucket,
+                    "duration": dur,
+                    "role": role,
+                    "score": score,
+                }
+            )
+        for bucket_items in pools.values():
+            bucket_items.sort(key=lambda x: (0 if x["role"] == "PRIMARY" else 1, -x["score"]))
 
     return pools
 

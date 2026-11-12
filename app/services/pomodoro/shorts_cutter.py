@@ -93,7 +93,7 @@ def cut_pomodoro_short_teaser(
     out_short_mp4: Optional[Path] = None,
     teaser_duration_sec: float = 54.0,
     pre_break_sec: float = 14.0,
-    fps: int = 24,
+    fps: int = 30,
     ffmpeg_exe: str = "ffmpeg",
 ) -> Path:
     """
@@ -126,21 +126,23 @@ def cut_pomodoro_short_teaser(
     fade_out_st = max(1.0, clip_dur - 1.2)
 
     fc = (
-        f"[0:v]split=2[v_bg_src][v_fg_src];"
+        f"[0:v]fps={fps},split=2[v_bg_src][v_fg_src];"
         f"[v_bg_src]scale=1080:1920:force_original_aspect_ratio=increase,"
         f"crop=1080:1920,boxblur=24:4,eq=brightness=-0.14:saturation=1.1[v_bg];"
         f"[v_fg_src]scale=1080:608:flags=lanczos[v_fg];"
         f"[v_bg][v_fg]overlay=0:656[v_comp];"
         f"[1:v]format=rgba[ov];"
         f"[v_comp][ov]overlay=0:0,"
-        f"fade=t=in:st=0:d=0.5,fade=t=out:st={fade_out_st:.2f}:d=1.0[outv];"
+        f"fade=t=in:st=0:d=0.5,fade=t=out:st={fade_out_st:.2f}:d=1.0,setsar=1,format=yuv420p[outv];"
         f"[0:a]afade=t=in:st=0:d=0.5,afade=t=out:st={fade_out_st:.2f}:d=1.0[outa]"
     )
 
-    subprocess.run(
+    res = subprocess.run(
         [
             ffmpeg_exe,
             "-y",
+            "-v",
+            "error",
             "-ss",
             f"{start_sec:.2f}",
             "-t",
@@ -160,21 +162,34 @@ def cut_pomodoro_short_teaser(
             "-c:v",
             v_enc,
             *v_enc_args,
+            "-r",
+            str(fps),
             "-pix_fmt",
             "yuv420p",
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-color_range",
+            "tv",
             "-c:a",
             "aac",
             "-b:a",
             "192k",
             "-ar",
             "48000",
+            "-ac",
+            "2",
             "-movflags",
             "+faststart",
             str(out_short_mp4),
         ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
     )
     ov_png.unlink(missing_ok=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"cut_pomodoro_short_teaser failed: {res.stderr[-500:]}")
     return out_short_mp4

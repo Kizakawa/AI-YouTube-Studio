@@ -46,16 +46,21 @@ def render_phase_audio_clip(
     phase_wav = work_dir / f"phase_{phase.index:02d}_{phase.phase_type.lower()}.wav"
     sub_clips: List[Path] = []
 
+    n_tracks = len(phase.tracks_used)
     for t_idx, tr in enumerate(phase.tracks_used):
         sub_p = work_dir / f"p{phase.index:02d}_t{t_idx:02d}.wav"
         dur = float(tr["play_duration"])
-        fade_in = min(1.5, dur * 0.15)
-        fade_out = min(2.2, dur * 0.2)
+        is_first = (t_idx == 0)
+        is_last = (t_idx == n_tracks - 1)
+        fade_in = min(0.85 if is_first else 0.35, dur * 0.12)
+        fade_out = min(1.40 if is_last else 0.40, dur * 0.15)
         fade_out_st = max(0.0, dur - fade_out)
         vol = "0.85" if phase.phase_type == "BREAK" else "0.95"
         cmd = [
             ffmpeg_exe,
             "-y",
+            "-v",
+            "error",
             "-ss",
             "0",
             "-t",
@@ -72,7 +77,9 @@ def render_phase_audio_clip(
             "pcm_s16le",
             str(sub_p),
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(f"FFmpeg audio track render failed ({tr['path']}): {res.stderr[-400:]}")
         sub_clips.append(sub_p)
 
     concat_list_file = work_dir / f"concat_p{phase.index:02d}.txt"

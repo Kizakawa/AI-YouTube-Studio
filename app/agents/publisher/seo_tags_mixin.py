@@ -19,14 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 class SeoTagsMixin:
-    def resolve_locked_category_id(self) -> str:
+    def resolve_locked_category_id(self, requested_category_id: Optional[str] = None) -> str:
         """
         Khóa cứng Category ID chuẩn cho từng kênh (Tuyệt đối chặn cat=27 Education gây bóp hiển thị 0-4 view trên Shorts Feed).
-        - Kênh Động vật hoang dã săn mồi (wildlife_predators: Wild Odyssey, Odisseia Selvagem) -> '15' (Pets & Animals)
-        - Toàn bộ các kênh còn lại (Mistérios do Mundo, Mysteries EN, Psychology, Alternate History, Paws & Hearts) -> '22' (People & Blogs)
+        - Kênh Nhạc Học Tập Pomodoro & Nhạc Gaming Lock-In -> '10' (Music) hoặc '20' (Gaming) nếu chỉ định rõ
+        - Kênh Động vật hoang dã săn mồi / Cứu hộ thú cưng -> '15' (Pets & Animals)
+        - Toàn bộ các kênh Shorts tài liệu/tâm lý/lịch sử/bí ẩn còn lại -> '22' (People & Blogs)
         """
         FORBIDDEN_CATEGORIES = {"27"}  # Tuyệt đối cấm Education (27) cho kênh Shorts giải trí/tò mò
-        explicit_cat = str(self.channel_config.get("youtube_category_id") or "").strip()
+        explicit_cat = str(requested_category_id or self.channel_config.get("youtube_category_id") or "").strip()
         raw_niche = str(self.channel_config.get("niche") or "").lower()
 
         if explicit_cat in FORBIDDEN_CATEGORIES:
@@ -35,11 +36,13 @@ class SeoTagsMixin:
             )
             return "22"
 
-        if explicit_cat in ("15", "22", "24"):
+        if explicit_cat in ("10", "15", "20", "22", "24"):
             if explicit_cat == "15" and not any(k in raw_niche for k in ("wildlife", "predator", "rescue", "animal", "pet")):
                 return "22"
             return explicit_cat
 
+        if any(k in raw_niche for k in ("pomodoro", "study_music", "study_pomodoro", "lofi_study", "gaming_lockin", "gaming_music")):
+            return "10"
         if any(k in raw_niche for k in ("wildlife", "predator", "rescue", "animal", "pet")):
             return "15"
         return "22"
@@ -229,9 +232,31 @@ class SeoTagsMixin:
                 "heartwarming", "pet rescue", "stray dog", "faith in humanity",
                 "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral",
             ]
+        elif any(k in raw_niche for k in ("pomodoro", "study_music", "study_pomodoro", "lofi_study")):
+            niche_title_hashes = ["studywithme", "pomodorotimer", "studymusic"]
+            niche_core_tags = [
+                "study with me", "pomodoro timer", "study music", "lofi study",
+                "50/10 pomodoro", "25/5 pomodoro", "deep focus music", "cozy study",
+                "ambient study", "focus timer", "exam study music", "no mid roll ads",
+                "pomodoro focus academy",
+            ]
+            if not is_long_form:
+                niche_core_tags.extend(["Shorts", "shorts", "ytshorts"])
+        elif any(k in raw_niche for k in ("gaming_lockin", "gaming_music", "lockin")):
+            niche_title_hashes = ["gamingmusic", "lockin", "synthwave"]
+            niche_core_tags = [
+                "gaming music", "lock in music", "fps gaming mix", "synthwave gaming",
+                "cyberpunk music", "phonk gaming", "ranked grind music", "tryhard music",
+                "valorant music", "coding music", "focus gaming beats", "no mid roll ads",
+            ]
+            if not is_long_form:
+                niche_core_tags.extend(["Shorts", "shorts", "ytshorts"])
         else:
             niche_title_hashes = ["facts", "mystery", "viral"]
             niche_core_tags = ["facts", "mystery", "documentary", "usa", "united states", "american", "Shorts", "shorts", "ytshorts", "viral"]
+
+        if is_long_form:
+            niche_core_tags = [t for t in niche_core_tags if t.lower() not in ("shorts", "ytshorts", "youtubeshorts")]
 
         # Chặn các tag chéo ngách hoặc chéo chủ đề nếu nội dung thực tế của video không hề nhắc tới
         CROSS_NICHE_GUARDS = {
@@ -461,8 +486,15 @@ class SeoTagsMixin:
         #   (2) Tags chuyên biệt của video do LLM/caller sinh (filtered_caller_tags[:8])
         #   (3) Tags bắt buộc định tuyến Quốc gia & Định dạng (usa/united states hoặc brasil + Shorts/ytshorts)
         #   (4) Bộ tag cốt lõi của Ngách (niche_core_tags) + tag mặc định của kênh (filtered_channel_tags)
+        is_music_niche = any(
+            k in raw_niche
+            for k in ("pomodoro", "study_music", "study_pomodoro", "lofi_study", "gaming_lockin", "gaming_music", "lockin")
+        )
         if is_long_form:
-            mandatory_geo_tags = ["brasil", "documentario"] if is_br else ["usa", "united states", "american", "documentary"]
+            if is_music_niche:
+                mandatory_geo_tags = ["brasil", "musica para estudar"] if is_br else ["usa", "united states", "focus music"]
+            else:
+                mandatory_geo_tags = ["brasil", "documentario"] if is_br else ["usa", "united states", "american", "documentary"]
         else:
             mandatory_geo_tags = ["Shorts", "shorts", "ytshorts", "brasil"] if is_br else ["Shorts", "shorts", "ytshorts", "usa", "united states", "american"]
 
@@ -484,7 +516,9 @@ class SeoTagsMixin:
             if not _is_tag_allowed(clean_t):
                 continue
             low_t = clean_t.lower()
-            if is_long_form and low_t in ("shorts", "ytshorts", "youtubeshorts"):
+            if is_long_form and (low_t in ("shorts", "ytshorts", "youtubeshorts", "youtube shorts", "yt shorts") or "shorts" in low_t.split()):
+                continue
+            if is_music_niche and low_t in ("documentary", "documentario", "documentários"):
                 continue
             if low_t in seen_lower:
                 continue
@@ -498,7 +532,12 @@ class SeoTagsMixin:
         if is_long_form:
             enriched_title = base_title[:100].rstrip()
             built_hashes: List[str] = []
-            desc_hash_tokens: List[str] = ["#documentario" if is_br else "#documentary"]
+            if any(k in raw_niche for k in ("pomodoro", "study_music", "study_pomodoro", "lofi_study")):
+                desc_hash_tokens: List[str] = ["#studywithme", "#pomodorotimer", "#studymusic"]
+            elif any(k in raw_niche for k in ("gaming_lockin", "gaming_music", "lockin")):
+                desc_hash_tokens = ["#gamingmusic", "#lockin", "#synthwave"]
+            else:
+                desc_hash_tokens = ["#documentario" if is_br else "#documentary"]
         else:
             title_hash_list: List[str] = ["Shorts"]
             for h_cand in (*topic_hashtag_candidates[:1], *niche_title_hashes):
@@ -656,6 +695,7 @@ class SeoTagsMixin:
         raw_desc: str,
         base_title: str = "",
         allow_affiliate: bool = False,
+        is_long_form: bool = False,
     ) -> str:
         """
         Làm sạch mô tả Shorts (Description Hygiene):
@@ -698,7 +738,7 @@ class SeoTagsMixin:
                 continue
             if any(ln_low.startswith(bh) for bh in breakdown_headers):
                 continue
-            if ln.startswith("• ") or ln.startswith("1️⃣ ") or ln.startswith("2️⃣ ") or ln.startswith("3️⃣ "):
+            if not is_long_form and (ln.startswith("• ") or ln.startswith("1️⃣ ") or ln.startswith("2️⃣ ") or ln.startswith("3️⃣ ")):
                 continue
             # 3. Bỏ các dòng chứa link ngoài hoặc CTA Affiliate/PayPal khi kênh tắt monetization
             if not allow_affiliate:
@@ -722,8 +762,12 @@ class SeoTagsMixin:
         chapter_buffer: List[str] = []
         for ln in filtered_lines:
             is_chap_line = bool(
-                re.match(r"^\d{1,2}:\d{2}\s+", ln)
-                or ln.lower().startswith(("⏱️ chapters", "⏱️ capítulos", "chapters:", "capítulos:"))
+                re.match(r"^\d{1,2}:\d{2}(?::\d{2})?\s+", ln)
+                or ln.lower().startswith((
+                    "⏱️ chapters", "⏱️ capítulos", "⏱️ timestamps", "⏱️ pomodoro",
+                    "chapters:", "capítulos:", "timestamps:",
+                ))
+                or (ln.endswith(":") and any(k in ln.lower() for k in ("chapters", "capítulos", "timestamps")))
             )
             if is_chap_line:
                 chapter_buffer.append(ln)

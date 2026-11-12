@@ -143,15 +143,24 @@ def validate_output(file_path: str) -> Dict:
             result["has_audio"] = True
             result["codec_audio"] = stream.get("codec_name", "unknown")
 
-    # Validation rules cho YouTube Shorts
+    # Validation rules cho YouTube Shorts & Long-Form 16:9
     if not result["has_video"]:
         result["errors"].append("Không có video stream")
     if not result["has_audio"]:
         result["errors"].append("Không có audio stream")
     if result["duration_ms"] < 5000:
         result["errors"].append(f"Video quá ngắn: {result['duration_ms']}ms (tối thiểu 5s)")
-    if result["duration_ms"] > (900000 if str(result.get("resolution", "")).startswith("1920x") else 61000):
-        result["errors"].append(f"Video quá dài cho Shorts: {result['duration_ms']}ms (tối đa 60s)")
+    res_str = str(result.get("resolution", ""))
+    is_landscape = False
+    if "x" in res_str:
+        try:
+            _rw, _rh = (int(p) for p in res_str.split("x", 1))
+            is_landscape = _rw > _rh
+        except Exception:
+            is_landscape = res_str.startswith(("1920x", "1280x", "2560x", "3840x"))
+    max_dur_ms = 21600000 if is_landscape else 61000
+    if result["duration_ms"] > max_dur_ms:
+        result["errors"].append(f"Video quá dài cho {'Long-Form' if is_landscape else 'Shorts'}: {result['duration_ms']}ms")
     if result["file_size_mb"] < 0.1:
         result["errors"].append(f"File quá nhỏ: {result['file_size_mb']}MB — có thể bị corrupt")
 

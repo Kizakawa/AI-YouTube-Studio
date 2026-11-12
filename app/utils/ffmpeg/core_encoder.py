@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 FFMPEG_TIMEOUT = 900   # 15 phút max cho render Video Dài 10 phút 1080p
 FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
-VIDEO_DURATION_SAFETY_MARGIN = 0.05  # Đệm an toàn chống ngắt cụt audio/video cuối câu (0.05 giây)
 
 
 def _ensure_ffmpeg_in_path():
@@ -207,7 +206,7 @@ def detect_hardware_encoder(force_recheck: bool = False) -> Dict[str, Any]:
     # `h264_mf` khóa đơn luồng D3D11 MFT gây nghẽn hàng đợi 2-4 phút khi chạy đa luồng và làm sai lệch NAL/PTS khi ghép `-f concat`.
     candidates = [
         ("h264_nvenc", ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "19", "-pix_fmt", "yuv420p"], "NVIDIA NVENC (GPU)"),
-        ("h264_qsv", ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "20", "-pix_fmt", "nv12"], "Intel QuickSync (GPU)"),
+        ("h264_qsv", ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "20", "-pix_fmt", "yuv420p"], "Intel QuickSync (GPU)"),
         ("h264_amf", ["-c:v", "h264_amf", "-quality", "quality", "-b:v", "10M", "-pix_fmt", "yuv420p"], "AMD AMF (GPU)"),
         ("h264_videotoolbox", ["-c:v", "h264_videotoolbox", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Apple VideoToolbox (GPU)"),
     ]
@@ -283,7 +282,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
                 "-cq", "18",
                 "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
             ]
-        # Tr?nh d?ng h264_qsv / h264_amf cho intermediate clips (ch?y 6-8 lu?ng song song g?y ngh?n h?ng ??i D3D11/MediaSDK)
+        # Tránh dùng h264_qsv / h264_amf cho intermediate clips (chạy 6-8 luồng song song gây nghẽn hàng đợi D3D11/MediaSDK)
         return [
             "-threads", "2",
             "-c:v", "libx264",
@@ -313,7 +312,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
                 "-b:v", "3.8M",
                 "-maxrate", "5.2M",
                 "-bufsize", "10.4M",
-                "-pix_fmt", "nv12", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+                "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
             ]
         if encoder == "h264_amf":
             return [
@@ -367,7 +366,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-b:v", "5M" if is_high else "4M",
             "-maxrate", "6.5M" if is_high else "5.5M",
             "-bufsize", "13M" if is_high else "11M",
-            "-pix_fmt", "nv12", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     elif encoder == "h264_videotoolbox":
         return [

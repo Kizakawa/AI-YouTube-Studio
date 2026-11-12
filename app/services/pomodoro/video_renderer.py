@@ -2,11 +2,11 @@
 Pomodoro Phase Video Segment Renderer (`app/services/pomodoro/video_renderer.py`)
 =================================================================================
 Kết xuất từng phân đoạn video (`.mp4` Full HD 1080p) tích hợp:
-  - Tự động dò phần cứng tăng tốc GPU (`h264_nvenc` / `h264_qsv` / `h264_amf`) hoặc `libx264 -preset fast` (Module 5.2).
+  - Tự động dò phần cứng tăng tốc GPU (`h264_nvenc` / `h264_qsv`) hoặc `libx264 -preset veryfast` (Module 5.2).
   - Cảnh nền Cinemagraph Loop (`focus_loop.mp4` / `break_loop.mp4` / `milestone_hat`).
   - Hiệu ứng chuyển động Fade-in 0.5s & Fade-out 1.0s mượt mà trên Bong Bóng Hội Thoại (Module 3.2)
-    + Bong bóng cột mốc 50% thời gian hiệp học (`milestone_bubble_png_path`).
-  - Đồng hồ đếm ngược `MM:SS` chính xác từng giây & sóng nhạc `showwaves` thực tế.
+    + Bong bóng cột mốc 50% thời gian hiệp học (`milestone_bubble_png_path`) tối ưu O(1) PTS shift (không giải mã thừa RGBA).
+  - Đồng hồ đếm ngược `MM:SS` chính xác từng giây (`trunc(t)`), CFR khóa cứng & không gian màu chuẩn BT.709.
 """
 
 import math
@@ -26,16 +26,25 @@ from app.services.pomodoro.hud_renderer import (
 )
 from app.services.pomodoro.scheduler import PhaseSegment
 from app.services.pomodoro.vfx_pipeline import VFXConfig, build_ffmpeg_vfx_post_filter
+from app.utils.ffmpeg.core_encoder import BT709_COLOR_ARGS, _supports_fps_mode
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=4)
 def detect_optimal_h264_encoder(ffmpeg_exe: str = "ffmpeg") -> Tuple[str, List[str]]:
     """
-    Tự động kiểm tra phần cứng GPU NVIDIA (`h264_nvenc`) ở đúng chuẩn Full HD 1920x1080;
-    nếu không có GPU NVIDIA rời sẽ chuyển mượt về `libx264 -preset veryfast -crf 20` siêu tốc & ổn định 100%.
+    Tự động kiểm tra phần cứng GPU (`h264_nvenc`, `h264_qsv`) ở chuẩn Full HD 1920x1080;
+    tôn trọng `settings.ENABLE_GPU_ACCELERATION` và fallback mượt về `libx264 -preset veryfast -crf 20`.
     """
+    try:
+        from config.settings import settings
+        if not getattr(settings, "ENABLE_GPU_ACCELERATION", True):
+            return "libx264", ["-preset", "veryfast", "-crf", "20"]
+    except Exception:
+        pass
+
     candidates = [
-        ("h264_nvenc", ["-preset", "p4", "-cq", "21"]),
+        ("h264_nvenc", ["-preset", "p4", "-cq", "20"]),
+        ("h264_qsv", ["-preset", "veryfast", "-global_quality", "20"]),
     ]
     for enc_name, enc_args in candidates:
         probe_cmd = [
@@ -79,7 +88,7 @@ def render_phase_video_segment(
     use_hw_accel: bool = True,
     ffmpeg_exe: str = "ffmpeg",
 ) -> Path:
-    """Render đoạn video hoàn chỉnh (`.mp4` có cả hình và tiếng) cho 1 Phase."""
+    """Render đoạn video hoàn chỉnh (`.mp4` có cả hình và tiếng, CFR + BT.709) cho 1 Phase."""
     seg_mp4 = work_dir / f"vseg_{phase.index:02d}.mp4"
     dur = float(phase.duration_sec)
     total_int = int(math.ceil(dur))
@@ -91,14 +100,14 @@ def render_phase_video_segment(
     if not os.path.exists(r"C:\Windows\Fonts\consolab.ttf"):
         font_escaped = "C\\:/Windows/Fonts/arialbd.ttf"
 
+    # Dùng trunc(t) để hiển thị đủ trọn 1.0s đầu tiên tại mốc chẵn (ví dụ 50:00 không bị hụt về 49:59 ở frame 1)
     countdown_expr = (
-        f"%{{eif\\:max(0,{total_int}-t)/60\\:d\\:2}}\\:%{{eif\\:mod(max(0,{total_int}-t),60)\\:d\\:2}}"
+        f"%{{eif\\:max(0,{total_int}-trunc(t))/60\\:d\\:2}}\\:%{{eif\\:mod(max(0,{total_int}-trunc(t)),60)\\:d\\:2}}"
     )
     clock_color = "0x82E0AA" if phase.phase_type == "BREAK" else "0xFFFFFF"
     wave_color = "0x82E0AA@0.85" if phase.phase_type == "BREAK" else "0xF5B041@0.88"
 
     if is_cached_cinemagraph:
-        # Cinemagraph Loop trong loops_cache đã được chuẩn hóa 1920x1080 24fps yuv420p + nướng sẵn Grain & Vignette Breathing
         bg_chain = f"fps={fps},format=yuv420p"
     else:
         vfx_post = build_ffmpeg_vfx_post_filter(vfx_cfg) if vfx_cfg else ""
@@ -145,15 +154,17 @@ def render_phase_video_segment(
         cur_v = "v_stage1"
         next_input_idx += 1
 
-    milestone_stream_dur = 0.0
+    milestone_window_dur = 0.0
     if has_milestone:
         m_st = round(dur * 0.5, 2)
         m_end = round(min(dur - 1.5, m_st + 8.0), 2)
-        m_fout = max(m_st + 1.0, m_end - 1.0)
-        milestone_stream_dur = m_end
+        milestone_window_dur = max(2.0, round(m_end - m_st, 2))
+        m_local_fout = max(0.6, milestone_window_dur - 1.0)
+        # Chỉ giải mã đúng ~8s RGBA của bong bóng cột mốc rồi dịch PTS tới giữa hiệp (nhanh hơn 180x!)
         fc_lines.append(
             f"[{next_input_idx}:v]format=rgba,"
-            f"fade=t=in:st={m_st:.2f}:d=0.5:alpha=1,fade=t=out:st={m_fout:.2f}:d=1.0:alpha=1[mbub]"
+            f"fade=t=in:st=0:d=0.5:alpha=1,fade=t=out:st={m_local_fout:.2f}:d=1.0:alpha=1,"
+            f"setpts=PTS+{m_st:.2f}/TB[mbub]"
         )
         fc_lines.append(
             f"[{cur_v}][mbub]overlay=0:0:enable='between(t,{m_st:.2f},{m_end:.2f})':eof_action=pass[v_stage2]"
@@ -165,17 +176,16 @@ def render_phase_video_segment(
         f"[{cur_v}][sw]overlay={SHOWWAVES_X}:{SHOWWAVES_Y}:shortest=1,"
         f"drawtext=fontfile='{font_escaped}':text='{countdown_expr}':"
         f"fontsize=116:fontcolor={clock_color}:borderw=4:bordercolor=0x080B12:"
-        f"x={CLOCK_CENTER_X}-text_w/2:y={CLOCK_TOP_Y}[outv]"
+        f"x={CLOCK_CENTER_X}-text_w/2:y={CLOCK_TOP_Y},format=yuv420p[outv]"
     )
     fc = ";".join(fc_lines)
 
-    cmd = [ffmpeg_exe, "-y"]
+    cmd = [ffmpeg_exe, "-y", "-v", "error"]
     if is_video_bg:
         cmd += ["-stream_loop", "-1", "-t", f"{dur:.2f}", "-i", str(bg_media_path)]
     else:
         cmd += ["-loop", "1", "-t", f"{dur:.2f}", "-framerate", str(fps), "-i", str(bg_media_path)]
 
-    # HUD tĩnh: chỉ truyền -i 1 frame (không dùng -loop 1 để tránh giải mã PNG 24 lần/giây)
     cmd += [
         "-i",
         str(hud_png_path),
@@ -198,7 +208,7 @@ def render_phase_video_segment(
             "-loop",
             "1",
             "-t",
-            f"{milestone_stream_dur:.2f}",
+            f"{milestone_window_dur:.2f}",
             "-framerate",
             str(fps),
             "-i",
@@ -210,6 +220,7 @@ def render_phase_video_segment(
     else:
         v_enc, v_enc_args = "libx264", ["-preset", "veryfast", "-crf", "20"]
 
+    fps_flag = ["-fps_mode", "cfr"] if _supports_fps_mode() else ["-vsync", "cfr"]
     cmd += [
         "-filter_complex",
         fc,
@@ -222,17 +233,40 @@ def render_phase_video_segment(
         "-c:v",
         v_enc,
         *v_enc_args,
+        "-r",
+        str(fps),
+        *fps_flag,
         "-pix_fmt",
         "yuv420p",
+        *BT709_COLOR_ARGS,
         "-c:a",
         "aac",
         "-b:a",
         "192k",
         "-ar",
         "48000",
+        "-ac",
+        "2",
         str(seg_mp4),
     ]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        if v_enc != "libx264":
+            # Tự động fallback về CPU libx264 nếu GPU encoder báo lỗi
+            return render_phase_video_segment(
+                phase=phase,
+                phase_wav_path=phase_wav_path,
+                bg_media_path=bg_media_path,
+                hud_png_path=hud_png_path,
+                work_dir=work_dir,
+                speech_bubble_png_path=speech_bubble_png_path,
+                milestone_bubble_png_path=milestone_bubble_png_path,
+                vfx_cfg=vfx_cfg,
+                fps=fps,
+                use_hw_accel=False,
+                ffmpeg_exe=ffmpeg_exe,
+            )
+        raise RuntimeError(f"Pomodoro phase {phase.index} FFmpeg failed: {res.stderr[-500:]}")
     return seg_mp4
 
 
@@ -248,10 +282,12 @@ def concat_video_segments(
         "\n".join(f"file '{p.resolve().as_posix()}'" for p in video_segments),
         encoding="utf-8",
     )
-    subprocess.run(
+    res = subprocess.run(
         [
             ffmpeg_exe,
             "-y",
+            "-v",
+            "error",
             "-f",
             "concat",
             "-safe",
@@ -264,8 +300,9 @@ def concat_video_segments(
             "+faststart",
             str(final_mp4),
         ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
     )
+    if res.returncode != 0:
+        raise RuntimeError(f"Pomodoro concat_video_segments failed: {res.stderr[-500:]}")
     return final_mp4

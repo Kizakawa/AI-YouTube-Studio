@@ -164,14 +164,21 @@ def concat_videos_with_xfade(
         )
         if td <= 0.01 and 0.4 < real_dur_s < (req_dur_s - 0.12) and Path(vp).exists():
             pad_tmp = str(Path(vp).with_name(f"_concatpad_{idx_vp:03d}_{Path(vp).name}"))
+            pad_extra = max(0.2, req_dur_s - real_dur_s + 0.15)
             try:
                 subprocess.run(
                     [
                         "ffmpeg", "-y", "-v", "error",
-                        "-stream_loop", "-1", "-i", str(vp),
+                        "-i", str(vp),
                         "-t", f"{req_dur_s:.3f}",
-                        "-vf", f"scale={res_w}:{res_h}:force_original_aspect_ratio=increase,crop={res_w}:{res_h},setsar=1,fps={fps},format=yuv420p",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-threads", "2", "-an",
+                        "-vf", (
+                            f"scale={res_w}:{res_h}:force_original_aspect_ratio=increase,"
+                            f"crop={res_w}:{res_h},setsar=1,fps={fps},"
+                            f"tpad=stop_mode=clone:stop_duration={pad_extra:.3f},format=yuv420p"
+                        ),
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19",
+                        *BT709_COLOR_ARGS,
+                        "-threads", "2", "-an",
                         pad_tmp,
                     ],
                     stdout=subprocess.DEVNULL,

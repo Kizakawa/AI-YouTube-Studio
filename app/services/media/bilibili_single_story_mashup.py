@@ -370,7 +370,7 @@ def render_bilibili_single_story_short(
                 tempo_chain = f"{t_str}," if t_str != "anull" else ""
 
             a_filter = (
-                f"[1:a]{tempo_chain}volume=1.25,aresample=44100,aformat=channel_layouts=stereo,"
+                f"[1:a]{tempo_chain}volume=1.25,aresample=48000,aformat=channel_layouts=stereo,"
                 f"apad=whole_dur={seg_dur:.3f},atrim=0:{seg_dur:.3f},"
                 f"afade=t=in:ss=0:d=0.04,afade=t=out:st={fade_out_st:.2f}:d=0.05[a]"
             )
@@ -394,7 +394,7 @@ def render_bilibili_single_story_short(
                 *BT709_COLOR_ARGS,
                 "-c:a", "aac",
                 "-b:a", "192k",
-                "-ar", "44100",
+                "-ar", "48000",
                 "-ac", "2",
                 str(sub_mp4),
             ]
@@ -425,12 +425,26 @@ def render_bilibili_single_story_short(
         ])
 
         stage_mp4 = concat_mp4
-        bgm_abs = Path(settings.BASE_DIR) / bgm_path
+        bgm_abs = Path(bgm_path) if Path(bgm_path).is_absolute() else (Path(settings.BASE_DIR) / bgm_path)
+        if not bgm_abs.exists():
+            try:
+                from app.services.video_recycler import resolve_channel_bgm_fast
+
+                resolved_bgm = resolve_channel_bgm_fast(
+                    "ch_paws_hearts_rescue",
+                    text_context=f"{story_plan.get('title', '')} {story_plan.get('topic', '')}",
+                )
+                if resolved_bgm and Path(resolved_bgm).exists():
+                    bgm_abs = Path(resolved_bgm)
+            except Exception as exc:
+                logger.debug(f"[BiliSingleStory] Không tra cứu được BGM dự phòng: {exc}")
+
+        bgm_mp4 = tmp_dir / "concat_bgm.mp4"
         if bgm_abs.exists():
-            bgm_mp4 = tmp_dir / "concat_bgm.mp4"
             bgm_filter = (
-                "[0:a]volume=1.0[voice];"
-                "[1:a]lowpass=f=4200,equalizer=f=3200:t=q:w=1.2:g=-6,volume=0.085[bgm];"
+                "[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=1.0[voice];"
+                "[1:a]aresample=48000,aformat=channel_layouts=stereo,"
+                "lowpass=f=4200,equalizer=f=3200:t=q:w=1.2:g=-6,volume=0.085[bgm];"
                 "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2,"
                 "loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
             )
@@ -445,11 +459,26 @@ def render_bilibili_single_story_short(
                 "-c:v", "copy",
                 "-c:a", "aac",
                 "-b:a", "192k",
+                "-ar", "48000",
+                "-ac", "2",
                 "-t", f"{total_dur_s:.2f}",
                 str(bgm_mp4),
             ])
-            if bgm_mp4.exists() and bgm_mp4.stat().st_size > 50_000:
-                stage_mp4 = bgm_mp4
+        else:
+            run_ffmpeg([
+                "-y",
+                "-i", str(stage_mp4),
+                "-af", "aresample=48000,aformat=channel_layouts=stereo,loudnorm=I=-14:TP=-1.5:LRA=11",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-ar", "48000",
+                "-ac", "2",
+                "-t", f"{total_dur_s:.2f}",
+                str(bgm_mp4),
+            ])
+        if bgm_mp4.exists() and bgm_mp4.stat().st_size > 50_000:
+            stage_mp4 = bgm_mp4
 
         ass_path = tmp_dir / "story_subs.ass"
         SubtitleHelper.save_mashup_ass_file(
@@ -471,6 +500,8 @@ def render_bilibili_single_story_short(
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-crf", "19",
+            "-r", "30",
+            "-pix_fmt", "yuv420p",
             *BT709_COLOR_ARGS,
             "-c:a", "copy",
             "-movflags", "+faststart",
@@ -577,13 +608,20 @@ def produce_bilibili_single_story_rescue_short(
         voice_id="en-US-JennyNeural",
     )
 
+    qa = render_res.get("qa_report") or {}
+    qa_passed = bool(qa.get("passed", True)) and Path(out_video_path).exists()
+
     with SessionLocal() as db:
         j_row = db.query(VideoJob).filter(VideoJob.id == job_id).first()
         if j_row:
             j_row.video_path = out_video_path
-            j_row.status = "AWAITING_APPROVAL"
-            j_row.progress_percent = 100
-            j_row.progress_message = "✅ Đã dựng xong Single-Story Bilibili Mashup — Chờ duyệt Telegram"
+            j_row.status = "AWAITING_APPROVAL" if qa_passed else "FAILED"
+            j_row.progress_percent = 100 if qa_passed else 95
+            j_row.progress_message = (
+                "✅ Đã dựng xong Single-Story Bilibili Mashup — Chờ duyệt Telegram"
+                if qa_passed
+                else f"⚠️ Video QA cảnh báo: {qa.get('issues') or 'Cần kiểm tra chất lượng khung hình'}"
+            )
             db.commit()
 
     _mark_bvid_used(chosen_bili["bvid"])
@@ -597,24 +635,25 @@ def produce_bilibili_single_story_rescue_short(
             if s_id and s_id not in candidate_chats:
                 candidate_chats.append(s_id)
 
-        qa = render_res.get("qa_report") or {}
+        today_label = datetime.now().strftime("%d/%m")
         caption = (
             f"🎬 <b>[SINGLE-STORY BILIBILI MASHUP] VIDEO #{job_id} ĐÃ SẴN SÀNG!</b>\n"
             f"📺 <b>Kênh:</b> Paws & Hearts Rescue (<code>{channel_id}</code>)\n"
             f"🐾 <b>Nguồn gốc (1 chú chó đồng nhất):</b> Bilibili <code>{chosen_bili['bvid']}</code> (1080p Full HD — 0% YouTube)\n"
             f"🏷 <b>Tiêu đề:</b> {render_res['title']}\n"
             f"⏱ <b>Thời lượng:</b> {render_res['duration_sec']}s | 📦 <b>Dung lượng:</b> {render_res['file_size_mb']} MB\n"
-            f"🔍 <b>Video QA:</b> Sharpness={qa.get('mean_sharpness', 'N/A')} | Luma={qa.get('mean_luma', 'N/A')} | Pass={qa.get('passed', True)}\n\n"
-            f"👇 <b>Bấm nút bên dưới để Đăng ngay hoặc Lên lịch 19:00 Tối nay (11/11):</b>"
+            f"🔍 <b>Video QA:</b> Sharpness={qa.get('mean_sharpness', 'N/A')} | Luma={qa.get('mean_luma', 'N/A')} | Pass={qa_passed}\n\n"
+            f"👇 <b>Bấm nút bên dưới để Đăng ngay hoặc Lên lịch Giờ Vàng ({today_label}):</b>"
         )
         reply_markup = json.dumps({
             "inline_keyboard": [
                 [
-                    {"text": "🚀 Đăng Ngay (Public)", "callback_data": f"publish_now:{job_id}"},
-                    {"text": "⏰ Lên Lịch Giờ Vàng (19:00)", "callback_data": f"schedule_video:{job_id}"},
+                    {"text": "🚀 Đăng Ngay (Public)", "callback_data": f"publish_youtube:{job_id}"},
+                    {"text": "⏰ Lên Lịch Giờ Vàng", "callback_data": f"schedule_youtube:{job_id}"},
                 ],
                 [
-                    {"text": "❌ Hủy & Xóa File", "callback_data": f"reject_delete:{job_id}"},
+                    {"text": "🛠 Góp Ý & Sửa Lại", "callback_data": f"feedback_video:{job_id}"},
+                    {"text": "❌ Hủy & Xóa File", "callback_data": f"delete_video:{job_id}"},
                 ],
             ]
         })

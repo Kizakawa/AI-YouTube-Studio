@@ -83,3 +83,10 @@ print()
 print("=" * 60)
 print("ALL COMMITS VERIFIED - Import chain fully working!")
 print("=" * 60)
+
+
+def test_architecture_import_chain():
+    assert ScriptContract is not None
+    assert VideoPipeline is not None
+    assert VideoAgent is not None
+    assert is_ffmpeg_installed()

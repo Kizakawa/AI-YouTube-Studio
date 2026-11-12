@@ -52,8 +52,6 @@ credentials/.vault_bundle.b64
 config/channels.yaml
 *.backup
 secrets_config.zip
-*.zip
-
 
 # Database
 *.sqlite3
@@ -64,18 +62,19 @@ secrets_config.zip
 # Storage & Temporary Files
 storage/**
 !storage/**/.gitkeep
-output/**
-outputs/**
-tools/standalone_auditor/.audit_state.json
+output/**
+!output/.gitkeep
+!output/**/.gitkeep
+outputs/**
+**/loops_cache/
+tools/standalone_auditor/.audit_state.json
 tools/standalone_auditor/LATEST_AUDIT_REPORT.md
-!output/**
-outputs/**
-tools/standalone_auditor/.audit_state.json
-tools/standalone_auditor/LATEST_AUDIT_REPORT.md/.gitkeep
 *.jpg
 *.jpeg
 *.png
 !app/web/static/**
+!assets/mascots/**
+!assets/themes/**
 
 # IDE & OS
 .idea/
@@ -96,4 +95,3 @@ scratch/
 bin/
 *.exe
 *.msi
-

@@ -71,7 +71,7 @@ def build_pomodoro_study_video(
     vfx: str = "all",
     glitch_interval_sec: float = 5.0,
     ambience: str = "auto",
-    speech_lang: str = "vi",
+    speech_lang: str = "en",
     enable_speech_bubble: bool = True,
     cut_short_teaser: bool = False,
     fps: int = 24,
@@ -79,7 +79,7 @@ def build_pomodoro_study_video(
     bgm_root: Path = DEFAULT_MASTER_BGM_ROOT,
     send_telegram: bool = False,
     upload_youtube: bool = False,
-    youtube_channel: str = "",
+    youtube_channel: str = "ch_pomodoro_focus_academy",
     youtube_privacy: str = "private",
     **kwargs: Any,
 ) -> Dict[str, Any]:
@@ -211,6 +211,7 @@ def build_pomodoro_study_video(
         out_dir=out_dir,
         mascot_pack=mascot_pack,
         theme_pack=theme_pack,
+        speech_lang=speech_lang,
     )
     manifest["mascot_display"] = mascot_pack.display_name
     manifest["theme_display"] = theme_pack.display_name
@@ -293,6 +294,7 @@ def build_pomodoro_study_video(
         focus_min=focus_min,
         break_min=break_min,
         sessions=sessions,
+        speech_lang=speech_lang,
     )
     manifest["thumbnail_path"] = str(thumb_jpg)
 
@@ -300,7 +302,7 @@ def build_pomodoro_study_video(
         short_mp4 = cut_pomodoro_short_teaser(
             long_video_path=final_mp4,
             manifest=manifest,
-            fps=fps,
+            fps=30,
         )
         manifest["short_teaser_path"] = str(short_mp4)
 
@@ -308,7 +310,7 @@ def build_pomodoro_study_video(
         try:
             from app.agents.publisher_agent import PublisherAgent
 
-            pub = PublisherAgent(channel_id=youtube_channel or None)
+            pub = PublisherAgent(channel_id=youtube_channel or "ch_pomodoro_focus_academy")
             yt_res = pub.upload_video(
                 video_path=str(final_mp4),
                 title=manifest["recommended_titles"][0],
@@ -332,13 +334,18 @@ def build_pomodoro_study_video(
         from app.services.intelligence.scheduler_and_broadcast import send_telegram_video_broadcast
 
         chap_text = "\n".join(f"• <code>{c['timestamp']}</code> — {c['label']}" for c in manifest["chapters"])
+        bubble_sample = (
+            "Time for a cozy break — stretch & hydrate!"
+            if str(speech_lang).lower().startswith("en")
+            else "Cậu chủ đến giờ nghỉ ngơi chút rồi!"
+        )
         caption = (
             f"🐾 <b>LIVING STUDIO v2.0 FULL — POMODORO ({round(manifest['total_duration_sec']/60.0, 1):g} PHÚT)</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"🐕 <b>Linh vật:</b> <code>{mascot_pack.display_name}</code> (Ngủ/Học + Thức giấc mở mắt khi sang Break)\n"
             f"🎨 <b>Chủ đề mùa:</b> <code>{theme_pack.display_name}</code> • Ambience: <code>{resolved_ambience}</code>\n"
             f"📼 <b>VFX:</b> 7 lớp Retro VHS + Nhiễu băng mỗi {vfx_cfg.glitch_interval_sec:g}s • Encoder: <code>{v_enc}</code>\n"
-            f"💬 <b>Tương tác:</b> Bong bóng hội thoại <i>\"Cậu chủ đến giờ nghỉ ngơi chút rồi!\"</i> ({speech_lang})\n\n"
+            f"💬 <b>Tương tác:</b> Bong bóng hội thoại <i>\"{bubble_sample}\"</i> ({speech_lang})\n\n"
             f"📋 <b>Chapters tự động:</b>\n{chap_text}"
         )
         manifest["telegram_sent"] = bool(send_telegram_video_broadcast(str(final_mp4), caption=caption))
@@ -381,7 +388,7 @@ def main() -> None:
     parser.add_argument(
         "--speech-lang",
         choices=["vi", "en", "bilingual"],
-        default="vi",
+        default="en",
         help="Language for mascot speech bubbles",
     )
     parser.add_argument(
@@ -407,7 +414,7 @@ def main() -> None:
     parser.add_argument("--output-dir", default="", help="Optional output folder")
     parser.add_argument("--send-telegram", action="store_true", help="Send rendered video to Telegram group")
     parser.add_argument("--upload-youtube", action="store_true", help="Upload video & thumbnail to YouTube channel")
-    parser.add_argument("--youtube-channel", default="", help="Target YouTube channel ID in channels.yaml")
+    parser.add_argument("--youtube-channel", default="ch_pomodoro_focus_academy", help="Target YouTube channel ID in channels.yaml")
     parser.add_argument("--youtube-privacy", choices=["private", "unlisted", "public"], default="private")
     args = parser.parse_args()
 

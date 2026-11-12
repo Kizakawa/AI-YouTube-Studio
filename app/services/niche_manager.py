@@ -19,6 +19,7 @@ _cached_video_metadata_regexes: Dict[str, Tuple[Optional[re.Pattern], Optional[r
 # Alias mapping cho các từ khóa ngách cũ
 NICHE_ALIASES: Dict[str, str] = {
     "psychology": "psychology",
+    "dark_psychology_self_mastery": "psychology",
     "tam_ly": "psychology",
     "tam_ly_hoc": "psychology",
     "history": "history_mystery",
@@ -71,6 +72,7 @@ NICHE_ALIASES: Dict[str, str] = {
     "animal": "animal_rescue",
     "animals": "animal_rescue",
     "animal_rescue": "animal_rescue",
+    "heartwarming_animal_rescue": "animal_rescue",
     "rescue": "animal_rescue",
     "pet": "animal_rescue",
     "pets": "animal_rescue",
@@ -96,6 +98,13 @@ NICHE_ALIASES: Dict[str, str] = {
     "healing_animation": "satirical_psychology_animation",
     "people_pleaser": "satirical_psychology_animation",
     "comic_tam_ly": "satirical_psychology_animation",
+    "study_pomodoro_music": "study_pomodoro_music",
+    "pomodoro_study": "study_pomodoro_music",
+    "study_music": "study_pomodoro_music",
+    "lofi_study": "study_pomodoro_music",
+    "gaming_lockin_music": "gaming_lockin_music",
+    "gaming_lockin": "gaming_lockin_music",
+    "gaming_music": "gaming_lockin_music",
     "general": "general",
     "auto": "general",
     "tong_hop": "general",
@@ -891,6 +900,20 @@ NICHE_EXCLUSIVE_SIGNATURES: Dict[str, Tuple[List[str], str]] = {
             "alternate history", "what if history", "archduke franz ferdinand",
         ],
         "@alternatehistorywhatif-e2x",
+    ),
+    "study_pomodoro_music": (
+        [
+            "pomodoro timer", "study with me", "lofi study", "pomodoro 50/10",
+            "pomodoro 25/5", "cozy study", "study music",
+        ],
+        "ch_pomodoro_focus_academy",
+    ),
+    "gaming_lockin_music": (
+        [
+            "lock in mix", "fps gaming mix", "ranked grind music",
+            "gaming mix", "tryhard music", "synthwave gaming",
+        ],
+        "ch_lock_in_gaming_mix",
     ),
 }
 

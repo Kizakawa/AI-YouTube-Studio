@@ -623,6 +623,7 @@ class OAuthAndUploadMixin:
             raw_desc=desc_clean,
             base_title=smart_bundle.get("base_title") or clean_title,
             allow_affiliate=bool(affiliate_enabled or donation_enabled),
+            is_long_form=is_long_form_video,
         )
 
         # Chuẩn hóa ngôn ngữ mặc định & Tọa độ GPS định tuyến vùng (US Geo-Lock / Brazil Geo-Lock chuẩn BCP-47)
@@ -658,7 +659,7 @@ class OAuthAndUploadMixin:
             )
 
         # Tự động chèn khối YouTube Chapters (0:00 Intro...) cho Video Dài 16:9 (chuẩn @disastersexplained1 & @FossilVideos)
-        if is_long_form_video and not re.search(r"(?m)^0:00\s+", desc_without_trailing_hashes or ""):
+        if is_long_form_video and not re.search(r"(?m)^0?0:00(?::00)?\s+", desc_without_trailing_hashes or ""):
             try:
                 from app.agents.publisher.seo_tags_mixin import build_youtube_chapters_from_scenes
                 s_obj = json.loads(script) if isinstance(script, str) and script.strip().startswith("{") else (script if isinstance(script, dict) else {})
@@ -716,6 +717,8 @@ class OAuthAndUploadMixin:
                 "ch_paws_hearts_rescue": ("Chicago, IL, United States", 41.8781, -87.6298),
                 "ch_wild_odyssey": ("Austin, TX, United States", 30.2672, -97.7431),
                 "@alternatehistorywhatif-e2x": ("Miami, FL, United States", 25.7617, -80.1918),
+                "ch_pomodoro_focus_academy": ("Boston, MA, United States", 42.3601, -71.0589),
+                "ch_lock_in_gaming_mix": ("Seattle, WA, United States", 47.6062, -122.3321),
             }
             loc_desc, loc_lat, loc_lon = US_METRO_LOCATIONS.get(
                 str(self.channel_id or "").strip(),
@@ -817,7 +820,7 @@ class OAuthAndUploadMixin:
         except Exception as e_dup:
             logger.debug(f"[Publisher] Kiểm tra trùng lặp: {e_dup}")
 
-        yt_category_id = self.resolve_locked_category_id()
+        yt_category_id = self.resolve_locked_category_id(requested_category_id=category_id)
 
         body = {
             "snippet": {

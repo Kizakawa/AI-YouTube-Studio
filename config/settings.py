@@ -220,17 +220,47 @@ class Settings:
             "language": "en",
             "preferred_voice": "en-US-ChristopherNeural",
         },
+        "ch_psychology_of_the_world": {
+            "name": "Psychology of the World",
+            "niche": "psychology",
+            "language": "en",
+            "preferred_voice": "en-US-AndrewNeural",
+        },
+        "channel_maya": {
+            "name": "Psychology of the World",
+            "niche": "psychology",
+            "language": "en",
+            "preferred_voice": "en-US-AndrewNeural",
+        },
         "ch_deep_sea": {
             "name": "Abyssal Secrets",
             "niche": "deep_sea_earth_mysteries",
             "language": "en",
             "preferred_voice": "en-US-GuyNeural",
         },
+        "ch_the_mysteries_of_the_world": {
+            "name": "The mysteries of the world",
+            "niche": "deep_sea_earth_mysteries",
+            "language": "en",
+            "preferred_voice": "en-US-BrianNeural",
+        },
+        "ucsrjiil67qxidtxt70z-iwa": {
+            "name": "The mysteries of the world",
+            "niche": "deep_sea_earth_mysteries",
+            "language": "en",
+            "preferred_voice": "en-US-BrianNeural",
+        },
         "ch_heart_rescue": {
             "name": "Paws of Hope",
             "niche": "heartwarming_animal_rescue",
             "language": "en",
             "preferred_voice": "en-US-AriaNeural",
+        },
+        "ch_paws_hearts_rescue": {
+            "name": "Paws & Hearts Rescue",
+            "niche": "animal_rescue",
+            "language": "en",
+            "preferred_voice": "en-US-JennyNeural",
         },
         "ch_wild_odyssey": {
             "name": "Wild Odyssey",
@@ -261,6 +291,24 @@ class Settings:
             "niche": "deep_sea_earth_mysteries",
             "language": "pt-BR",
             "preferred_voice": "pt-BR-AntonioNeural",
+        },
+        "ch_pomodoro_focus_academy": {
+            "name": "Pomodoro Focus Academy",
+            "niche": "study_pomodoro_music",
+            "language": "en",
+            "preferred_voice": "en-US-ChristopherNeural",
+        },
+        "ch_study_music_lofi": {
+            "name": "Pomodoro Focus Academy",
+            "niche": "study_pomodoro_music",
+            "language": "en",
+            "preferred_voice": "en-US-ChristopherNeural",
+        },
+        "ch_lock_in_gaming_mix": {
+            "name": "LOCK IN // Gaming Mix",
+            "niche": "gaming_lockin_music",
+            "language": "en",
+            "preferred_voice": "en-US-GuyNeural",
         },
     }
 
@@ -361,6 +409,13 @@ class Settings:
         "ch_heart_rescue": "ch_paws_hearts_rescue",
         "channel_6": "ch_paws_hearts_rescue",
         "channel_7": "ch_odisseia_selvagem",
+        "ch_study_music_lofi": "ch_pomodoro_focus_academy",
+        "channel_8": "ch_pomodoro_focus_academy",
+        "@pomodorofocusacademy": "ch_pomodoro_focus_academy",
+        "ucchbsyvxypzr3cafi1svymq": "ch_pomodoro_focus_academy",
+        "channel_9": "ch_lock_in_gaming_mix",
+        "@lockingamingmix": "ch_lock_in_gaming_mix",
+        "uc83iaowxxjavngz107wendq": "ch_lock_in_gaming_mix",
     }
 
     @classmethod

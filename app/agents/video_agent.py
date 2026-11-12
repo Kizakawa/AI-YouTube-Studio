@@ -564,10 +564,10 @@ class VideoAgent:
                         niche=clip_niche,
                     )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
-                if duration >= 3.0:
+                if is_hook and duration >= 2.6:
                     logger.info(
-                        f"  Scene {scene.scene_id}: image ({raw_type}) dài {duration:.1f}s (>= 3.0s) → "
-                        f"2-Shot Dynamic Camera Cut (Focal Punch-In 1.28x giữa cảnh)"
+                        f"  Scene {scene.scene_id}: HOOK image ({raw_type}) dài {duration:.1f}s (>= 2.6s) → "
+                        f"Dynamic Hook Camera Cut (Focal Punch-In)"
                         f"{f' [{clip_niche} Grading]' if clip_niche else ''}"
                     )
                     render_opening_hook_multi_cut(
@@ -580,11 +580,11 @@ class VideoAgent:
                         min_cuts=1,
                         is_scifi=is_scifi_clip,
                         niche=clip_niche,
-                        is_hook_scene=is_hook,
+                        is_hook_scene=True,
                     )
                 else:
                     logger.info(
-                        f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns [{motion}] {duration:.1f}s"
+                        f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns 2.5x Supersampled [{motion}] {duration:.1f}s"
                         f"{f' [{clip_niche} Grading]' if clip_niche else ''}"
                     )
                     image_to_video(
@@ -629,13 +629,19 @@ class VideoAgent:
                     cur_c_sec = _get_sync_ms(clip_path) / 1000.0
                     if 0.4 < cur_c_sec < duration - 0.25:
                         sync_tmp = str(Path(clip_path).with_name(f"_sync_{Path(clip_path).name}"))
+                        pad_extra = max(0.2, duration - cur_c_sec + 0.15)
                         _sp_cb.run(
                             [
                                 "ffmpeg", "-y", "-v", "error",
-                                "-stream_loop", "-1", "-i", str(clip_path),
+                                "-i", str(clip_path),
                                 "-t", f"{duration:.3f}",
-                                "-vf", f"scale={job.resolution_w}:{job.resolution_h},setsar=1,fps={job.fps},format=yuv420p",
-                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-threads", "2", "-an",
+                                "-vf", (
+                                    f"scale={job.resolution_w}:{job.resolution_h},setsar=1,fps={job.fps},"
+                                    f"tpad=stop_mode=clone:stop_duration={pad_extra:.3f},format=yuv420p"
+                                ),
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
+                                "-threads", "2", "-an",
                                 sync_tmp,
                             ],
                             stdout=_sp_cb.DEVNULL,
@@ -678,12 +684,17 @@ class VideoAgent:
                                 _sp_cb.run(
                                     [
                                         "ffmpeg", "-y", "-v", "error",
-                                        "-stream_loop", "-1",
                                         "-ss", f"{max(0.0, bright_start):.2f}",
                                         "-i", src_for_nobk,
                                         "-t", f"{duration:.3f}",
-                                        "-vf", f"scale={job.resolution_w}:{job.resolution_h}:force_original_aspect_ratio=increase,crop={job.resolution_w}:{job.resolution_h},setsar=1,fps={job.fps},format=yuv420p",
-                                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19", "-threads", "2", "-an",
+                                        "-vf", (
+                                            f"scale={job.resolution_w}:{job.resolution_h}:force_original_aspect_ratio=increase,"
+                                            f"crop={job.resolution_w}:{job.resolution_h},setsar=1,fps={job.fps},"
+                                            f"tpad=stop_mode=clone:stop_duration={max(1.0, duration):.2f},format=yuv420p"
+                                        ),
+                                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "19",
+                                        "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
+                                        "-threads", "2", "-an",
                                         nobk_vid,
                                     ],
                                     stdout=_sp_cb.DEVNULL,

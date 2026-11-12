@@ -1,0 +1,85 @@
+id: study_pomodoro_music
+name: Study With Me & Pomodoro Focus Music (Living Studio)
+badge: 📚 Pomodoro Study
+icon: 📚
+description: >
+  Long-form interactive Pomodoro Study With Me sessions (25/5 & 50/10 timers) featuring living mascot companions,
+  seasonal cozy atmospheres, gentle singing bowl chimes, and 100% original instrumental lofi, piano, jazz, and ambient music.
+target_audience: Students, researchers, software engineers, readers, and remote professionals seeking ad-free deep focus sessions.
+script_blueprint:
+  tone_of_voice: Warm, calm, encouraging, cozy study companion.
+  pacing: Calm ambient flow, structured around Focus and Break intervals.
+  hook_formulas:
+  - "Settle in for a focused Pomodoro study session with cozy rain and warm lofi piano."
+  narrative_structure: Prep (00:00) -> Focus Session 1..N -> Singing Bowl Chime -> Restorative Break 1..N
+  forbidden_words:
+  - spam
+  cta_templates:
+  - "What exam or project are you working on today? Drop your study goal below so we can finish it together! ☕📚"
+visual_aesthetics:
+  art_style: Cozy Lofi Anime & Warm Illustrated Living Study Room
+  camera_angles: Wide cozy desk framing with window weather view, warm desk lamp, steaming coffee mug, and sleeping pet companion
+  color_palette: Warm amber lamp light, cozy mahogany wood, soft rainy twilight blues, calming sage green break accents
+  master_prompt_prefix: cozy illustrated study room, warm desk lamp, rain on window, lo-fi aesthetic, 16:9 widescreen
+  master_prompt_suffix: ultra-detailed cozy atmosphere, soft lighting, peaceful mood, no watermark, no text
+  negative_prompts: harsh neon glare, horror, cluttered text, watermark, blurry
+subtitles:
+  font_family: Montserrat, sans-serif
+  font_weight: '800'
+  font_size: 48
+  primary_color: '#FFFFFF'
+  highlight_color: '#F5B041'
+  accent_color: '#82E0AA'
+  outline_color: '#000000'
+  outline_width: 3
+  margin_bottom: 420
+audio:
+  preferred_voice_en: en-US-ChristopherNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  rate: -5%
+  pitch: 0Hz
+  bgm_vibe: warm lofi piano, cozy cafe jazz, rainy library felt piano, deep focus ambient
+  sfx_cues:
+  - singing_bowl_chime
+  - gentle_rain
+target_wpm: 125
+monetization:
+  affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Interactive Long-Form Pomodoro Study With Me sessions (25/5 & 50/10 timers) and vertical 9:16 study teaser Shorts
+    featuring cozy living mascot companions, seasonal window weather cinemagraphs, singing bowl chimes, and original instrumental focus music.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      When contrasting distraction vs deep focus in a Short teaser, never use 'vs' comparison edits; search clean cozy study desk or rainy library atmospheres directly.
+    single_entity_body_scene_rule: >
+      Every scene query must describe one calm cozy environment or study companion ('cozy rainy library desk', 'sleeping golden retriever fireplace') with zero 'vs'.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Cozy Setting / Companion] + [Weather or Lighting Mood]' with ZERO 'vs' / 'versus'.
+    format_unlock_rule: >
+      Support both 16:9 widescreen Living Studio cinemagraph loops for long-form Pomodoro timers and 9:16 vertical cuts for Shorts teasers.
+    allow_3d_cgi_video: false
+    anti_flop_scene_continuity_rule: >
+      Maintain consistent seasonal color palette, warm desk lamp lighting, and mascot companion state (sleeping/studying during Focus, waking gently during Break).
+    single_entity_query_examples:
+    - "cozy rainy study desk lamp"
+    - "autumn library window rain"
+    - "sleeping golden retriever fireplace"
+    - "warm cafe piano rainy evening"
+    stock_fallback_examples:
+    - "rainy window desk"
+    - "cozy library lamp"
+    - "warm fireplace cabin"
+    - "coffee cup rain"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#capcut"
+    - "#phonk"
+    - "who would win"
+    - "vs edit"
+    forbidden_ai_slop_markers:
+    - "#aivideo"
+    - "#sora"
+    - "#kling"
+    - "ai generated"

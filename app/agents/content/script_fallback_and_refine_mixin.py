@@ -716,5 +716,10 @@ HARD RULES:
   "description": "Engaging description with hashtags"
 }}
 """
-        raw_text = self._call_api(prompt, json_mode=True, timeout=30)
-        return self._parse_json_script(raw_text, channel_niche=channel_niche)
+        try:
+            raw_text = self._call_api(prompt, json_mode=True, timeout=30)
+            return self._parse_json_script(raw_text, channel_niche=channel_niche)
+        except Exception as e:
+            logger.warning(f"⚠️ [ContentAgent.convert_discussion_to_script] Gemini API quá tải/lỗi ({e}) -> Dùng kịch bản dự phòng 5 hồi!")
+            last_user_msg = next((h["content"] for h in reversed(history) if h.get("role") == "user"), "Viral Shorts Concept")
+            return self._fallback_script(topic=str(last_user_msg)[:80], channel_niche=channel_niche, language=language)

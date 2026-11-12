@@ -1364,7 +1364,14 @@ async def api_upload_scene_media(job_id: int, scene_id: int, file: UploadFile = 
 @app.post("/api/videos/{job_id}/render-approved")
 async def api_render_approved_storyboard(job_id: int, background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """Duyệt Storyboard và bắt đầu render hoàn chỉnh video với các media đã được lựa chọn kỹ."""
-    return await trigger_render_from_web(job_id, background_tasks)
+    import inspect as _inspect
+    import sys as _sys
+    _srv_mod = _sys.modules.get("app.web.server")
+    _trigger_fn = getattr(_srv_mod, "trigger_render_from_web", trigger_render_from_web) if _srv_mod is not None else trigger_render_from_web
+    res = _trigger_fn(job_id, background_tasks)
+    if _inspect.isawaitable(res):
+        return await res
+    return res
 
 @app.get("/api/videos/{job_id}/shot-table")
 async def api_get_shot_table(job_id: int) -> Dict[str, Any]:

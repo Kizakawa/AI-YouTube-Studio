@@ -24,6 +24,7 @@ def generate_youtube_seo_package(
     out_dir: Path,
     mascot_pack: Optional[MascotPack] = None,
     theme_pack: Optional[ThemePack] = None,
+    speech_lang: str = "en",
 ) -> Dict[str, Any]:
     """Tạo bộ Tiêu đề, Mô tả chuẩn SEO YouTube kèm Timestamps Chapters và Gợi ý Pinned Comment."""
     total_sec = schedule[-1].end_sec if schedule else 0.0
@@ -52,16 +53,25 @@ def generate_youtube_seo_package(
             if dn not in unique_tracks:
                 unique_tracks.append(dn)
 
-    pinned_comment_ideas = [
-        f"🐾 {mascot_name}: 'Hôm nay cậu chủ đang ôn thi môn gì hay làm dự án gì thế? Comment mục tiêu bên dưới để mình nằm canh cho hoàn thành 100% nhé! 👇☕'",
-        "🗳️ POLL TUẦN NÀY: Video Pomodoro tiếp theo các bạn muốn học cùng ai? (1) Cún Golden 🐕 (2) Mèo Tam Thể 🐱 (3) Corgi Mông Tròn 🐶 (4) Cô Bạn Anime Lofi 🎧 (5) Capybara Đội Quýt 🍊",
-    ]
+    is_vi = str(speech_lang or "en").strip().lower() == "vi"
+    if is_vi:
+        pinned_comment_ideas = [
+            f"🐾 {mascot_name}: 'Hôm nay cậu chủ đang ôn thi môn gì hay làm dự án gì thế? Comment mục tiêu bên dưới để mình nằm canh cho hoàn thành 100% nhé! 👇☕'",
+            "🗳️ POLL TUẦN NÀY: Video Pomodoro tiếp theo các bạn muốn học cùng ai? (1) Cún Golden 🐕 (2) Mèo Tam Thể 🐱 (3) Corgi Mông Tròn 🐶 (4) Cô Bạn Anime Lofi 🎧 (5) Capybara Đội Quýt 🍊",
+        ]
+        break_quote = "Cậu chủ đến giờ nghỉ ngơi chút rồi! ☕"
+    else:
+        pinned_comment_ideas = [
+            f"🐾 {mascot_name}: 'What exam, book, or project are you working on today? Drop your study goal below so we can finish it 100% together! 👇☕'",
+            "🗳️ STUDY BUDDY POLL: Who should join our next Pomodoro session? (1) Golden Retriever 🐕 (2) Calico Cat 🐱 (3) Cozy Corgi 🐶 (4) Anime Lofi Girl 🎧 (5) Capybara 🍊",
+        ]
+        break_quote = "Time for a cozy break — stretch & hydrate! ☕"
 
     desc_lines = [
-        f"🐾 Welcome to Cozy Living Study Studio! Settle in for a productive {f_str}/{b_str} Pomodoro session ({sessions} cycles) with your {comp_title} ({mascot_name}) in our {theme_name} setting.",
+        f"🐾 Welcome to Pomodoro Focus Academy! Settle in for a productive {f_str}/{b_str} Pomodoro session ({sessions} cycles) with your {comp_title} ({mascot_name}) in our {theme_name} setting.",
         "",
         "✨ INTERACTIVE LIVING STUDIO FEATURES:",
-        f"• {mascot_name} breathes, twitches its ears, wags its tail, and wakes up during Break Time to remind you: 'Cậu chủ đến giờ nghỉ ngơi chút rồi! ☕'",
+        f"• {mascot_name} breathes gently, twitches its ears, and wakes up during Break Time to remind you: '{break_quote}'",
         f"• 📚 {f_str} minutes of deep focused study / reading / coding",
         f"• ☕ {b_str} minutes of relaxing break music (with gentle singing bowl bell chimes)",
         f"• 🔁 {sessions} complete cycles • Zero mid-roll ads for uninterrupted flow state",
@@ -69,11 +79,11 @@ def generate_youtube_seo_package(
         "⏱️ TIMESTAMPS / STUDY CHAPTERS:",
         *chapter_lines,
         "",
-        "🎵 ORIGINAL GOOGLE FLOW CURATED TRACKLIST IN THIS SESSION:",
+        "🎵 ORIGINAL CURATED INSTRUMENTAL TRACKLIST IN THIS SESSION:",
         *[f"• {t}" for t in unique_tracks[:25]],
         "",
-        "💬 PINNED COMMENT / COMMUNITY ENGAGEMENT:",
-        *[f"• {c}" for c in pinned_comment_ideas],
+        "💬 COMMUNITY STUDY CHECK-IN:",
+        f"• {pinned_comment_ideas[0]}",
         "",
         "#pomodorotimer #studywithme #studymusic #lofistudy #readingmusic #cozystudy #pomodoro5010 #deepfocus",
     ]

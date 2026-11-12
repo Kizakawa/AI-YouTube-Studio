@@ -1,0 +1,84 @@
+id: gaming_lockin_music
+name: LOCK IN // Gaming Focus & Synthwave/Phonk Mix
+badge: 🎮 Gaming Lock-In
+icon: 🎮
+description: >
+  High-focus 4-phase instrumental gaming music mixes (Warm-Up -> Lock-In -> God-Mode -> Cooldown) engineered with
+  cyberpunk synthwave, dark electro, and precision drift phonk for ranked FPS/MOBA grind and coding sprints.
+target_audience: Competitive gamers (Valorant, CS2, Apex, League, Dota 2), streamers, and night-owl coders entering flow state.
+script_blueprint:
+  tone_of_voice: Crisp, tactical, high-focus cybernetic HUD operator.
+  pacing: Progressive BPM arc from 105 BPM Warm-Up to 132 BPM God-Mode and smooth 95 BPM Cooldown.
+  hook_formulas:
+  - "System online: 4-phase ranked lock-in mix engaged — zero mid-roll ads, pure flow state."
+  narrative_structure: Phase 1 Warm-Up -> Phase 2 Lock-In -> Phase 3 God-Mode -> Phase 4 Cooldown
+  forbidden_words:
+  - spam
+  cta_templates:
+  - "What game or rank are you grinding tonight? Lock in your target rank in the comments! 🎯🔥"
+visual_aesthetics:
+  art_style: Futuristic Cyberpunk Tactical HUD & Neon Rain Overpass Cinemagraph
+  camera_angles: Wide cockpit/desk cybernetic HUD perspective, neon city skyline rain, reactive bass spectrum
+  color_palette: Electric cyan, neon magenta, tactical emerald, deep obsidian contrast
+  master_prompt_prefix: futuristic cyberpunk gaming setup, neon rain skyline, sleek tactical HUD aesthetic, 16:9 widescreen
+  master_prompt_suffix: razor-sharp 4k detail, atmospheric neon reflections, no watermark, no cluttered text
+  negative_prompts: blurry, washed out colors, watermark, signature, low resolution
+subtitles:
+  font_family: Montserrat, sans-serif
+  font_weight: '900'
+  font_size: 48
+  primary_color: '#FFFFFF'
+  highlight_color: '#00F5D4'
+  accent_color: '#FF2A85'
+  outline_color: '#000000'
+  outline_width: 3
+  margin_bottom: 420
+audio:
+  preferred_voice_en: en-US-GuyNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  rate: +0%
+  pitch: 0Hz
+  bgm_vibe: dark synthwave, cyberpunk bassline, precision gaming phonk, zero distracting vocals
+  sfx_cues:
+  - hud_boot
+  - phase_shift
+target_wpm: 140
+monetization:
+  affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    4-Phase Instrumental Gaming Lock-In Mixes (Warm-Up -> Lock-In -> God-Mode -> Cooldown) with reactive tactical HUD overlays,
+    neon cyberpunk rain loops, bass spectrum visualizers, and ad-free flow-state pacing for competitive gamers and coders.
+  video_search_strategy:
+    dual_track_clash_rule: >
+      Never search 'A vs B' gameplay comparison edits; prioritize clean cyberpunk neon skyline loops, futuristic cockpit HUD visuals, and nocturnal rain aesthetics.
+    single_entity_body_scene_rule: >
+      Use clean single-scene visual queries ('cyberpunk neon rain skyline', 'futuristic gaming desk setup') with zero 'vs' or watermarked esports broadcast clips.
+    stock_and_fallback_rule: >
+      Strictly 2-4 English words '[Cyberpunk / Futuristic Setting] + [Neon / Rain Atmosphere]' with ZERO 'vs' / 'versus'.
+    format_unlock_rule: >
+      Support 16:9 widescreen 60fps/30fps HUD visualizers for long-form mixes and 9:16 vertical Shorts teasers.
+    allow_3d_cgi_video: true
+    anti_flop_scene_continuity_rule: >
+      Match visual energy and HUD accent palette to the active BPM phase (cyan Warm-Up, emerald Lock-In, crimson/magenta God-Mode, deep indigo Cooldown).
+    single_entity_query_examples:
+    - "cyberpunk neon city rain night"
+    - "futuristic gaming setup dark room"
+    - "neon highway night drive loop"
+    - "digital hud hologram dark background"
+    stock_fallback_examples:
+    - "neon city rain"
+    - "cyberpunk street night"
+    - "gaming desk neon"
+    - "abstract neon grid"
+    forbidden_edit_markers:
+    - "#edit"
+    - "#edits"
+    - "#vsedit"
+    - "#capcut"
+    - "who would win"
+    - "vs edit"
+    - "montage edit"
+    forbidden_ai_slop_markers:
+    - "#aishorts"
+    - "made with ai"

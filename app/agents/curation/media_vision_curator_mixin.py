@@ -492,6 +492,10 @@ TRẢ VỀ JSON DUY NHẤT:
                 w for w in _re_fb.findall(r"[a-zA-Z]{3,}", f"{narration}".lower())
                 if w not in _stop_fb
             }
+            query_spec_tokens = {
+                w for w in _re_fb.findall(r"[a-zA-Z]{3,}", f"{scene_queries_str} {expected_vis}".lower())
+                if w not in _stop_fb and w not in _habitat_generic_fb
+            }
             min_req_anchors = 2 if len(core_subj_tokens | scene_intent_tokens) >= 2 else 1
             min_spec_hits = 2 if len(specific_subj_tokens) >= 2 else 1
             best_det_cand = None
@@ -503,8 +507,14 @@ TRẢ VỀ JSON DUY NHẤT:
                 cand_tokens = set(_re_fb.findall(r"[a-zA-Z]{3,}", slug_txt))
                 if neg_tokens and cand_tokens.intersection(neg_tokens - core_subj_tokens - scene_intent_tokens):
                     continue
-                if req_subj_only_tokens and not all(t in cand_tokens for t in req_subj_only_tokens[:2]):
-                    continue
+                if req_subj_only_tokens:
+                    has_all_subj = all(t in cand_tokens for t in req_subj_only_tokens[:2])
+                    has_partial_subj_plus_query = (
+                        any(t in cand_tokens for t in req_subj_only_tokens)
+                        and len(cand_tokens.intersection(query_spec_tokens)) >= 2
+                    )
+                    if not (has_all_subj or has_partial_subj_plus_query):
+                        continue
                 subj_hits = len(cand_tokens.intersection(core_subj_tokens))
                 spec_hits = len(cand_tokens.intersection(specific_subj_tokens))
                 intent_hits = len(cand_tokens.intersection(scene_intent_tokens))

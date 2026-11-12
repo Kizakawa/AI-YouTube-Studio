@@ -174,6 +174,13 @@ CHANNEL_STAGGER_MINUTES: Dict[str, int] = {
     "@misteriosdomundo-tv": 65,
     "ucvfonq9jcpvvze8e1cgnng": 65,
     "ucvfonq9jcpvvze8e1cgng": 65,
+    "ch_pomodoro_focus_academy": -90,
+    "ch_study_music_lofi": -90,
+    "@pomodorofocusacademy": -90,
+    "ucchbsyvxypzr3cafi1svymq": -90,
+    "ch_lock_in_gaming_mix": 90,
+    "@lockingamingmix": 90,
+    "uc83iaowxxjavngz107wendq": 90,
 }
 
 
@@ -291,6 +298,10 @@ def get_longform_slot_for_channel(channel_id: str) -> Dict[str, Any]:
         hm = (22, 30)
     elif any(k in fam_low for k in ("ch_wild_odyssey", "@wildodysseyhq")):
         hm = (22, 30)
+    elif any(k in fam_low for k in ("ch_pomodoro_focus_academy", "ch_study_music_lofi", "@pomodorofocusacademy", "ucchbsyvxypzr3cafi1svymq")):
+        hm = (12, 0)
+    elif any(k in fam_low for k in ("ch_lock_in_gaming_mix", "@lockingamingmix", "uc83iaowxxjavngz107wendq")):
+        hm = (20, 0)
     else:
         hm = (22, 0)
 

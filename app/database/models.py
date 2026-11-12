@@ -52,6 +52,15 @@ CANONICAL_CHANNEL_MAP = {
     "ucvfonq9jcpvvze8e1cgng": "ch_misterios_do_mundo",
     "ucvfonq9jcpvvze8e1cgnng": "ch_misterios_do_mundo",
     "@misteriosdomundo-tv": "ch_misterios_do_mundo",
+    # 8. Pomodoro Focus Academy (EN — Study Music & Pomodoro Living Studio)
+    "ch_pomodoro_focus_academy": "ch_pomodoro_focus_academy",
+    "ch_study_music_lofi": "ch_pomodoro_focus_academy",
+    "ucchbsyvxypzr3cafi1svymq": "ch_pomodoro_focus_academy",
+    "@pomodorofocusacademy": "ch_pomodoro_focus_academy",
+    # 9. LOCK IN // Gaming Mix (EN — 4-Phase Gaming Focus & Synthwave/Phonk Mix)
+    "ch_lock_in_gaming_mix": "ch_lock_in_gaming_mix",
+    "uc83iaowxxjavngz107wendq": "ch_lock_in_gaming_mix",
+    "@lockingamingmix": "ch_lock_in_gaming_mix",
 }
 
 

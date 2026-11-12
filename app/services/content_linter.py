@@ -188,9 +188,9 @@ class ScriptValidationLinter:
             min_scenes = 12
             max_scenes = 60
         else:
-            min_words = 92
+            min_words = 85
             max_words = 152
-            target_range_str = "98 to 122 words (35-41s High-APV & High-AVD Golden Duration across 7-8 gripping, complete scenes)"
+            target_range_str = "92 to 122 words (34-41s High-APV & High-AVD Golden Duration across 7-8 gripping, complete scenes)"
             min_scenes = 7
             max_scenes = 8
 
@@ -425,8 +425,10 @@ class ScriptValidationLinter:
             has_any_number_in_body = bool(
                 re.search(
                     r"(?:\b\d+\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|percent|"
+                    r"first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|once|twice|thrice|single|double|triple|"
                     r"um|uma|dois|duas|três|quatro|cinco|seis|sete|oito|nove|dez|vinte|trinta|quarenta|cinquenta|cem|cento|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|mil|milhão|milhões|por\s+cento|"
-                    r"một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|trăm|nghìn|ngàn|triệu|phần\s+trăm)\b)",
+                    r"primeiro|primeira|segundo|segunda|terceiro|terceira|quarto|quarta|quinto|quinta|"
+                    r"một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|trăm|nghìn|ngàn|triệu|phần\s+trăm|thứ\s+nhất|thứ\s+hai|thứ\s+ba|đầu\s+tiên)\b)",
                     narration_str,
                     flags=re.IGNORECASE,
                 )

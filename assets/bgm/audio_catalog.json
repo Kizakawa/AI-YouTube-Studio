@@ -1,28 +1,52 @@
 {
-  "version": "2.0",
+  "version": "2.1",
   "description": "O(1) Hash-Indexed Multi-Channel Audio Catalog (Zero Disk-Scan Latency)",
   "channel_to_niche_folder": {
     "ch_paws_hearts_rescue": "01_animal_rescue_paws",
+    "@pawsandheartsrescue": "01_animal_rescue_paws",
+    "ucv-2dyuqkx1u0cjqdmzdhta": "01_animal_rescue_paws",
     "animal_rescue": "01_animal_rescue_paws",
+    "heartwarming_animal_rescue": "01_animal_rescue_paws",
     "paws_hearts": "01_animal_rescue_paws",
     "ch_wild_odyssey": "02_wildlife_predators",
+    "@wildodysseyhq": "02_wildlife_predators",
+    "uclsjhbvjjxi-j16vzxxs68a": "02_wildlife_predators",
     "ch_odisseia_selvagem": "02_wildlife_predators",
+    "@odisseiaselvagemoficial": "02_wildlife_predators",
+    "ucpbqs4h5qugpu3hcqjg-p9w": "02_wildlife_predators",
     "wildlife_predators": "02_wildlife_predators",
     "wildlife": "02_wildlife_predators",
+    "ch_the_mysteries_of_the_world": "03_deep_sea_mysteries",
     "ucsrjiil67qxidtxt70z-iwa": "03_deep_sea_mysteries",
+    "@themysteriesoftheworld-f3w": "03_deep_sea_mysteries",
     "ch_misterios_do_mundo": "03_deep_sea_mysteries",
+    "@misteriosdomundo-tv": "03_deep_sea_mysteries",
+    "ucvfonq9jcpvvze8e1cgnng": "03_deep_sea_mysteries",
     "deep_sea_earth_mysteries": "03_deep_sea_mysteries",
     "mystery": "03_deep_sea_mysteries",
     "channel_maya": "04_dark_psychology",
     "ch_psychology_of_the_world": "04_dark_psychology",
+    "@vv1n-oe9gs": "04_dark_psychology",
+    "uc1_lvpilxq-j4sfrqozfrkw": "04_dark_psychology",
+    "dark_psychology_self_mastery": "04_dark_psychology",
     "psychology": "04_dark_psychology",
     "@alternatehistorywhatif-e2x": "05_alternate_history",
+    "ch_alternate_history": "05_alternate_history",
     "alternate_history": "05_alternate_history",
     "history": "05_alternate_history",
+    "ch_pomodoro_focus_academy": "06_study_music_lofi",
+    "@pomodorofocusacademy": "06_study_music_lofi",
+    "ucchbsyvxypzr3cafi1svymq": "06_study_music_lofi",
     "ch_study_music_lofi": "06_study_music_lofi",
+    "study_pomodoro_music": "06_study_music_lofi",
     "study_music": "06_study_music_lofi",
     "pomodoro_study": "06_study_music_lofi",
-    "lofi_study": "06_study_music_lofi"
+    "lofi_study": "06_study_music_lofi",
+    "ch_lock_in_gaming_mix": "07_gaming_lockin_hud",
+    "@lockingamingmix": "07_gaming_lockin_hud",
+    "uc83iaowxxjavngz107wendq": "07_gaming_lockin_hud",
+    "gaming_lockin_music": "07_gaming_lockin_hud",
+    "gaming_lockin": "07_gaming_lockin_hud"
   },
   "niches": {
     "01_animal_rescue_paws": {
@@ -175,6 +199,26 @@
         "bell_break_chime": "06_study_music_lofi/STUDY_SFX_29_bell_break_chime.wav",
         "bell_session_complete": "06_study_music_lofi/STUDY_SFX_30_bell_session_complete.wav"
       }
+    },
+    "07_gaming_lockin_hud": {
+      "prefix": "GAME",
+      "default_bgm": "07_gaming_lockin_hud/GAME_BGM_01_warmup_night_shift.wav",
+      "master_library_dir": "D:/AI_YouTube_Project_Ready/Music/07_gaming_lockin_hud",
+      "bgm_tracks": {
+        "warmup_night_shift": {
+          "file": "07_gaming_lockin_hud/GAME_BGM_01_warmup_night_shift.wav",
+          "instrument": "Dark Synthwave Analog Arpeggio & Deep Bass",
+          "bpm": 108,
+          "semantic_triggers": ["warmup", "neon", "synthwave", "cyberpunk", "night", "gaming", "aim"]
+        },
+        "lockin_overdrive": {
+          "file": "07_gaming_lockin_hud/GAME_BGM_02_lockin_overdrive.wav",
+          "instrument": "Driving Cyberpunk Bassline & Precision Percussion",
+          "bpm": 126,
+          "semantic_triggers": ["lock in", "overdrive", "ranked", "fps", "valorant", "clutch", "tryhard", "godmode"]
+        }
+      },
+      "sfx_tracks": {}
     }
   }
 }
