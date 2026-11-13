@@ -1,20 +1,35 @@
 <div align="center">
 
-# 🎬 AI YouTube Studio
-### Autonomous LangGraph Multi-Agent Video Production & Multi-Channel Operations Platform
+# 🎬 AI YouTube Studio — Hệ Thống Tự Động Hóa Sản Xuất & Quản Trị Vận Hành Đa Kênh
+### Autonomous Multi-Agent Media Production, SQLAlchemy ORM & Multi-Channel Operations Platform
 
 [![CI Quality Gate](https://github.com/Kizakawa/AI-YouTube-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/Kizakawa/AI-YouTube-Studio/actions/workflows/ci.yml)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph_Multi--Agent-1C3C3C)](#system-architecture)
+[![Database](https://img.shields.io/badge/Database-SQLAlchemy_ORM_(PostgreSQL_%7C_SQLite_WAL)-003B57?logo=postgresql&logoColor=white)](#)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B_(242_Modules)-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Dashboard-FastAPI_%2B_Async-009688?logo=fastapi&logoColor=white)](#)
-[![FFmpeg GPU](https://img.shields.io/badge/Media_Engine-FFmpeg_NVENC_%7C_QSV-007808?logo=ffmpeg&logoColor=white)](#living-studio-v20--cinemagraph-engine)
-[![Test Suite](https://img.shields.io/badge/Tests-179_Passed-10B981?logo=pytest&logoColor=white)](#testing--quality-assurance)
+[![Test Suite](https://img.shields.io/badge/Automated_QA-179_Pytest_Passed-10B981?logo=pytest&logoColor=white)](#testing--quality-assurance)
 
-**End-to-end AI media engineering platform** orchestrating topic intelligence, self-healing script generation, multi-tier neural TTS, **3-Frame Multimodal Vision curation**, perceptual `dHash` deduplication (`Mini-RAG`), **2.5x supersampled GPU FFmpeg rendering**, and multi-account YouTube Data/Analytics API operations across **9 channels (7 niche verticals)**.
+*Hệ thống tự động hóa sản xuất và quản trị vận hành 9 kênh nội dung số quy mô lớn (242 module Python, 179 kiểm thử tự động): tích hợp tầng truy xuất CSDL SQLAlchemy ORM (tự động chuyển đổi dự phòng PostgreSQL ↔ SQLite WAL), điều phối quy trình đa tác tử LangGraph và quản lý hạn ngạch đa tài khoản.*
 
-[📖 Deep-Dive System Design (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md) • [🇻🇳 Tóm Tắt Tiếng Việt](#-tóm-tắt-dự-án-dành-cho-nhà-tuyển-dụng-tiếng-việt) • [🚀 Quickstart](#-getting-started)
+[🇻🇳 Tổng quan Nghiệp vụ & Kỹ thuật](#-tóm-tắt-dự-án--điểm-nhấn-năng-lực-tiếng-việt) •
+[📖 Tài liệu Kiến trúc (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md) •
+[🏛️ Sơ đồ Hệ thống](#system-architecture) •
+[🧪 Kiểm thử Tự động (179 Tests)](#testing--quality-assurance) •
+[🚀 Hướng dẫn Cài đặt](#-getting-started)
 
 </div>
+
+---
+
+## 🇻🇳 Tóm Tắt Dự Án & Điểm Nhấn Năng Lực (Tiếng Việt)
+
+**AI YouTube Studio** là nền tảng phần mềm tự động hóa quy trình sản xuất nội dung và quản trị vận hành đa kênh quy mô thực tế (**242 module Python**, **179 bài kiểm thử tự động `pytest`**), được thiết kế theo kiến trúc phân tầng chặt chẽ:
+
+| Góc Nhìn Đánh Giá | Giải Pháp Kỹ Thuật & Nghiệp Vụ Đã Triển Khai Trong Dự Án |
+| :--- | :--- |
+| **🗄️ Thiết Kế CSDL & Quản Trị Dữ Liệu**<br>*(SQLAlchemy ORM & Failover)* | • **Tầng Lưu trữ Bền vững (`PostgreSQL` $\leftrightarrow$ `SQLite WAL`):** Thiết kế các bảng quản lý danh mục Kênh (`channels`), Lịch sử sản xuất & phát hành (`videos`, `publish_logs`), Chỉ số phân tích hiệu quả (`analytics_metrics`) và Kho chữ ký chống trùng lặp (`video_memory_rag`).<br>• **Tự động Chuyển đổi Dự phòng (`Database Failover`):** Hệ thống tự động kiểm tra kết nối PostgreSQL khi khởi động và chuyển đổi mượt mà sang SQLite (`WAL mode`) nếu máy chủ CSDL từ xa gián đoạn, được kiểm chứng qua `tests/test_database_scenarios.py`. |
+| **📋 Phân Tích Nghiệp Vụ & Điều Phối Quy Trình**<br>*(Workflow & Operations BA)* | • **Chuẩn hóa Quy trình Nghiệp vụ 7 Công đoạn:** Mô hình hóa luồng công việc từ *Phân tích xu hướng $\rightarrow$ Khởi tạo kịch bản theo hợp đồng dữ liệu (`Pydantic Schema`) $\rightarrow$ Kiểm định chất lượng nội dung $\rightarrow$ Tổng hợp âm thanh & hình ảnh $\rightarrow$ Kiểm duyệt thị giác $\rightarrow$ Xuất bản đa kênh & Thu thập báo cáo Analytics*.<br>• **Quản lý Hạn ngạch Đa Tài khoản (`Quota & Pool Isolation`):** Phân bổ tự động 9 kênh vào 7 cụm tài khoản Google Cloud OAuth độc lập và xoay vòng khóa API (`KeyRotator`) để không bao giờ bị gián đoạn vận hành khi chạm trần hạn mức. |
+| **🚀 Phát Triển Sản Phẩm & Kiểm Thử Tự Động**<br>*(Product Dev & Automated QA)* | • **Quy mô 242 Modules & 179 Bài Kiểm thử (`pytest`):** Bao phủ toàn diện các kịch bản lỗi cơ sở dữ liệu (`test_database_scenarios.py`), kịch bản cạn kiệt hạn mức (`test_quota_scenarios.py`), đồng bộ cấu hình kênh và kiểm định đầu ra.<br>• **Vận hành Đa giao diện:** Cung cấp đồng thời **Web Dashboard (`FastAPI`)**, **Telegram Operations Bot** và **CLI** cùng quy trình tự động hóa lịch trình qua **GitHub Actions**. |
 
 ---
 
@@ -222,8 +237,9 @@ pytest tests/ --ignore=tests/test_render_pipeline.py -q
 
 ---
 
-## 📫 Author & Contact
+<div align="center">
 
-- **Author:** **Kizakawa**
-- **Email:** [vivyngocnghech@gmail.com](mailto:vivyngocnghech@gmail.com)
-- **GitHub:** [https://github.com/Kizakawa](https://github.com/Kizakawa)
+**Tác giả:** **Kizakawa (Đức Vương)** • 📧 [vivyngocnghech@gmail.com](mailto:vivyngocnghech@gmail.com)  
+[⬅️ **Quay lại Trang chủ Portfolio GitHub (@Kizakawa)**](https://github.com/Kizakawa)
+
+</div>
